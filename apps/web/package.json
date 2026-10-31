@@ -1,0 +1,22 @@
+{
+  "name": "@pispark/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "check": "svelte-check --tsconfig ./tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "build": "vite build"
+  },
+  "dependencies": { "svelte": "^5.57.3" },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.1.1",
+    "@testing-library/svelte": "^5.4.2",
+    "@types/node": "^22.20.5",
+    "jsdom": "^26.1.0",
+    "svelte-check": "^4.7.7",
+    "vite": "^6.4.5",
+    "vitest": "~5.0.5"
+  }
+}

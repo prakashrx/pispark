@@ -1,0 +1,22 @@
+{
+  "name": "pispark",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small foundation for an independent Pi-powered agent workspace.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": "^22.17.1 || ^24.0.0 || >=26.0.0", "npm": ">=10" },
+  "workspaces": ["apps/server", "apps/web"],
+  "scripts": {
+    "dev": "concurrently --kill-others --names server,web \"npm run dev -w @pispark/server\" \"npm run dev -w @pispark/web\"",
+    "check": "npm run check --workspaces",
+    "test": "npm run test --workspaces",
+    "build": "npm run build --workspaces",
+    "start": "npm run start -w @pispark/server",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "~5.9.3"
+  }
+}

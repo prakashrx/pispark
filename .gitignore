@@ -1,0 +1,16 @@
+# Private work records and agent runtime metadata
+.work/
+.pi/
+.pi-lens/
+
+node_modules/
+dist/
+coverage/
+.vitest/
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
