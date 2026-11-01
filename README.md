@@ -4,11 +4,11 @@
 
 An open-source foundation for a customizable agent workspace built with Node, Svelte, and eventually the [Pi Agent SDK](https://github.com/earendil-works/pi-mono).
 
-## Status: starter, not an agent yet
+## Status: approved frontend, not an agent yet
 
-Working today: a responsive dark workspace, collapsible sidebar, accessible local-only demo composer, real backend health indicator, and a small HTTP server that serves the production UI.
+Working today: a responsive workspace/conversation, general settings, developer persona, and sources UI. All four routes share a collapsible sidebar and persistent Ask composer with local folder/persona/style/model selection. Keyboard navigation, local draft editing, and a source-draft modal work without a backend connection. A small HTTP server serves the production UI and a health endpoint.
 
-Not implemented: Pi integration, model calls, personas, sessions, persistence, authentication, or messaging interfaces. The composer never sends your draft or generates an answer. Persona/model controls are clearly disabled placeholders.
+The conversation, sessions, source statuses, version badge, and status dot are fixtures, not live activity or a backend health measurement. Drafts stay in memory and reset on reload; Run, backend saves, sync, and other unavailable operations do not execute. Pi integration, model calls, real personas/sessions, filesystem resolution, persistence, authentication, and messaging remain unimplemented. No credentials are needed or sent.
 
 ## Run locally
 
@@ -37,7 +37,7 @@ GNU Make wrappers are available (`make install`, `make dev`, `make check`, `make
 
 ```text
 apps/server/    Node + TypeScript HTTP server and backend tests
-apps/web/       Svelte 5 + Vite UI and component smoke tests
+apps/web/       Svelte 5 + Vite + Tailwind UI, unit and browser tests
 docs/          Architecture, development, and product direction
 scripts/       Production HTTP smoke check
 .github/       Cross-platform CI and pull request template

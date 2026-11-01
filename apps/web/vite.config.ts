@@ -10,5 +10,7 @@ export default defineConfig(({ mode }) => ({
     strictPort: true,
     proxy: { "/api": "http://127.0.0.1:3000" },
   },
+  // Preserve source alpha values: CSS minification rounds .7 to 8-bit hex alpha.
+  build: { cssMinify: false },
   test: { environment: "jsdom", include: ["src/**/*.test.ts"] },
 }));

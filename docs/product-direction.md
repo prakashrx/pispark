@@ -2,7 +2,7 @@
 
 PiSpark aims to be an open, deeply customizable home for agent-assisted work: simple to start, composable as needs grow, and not tied to a single interface.
 
-**This document is future direction, not a list of shipped features or delivery promises.** The current starter has a web shell, a local-only demo composer, and backend health. It has no agent execution.
+**This document is future direction, not a list of shipped features or delivery promises.** The current frontend has workspace, general settings, developer persona, and sources screens with local fixtures and draft interactions. The server exposes health and serves the built UI, but the frontend is not connected to backend operations. There is no agent execution.
 
 ## The direction
 

@@ -1,108 +1,171 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/svelte";
+import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, expect, test, vi } from "vitest";
 import App from "./App.svelte";
 
-function mockHealth(
-  status = 200,
-  body: unknown = { status: "ok", service: "pispark" },
-) {
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValue(new Response(JSON.stringify(body), { status }));
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
-
 afterEach(() => {
   cleanup();
+  window.history.replaceState(null, "", "/");
   vi.unstubAllGlobals();
 });
 
-test("renders the starter, checks the backend, and toggles the sidebar", async () => {
-  const fetchMock = mockHealth();
-  render(App);
-  expect(
-    screen.getByRole("heading", { name: "Start with a spark." }),
-  ).toBeTruthy();
-  await screen.findByText("Backend online");
-  expect(fetchMock).toHaveBeenCalledWith(
-    "/api/health",
-    expect.objectContaining({ cache: "no-store" }),
-  );
-  const collapse = screen.getByRole("button", { name: "Collapse sidebar" });
-  expect(collapse.getAttribute("aria-expanded")).toBe("true");
-  await fireEvent.click(collapse);
-  expect(screen.queryByRole("complementary")).toBeNull();
-  const expand = screen.getByRole("button", { name: "Expand sidebar" });
-  expect(expand.getAttribute("aria-expanded")).toBe("false");
-  await fireEvent.click(expand);
-  expect(
-    screen.getByRole("complementary", { name: "Workspace sidebar" }),
-  ).toBeTruthy();
-});
+async function navigate(page: string) {
+  window.location.hash = `/${page}`;
+  await fireEvent(window, new Event("hashchange"));
+}
 
-test("composer is explicitly local-only demo and never calls an agent endpoint", async () => {
-  const fetchMock = mockHealth();
+test("renders the supplied fixture conversation without contacting any backend", async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
   render(App);
-  await screen.findByText("Backend online");
-  const button = screen.getByRole("button", {
-    name: "Preview demo",
-  }) as HTMLButtonElement;
-  expect(button.disabled).toBe(true);
   expect(
-    (
-      screen.getByRole("combobox", {
-        name: "Persona (not connected)",
-      }) as HTMLSelectElement
-    ).disabled,
-  ).toBe(true);
+    screen.getByRole("heading", { name: "Workspace review" }),
+  ).toBeTruthy();
+  expect(screen.getByRole("main").getAttribute("aria-label")).toContain(
+    "no agent or tools",
+  );
   expect(
-    (
-      screen.getByRole("combobox", {
-        name: "Model (not connected)",
-      }) as HTMLSelectElement
-    ).disabled,
-  ).toBe(true);
-  await fireEvent.input(screen.getByRole("textbox", { name: "Ask PiSpark" }), {
-    target: { value: "A local draft" },
+    screen.getByRole("button", { name: "Run" }).getAttribute("aria-disabled"),
+  ).toBe("true");
+  const ask = screen.getByRole("textbox", {
+    name: "Ask anything (local draft)",
   });
-  expect(button.disabled).toBe(false);
-  await fireEvent.submit(screen.getByRole("form", { name: "Demo composer" }));
-  expect(screen.getByText(/Demo only — nothing was sent/)).toBeTruthy();
-  expect(fetchMock).toHaveBeenCalledTimes(1);
+  await fireEvent.input(ask, { target: { value: "Keep this draft local" } });
+  await fireEvent.submit(
+    screen.getByRole("form", { name: "New session draft" }),
+  );
+  expect((ask as HTMLInputElement).value).toBe("Keep this draft local");
+  expect(
+    (
+      screen.getByRole("textbox", {
+        name: /Reply to Workspace/,
+      }) as HTMLInputElement
+    ).value,
+  ).toBe("");
+  expect(fetch).not.toHaveBeenCalled();
 });
 
-test("reports an unreachable backend and supports a real retry", async () => {
-  const fetchMock = vi
-    .fn()
-    .mockRejectedValueOnce(new TypeError("Network unavailable"));
-  vi.stubGlobal("fetch", fetchMock);
+test("collapses the sidebar and day groups; shortcut ignores editable inputs", async () => {
   render(App);
-  await screen.findByText("Backend unavailable");
-  fetchMock.mockResolvedValue(
-    new Response(JSON.stringify({ status: "ok", service: "pispark" })),
+  await fireEvent.click(screen.getByRole("button", { name: "Today" }));
+  expect(screen.queryByText("Confirm file change")).toBeNull();
+  await fireEvent.click(screen.getByRole("button", { name: "Today" }));
+  expect(screen.getByText("Confirm file change")).toBeTruthy();
+  await fireEvent.keyDown(
+    screen.getByRole("textbox", { name: /Ask anything/ }),
+    { key: "b", ctrlKey: true },
   );
+  expect(screen.getByRole("complementary")).toBeTruthy();
   await fireEvent.click(
-    screen.getByRole("button", { name: "Refresh backend health" }),
+    screen.getByRole("button", { name: "Collapse sidebar" }),
   );
-  await screen.findByText("Backend online");
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole("complementary")).toBeNull();
+  await fireEvent.click(screen.getByRole("button", { name: "Expand sidebar" }));
+  expect(screen.getByRole("complementary")).toBeTruthy();
 });
 
-test.each([
-  [503, { status: "ok", service: "pispark" }],
-  [200, { status: "ok", service: "other" }],
-  [200, null],
-])("does not claim health for invalid response %s %j", async (status, body) => {
-  mockHealth(status, body);
+test("navigates among only the supplied settings pages and filters navigation", async () => {
   render(App);
-  await waitFor(() =>
-    expect(screen.getByText("Backend unavailable")).toBeTruthy(),
+  await navigate("settings");
+  expect(
+    screen.getByRole("heading", { name: "General", level: 1 }),
+  ).toBeTruthy();
+  await fireEvent.input(
+    screen.getByRole("textbox", { name: "Search settings" }),
+    { target: { value: "source" } },
   );
+  expect(screen.getByRole("link", { name: "Sources" })).toBeTruthy();
+  expect(screen.queryByRole("link", { name: /^General$/ })).toBeNull();
+  await navigate("persona");
+  expect(
+    screen.getByRole("heading", { name: "Developer Persona" }),
+  ).toBeTruthy();
+  await navigate("sources");
+  expect(
+    screen.getByRole("heading", { name: /Sources 3 active/ }),
+  ).toBeTruthy();
+  expect(
+    screen
+      .getByRole("button", { name: "Sync all" })
+      .getAttribute("aria-disabled"),
+  ).toBe("true");
+});
+
+test("general preferences change locally and reset to source defaults", async () => {
+  window.location.hash = "/settings";
+  render(App);
+  const persona = screen.getByRole("combobox", {
+    name: "Default persona",
+  }) as HTMLSelectElement;
+  await fireEvent.change(persona, { target: { value: "Architect" } });
+  expect(persona.value).toBe("Architect");
+  await fireEvent.click(
+    screen.getByRole("button", { name: "Reset to defaults" }),
+  );
+  expect(persona.value).toBe("Developer");
+  expect(
+    screen
+      .getByRole("button", { name: "Save changes" })
+      .getAttribute("aria-disabled"),
+  ).toBe("true");
+});
+
+test("persona fields, prompts, commands and resource removal edit only local state", async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  window.location.hash = "/persona";
+  render(App);
+  await fireEvent.input(screen.getByRole("textbox", { name: "Display Name" }), {
+    target: { value: "My developer" },
+  });
+  await fireEvent.click(
+    screen.getByRole("button", { name: "Add Text Prompt" }),
+  );
+  expect(screen.getByRole("textbox", { name: "Text Prompt" })).toBeTruthy();
+  await fireEvent.click(
+    screen.getByRole("button", {
+      name: "Remove git-diff-checker from local draft",
+    }),
+  );
+  expect(screen.queryByText("git-diff-checker")).toBeNull();
+  await fireEvent.click(screen.getByRole("button", { name: "Edit /review" }));
+  await fireEvent.input(
+    screen.getByRole("textbox", { name: "/review local draft" }),
+    { target: { value: "Review carefully." } },
+  );
+  await fireEvent.click(screen.getByRole("button", { name: "Edit /review" }));
+  expect(screen.getByText("Review carefully.")).toBeTruthy();
+  expect(
+    screen
+      .getByRole("button", { name: "Inspect JSON" })
+      .getAttribute("aria-disabled"),
+  ).toBe("true");
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test("keeps the mounted Ask and independent reply drafts across every route", async () => {
+  render(App);
+  const ask = screen.getByRole("textbox", { name: /Ask anything/ });
+  await fireEvent.input(ask, { target: { value: "Global unsent question" } });
+  await fireEvent.input(
+    screen.getByRole("textbox", { name: /Reply to Workspace/ }),
+    {
+      target: { value: "Session-only follow-up" },
+    },
+  );
+  for (const route of ["settings", "persona", "sources", "workspace"]) {
+    await navigate(route);
+    expect(screen.getByRole("textbox", { name: /Ask anything/ })).toBe(ask);
+    expect((ask as HTMLInputElement).value).toBe("Global unsent question");
+    expect(
+      screen.getAllByRole("form", { name: "New session draft" }),
+    ).toHaveLength(1);
+    expect(document.activeElement).toBe(screen.getByRole("main"));
+  }
+  expect(
+    (
+      screen.getByRole("textbox", {
+        name: /Reply to Workspace/,
+      }) as HTMLInputElement
+    ).value,
+  ).toBe("Session-only follow-up");
 });
