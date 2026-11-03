@@ -42,8 +42,8 @@
 </script>
 
 <Section
-  title="System instructions"
-  description="Ordered text or UTF-8 .md/.txt references on the backend host. Replacements retain their inherited position."
+  title="Instructions"
+  description="Tell the persona how to respond. Instructions are followed in this order."
   class="space-y-3 pt-2"
 >
   {#each items as item, index (item)}
@@ -51,13 +51,7 @@
       class="border border-gray-200 rounded-xl p-4 bg-white shadow-sm space-y-3"
     >
       <div class="flex justify-between items-center gap-2 flex-wrap">
-        <Input
-          label={`Instruction ${index + 1} ID`}
-          class="source-input max-w-xs"
-          bind:value={item.id}
-          disabled={readonly}
-          maxlength={64}
-        />
+        <span class="text-xs">Instruction {index + 1}</span>
         <OrderControls
           {index}
           count={items.length}
@@ -67,24 +61,16 @@
           disabled={readonly}
         />
       </div>
-      <label class="text-xs flex items-center gap-2"
-        ><input
-          type="checkbox"
-          checked={item.replace === true}
-          disabled={readonly}
-          onchange={(event) => {
-            if (event.currentTarget.checked) item.replace = true;
-            else delete item.replace;
-          }}
-        />Replace inherited ID</label
-      >
       {#if item.file !== undefined}
-        <Input
-          label={`Instruction ${index + 1} relative file`}
-          class="source-input"
-          bind:value={item.file}
-          disabled={readonly}
-        />
+        <label class="block text-xs space-y-1"
+          >File
+          <Input
+            label={`File · instruction ${index + 1}`}
+            class="source-input"
+            bind:value={item.file}
+            disabled={readonly}
+          /></label
+        >
         {#key `${reference.id}/${item.file}`}<InstructionFile
             {reference}
             path={item.file}
@@ -101,20 +87,42 @@
           disabled={readonly}
         />
       {/if}
+      <details class="text-xs space-y-2">
+        <summary>Advanced</summary><label class="block"
+          >Reference name <Input
+            label={`Instruction ${index + 1} reference name`}
+            class="source-input max-w-xs"
+            bind:value={item.id}
+            disabled={readonly}
+            maxlength={64}
+          />
+        </label>
+        <label class="text-xs flex items-center gap-2"
+          ><input
+            type="checkbox"
+            checked={item.replace === true}
+            disabled={readonly}
+            onchange={(event) => {
+              if (event.currentTarget.checked) item.replace = true;
+              else delete item.replace;
+            }}
+          />Replace matching instruction</label
+        >
+      </details>
     </div>
   {/each}
   {#if !items.length}<p class="text-xs text-neutral-500">
-      No local instructions.
+      No instructions added here.
     </p>{/if}
   <div class="flex gap-2 flex-wrap">
     <Button
       class="persona-add"
       disabled={readonly || items.length >= 32}
-      onclick={() => add()}>Add text instruction</Button
+      onclick={() => add()}>Add instruction</Button
     ><Button
       class="persona-add"
       disabled={readonly || items.length >= 32}
-      onclick={() => add(true)}>Add file instruction</Button
+      onclick={() => add(true)}>Use a file</Button
     >
   </div>
 </Section>

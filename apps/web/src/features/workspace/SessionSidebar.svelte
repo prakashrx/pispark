@@ -2,6 +2,7 @@
   import Button from "../../lib/ui/Button.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   import { useSessions } from "./session-client.svelte";
+  import { chatName, chatStatus } from "./chat-presentation";
   const client = useSessions();
   let collapsed = $state(false);
 </script>
@@ -16,7 +17,7 @@
           aria-expanded={!collapsed}
           onclick={() => (collapsed = !collapsed)}
         >
-          <span>Sessions</span><span>{client.sessions.length}</span>
+          <span>Chats</span><span>{client.sessions.length}</span>
         </Button>
         {#if !collapsed}
           <div class="space-y-0.5 mt-0.5">
@@ -33,19 +34,19 @@
               >
                 <div class="min-w-0 pr-2">
                   <div class="truncate text-xs font-semibold">
-                    {session.configuration} · {session.id.slice(0, 8)}
+                    {chatName(session)}
                   </div>
                   <div class="text-[11px] text-zinc-500 font-mono truncate">
-                    {session.workspace}
+                    {client.catalog.workspaces.find((w) => w.value === session.workspace)?.label ?? session.workspace}
                   </div>
                 </div>
                 <span
                   class="text-[10px] text-zinc-500 font-mono flex-shrink-0 mt-0.5"
-                  >{session.interrupted ? "interrupted" : session.status}</span
+                  >{chatStatus(session.status, session.interrupted)}</span
                 >
               </a>
             {:else}<p class="px-2.5 py-2 text-zinc-500">
-                No sessions yet.
+                No chats yet.
               </p>{/each}
           </div>
         {/if}
@@ -53,12 +54,6 @@
     </div>
   </div>
   <div class="p-2 border-t border-zinc-200/70 space-y-0.5 bg-[#fbfbfb]">
-    <Button
-      unavailable="Session archiving is not implemented"
-      class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-600 hover:text-zinc-900 rounded-lg hover:bg-zinc-200/50 transition-colors"
-      ><Icon name="archive" class="w-4 h-4 text-zinc-500" /><span>Archived</span
-      ></Button
-    >
     <a
       href="#/settings"
       class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-600 hover:text-zinc-900 rounded-lg hover:bg-zinc-200/50 transition-colors"

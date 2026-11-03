@@ -1,3 +1,4 @@
+import type { PersonaErrorContext } from "./persona-presentation";
 import type {
   PersonaDefinition,
   PersonaDiagnostic,
@@ -103,8 +104,7 @@ export class PersonaClient {
         else {
           const blocked = new InstructionDraft();
           blocked.blocked = true;
-          blocked.error =
-            "Instruction draft limit: save an existing file draft, then reopen this editor.";
+          blocked.error = "file-draft-limit";
           return blocked;
         }
       }
@@ -126,7 +126,9 @@ export class PersonaClient {
   effective = $state<PersonaDocument>();
   savedJSON = $state("");
   status = $state("");
+  notice = $state("");
   editorError = $state("");
+  editorErrorContext = $state<PersonaErrorContext>("document");
   busy = $state(false);
   reading = $state(false);
   dirty = $derived(
@@ -176,6 +178,8 @@ export class PersonaClient {
     const generation = ++this.generation;
     this.reading = true;
     this.editorError = "";
+    this.notice = "";
+    this.editorErrorContext = "document";
     const summary = this.items.find(
       (p) => personaKey(p.ref) === personaKey(reference),
     );
@@ -232,6 +236,8 @@ export class PersonaClient {
       return;
     this.busy = true;
     this.editorError = "";
+    this.notice = "";
+    this.editorErrorContext = "draft";
     const previousDraft = JSON.stringify(this.draft),
       generation = this.generation;
     try {
@@ -245,8 +251,8 @@ export class PersonaClient {
       )
         await this.select(view.ref, true);
       else if (generation === this.generation)
-        this.editorError =
-          "Persona created; current draft changed meanwhile. Select the new persona deliberately.";
+        this.notice =
+          "Persona created. Your current edits are still here. Choose the new persona from the list when you’re ready.";
     } catch (error) {
       if (generation === this.generation)
         this.editorError = (error as Error).message;
@@ -260,6 +266,8 @@ export class PersonaClient {
       submitted = JSON.stringify(this.draft);
     this.busy = true;
     this.editorError = "";
+    this.notice = "";
+    this.editorErrorContext = "draft";
     try {
       const effective = await personaRequest<PersonaView>("validate", {
         ref: this.view.ref,
@@ -270,7 +278,7 @@ export class PersonaClient {
         JSON.stringify(this.draft) === submitted
       ) {
         this.effective = effective;
-        this.status = "Draft validated — not saved";
+        this.status = "Changes checked. Not saved yet.";
       }
     } catch (error) {
       if (generation === this.generation)
@@ -293,6 +301,8 @@ export class PersonaClient {
       reference = this.view.ref;
     this.busy = true;
     this.editorError = "";
+    this.notice = "";
+    this.editorErrorContext = "draft";
     this.status = "Saving";
     try {
       const view = await personaRequest<PersonaView>("save", {
@@ -322,6 +332,7 @@ export class PersonaClient {
     expectedManagementRevision?: string,
     beforeRevision?: string,
   ) {
+    this.notice = "";
     if (
       this.view &&
       personaKey(this.view.ref) === personaKey(reference) &&
@@ -333,13 +344,14 @@ export class PersonaClient {
         revision
       ) {
         this.view = { ...this.view, revision };
-        this.status =
-          "Instruction file saved separately; persona draft is not saved";
+        this.status = this.dirty
+          ? "File saved. Persona changes are not saved yet."
+          : "Saved";
       } else {
         this.view = { ...this.view, revision: undefined };
         this.editorError =
-          "Instruction file saved, but the saved persona or parent graph changed. Draft retained. Reload deliberately to reconcile before saving the persona.";
-        this.status = "Reconciliation required";
+          "The file was saved, but this persona changed elsewhere. Your other edits are safe. Reload the saved version before saving the persona.";
+        this.status = "Review saved changes";
       }
     }
     await this.refresh();

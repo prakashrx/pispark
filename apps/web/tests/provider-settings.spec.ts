@@ -51,9 +51,7 @@ async function login(page: import("@playwright/test").Page) {
   await expect(secret).toHaveAttribute("type", "password");
   await secret.fill("TEST-ONLY-NOT-REAL");
   await secret.press("Enter");
-  await expect(dialog.getByRole("status")).toContainText(
-    "Credential saved · not verified",
-  );
+  await expect(dialog.getByRole("status")).toContainText("Sign-in saved");
   await expect(dialog).not.toContainText("TEST-ONLY-NOT-REAL");
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
 }
@@ -62,7 +60,7 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   page,
   request,
   context,
-}) => {
+}, info) => {
   const external: string[] = [];
   context.on("request", (r) => {
     if (!new URL(r.url()).hostname.match(/^(127\.0\.0\.1|localhost)$/))
@@ -75,6 +73,16 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   await expect(
     page.getByRole("button", { name: `Manage ${provider}` }),
   ).toBeFocused();
+  await expect(page.getByText("Sign-in saved", { exact: true })).toBeVisible();
+  for (const width of [390, 1920, 3840]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
+    await page.screenshot({
+      path: info.outputPath(`saved-sign-in-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole("button", { name: `Models for ${provider}` }).click();
   const models = page.getByRole("dialog", { name: `Models for ${provider}` });
   await models
@@ -86,15 +94,16 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   await expect(ask).toHaveValue("Keep shared Ask draft");
   await page
     .getByRole("button", {
-      name: "Persona: No persona (host defaults)",
+      name: "Persona: No persona",
     })
     .click();
+  await page.locator("[data-selector-popup] summary").click();
   await page
-    .getByRole("combobox", { name: "Host policy", exact: true })
+    .getByRole("combobox", { name: "Chat setup", exact: true })
     .selectOption("Catalog resources");
   await page
     .getByRole("button", {
-      name: "Persona: No persona (host defaults)",
+      name: "Persona: No persona",
       exact: true,
     })
     .click();
@@ -180,7 +189,7 @@ test("ConnectionDialog: native OAuth variants, safe links, Tab summary regressio
   for (let i = 0; i < 12; i++) {
     await page.keyboard.press("Tab");
     if (
-      await page
+      await dialog
         .locator("summary")
         .evaluate((el) => el === document.activeElement)
     ) {
@@ -220,9 +229,7 @@ for (const width of [1920, 3840, 390])
     await expect(
       page.getByRole("button", { name: "Models for Anthropic" }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("form", { name: "New session draft" }),
-    ).toHaveCount(1);
+    await expect(page.getByRole("form", { name: "New chat" })).toHaveCount(1);
     await expect(
       page.getByText(/Design preview|simulator|simulated|Verified ·/),
     ).toHaveCount(0);
@@ -316,7 +323,7 @@ test("AuthPrompt: blank secret/text/manual responses preserve native validation 
   await expect(dialog.getByRole("button", { name: "Continue" })).toBeEnabled();
   await page.screenshot({ path: info.outputPath("blank-secret-390.png") });
   await page.keyboard.press("Enter");
-  await expect(dialog.getByRole("status")).toContainText("Credential saved");
+  await expect(dialog.getByRole("status")).toContainText("Sign-in saved");
   await page.keyboard.press("Escape");
   await page
     .getByRole("button", { name: `Manage ${provider}`, exact: true })
@@ -337,7 +344,7 @@ test("AuthPrompt: blank secret/text/manual responses preserve native validation 
   ).toBeFocused();
   await page.screenshot({ path: info.outputPath("blank-manual-390.png") });
   await page.keyboard.press("Enter");
-  await expect(dialog.getByRole("status")).toContainText("Credential saved");
+  await expect(dialog.getByRole("status")).toContainText("Sign-in saved");
   await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", { name: `Manage ${provider}`, exact: true }),

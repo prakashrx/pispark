@@ -79,7 +79,7 @@
                     title={`${persona.ref.root}/${persona.ref.path}`}
                     >{persona.valid
                       ? persona.name
-                      : `${persona.ref.root}/${persona.ref.path} · Invalid`}</a
+                      : `Needs attention · ${persona.ref.path}`}</a
                   >{/each}
               </div>
             {/if}
@@ -123,15 +123,6 @@
     </nav>
   </div>
   <div class="p-3 border-t border-gray-100 mt-auto shrink-0">
-    <div
-      class="px-2 py-1 text-[11px] text-gray-400 flex items-center justify-between"
-    >
-      <span>PiSpark backend</span><span
-        class="font-mono text-gray-600 bg-gray-50 px-1 rounded"
-        title="Client connection state, not provider verification"
-        >{sessions.connection}</span
-      >
-    </div>
     <a
       aria-disabled="true"
       title="Documentation destination is not supplied"

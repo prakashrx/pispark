@@ -28,7 +28,7 @@
 >
   <div class="min-w-0 flex-1">
     <h3 class="text-xs font-medium text-gray-900">{provider.name}</h3>
-    <p class="text-[11px] text-gray-500 mt-1">{provider.configured ? "Configured · not verified" : "Not configured"}{provider.source === "host" ? " · host configuration remains" : ""}</p>
+    <p class="text-[11px] text-gray-500 mt-1">{hasCredential ? "Sign-in saved" : provider.configured ? "Set up on this computer" : "Not set up"}</p>
     <p class="text-[11px] text-gray-400 mt-1 break-words">
       {provider.methods
         .map(

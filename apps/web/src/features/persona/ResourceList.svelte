@@ -18,19 +18,14 @@
 
 <Section
   title="Skills"
-  description="Reference existing standard skill directories containing SKILL.md and supporting files. No tools are granted by selecting skills."
+  description="Add a skill folder that contains a SKILL.md file."
   class="space-y-3 pt-4 border-t border-gray-100"
 >
   {#each items as item, index (item)}<div
       class="p-4 border border-gray-200 rounded-xl space-y-3"
     >
       <div class="flex gap-2 items-center flex-wrap">
-        <Input
-          label={`Skill ${index + 1} ID`}
-          class="source-input max-w-xs"
-          bind:value={item.id}
-          disabled={readonly}
-        /><OrderControls
+        <span class="text-xs">Skill {index + 1}</span><OrderControls
           {index}
           count={items.length}
           label={`skill ${index + 1}`}
@@ -39,26 +34,39 @@
           disabled={readonly}
         />
       </div>
-      <Input
-        label={`Skill ${index + 1} relative directory`}
-        class="source-input"
-        bind:value={item.directory}
-        disabled={readonly}
-      />
-      <label class="text-xs flex gap-2 items-center"
-        ><input
-          type="checkbox"
-          checked={item.replace === true}
+      <label class="block text-xs space-y-1"
+        >Skill folder
+        <Input
+          label={`Skill folder ${index + 1}`}
+          class="source-input"
+          bind:value={item.directory}
           disabled={readonly}
-          onchange={(event) => {
-            if (event.currentTarget.checked) item.replace = true;
-            else delete item.replace;
-          }}
-        />Replace inherited ID</label
+        /></label
       >
+      <details class="text-xs space-y-2">
+        <summary>Advanced</summary><label class="block"
+          >Reference name <Input
+            label={`Skill ${index + 1} reference name`}
+            class="source-input max-w-xs"
+            bind:value={item.id}
+            disabled={readonly}
+          /></label
+        >
+        <label class="text-xs flex gap-2 items-center"
+          ><input
+            type="checkbox"
+            checked={item.replace === true}
+            disabled={readonly}
+            onchange={(event) => {
+              if (event.currentTarget.checked) item.replace = true;
+              else delete item.replace;
+            }}
+          />Replace matching skill</label
+        >
+      </details>
     </div>{/each}
   {#if !items.length}<p class="text-xs text-neutral-500">
-      No local skills.
+      No skills added here.
     </p>{/if}
   <Button
     class="persona-add"
@@ -67,6 +75,6 @@
       let n = 1;
       while (items.some((i) => i.id === `skill-${n}`)) n++;
       items = [...items, { id: `skill-${n}`, directory: "skills/name" }];
-    }}>Add skill reference</Button
+    }}>Add skill</Button
   >
 </Section>

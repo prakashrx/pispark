@@ -1,5 +1,5 @@
 export const routes = {
-  workspace: { title: "Workspace review" },
+  workspace: { title: "Chats" },
   settings: { title: "General Settings" },
   providers: { title: "Providers & models" },
   persona: { title: "Personas" },

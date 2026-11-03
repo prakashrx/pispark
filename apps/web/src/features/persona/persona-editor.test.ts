@@ -82,7 +82,7 @@ afterEach(() => {
 
 test("editor orders supported instruction cards, saves only on response and removes fake capability controls", async () => {
   setup();
-  const select = screen.getByRole("combobox", { name: "Edit persona" });
+  const select = screen.getByRole("combobox", { name: "Choose a persona" });
   await waitFor(() => expect(select.querySelectorAll("option").length).toBe(2));
   await fireEvent.change(select, { target: { value: JSON.stringify(ref) } });
   expect(
@@ -103,7 +103,7 @@ test("editor orders supported instruction cards, saves only on response and remo
     ).value,
   ).toBe("Second");
   expect(screen.getByText("Unsaved changes")).toBeTruthy();
-  await fireEvent.click(screen.getByRole("button", { name: "Save Persona" }));
+  await fireEvent.click(screen.getByRole("button", { name: "Save persona" }));
   await waitFor(() =>
     expect(screen.getByText("Saved", { exact: true })).toBeTruthy(),
   );
@@ -112,18 +112,18 @@ test("editor orders supported instruction cards, saves only on response and remo
 });
 test("read-only source renders actual fields but cannot save or remove resources", async () => {
   setup(false);
-  const select = screen.getByRole("combobox", { name: "Edit persona" });
+  const select = screen.getByRole("combobox", { name: "Choose a persona" });
   await waitFor(() => expect(select.querySelectorAll("option").length).toBe(2));
   await fireEvent.change(select, { target: { value: JSON.stringify(ref) } });
   expect(
     (
       (await screen.findByRole("textbox", {
-        name: "Display Name",
+        name: "Name",
       })) as HTMLInputElement
     ).disabled,
   ).toBe(true);
   expect(
-    (screen.getByRole("button", { name: "Save Persona" }) as HTMLButtonElement)
+    (screen.getByRole("button", { name: "Save persona" }) as HTMLButtonElement)
       .disabled,
   ).toBe(true);
   expect(
@@ -142,7 +142,11 @@ test("malformed and unsupported catalog selections keep original diagnostics and
     writable: false,
     valid: false,
     diagnostics: [
-      { code: i === 2 ? "unsupported-version" : "invalid-definition" },
+      {
+        code: i === 2 ? "unsupported-version" : "invalid-definition",
+        field: "definition.name",
+        resourceId: `resource-${i}`,
+      },
     ],
   }));
   const fetch = vi.fn(
@@ -162,7 +166,7 @@ test("malformed and unsupported catalog selections keep original diagnostics and
   vi.stubGlobal("fetch", fetch);
   window.location.hash = "/persona";
   render(App);
-  const select = screen.getByRole("combobox", { name: "Edit persona" });
+  const select = screen.getByRole("combobox", { name: "Choose a persona" });
   await waitFor(() => expect(select.querySelectorAll("option").length).toBe(4));
   for (const item of entries) {
     await fireEvent.change(select, {
@@ -174,11 +178,26 @@ test("malformed and unsupported catalog selections keep original diagnostics and
     expect(
       screen.getByRole("region", { name: "Catalog diagnostics" }).textContent,
     ).toContain(item.diagnostics[0]!.code);
-    expect(screen.queryByRole("textbox", { name: "Display Name" })).toBeNull();
+    const details = screen
+      .getByRole("region", { name: "Catalog diagnostics" })
+      .querySelector("details")!;
+    expect(details.textContent).toContain(item.diagnostics[0]!.resourceId);
+    expect(details.textContent).toContain("definition.name");
+    expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+    expect(screen.queryByText(/Your edits are still here/)).toBeNull();
+    if (item.diagnostics[0]!.code === "invalid-definition")
+      expect(screen.getByRole("alert").textContent).toBe(
+        "This persona’s file isn’t valid. Fix the original file to continue.",
+      );
+    expect(
+      screen
+        .getByRole("region", { name: "Catalog diagnostics" })
+        .querySelector("details")!.open,
+    ).toBe(false);
     expect(
       (
         screen.getByRole("button", {
-          name: "Save Persona",
+          name: "Save persona",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -186,4 +205,40 @@ test("malformed and unsupported catalog selections keep original diagnostics and
   expect(fetch.mock.calls.some(([url]) => url.endsWith("/personas/read"))).toBe(
     false,
   );
+});
+
+test("file draft capacity has an actionable primary alert with closed Details and keeps all dirty drafts blocked safely", async () => {
+  const { PersonaClient } = await import("./persona-client.svelte");
+  const { default: InstructionFile } = await import("./InstructionFile.svelte");
+  const client = new PersonaClient();
+  for (let i = 0; i < 32; i++)
+    client.file(ref, `${i}.md`).content = `Draft ${i}`;
+  render(InstructionFile, {
+    reference: ref,
+    path: "blocked.md",
+    client,
+    declared: false,
+  });
+  await fireEvent.click(screen.getByText("Edit file", { exact: true }));
+  const reason = screen.getByText(
+    "Too many files have unsaved changes. Save one, then reopen this file.",
+    { exact: true },
+  );
+  expect(reason.getAttribute("role")).toBe("alert");
+  expect(reason.closest("details")!.open).toBe(true);
+  const diagnostic = screen.getByText("file-draft-limit", { exact: true });
+  expect(diagnostic.closest("details")!.open).toBe(false);
+  expect(
+    (
+      screen.getByRole("textbox", {
+        name: "File text: blocked.md",
+      }) as HTMLTextAreaElement
+    ).disabled,
+  ).toBe(true);
+  expect(
+    (screen.getByRole("button", { name: "Save file" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  for (let i = 0; i < 32; i++)
+    expect(client.file(ref, `${i}.md`).content).toBe(`Draft ${i}`);
 });

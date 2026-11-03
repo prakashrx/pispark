@@ -8,6 +8,15 @@ import type {
 } from "../../../../server/src/protocol";
 export type { NativeMessage } from "../../../../server/src/protocol";
 import { snapshots } from "./snapshot-stream";
+import type { CommandUncertaintyKind } from "./chat-presentation";
+class CommandUncertainty extends Error {
+  constructor(
+    readonly kind: CommandUncertaintyKind,
+    detail: string,
+  ) {
+    super(detail);
+  }
+}
 import { ProviderClient } from "../settings/provider-client.svelte";
 import type { ModelChoice } from "../../../../server/src/provider-protocol";
 import type { PersonaSelection } from "../../../../server/src/persona-protocol";
@@ -24,6 +33,8 @@ export class SessionClient {
   readonly providers = new ProviderClient();
   readonly personas = new PersonaClient();
   catalog = $state<Catalog>({ workspaces: [], configurations: [] });
+  catalogLoading = $state(true);
+  catalogError = $state(false);
   sessions = $state<SessionInfo[]>([]);
   selected = $state("");
   snapshot = $state<SessionWindow>();
@@ -31,7 +42,23 @@ export class SessionClient {
   drafts = $state<Record<string, string>>({});
   connection = $state("Loading");
   error = $state("");
+  errorKind = $state<CommandUncertaintyKind>();
+  listNotice = $state("");
   sessionErrors = $state<Record<string, string>>({});
+  sessionErrorKinds = $state<
+    Record<string, CommandUncertaintyKind | undefined>
+  >({});
+  private recordError(error: unknown, id?: string) {
+    const detail = (error as Error).message;
+    const kind = error instanceof CommandUncertainty ? error.kind : undefined;
+    if (id) {
+      this.sessionErrors[id] = detail;
+      this.sessionErrorKinds[id] = kind;
+    } else {
+      this.error = detail;
+      this.errorKind = kind;
+    }
+  }
   private draftRevisions = new Map<string, number>();
   private nextDraftRevision = 0;
   busy = $state(false);
@@ -41,6 +68,7 @@ export class SessionClient {
   private disposed = false;
   private refreshTimer?: ReturnType<typeof setInterval>;
   private refreshing = false;
+  private mounting = false;
   private offline = () => {
     this.source?.abort();
     this.connection = "Reconnecting";
@@ -82,13 +110,21 @@ export class SessionClient {
     return result as T;
   }
   async mount() {
+    if (this.mounting || this.disposed) return;
+    this.mounting = true;
+    this.connection = "Loading";
+    this.error = "";
+    this.errorKind = undefined;
     void this.providers.refresh();
     void this.personas.refresh();
     window.addEventListener("beforeunload", this.beforeUnload);
     window.addEventListener("offline", this.offline);
     window.addEventListener("online", this.online);
+    this.catalogLoading = true;
+    this.catalogError = false;
     try {
       this.catalog = await this.json<Catalog>("/api/catalog");
+      this.catalogLoading = false;
       await this.refresh();
       this.connection = "Connected";
       this.refreshTimer ??= setInterval(() => {
@@ -108,7 +144,12 @@ export class SessionClient {
       if (!this.disposed) {
         this.connection = "Disconnected";
         this.error = "Backend unavailable. Drafts have not been sent.";
+        this.errorKind = undefined;
+        this.catalogError = this.catalogLoading;
       }
+    } finally {
+      this.catalogLoading = false;
+      this.mounting = false;
     }
   }
   async refresh() {
@@ -117,9 +158,9 @@ export class SessionClient {
       truncated: boolean;
     }>("/api/sessions");
     this.sessions = result.sessions;
-    if (result.truncated)
-      this.error =
-        "Only the latest256 sessions are listed. Older history remains on the host.";
+    this.listNotice = result.truncated
+      ? "Showing your latest 256 chats. Older chats are still saved."
+      : "";
   }
   private async submit(command: InputCommand): Promise<Receipt> {
     const commandId = crypto.randomUUID();
@@ -130,7 +171,8 @@ export class SessionClient {
         body: JSON.stringify({ ...command, commandId }),
       });
     } catch (error) {
-      throw new Error(
+      throw new CommandUncertainty(
+        "acceptance-unknown",
         `Command ${commandId}: ${(error as Error).message}. Acceptance unknown; inspect session before sending again.`,
       );
     }
@@ -138,13 +180,22 @@ export class SessionClient {
   private async settled(receipt: Receipt): Promise<Receipt> {
     const until = Date.now() + 310_000;
     while (receipt.state === "accepted") {
-      if (this.disposed) throw new Error("Client closed");
-      if (Date.now() > until)
-        throw new Error(
-          `Settlement unknown for ${receipt.commandId}; do not automatically retry.`,
+      try {
+        if (this.disposed) throw new Error("Client closed");
+        if (Date.now() > until)
+          throw new Error(
+            `Settlement unknown for ${receipt.commandId}; do not automatically retry.`,
+          );
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        receipt = await this.json<Receipt>(
+          `/api/receipts/${receipt.commandId}`,
         );
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      receipt = await this.json<Receipt>(`/api/receipts/${receipt.commandId}`);
+      } catch (error) {
+        throw new CommandUncertainty(
+          "settlement-unknown",
+          `${(error as Error).message}${receipt.sessionId ? ` (chat ${receipt.sessionId})` : ""}`,
+        );
+      }
     }
     if (receipt.error)
       throw new Error(`${receipt.error} (${receipt.commandId})`);
@@ -164,7 +215,7 @@ export class SessionClient {
       if (generation !== this.selection || this.disposed) return;
       this.observe(id);
     } catch (error) {
-      this.sessionErrors[id] = (error as Error).message;
+      this.recordError(error, id);
       if (generation === this.selection) {
         this.connection = "Disconnected";
       }
@@ -207,6 +258,8 @@ export class SessionClient {
               s.id === id
                 ? {
                     ...s,
+                    title: value.snapshot.title,
+                    hasHistory: value.snapshot.hasHistory,
                     status: value.snapshot.status,
                     interrupted: value.snapshot.interrupted,
                   }
@@ -227,6 +280,7 @@ export class SessionClient {
       !Object.hasOwn(this.drafts, this.selected) &&
       Object.values(this.drafts).filter(Boolean).length >= 32
     ) {
+      this.errorKind = undefined;
       this.error =
         "Draft limit: clear an existing draft before starting another.";
       return;
@@ -242,6 +296,7 @@ export class SessionClient {
   async stop() {
     const id = this.selected;
     delete this.sessionErrors[id];
+    delete this.sessionErrorKinds[id];
     try {
       await this.settled(await this.submit({ type: "stop", sessionId: id }));
       if (this.selected === id) {
@@ -251,7 +306,7 @@ export class SessionClient {
       }
       await this.refresh();
     } catch (error) {
-      this.sessionErrors[id] = (error as Error).message;
+      this.recordError(error, id);
     }
   }
   reconnect() {
@@ -267,6 +322,7 @@ export class SessionClient {
       .catch(() => {
         this.connection = "Disconnected";
         this.error = "Reconnect failed. No prompt was resent.";
+        this.errorKind = undefined;
       });
   }
   async ask(
@@ -279,6 +335,7 @@ export class SessionClient {
     if (this.busy || !text.trim() || !workspace || !configuration) return false;
     this.busy = true;
     this.error = "";
+    this.errorKind = undefined;
     let id: string | undefined;
     try {
       const created = await this.settled(
@@ -304,8 +361,8 @@ export class SessionClient {
       window.location.hash = "/workspace";
       return true;
     } catch (error) {
-      if (id) this.sessionErrors[id] = (error as Error).message;
-      else this.error = `New session: ${(error as Error).message}`;
+      this.recordError(error, id);
+      if (!id) this.error = `New session: ${this.error}`;
       return false;
     } finally {
       this.busy = false;
@@ -319,6 +376,7 @@ export class SessionClient {
       return;
     this.busy = true;
     delete this.sessionErrors[id];
+    delete this.sessionErrorKinds[id];
     try {
       const receipt = await this.submit({ type: "start", sessionId: id, text });
       if (receipt.error)
@@ -329,7 +387,7 @@ export class SessionClient {
       }
       this.watch(receipt);
     } catch (error) {
-      this.sessionErrors[id] = (error as Error).message;
+      this.recordError(error, id);
     } finally {
       this.busy = false;
     }
@@ -337,9 +395,7 @@ export class SessionClient {
   private watch(receipt: Receipt) {
     void this.settled(receipt).catch((error) => {
       if (!this.disposed) {
-        if (receipt.sessionId)
-          this.sessionErrors[receipt.sessionId] = (error as Error).message;
-        else this.error = (error as Error).message;
+        this.recordError(error, receipt.sessionId);
       }
     });
   }
@@ -347,10 +403,11 @@ export class SessionClient {
     const id = this.selected;
     if (!id) return;
     delete this.sessionErrors[id];
+    delete this.sessionErrorKinds[id];
     try {
       await this.settled(await this.submit({ type: "cancel", sessionId: id }));
     } catch (error) {
-      this.sessionErrors[id] = (error as Error).message;
+      this.recordError(error, id);
     }
   }
   async history() {
@@ -363,7 +420,7 @@ export class SessionClient {
       );
       if (id === this.selected) this.older = value;
     } catch (error) {
-      this.sessionErrors[id] = (error as Error).message;
+      this.recordError(error, id);
     }
   }
   dispose() {

@@ -4,7 +4,18 @@
   import Icon from "../ui/Icon.svelte";
   import Composer from "../../features/workspace/Composer.svelte";
   import { useSessions } from "../../features/workspace/session-client.svelte";
+  import {
+    chatName,
+    commandUncertainty,
+  } from "../../features/workspace/chat-presentation";
   const sessions = useSessions();
+  const displayedChat = $derived(
+    sessions.snapshot ??
+      sessions.sessions.find((s) => s.id === sessions.selected),
+  );
+  const reconnectWorkspace = $derived(
+    sessions.connection === "Disconnected" && !displayedChat,
+  );
   let { sidebar, children }: { sidebar: Snippet; children: Snippet } = $props();
   let sidebarOpen = $state(true);
   let shell: HTMLDivElement;
@@ -93,20 +104,49 @@
         >{/if}
       <div class="w-full flex items-center gap-2 min-w-0"><Composer /></div>
     </header>
-    {#if sessions.error}<p
+    {#if sessions.listNotice}<p
+        role="status"
+        class="px-6 py-2 text-xs text-zinc-700"
+      >
+        {sessions.listNotice}
+      </p>{/if}
+    {#if sessions.error}<div
         role="alert"
         class="px-6 py-2 text-xs text-zinc-700 break-words"
       >
-        Workspace: {sessions.error}
-      </p>{/if}
-    {#if sessions.sessionErrors[sessions.selected]}<p
+        <p>
+          {commandUncertainty(sessions.errorKind, false) ||
+            (reconnectWorkspace
+              ? "Couldn’t connect to your workspace."
+              : "Couldn’t complete that action. Your draft is still here.")}
+        </p>
+        {#if reconnectWorkspace}<Button
+            class="source-action ml-2"
+            onclick={() => sessions.reconnect()}>Reconnect</Button
+          >{/if}
+        <details class="mt-1">
+          <summary>Details</summary>
+          <p>{sessions.error}</p>
+        </details>
+      </div>{/if}
+    {#if sessions.sessionErrors[sessions.selected]}<div
         role="alert"
         class="px-6 py-2 text-xs text-zinc-700 break-words"
       >
-        Session {sessions.selected.slice(0, 8)}: {sessions.sessionErrors[
-          sessions.selected
-        ]}
-      </p>{/if}
+        <p>
+          {chatName(sessions.sessions.find((s) => s.id === sessions.selected))}:
+          <span
+            >{commandUncertainty(
+              sessions.sessionErrorKinds[sessions.selected],
+              true,
+            ) || "Something went wrong. Reopen this chat to try again."}</span
+          >
+        </p>
+        <details class="mt-1">
+          <summary>Details</summary>
+          <p>{sessions.sessionErrors[sessions.selected]}</p>
+        </details>
+      </div>{/if}
     {@render children()}
   </div>
 </div>

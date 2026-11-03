@@ -73,6 +73,22 @@ test("skill reference directory editing survives an actual fixture backend proce
   const page = await context.newPage();
   try {
     await start();
+    await page.goto("/#/workspace");
+    await expect(
+      page.getByRole("heading", { name: "Start a chat", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("No chats yet.", { exact: true }),
+    ).toBeVisible();
+    for (const width of [390, 1920, 3840]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
+      await page.screenshot({
+        path: info.outputPath(`blank-chat-${width}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/#/persona");
     await page
       .getByRole("textbox", { name: "New persona name", exact: true })
@@ -81,11 +97,11 @@ test("skill reference directory editing survives an actual fixture backend proce
       .getByRole("textbox", { name: "New persona name", exact: true })
       .press("Enter");
     await expect(
-      page.getByRole("textbox", { name: "Display Name", exact: true }),
+      page.getByRole("textbox", { name: "Name", exact: true }),
     ).toHaveValue("Restart skill editor");
     const ref = JSON.parse(
       await page
-        .getByRole("combobox", { name: "Edit persona", exact: true })
+        .getByRole("combobox", { name: "Choose a persona", exact: true })
         .inputValue(),
     );
     for (const name of ["first", "second"]) {
@@ -97,30 +113,42 @@ test("skill reference directory editing survives an actual fixture backend proce
       );
       await writeFile(join(directory, "support.txt"), `Support ${name}`);
     }
+    await page.getByRole("button", { name: "Add skill", exact: true }).click();
     await page
-      .getByRole("button", { name: "Add skill reference", exact: true })
+      .locator("details")
+      .filter({
+        has: page.getByRole("textbox", {
+          name: "Skill 1 reference name",
+          exact: true,
+          includeHidden: true,
+        }),
+      })
+      .locator("summary")
       .click();
     await page
-      .getByRole("textbox", { name: "Skill 1 ID", exact: true })
+      .getByRole("textbox", { name: "Skill 1 reference name", exact: true })
       .fill("review");
     await page
-      .getByRole("textbox", { name: "Skill 1 relative directory", exact: true })
+      .getByRole("textbox", { name: "Skill folder 1", exact: true })
       .fill("skills/first");
-    await page.getByRole("button", { name: "Validate", exact: true }).click();
+    await page.getByText("Preview", { exact: true }).click();
+    await page
+      .getByRole("button", { name: "Check changes", exact: true })
+      .click();
     await expect(
       page.getByText("Restart supporting fixture", { exact: true }),
     ).toBeVisible();
     await page
-      .getByRole("button", { name: "Save Persona", exact: true })
+      .getByRole("button", { name: "Save persona", exact: true })
       .click();
     await expect(
       page.getByRole("status").filter({ hasText: /^Saved$/ }),
     ).toBeVisible();
     await page
-      .getByRole("textbox", { name: "Skill 1 relative directory", exact: true })
+      .getByRole("textbox", { name: "Skill folder 1", exact: true })
       .fill("skills/second");
     await page
-      .getByRole("button", { name: "Save Persona", exact: true })
+      .getByRole("button", { name: "Save persona", exact: true })
       .click();
     await expect(
       page.getByRole("status").filter({ hasText: /^Saved$/ }),
@@ -135,11 +163,11 @@ test("skill reference directory editing survives an actual fixture backend proce
     expect(pids[0]).not.toBe(pids[1]);
     await page.reload();
     await page
-      .getByRole("combobox", { name: "Edit persona", exact: true })
+      .getByRole("combobox", { name: "Choose a persona", exact: true })
       .selectOption(JSON.stringify(ref));
     await expect(
       page.getByRole("textbox", {
-        name: "Skill 1 relative directory",
+        name: "Skill folder 1",
         exact: true,
       }),
     ).toHaveValue("skills/second");

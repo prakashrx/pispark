@@ -184,7 +184,9 @@ test("file save advances only a matching before/after graph and requires reconci
     "c".repeat(64),
   );
   expect(client.view!.revision).toBeUndefined();
-  expect(client.editorError).toContain("parent graph changed");
+  expect(client.editorError).toContain(
+    "The file was saved, but this persona changed elsewhere",
+  );
   expect(client.draft!.name).toBe("Keep local draft");
 });
 
@@ -210,4 +212,80 @@ test("late create rejection cannot replace a newer selected editor error", async
   await pending;
   expect(client.editorError).toBe("New editor diagnostic");
   expect(client.draft!.name).toBe("Writer");
+});
+
+test("created persona during draft edit is a success notice; selection and next operation clear it without losing the draft", async () => {
+  let release!: (r: Response) => void;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      url.endsWith("/create")
+        ? new Promise<Response>((r) => {
+            release = r;
+          })
+        : url.endsWith("/read")
+          ? response(view())
+          : url.endsWith("/validate")
+            ? response(view())
+            : response({ personas: [] }),
+    ),
+  );
+  const client = new PersonaClient();
+  await client.select(reference);
+  const pending = client.create("New saved persona");
+  client.draft!.name = "Keep current edits";
+  release(response(view("New saved persona")));
+  await pending;
+  expect(client.notice).toBe(
+    "Persona created. Your current edits are still here. Choose the new persona from the list when you’re ready.",
+  );
+  expect(client.editorError).toBe("");
+  expect(client.draft!.name).toBe("Keep current edits");
+  await client.validate();
+  expect(client.notice).toBe("");
+  await client.select(reference, true);
+  expect(client.notice).toBe("");
+});
+
+test("late creation success does not attribute a notice to a newer editor", async () => {
+  let release!: (r: Response) => void;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      url.endsWith("/create")
+        ? new Promise<Response>((r) => {
+            release = r;
+          })
+        : url.endsWith("/read")
+          ? response(view())
+          : response({ personas: [] }),
+    ),
+  );
+  const client = new PersonaClient();
+  const pending = client.create("New persona");
+  await client.select(reference);
+  release(response(view("New persona")));
+  await pending;
+  expect(client.notice).toBe("");
+  expect(client.draft!.name).toBe("Writer");
+});
+
+test("checking a newer effective graph refreshes preview context without promoting the save baseline", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      url.endsWith("/validate")
+        ? response(view("Checked", "b".repeat(64)))
+        : response(view()),
+    ),
+  );
+  const client = new PersonaClient();
+  await client.select(reference);
+  const loaded = client.effective;
+  client.draft!.name = "Checked";
+  await client.validate();
+  expect(client.effective).not.toBe(loaded);
+  expect(client.effective!.revision).toBe("b".repeat(64));
+  expect(client.view!.revision).toBe("a".repeat(64));
+  expect(client.dirty).toBe(true);
 });

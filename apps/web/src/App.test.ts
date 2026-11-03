@@ -34,25 +34,25 @@ async function navigate(page: string) {
 
 test("renders truthful unconfigured state and never submits a draft without configuration", async () => {
   render(App);
-  expect(screen.getByRole("heading", { name: "Start a session" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Start a chat" })).toBeTruthy();
   expect(screen.getByRole("main").getAttribute("aria-label")).toContain(
-    "Session conversation",
+    "Chat conversation",
   );
   expect(
-    screen.getByRole("button", { name: "Run" }).getAttribute("aria-disabled"),
+    screen
+      .getByRole("button", { name: "Start chat" })
+      .getAttribute("aria-disabled"),
   ).toBe("true");
   const ask = screen.getByRole("textbox", {
     name: "Ask anything",
   });
   await fireEvent.input(ask, { target: { value: "Keep this draft local" } });
-  await fireEvent.submit(
-    screen.getByRole("form", { name: "New session draft" }),
-  );
+  await fireEvent.submit(screen.getByRole("form", { name: "New chat" }));
   expect((ask as HTMLInputElement).value).toBe("Keep this draft local");
   expect(
     (
       screen.getByRole("textbox", {
-        name: /Reply to session/,
+        name: /Reply to chat/,
       }) as HTMLInputElement
     ).value,
   ).toBe("");
@@ -63,10 +63,10 @@ test("renders truthful unconfigured state and never submits a draft without conf
 
 test("collapses the sidebar and session group; shortcut ignores editable inputs", async () => {
   render(App);
-  await fireEvent.click(screen.getByRole("button", { name: /Sessions/ }));
-  expect(screen.queryByText("No sessions yet.")).toBeNull();
-  await fireEvent.click(screen.getByRole("button", { name: /Sessions/ }));
-  expect(screen.getByText("No sessions yet.")).toBeTruthy();
+  await fireEvent.click(screen.getByRole("button", { name: /Chats/ }));
+  expect(screen.queryByText("No chats yet.")).toBeNull();
+  await fireEvent.click(screen.getByRole("button", { name: /Chats/ }));
+  expect(screen.getByText("No chats yet.")).toBeTruthy();
   await fireEvent.keyDown(
     screen.getByRole("textbox", { name: /Ask anything/ }),
     { key: "b", ctrlKey: true },
@@ -95,33 +95,39 @@ test("navigates among only the supplied settings pages and filters navigation", 
   await navigate("persona");
   expect(screen.getByRole("heading", { name: "Personas" })).toBeTruthy();
   await navigate("sources");
+  expect(screen.getByRole("heading", { name: /Sources/ })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Sync all" })).toBeNull();
   expect(
-    screen.getByRole("heading", { name: /Sources 3 active/ }),
+    screen.getByText(/Source connections aren’t available yet/),
   ).toBeTruthy();
-  expect(
-    screen
-      .getByRole("button", { name: "Sync all" })
-      .getAttribute("aria-disabled"),
-  ).toBe("true");
 });
 
-test("general preferences change locally and reset to source defaults", async () => {
+test("General shows actual read-only appearance and no fictional preferences, saves or environment", async () => {
   window.location.hash = "/settings";
   render(App);
-  const persona = screen.getByRole("combobox", {
-    name: "Default persona",
-  }) as HTMLSelectElement;
-  await fireEvent.change(persona, { target: { value: "Architect" } });
-  expect(persona.value).toBe("Architect");
-  await fireEvent.click(
-    screen.getByRole("button", { name: "Reset to defaults" }),
-  );
-  expect(persona.value).toBe("Developer");
+  expect(
+    await screen.findByText("No working folders are configured."),
+  ).toBeTruthy();
+  expect(screen.getByText("Light", { exact: true })).toBeTruthy();
   expect(
     screen
-      .getByRole("button", { name: "Save changes" })
-      .getAttribute("aria-disabled"),
-  ).toBe("true");
+      .getAllByRole("link", { name: "Providers & models" })
+      .at(-1)!
+      .getAttribute("href"),
+  ).toBe("#/providers");
+  expect(
+    screen
+      .getAllByRole("link", { name: "Manage personas" })
+      .at(-1)!
+      .getAttribute("href"),
+  ).toBe("#/persona");
+  for (const name of ["Default persona", "Workspace font family"])
+    expect(screen.queryByRole("combobox", { name })).toBeNull();
+  for (const name of ["Save changes", "Reset to defaults", "System", "Dark"])
+    expect(screen.queryByRole("button", { name })).toBeNull();
+  expect(
+    screen.queryByText(/Git Repository|Detected runtime|Developer|Architect/),
+  ).toBeNull();
 });
 
 test("persona empty state is real and offers creation without fixture capabilities", async () => {
@@ -138,7 +144,7 @@ test("keeps the mounted Ask and independent reply drafts across every route", as
   const ask = screen.getByRole("textbox", { name: /Ask anything/ });
   await fireEvent.input(ask, { target: { value: "Global unsent question" } });
   await fireEvent.input(
-    screen.getByRole("textbox", { name: /Reply to session/ }),
+    screen.getByRole("textbox", { name: /Reply to chat/ }),
     {
       target: { value: "Session-only follow-up" },
     },
@@ -147,15 +153,13 @@ test("keeps the mounted Ask and independent reply drafts across every route", as
     await navigate(route);
     expect(screen.getByRole("textbox", { name: /Ask anything/ })).toBe(ask);
     expect((ask as HTMLInputElement).value).toBe("Global unsent question");
-    expect(
-      screen.getAllByRole("form", { name: "New session draft" }),
-    ).toHaveLength(1);
+    expect(screen.getAllByRole("form", { name: "New chat" })).toHaveLength(1);
     expect(document.activeElement).toBe(screen.getByRole("main"));
   }
   expect(
     (
       screen.getByRole("textbox", {
-        name: /Reply to session/,
+        name: /Reply to chat/,
       }) as HTMLInputElement
     ).value,
   ).toBe("Session-only follow-up");

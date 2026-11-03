@@ -1,3 +1,4 @@
+import { chatTitle } from "./chat-title.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { SessionWindow } from "../protocol.js";
@@ -50,6 +51,8 @@ export interface SessionSummary {
   workspace: string;
   configuration: string;
   createdAt: string;
+  title?: string;
+  hasHistory?: boolean;
   status: SessionStatus | "unloaded";
   interrupted: boolean;
   persona?: AdmittedPersonaSummary;
@@ -146,6 +149,8 @@ export class SessionRuntime {
       workspace: metadata.workspace,
       configuration: metadata.configuration,
       createdAt: metadata.createdAt,
+      hasHistory: metadata.hasHistory,
+      ...(metadata.title ? { title: metadata.title } : {}),
       status: hosted?.status ?? "unloaded",
       interrupted: metadata.interrupted || (!hosted && metadata.active),
       ...(metadata.persona
@@ -594,9 +599,15 @@ export class SessionRuntime {
       throw new RuntimeError("busy");
     this.verifyPersona(hosted);
     const started = Date.now();
-    hosted.metadata.active = true;
-    hosted.metadata.interrupted = false;
-    this.storage.write(hosted.metadata); // Before any model/tool side effects.
+    const metadata = { ...hosted.metadata, active: true, interrupted: false };
+    if (
+      !metadata.title &&
+      !metadata.hasHistory &&
+      !hosted.session!.messages.length
+    )
+      metadata.title = chatTitle(text) || "New chat";
+    this.storage.write(metadata); // Before any model/tool side effects.
+    hosted.metadata = metadata;
     hosted.status = "running";
     this.logger.event("session.start", { sessionId: id, outcome: "completed" });
     hosted.error = undefined;

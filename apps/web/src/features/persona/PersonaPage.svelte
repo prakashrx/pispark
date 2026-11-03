@@ -2,7 +2,12 @@
   import { onMount } from "svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Input from "../../lib/ui/Input.svelte";
-  import Section from "../../lib/ui/Section.svelte";
+  import PersonaDetails from "./PersonaDetails.svelte";
+  import {
+    personaName,
+    samePersona,
+    resourceLabel,
+  } from "./persona-presentation";
   import PromptList from "./PromptList.svelte";
   import ResourceList from "./ResourceList.svelte";
   import Inheritance from "./Inheritance.svelte";
@@ -14,9 +19,10 @@
   let newName = $state(""),
     chosen = $state(""),
     inspect = $state(false);
+  let parentResources = $state<EffectiveResource[]>([]);
   const readonly = $derived(!client.view?.writable || client.reading);
   const noReader = $derived(
-    !!client.effective?.skills.length &&
+    !!(client.draft?.skills.length || client.effective?.skills.length) &&
       !sessions.catalog.configurations.some((c) => c.skillReader),
   );
   onMount(() => {
@@ -73,30 +79,21 @@
       <div class="space-y-2 min-w-0">
         <p class="text-xs text-neutral-400">Settings / Personas</p>
         <h1 class="text-2xl font-bold tracking-tight text-neutral-900">
-          {client.view ? `${client.view.definition.name} Persona` : "Personas"}
+          {client.view ? client.view.definition.name : "Personas"}
         </h1>
         <p class="text-xs text-neutral-500">
-          Saves apply to new sessions only. Running agents keep their admitted
-          resources.
+          Set the instructions and skills a persona brings to a chat. Changes
+          apply to new chats.
         </p>
       </div>
       <div class="flex gap-2 flex-wrap">
         <Button
-          class="source-action"
-          disabled={!client.view}
-          onclick={() => (inspect = !inspect)}
-          aria-expanded={inspect}>Inspect JSON</Button
-        ><Button
-          class="source-action"
-          disabled={!client.draft || client.busy || readonly}
-          onclick={() => client.validate()}>Validate</Button
-        ><Button
           class="px-3 py-1.5 bg-neutral-900 text-white rounded-lg text-xs"
           disabled={!client.dirty ||
             client.busy ||
             readonly ||
             !client.view?.revision}
-          onclick={() => client.save()}>Save Persona</Button
+          onclick={() => client.save()}>Save persona</Button
         >
       </div>
     </div>
@@ -104,15 +101,17 @@
       <div class="flex gap-2 flex-wrap">
         <select
           class="source-input max-w-md"
-          aria-label="Edit persona"
+          aria-label="Choose a persona"
           value={chosen}
           disabled={client.reading}
           onchange={(event) => void select(event.currentTarget.value)}
           ><option value="">Choose a persona</option
           >{#each client.items as item}<option value={personaKey(item.ref)}
-              >{item.name}{item.writable ? "" : " · Read-only"}{item.valid
+              >{item.valid
+                ? item.name
+                : `Needs attention · ${item.ref.path}`}{item.writable
                 ? ""
-                : ` · Invalid · ${item.ref.root}/${item.ref.path}`}</option
+                : " · Read-only"}</option
             >{/each}</select
         ><Button
           class="source-action"
@@ -144,19 +143,25 @@
       {#if client.loading}<p role="status" class="text-xs">
           Loading personas…
         </p>{:else if !client.items.length}<p class="text-sm text-neutral-500">
-          No personas yet. Create an empty persona, then add instructions and
-          existing skill references.
+          No personas yet. Create a persona, then add instructions and skills.
         </p>{/if}
-      {#if client.error}<p role="alert" class="text-sm">{client.error}</p>{/if}
-      {#if client.editorError}<p role="alert" class="text-sm break-words">
-          {client.editorError}
+      <PersonaDetails error={client.error} />
+      <PersonaDetails
+        error={client.editorError}
+        context={client.editorErrorContext}
+        retainedEdits={client.dirty}
+      />
+      {#if client.notice}<p role="status" class="text-xs text-neutral-600">
+          {client.notice}
         </p>{/if}
       <p role="status" class="text-xs text-neutral-600">
         {client.reading
           ? "Loading persona…"
-          : client.dirty
-            ? "Unsaved changes"
-            : client.status}
+          : client.status === "Review saved changes"
+            ? client.status
+            : client.dirty
+              ? "Unsaved changes"
+              : client.status}
       </p>
     </div>
     {#if client.inspectedSummary && !client.inspectedSummary.valid}
@@ -167,17 +172,20 @@
         <p>
           {client.inspectedSummary.ref.root}/{client.inspectedSummary.ref.path}
         </p>
-        {#each client.inspectedSummary.diagnostics as diagnostic}
-          <p role="alert">
-            {diagnostic.code}
-            {diagnostic.field ?? ""}
-            {diagnostic.resourceType ?? ""}
-            {diagnostic.resourceId ?? ""}
-            {#each diagnostic.refs ?? [] as ref}<span class="block break-all"
-                >{ref.root}/{ref.path}</span
-              >{/each}
-          </p>
-        {/each}
+        <PersonaDetails
+          diagnostics={client.inspectedSummary.diagnostics.map((diagnostic) =>
+            diagnostic.code === "duplicate-identity"
+              ? {
+                  ...diagnostic,
+                  refs: client.items
+                    .filter(
+                      (item) => item.ref.id === client.inspectedSummary!.ref.id,
+                    )
+                    .map((item) => item.ref),
+                }
+              : diagnostic,
+          )}
+        />
         {#if !client.view}<p>
             Document unavailable for editing. Repair the original document on
             the backend host; it has not been reconstructed.
@@ -185,27 +193,13 @@
       </section>
     {/if}
     {#if client.view && client.draft}
-      <div class="space-y-2 text-xs text-neutral-500 break-all">
-        <p>
-          {client.view.ref.root}/{client.view.ref.path} · {!client.view.writable
-            ? "Read-only source"
-            : "Managed writable folder"}
-        </p>
-        <p>
-          Revision: {client.view.revision?.slice(0, 12) ??
-            "Unavailable — reload to reconcile or repair resources"}
-        </p>
-        <Button
-          class="source-action"
-          disabled={client.busy}
-          onclick={() => client.select(client.view!.ref)}
-          >Reload saved persona</Button
-        >
-      </div>
+      {#if !client.view.writable}<p class="text-xs">
+          This persona is read-only.
+        </p>{/if}
       <div class="space-y-3">
         <label class="block text-xs font-semibold text-neutral-700"
-          >Display name<Input
-            label="Display Name"
+          >Name<Input
+            label="Name"
             class="source-input mt-1 max-w-md block"
             bind:value={client.draft.name}
             disabled={readonly}
@@ -235,84 +229,151 @@
       />
       <ResourceList {readonly} bind:items={client.draft.skills} />
       {#if noReader}<p role="status" class="text-xs text-neutral-600">
-          This host policy does not provide a skill-reading tool. Saved skill
-          references do not grant tools.
+          Skills need file access. No chat setup currently allows it.
         </p>{/if}
       <Inheritance
         {readonly}
         options={client.items}
+        loadContext={client.effective}
+        onresources={(resources) => (parentResources = resources)}
         selfId={client.view.ref.id}
         bind:parents={client.draft.parents}
         bind:exclude={client.draft.exclude}
       />
-      <Section
-        title="Effective resources"
-        description="Last saved or explicitly validated result. Validate after editing to refresh order and provenance."
-        class="space-y-3 pt-4 border-t border-gray-100"
-      >
-        {#each client.effective?.diagnostics ?? [] as diagnostic}<p
-            role="alert"
+      <details class="space-y-3 pt-4 border-t border-gray-100">
+        <summary class="text-sm font-semibold cursor-pointer">Preview</summary>
+        <p class="text-xs text-neutral-500">
+          Saved or last checked version. Check changes to update this preview.
+        </p>
+        <Button
+          class="source-action"
+          disabled={!client.draft || client.busy || readonly}
+          onclick={() => client.validate()}>Check changes</Button
+        >
+        {#if client.status === "Changes checked. Not saved yet."}<p
+            role="status"
             class="text-xs"
           >
-            {diagnostic.code}
-            {diagnostic.resourceId ?? ""}
-          </p>{/each}
+            {client.status}
+          </p>{/if}
+        <PersonaDetails diagnostics={client.effective?.diagnostics} />
         {#each ["instructions", "skills"] as type}
           <h3 class="text-xs font-semibold capitalize">{type}</h3>
-          {#each (type === "instructions" ? client.effective?.instructions : client.effective?.skills) ?? [] as resource, index}<div
+          {#each (type === "instructions" ? client.effective?.instructions : client.effective?.skills) ?? [] as resource, index}
+            {@const local = samePersona(resource.origin, client.view.ref)}
+            {@const label = resourceLabel(resource)}
+            <div
               class="border border-gray-200 rounded-lg p-3 text-xs space-y-2"
             >
-              <p class="break-all">
-                {index + 1}. {resource.id}
-                {resource.nativeName ? `· ${resource.nativeName}` : ""} · {resource
-                  .origin.root}/{resource.origin.path} · {resource.origin.id ===
-                client.view.ref.id
-                  ? "Local"
-                  : "Inherited"}{resource.replaced.length ? " · Replaced" : ""}
+              <p class="break-words">{index + 1}. {label}</p>
+              <p class="text-neutral-500">
+                {local
+                  ? "This persona"
+                  : `From ${personaName(resource.origin, client.items)}`}
               </p>
-              {#if resource.description}<p>
-                  {resource.description}
-                </p>{/if}{#if resource.disableModelInvocation}<p>
-                  Not advertised to the model (native skill metadata).
-                </p>{/if}{#if resource.text}<details>
+              {#if resource.description}<p>{resource.description}</p>{/if}
+              {#if resource.disableModelInvocation}<p>
+                  Available only when explicitly requested.
+                </p>{/if}
+              {#if resource.text}<details>
                   <summary>Instruction text</summary>
                   <pre
                     class="whitespace-pre-wrap break-words mt-2">{resource.text}</pre>
-                </details>{/if}{#if resource.origin.id !== client.view.ref.id && !readonly}<div
-                  class="flex gap-2"
-                >
+                </details>{/if}
+              <details>
+                <summary>Details</summary>
+                <dl class="break-all mt-2 space-y-1">
+                  <dt>Reference name</dt>
+                  <dd>{resource.id}</dd>
+                  <dt>Origin</dt>
+                  <dd>
+                    {resource.origin.root}/{resource.origin.path} · {resource
+                      .origin.id}
+                  </dd>
+                  {#if resource.file || resource.directory}<dt>Path</dt>
+                    <dd>{resource.file ?? resource.directory}</dd>{/if}
+                  <dt>Route</dt>
+                  <dd>{JSON.stringify(resource.routes)}</dd>
+                  <dt>Replaced</dt>
+                  <dd>{JSON.stringify(resource.replaced)}</dd>
+                </dl>
+              </details>
+              {#if !local && !readonly}<div class="flex gap-2">
                   <Button
                     class="source-action"
-                    onclick={() =>
-                      exclude(type as "instructions" | "skills", resource.id)}
-                    >Exclude {resource.id}</Button
-                  ><Button
-                    class="source-action"
+                    aria-label={`Customize ${label}`}
                     onclick={() =>
                       replace(type as "instructions" | "skills", resource)}
-                    >Replace {resource.id}</Button
+                    >Customize</Button
+                  ><Button
+                    class="source-action"
+                    aria-label={`Don’t use ${label}`}
+                    onclick={() =>
+                      exclude(type as "instructions" | "skills", resource.id)}
+                    >Don’t use</Button
                   >
                 </div>{/if}
-            </div>{/each}
+            </div>
+          {/each}
         {/each}
-        {#each client.effective?.excluded ?? [] as resource}<p class="text-xs">
-            Excluded {resource.type}: {resource.id}
-          </p>{/each}
-      </Section>
-      {#if inspect}<section aria-label="Persona JSON" class="space-y-2">
-          <h2 class="text-sm font-semibold">Actual draft definition</h2>
-          <pre
-            class="text-xs bg-neutral-50 rounded-xl p-4 overflow-auto max-h-96">{JSON.stringify(
-              client.draft,
-              null,
-              2,
-            )}</pre>
-        </section>{/if}
-      <p class="text-xs text-neutral-500 border-t border-gray-100 pt-4">
-        Extensions, commands, tool management, remote sources and chat-local
-        changes are not managed in this milestone. Existing trusted host policy
-        remains in effect.
-      </p>
+        {#each client.effective?.excluded ?? [] as resource}
+          {@const known = parentResources.find(
+            (r) =>
+              r.id === resource.id &&
+              resource.origins.some((ref) => samePersona(ref, r.origin)),
+          )}
+          <p class="text-xs">
+            Not used · {known
+              ? resourceLabel(known)
+              : `Reference ${resource.id}`}
+          </p>
+        {/each}
+      </details>
+      <details class="space-y-3 text-xs pt-4 border-t border-gray-100">
+        <summary class="text-sm font-semibold cursor-pointer">Advanced</summary>
+        <div class="space-y-2 text-xs text-neutral-500 break-all">
+          <p>
+            {client.view.ref.root}/{client.view.ref.path} · {!client.view
+              .writable
+              ? "Read-only source"
+              : "Managed writable folder"}
+          </p>
+          <p>
+            Revision: {client.view.revision?.slice(0, 12) ??
+              "Unavailable — reload to reconcile or repair resources"}
+          </p>
+          <Button
+            class="source-action"
+            disabled={client.busy}
+            onclick={() => client.select(client.view!.ref)}
+            >Reload saved version</Button
+          >
+        </div>
+        <dl class="space-y-1 break-all">
+          <dt>Persona ID</dt>
+          <dd>{client.view.ref.id}</dd>
+          <dt>Definition revision</dt>
+          <dd>{client.view.definitionRevision}</dd>
+          <dt>Management revision</dt>
+          <dd>{client.view.revision ?? "Unavailable"}</dd>
+          <dt>Effective revision</dt>
+          <dd>{client.view.effectiveRevision ?? "Unavailable"}</dd>
+        </dl>
+        <Button
+          class="source-action"
+          onclick={() => (inspect = !inspect)}
+          aria-expanded={inspect}>View JSON</Button
+        >
+        {#if inspect}<section aria-label="Persona JSON" class="space-y-2">
+            <h2 class="text-sm font-semibold">Actual draft definition</h2>
+            <pre
+              class="text-xs bg-neutral-50 rounded-xl p-4 overflow-auto max-h-96">{JSON.stringify(
+                client.draft,
+                null,
+                2,
+              )}</pre>
+          </section>{/if}
+      </details>
     {/if}
   </div>
 </main>

@@ -8,6 +8,8 @@ export interface SessionInfo {
   workspace: string;
   configuration: string;
   createdAt: string;
+  title?: string;
+  hasHistory?: boolean;
   status: string;
   interrupted: boolean;
   persona?: AdmittedPersonaSummary;

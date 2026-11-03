@@ -5,6 +5,7 @@
   import Icon from "../../lib/ui/Icon.svelte";
   import { useSessions } from "./session-client.svelte";
   import { personaKey } from "../persona/persona-client.svelte";
+  import PersonaDetails from "../persona/PersonaDetails.svelte";
   const sessions = useSessions();
   let {
     mode = "ask",
@@ -18,7 +19,7 @@
   let configuration = $state("");
   let model = $state("");
   const personaOptions = $derived([
-    { value: "", label: "No persona (host defaults)" },
+    { value: "", label: "No persona" },
     ...sessions.personas.items
       .filter((p) => p.valid && p.revision)
       .map((p) => ({ value: personaKey(p.ref), label: p.name })),
@@ -71,20 +72,20 @@
   });
   const unavailable = $derived(
     sessions.busy
-      ? "Command pending"
+      ? "Please wait…"
       : mode === "ask"
         ? !folder || !configuration
-          ? "Configure a workspace and resource configuration on the server first"
+          ? "Choose a working folder and chat setup."
           : sessions.personas.selected && !sessions.personas.selection
-            ? "Selected persona is unavailable. Refresh or choose another saved persona."
+            ? "This persona isn’t available. Choose another or refresh the list."
             : managed &&
                 (!selected ||
                   sessions.providers.loading ||
                   sessions.providers.error)
-              ? "Choose an available model in Providers & models; unavailable choices are not replaced"
+              ? "Choose a model in Providers & models."
               : undefined
         : !sessions.selected || sessions.snapshot?.status !== "idle"
-          ? "Select an idle session to reply"
+          ? "Open a chat that is ready for a message."
           : undefined,
   );
   async function send() {
@@ -124,20 +125,12 @@
 <form
   class="composer w-full bg-zinc-50 border border-zinc-200/80 rounded-full px-3 py-1.5 flex items-center gap-2 transition-all shadow-elevation-sm focus-within:border-zinc-400 focus-within:ring-2 focus-within:ring-zinc-950/5 focus-within:bg-white"
   class:composer-reply={mode === "reply"}
-  aria-label={mode === "ask" ? "New session draft" : "Session reply draft"}
+  aria-label={mode === "ask" ? "New chat" : "Reply to chat"}
   onsubmit={(event) => {
     event.preventDefault();
     void send();
   }}
 >
-  {#if mode === "reply"}
-    <Button
-      aria-label="Add context"
-      unavailable="Context attachments are not implemented"
-      class="p-1 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200/50 rounded-full transition-colors flex-shrink-0 flex items-center justify-center"
-      ><Icon name="plus" class="w-4 h-4" /></Button
-    >
-  {/if}
   <div
     class={"composer-input flex items-center flex-1 min-w-0 gap-2" +
       (mode === "ask" ? " pl-1" : "")}
@@ -147,7 +140,7 @@
         class="w-4 h-4 text-zinc-400 flex-shrink-0"
       />{/if}
     <Input
-      label={mode === "ask" ? "Ask anything" : "Reply to session"}
+      label={mode === "ask" ? "Ask anything" : "Reply to chat"}
       maxlength={65536}
       value={mode === "ask"
         ? draft
@@ -160,9 +153,7 @@
         } else sessions.setDraft(text);
       }}
       class="w-full text-xs bg-transparent border-none p-0 text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-0 focus:border-transparent outline-none font-sans min-w-0"
-      placeholder={mode === "ask"
-        ? "Ask anything, or start a new session..."
-        : "Reply to session..."}
+      placeholder={mode === "ask" ? "Ask anything…" : "Message…"}
     />
   </div>
   <div
@@ -194,48 +185,34 @@
             name="person"
             class="w-3.5 h-3.5 text-zinc-600"
           /><span class="max-w-28 truncate"
-            >{value === "No persona (host defaults)"
-              ? "Persona"
-              : value || "Persona"}</span
+            >{value === "No persona" ? "Persona" : value || "Persona"}</span
           ><Icon name="chevronDown" class="w-3 h-3 text-zinc-400" />{/snippet}
         {#snippet footer()}
-          <p class="text-[11px] text-zinc-500 max-w-64">
-            Saved resources apply to new sessions. Persona selection never
-            grants tools.
-          </p>
+          <a class="text-xs underline" href="#/persona">Manage personas</a>
           {#if noReader}<p role="status" class="text-[11px] max-w-64 mt-2">
-              This host policy does not provide a skill-reading tool.
+              Skills need file access, which this chat setup doesn’t allow.
             </p>{/if}
-          {#if sessions.personas.error}<p
-              role="alert"
-              class="text-[11px] max-w-64"
-            >
-              {sessions.personas.error}
-            </p>{/if}
+          <PersonaDetails error={sessions.personas.error} />
           <Button
             class="source-action mt-2"
             onclick={() => sessions.personas.refresh()}>Refresh personas</Button
           >
-          {#if sessions.catalog.configurations.length > 1}<label
-              class="block mt-2 text-[11px]"
-              >Advanced · Host policy<select
-                aria-label="Host policy"
-                class="source-input mt-1"
-                bind:value={configuration}
-                >{#each sessions.catalog.configurations as policy}<option
-                    value={policy.value}>{policy.label}</option
-                  >{/each}</select
-              ></label
-            >{:else}<p class="text-[11px] mt-2">
-              Host policy: {configuration || "Not configured"}
-            </p>{/if}
+          {#if sessions.catalog.configurations.length > 1}<details
+              class="mt-2 text-xs"
+            >
+              <summary>Advanced</summary><label class="block mt-2"
+                >Chat setup<select
+                  aria-label="Chat setup"
+                  class="source-input mt-1"
+                  bind:value={configuration}
+                  >{#each sessions.catalog.configurations as policy}<option
+                      value={policy.value}>{policy.label}</option
+                    >{/each}</select
+                ></label
+              >
+            </details>{/if}
         {/snippet}
       </Selector>
-      <Button
-        aria-label="Style"
-        unavailable="Persona-defined styles are not implemented"
-        class={pill}>Style</Button
-      >
       {#if managed}<Selector
           label="Model"
           options={modelOptions}
@@ -250,13 +227,13 @@
           {/snippet}
         </Selector>{:else}<Button
           class={pill}
-          aria-label="Model: host configuration"
-          unavailable="This resource configuration pins its model on the host. Choose a catalog-enabled configuration to select another model."
-          ><Icon name="model" class="w-3.5 h-3.5 text-zinc-500" />Host model</Button
+          aria-label="Preset model"
+          unavailable="This chat setup chooses the model."
+          ><Icon name="model" class="w-3.5 h-3.5 text-zinc-500" />Preset model</Button
         >{/if}
     {/if}
     <Button
-      aria-label={mode === "reply" ? "Send reply" : "Run"}
+      aria-label={mode === "reply" ? "Send message" : "Start chat"}
       type="submit"
       {unavailable}
       class="w-8 h-8 rounded-full bg-zinc-900 text-white flex items-center justify-center hover:bg-zinc-800 transition-colors shadow-sm ml-0.5 active:scale-95 flex-shrink-0"

@@ -14,11 +14,11 @@
 </script>
 <Modal label={`Connect ${provider.name}`} {onclose}>
   <div class="p-6 space-y-5">
-    <div><h2 class="text-sm font-semibold">{provider.stored ? "Manage" : "Connect"} {provider.name}</h2><p class="mt-1 text-[11px] text-gray-500">{provider.configured ? "Configured · not verified" : "Not configured"}</p></div>
-    <p class="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3">Pi supplies the sign-in steps. Credentials stay on the PiSpark host. Closing cancels this sign-in, not your agent sessions.</p>
+    <div><h2 class="text-sm font-semibold">{provider.stored ? "Manage" : "Connect"} {provider.name}</h2><p class="mt-1 text-[11px] text-gray-500">{provider.stored ? "Sign-in saved" : provider.configured ? "Set up on this computer" : "Not set up"}</p></div>
+    <p class="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3">Pi supplies the sign-in steps. Credentials stay on the PiSpark host. Closing cancels this sign-in, not your chats.</p>
     {#if auth.error}<p class="text-xs text-gray-700" role="alert">{auth.error}</p>{/if}
     {#if auth.view && auth.view.state !== "pending"}
-      <p role="status" class="text-xs text-gray-700">{auth.view.state === "saved" ? "Credential saved · not verified. New sessions can use available models." : auth.view.state === "saved-sync-failed" ? "Credential saved, but local synchronization failed. Reload status before continuing." : auth.view.state === "cancelled" ? "Sign-in cancelled or expired. Reload status before starting again." : providerErrorMessages["provider-failed"]}</p>
+      <p role="status" class="text-xs text-gray-700">{auth.view.state === "saved" ? "Sign-in saved. Available models depend on your account." : auth.view.state === "saved-sync-failed" ? "Sign-in saved, but local synchronization failed. Reload status before continuing." : auth.view.state === "cancelled" ? "Sign-in cancelled or expired. Reload status before starting again." : providerErrorMessages["provider-failed"]}</p>
     {:else if auth.view}
       <div class="space-y-3 text-xs text-gray-600" aria-live="polite">
         {#each auth.view.events as event}

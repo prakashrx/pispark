@@ -22,6 +22,8 @@ import {
   type PersonaAdmissionMetadata,
 } from "../personas/admission.js";
 
+import { validChatTitle } from "./chat-title.js";
+
 export interface SessionMetadata {
   version: 1;
   id: string;
@@ -31,6 +33,7 @@ export interface SessionMetadata {
   persona?: PersonaAdmissionMetadata;
   cwd: string;
   createdAt: string;
+  title?: string;
   nativeFile: string;
   active: boolean;
   hasHistory: boolean;
@@ -80,6 +83,7 @@ export class SessionStorage {
       if (value.persona !== undefined && !validAdmissionMetadata(value.persona))
         throw new RuntimeError("resource-integrity");
       if (
+        (value.title !== undefined && !validChatTitle(value.title)) ||
         value.version !== 1 ||
         value.id !== id ||
         typeof value.workspace !== "string" ||

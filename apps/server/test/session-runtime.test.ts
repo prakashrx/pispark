@@ -1,3 +1,4 @@
+import { SafeLogger } from "../src/logger.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -30,7 +31,7 @@ const extension = fileURLToPath(
 );
 const hasCode = (code: string) => (error: unknown) =>
   error instanceof RuntimeError && error.code === code;
-async function fixture() {
+async function fixture(logger?: SafeLogger) {
   const root = await mkdtemp(join(tmpdir(), "pispark-runtime-"));
   const provider = new LocalProviderControl();
   const storageDir = join(root, "state");
@@ -74,7 +75,7 @@ async function fixture() {
     resolveSecret: async (ref) =>
       ref === "fixture-only" ? "local-test-not-a-real-secret" : undefined,
   };
-  const runtime = new SessionRuntime(configuration);
+  const runtime = new SessionRuntime(configuration, undefined, logger);
   const history = async (id: string) => {
     const dir = join(storageDir, id);
     const file = (await readdir(dir)).find((name) => name.endsWith(".jsonl"))!;
@@ -534,6 +535,7 @@ test("SessionRuntime: storage write failures are not reported as success", async
       hasCode("storage"),
     );
     assert.equal(f.provider.requests.length, 0);
+    assert.equal(f.runtime.snapshot(a.id).title, undefined);
     await rm(metadata, { recursive: true });
     await writeFile(metadata, original);
     const run = f.runtime.start(a.id, "write-fails-at-settlement");
@@ -1070,6 +1072,91 @@ test("SessionRuntime: cancelled auth preflight cannot dispatch native history co
   } finally {
     release();
     t.mock.restoreAll();
+    await f.cleanup();
+  }
+});
+
+test("SessionRuntime: first accepted title survives cancellation, queueing and reopen without history backfill or logging", async () => {
+  const lines: string[] = [];
+  const logger = new SafeLogger({
+    sink: async (line) => {
+      lines.push(line);
+    },
+  });
+  const f = await fixture(logger);
+  try {
+    const chat = await f.runtime.create({ workspace: "a", configuration: "a" });
+    assert.equal(chat.title, undefined);
+    assert.equal(chat.hasHistory, false);
+    assert.throws(() => f.runtime.start(chat.id, ""), hasCode("invalid-input"));
+    assert.equal(f.runtime.snapshot(chat.id).title, undefined);
+    const first = f.runtime.start(
+      chat.id,
+      ["PRIVATE-TITLE first\tinput", "not the title"].join("\n"),
+    );
+    await eventually(() => f.provider.active === 1);
+    assert.equal(f.runtime.window(chat.id).title, "PRIVATE-TITLE first input");
+    assert.equal(f.runtime.list()[0]!.title, "PRIVATE-TITLE first input");
+    await f.runtime.queue(chat.id, "PRIVATE-QUEUED", "follow-up");
+    await f.runtime.cancel(chat.id);
+    assert.equal((await first.completion).outcome, "cancelled");
+    const second = f.runtime.start(chat.id, "PRIVATE-SECOND");
+    await eventually(() => f.provider.active === 1);
+    await f.runtime.cancel(chat.id);
+    await second.completion;
+    await f.runtime.stop(chat.id);
+    assert.equal(f.runtime.list()[0]!.title, "PRIVATE-TITLE first input");
+    assert.equal(
+      (await f.runtime.open(chat.id)).title,
+      "PRIVATE-TITLE first input",
+    );
+    await f.runtime.stop(chat.id);
+    const path = join(f.storageDir, chat.id, "host.json");
+    const metadata = JSON.parse(await readFile(path, "utf8"));
+    delete metadata.title;
+    await writeFile(path, JSON.stringify(metadata));
+    assert.equal((await f.runtime.open(chat.id)).title, undefined);
+    const legacy = f.runtime.start(chat.id, "PRIVATE-LEGACY");
+    await eventually(() => f.provider.active === 1);
+    await f.runtime.cancel(chat.id);
+    await legacy.completion;
+    assert.equal(
+      f.runtime.snapshot(chat.id).title,
+      undefined,
+      "never backfill legacy history",
+    );
+  } finally {
+    await f.cleanup();
+    await logger.close();
+  }
+  assert.doesNotMatch(
+    lines.join(""),
+    /PRIVATE-|first input|not the title|title/i,
+  );
+});
+
+test("SessionRuntime: accepted invisible-only input keeps its fallback title after pre-dispatch cancel and later input", async () => {
+  const f = await fixture();
+  try {
+    const chat = await f.runtime.create({ workspace: "a", configuration: "a" });
+    const first = f.runtime.start(chat.id, "\u202E\u200B");
+    await f.runtime.cancel(chat.id);
+    assert.equal((await first.completion).outcome, "cancelled");
+    assert.equal(f.provider.requests.length, 0);
+    // Native cancellation can persist the user and aborted response; it is not rollback.
+    assert.equal(
+      f.runtime.snapshot(chat.id).messages.some((m) => m.role === "toolResult"),
+      false,
+    );
+    assert.equal(f.runtime.snapshot(chat.id).title, "New chat");
+    const second = f.runtime.start(chat.id, "Visible input must not rename");
+    await eventually(() => f.provider.active === 1);
+    await f.runtime.cancel(chat.id);
+    await second.completion;
+    assert.equal(f.runtime.snapshot(chat.id).title, "New chat");
+    await f.runtime.stop(chat.id);
+    assert.equal((await f.runtime.open(chat.id)).title, "New chat");
+  } finally {
     await f.cleanup();
   }
 });

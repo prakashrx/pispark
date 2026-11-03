@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PersonaDetails from "./PersonaDetails.svelte";
   import { untrack } from "svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Textarea from "../../lib/ui/Textarea.svelte";
@@ -60,7 +61,7 @@
       file.revision = result.fileRevision;
       file.baseline = submitted;
       file.loaded = true;
-      file.status = "File saved — separate from Save Persona";
+      file.status = "File saved.";
       await client.fileSaved(
         target,
         result.revision,
@@ -75,19 +76,21 @@
   }
 </script>
 
+{#if file.dirty}<p class="text-xs">This file has unsaved changes.</p>{/if}
 <details class="text-xs space-y-2">
   <summary class="cursor-pointer"
-    >{readonly ? "Instruction file viewer" : "Owned instruction file editor"}
-    {file.dirty ? "· Unsaved file text" : ""}</summary
+    >{readonly ? "View file" : "Edit file"}
+    {file.dirty ? "· Unsaved changes" : ""}</summary
   >
   <p class="text-neutral-500">
-    Relative to this managed persona folder. File saves are independent of
-    persona saves; unsaved file drafts survive route changes.
+    {declared
+      ? "File contents are saved separately."
+      : "Save file contents here, then save the persona to add this file."}
   </p>
   {#if declared}<Button
       class="source-action"
       disabled={file.busy || file.blocked}
-      onclick={load}>Load saved file</Button
+      onclick={load}>Load file</Button
     >{/if}
   {#if file.loaded || !declared}
     <Textarea
@@ -104,9 +107,13 @@
         file.blocked ||
         !file.content.trim() ||
         !file.dirty}
-      onclick={save}>Save instruction file</Button
+      onclick={save}>Save file</Button
     >
   {/if}
-  {#if file.error}<p role="alert">{file.error}</p>{/if}
+  <PersonaDetails
+    error={file.error}
+    context="file"
+    retainedEdits={file.dirty}
+  />
   <p role="status">{file.status}</p>
 </details>

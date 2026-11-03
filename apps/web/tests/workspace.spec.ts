@@ -43,10 +43,10 @@ test("four source pages render locally without errors or external requests", asy
       external.push(request.url());
   });
   for (const [route, heading] of [
-    ["workspace", "Start a session|Test-only deterministic"],
+    ["workspace", "Start a chat|Test-only deterministic"],
     ["settings", "General"],
     ["persona", "Personas"],
-    ["sources", "Sources 3 active"],
+    ["sources", "Sources"],
   ]) {
     await page.goto(`/#/${route}`);
     await expect(
@@ -79,13 +79,14 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
     .getByRole("textbox", { name: "Ask anything" })
     .fill("An unsent question");
   await page
-    .getByRole("textbox", { name: /Reply to session/ })
+    .getByRole("textbox", { name: /Reply to chat/ })
     .fill("An unsent follow-up");
-  const persona = page.getByRole("button", { name: "Style", exact: true });
-  await expect(persona).toHaveAttribute("aria-disabled", "true");
-  await persona.focus();
-  await page.keyboard.press("Enter");
-  await expect(persona).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "Style", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Add context", exact: true }),
+  ).toHaveCount(0);
   const folder = page.getByRole("button", { name: "Folder: workspace" });
   await folder.click();
   await page.getByRole("combobox", { name: "Search Folder" }).fill("notes");
@@ -96,16 +97,16 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
   ).toBeFocused();
   await page
     .getByRole("button", {
-      name: "Persona: No persona (host defaults)",
+      name: "Persona: No persona",
     })
     .click();
   await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", {
-      name: "Persona: No persona (host defaults)",
+      name: "Persona: No persona",
     }),
   ).toBeFocused();
-  await page.getByRole("button", { name: /^Sessions/ }).click();
+  await page.getByRole("button", { name: /^Chats/ }).click();
   await page.getByRole("textbox", { name: /Ask anything/ }).focus();
   await page.keyboard.press("Control+b");
   await expect(page.getByRole("complementary")).toBeVisible();
@@ -119,6 +120,7 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
   ).toBeVisible();
   await page
     .getByRole("link", { name: "Manage personas", exact: true })
+    .last()
     .click();
   await expect(page.getByRole("heading", { name: "Personas" })).toBeVisible();
   await page
@@ -127,100 +129,58 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
   await page
     .getByRole("button", { name: "Create persona", exact: true })
     .click();
-  await expect(page.getByRole("textbox", { name: "Display Name" })).toHaveValue(
-    "Keyboard writer",
-  );
+  await expect(
+    page.getByRole("textbox", { name: "Name", exact: true }),
+  ).toHaveValue("Keyboard writer");
   await page
-    .getByRole("button", { name: "Add text instruction", exact: true })
+    .getByRole("button", { name: "Add instruction", exact: true })
     .click();
   await page
     .getByRole("textbox", { name: "Instruction 1 text", exact: true })
     .fill("Local instructions");
   await page.getByRole("link", { name: "Sources", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Sources 3 active" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
   await page.goBack();
   await expect(
-    page.getByRole("heading", { name: "Keyboard writer Persona" }),
+    page.getByRole("heading", { name: "Keyboard writer" }),
   ).toBeVisible();
 });
 
-test("source modal traps focus, validates drafts, closes and restores focus without connections", async ({
+test("Sources is truthfully unavailable and only navigates to real Personas without connection requests", async ({
   page,
-}, info) => {
-  await page.goto("/#/sources");
-  const requests: string[] = [];
-  page.on("request", (request) => {
-    if (!request.url().startsWith("data:") && !request.url().includes("/api/"))
-      requests.push(request.url());
+  baseURL,
+}) => {
+  const external: string[] = [];
+  page.on("request", (r) => {
+    if (
+      !r.url().startsWith(new URL(baseURL!).origin) &&
+      !r.url().startsWith("data:")
+    )
+      external.push(r.url());
   });
-  const add = page.getByRole("button", { name: "Add Source", exact: true });
-  await add.click();
-  const dialog = page.getByRole("dialog", { name: "Add New Source" });
+  await page.goto("/#/sources");
   await expect(
-    page.getByRole("textbox", { name: "Source Name" }),
-  ).toBeFocused();
-  await capture(page, info, "sources-add-modal");
-  await page.keyboard.press("Shift+Tab");
+    page.getByRole("heading", { name: "Sources", exact: true }),
+  ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Marketplace URL" }),
-  ).toBeFocused();
-  for (let n = 0; n < 14; n++) {
-    await page.keyboard.press("Tab");
-    expect(
-      await dialog.evaluate((el) => el.contains(document.activeElement)),
-    ).toBe(true);
-  }
-  await page.keyboard.press("Escape");
-  await expect(dialog).toHaveCount(0);
-  await expect(add).toBeFocused();
-  await add.click();
-  await page
-    .getByRole("textbox", { name: "Source Name" })
-    .fill("local-review-kit");
-  await page
-    .getByRole("textbox", { name: "Repository URL or Path" })
-    .fill("file:///fixture");
-  await dialog.getByRole("button", { name: "Add Source", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText(
-    "Source name already exists in this local draft.",
-  );
-  await page
-    .getByRole("button", { name: "Marketplace URL", exact: true })
-    .click();
+    page.getByText(
+      "Source connections aren’t available yet. You can use local personas and skills in Personas.",
+    ),
+  ).toBeVisible();
   await expect(
-    page.getByRole("textbox", { name: "Branch or Tag" }),
+    page.getByRole("button", { name: /Add Source|Sync|Remove/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(/local-review-kit|official registry|active/i),
   ).toHaveCount(0);
   await page
-    .getByRole("textbox", { name: "Source Name" })
-    .fill("test-registry");
-  await page
-    .getByRole("textbox", { name: "Marketplace / Registry URL" })
-    .fill("https://example.invalid/registry");
-  await page
-    .getByRole("checkbox", { name: "Check updates on launch" })
-    .uncheck();
-  await dialog.getByRole("button", { name: "Add Source", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(add).toBeFocused();
-  await expect(
-    page
-      .getByRole("status")
-      .getByText("Added local draft; no source connected", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("Draft", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Sources 3 active" }),
-  ).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
-  await page
-    .getByRole("button", { name: "Remove test-registry", exact: true })
+    .getByRole("main")
+    .getByRole("link", { name: "Manage personas", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "test-registry", exact: true }),
-  ).toHaveCount(0);
-  expect(requests).toEqual([]);
+    page.getByRole("heading", { name: "Personas", exact: true }),
+  ).toBeVisible();
+  expect(external).toEqual([]);
 });
 
 test("narrow pages reflow without clipping and popup/modal remain keyboard usable", async ({
@@ -237,23 +197,6 @@ test("narrow pages reflow without clipping and popup/modal remain keyboard usabl
     ).toBe(true);
     await capture(page, info, `mobile-${route}`);
   }
-  const sourceTitle = await page
-    .getByRole("heading", { name: "local-review-kit" })
-    .boundingBox();
-  const sourceActions = await page
-    .getByRole("button", { name: "Inspect resources" })
-    .first()
-    .boundingBox();
-  expect(sourceActions!.y).toBeGreaterThan(
-    sourceTitle!.y + sourceTitle!.height,
-  );
-  await page.getByRole("button", { name: "Add Source", exact: true }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await capture(page, info, "mobile-source-modal");
-  await page.keyboard.press("Escape");
-  await expect(
-    page.getByRole("button", { name: "Add Source", exact: true }),
-  ).toBeFocused();
   await page.getByRole("button", { name: "Folder: workspace" }).click();
   await expect(
     page.getByRole("combobox", { name: "Search Folder" }),

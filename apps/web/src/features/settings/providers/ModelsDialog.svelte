@@ -45,14 +45,14 @@
       class={inputClass}
     />
     <p class="text-[11px] text-gray-500" role="status">
-      {visible.length} models · choose a default for new sessions
+      {visible.length} models · choose a default for new chats
     </p>
     {#if error}<p class="text-xs text-gray-700" role="alert">{error}</p>{/if}
     <Button class={actionClass} unavailable={busy ? "Provider operation pending" : undefined} onclick={onrefresh}>Refresh provider catalog</Button>
     <fieldset
       class="max-h-[45dvh] overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100"
     >
-      <legend class="sr-only">Default model for new sessions</legend>
+      <legend class="sr-only">Default model for new chats</legend>
       {#each visible as model}
         <label
           class="p-3 flex items-start gap-3 cursor-pointer hover:bg-gray-50"
@@ -88,7 +88,7 @@
     </fieldset>
     <div class="flex justify-between items-center gap-2">
       <span class="text-[11px] text-gray-400"
-        >Active sessions will not change.</span
+        >Used for new chats. Existing chats keep their model.</span
       ><Button class={actionClass} onclick={onclose}>Done</Button>
     </div>
   </div>
