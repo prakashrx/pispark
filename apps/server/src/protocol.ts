@@ -1,3 +1,7 @@
+import type {
+  AdmittedPersonaSummary,
+  PersonaSelection,
+} from "./persona-protocol.js";
 /** Client-independent v1 contract. No SDK objects, secrets, file paths, or durable event cursors. */
 export interface SessionInfo {
   id: string;
@@ -6,6 +10,7 @@ export interface SessionInfo {
   createdAt: string;
   status: string;
   interrupted: boolean;
+  persona?: AdmittedPersonaSummary;
 }
 export interface MessagePart {
   type: string;
@@ -37,6 +42,7 @@ export interface Catalog {
     value: string;
     label: string;
     modelSelection?: "catalog" | "fixed";
+    skillReader?: boolean;
   }[];
 }
 export type Command = { commandId: string } & (
@@ -45,6 +51,7 @@ export type Command = { commandId: string } & (
       workspace: string;
       configuration: string;
       model?: { provider: string; id: string };
+      persona?: PersonaSelection;
     }
   | { type: "open" | "cancel" | "stop"; sessionId: string }
   | { type: "start" | "steer" | "follow-up"; sessionId: string; text: string }

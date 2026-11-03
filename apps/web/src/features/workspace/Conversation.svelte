@@ -21,7 +21,7 @@
         <div class="flex items-center gap-3">
           <h1 class="text-xl font-bold tracking-tight text-zinc-900">
             {snapshot
-              ? `${snapshot.configuration} · ${snapshot.id.slice(0, 8)}`
+              ? `${snapshot.persona?.name ?? snapshot.configuration} · ${snapshot.id.slice(0, 8)}`
               : "Start a session"}
           </h1>
           <span
@@ -50,7 +50,14 @@
     </header>
     {#if !client.catalog.configurations.length}<p class="text-sm text-zinc-500">
         No model configured. Set PISPARK_CONFIG on the server; see
-        docs/session-protocol.md. Persona and style controls are deferred.
+        docs/session-protocol.md. Persona resources do not configure providers
+        or grant tools.
+      </p>{/if}
+    {#if snapshot?.persona}<p class="text-xs text-zinc-500">
+        Admitted persona: {snapshot.persona.name} · {snapshot.persona.revision.slice(
+          0,
+          12,
+        )}. Saved edits apply to new sessions only.
       </p>{/if}
     {#if snapshot?.interrupted}<p role="status" class="text-sm text-zinc-700">
         Work was interrupted or failed. No automatic replay is attempted.

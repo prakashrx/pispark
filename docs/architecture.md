@@ -7,7 +7,7 @@
 Two npm workspaces, with no shared package or framework layer:
 
 - **`apps/server`**: Node's native HTTP server, written in TypeScript. `src/server.ts` creates a testable server; `src/index.ts` owns configuration, listening, and signal handling. `src/runtime/session-runtime.ts` adds an independently constructible session owner backed by pinned Pi SDK1.4.0; the HTTP entry point owns its startup and shutdown via `SessionHttp`.
-- **`apps/web`**: Svelte 5 components compiled by Vite with local Tailwind CSS. `App.svelte` owns hash navigation; `routes.ts` and `RouteOutlet.svelte` map the four explicit routes (`#/workspace`, `#/settings`, `#/persona`, `#/sources`), plus the provider settings subroute `#/providers`. One `lib/layout/AppShell.svelte` owns the common sidebar frame and persistent global Ask. Generic typed controls live in `lib/ui`; feature components and typed fixtures live in `features/workspace`, `settings`, `persona`, and `sources`. A small context-owned session client adapter owns transport, selected session and drafts. There is no router dependency or global state framework; only the selected UUID is persisted in browser storage.
+- **`apps/web`**: Svelte 5 components compiled by Vite with local Tailwind CSS. `App.svelte` owns hash navigation; `routes.ts` and `RouteOutlet.svelte` map the four explicit routes (`#/workspace`, `#/settings`, `#/persona`, `#/sources`), plus the provider settings subroute `#/providers`. One `lib/layout/AppShell.svelte` owns the common sidebar frame and persistent global Ask. Generic typed controls live in `lib/ui`; feature components live in `features/workspace`, `settings`, `persona`, and `sources`; unimplemented general/source settings retain explicitly local fixtures. A small context-owned session client adapter owns transport, selected session and drafts. There is no router dependency or global state framework; only the selected UUID is persisted in browser storage.
 
 In development, Vite serves the UI on loopback port 5173 and proxies `/api` to port 3000. In production, the compiled Node entry serves `apps/web/dist` relative to its own module location, not the working directory.
 
@@ -19,6 +19,7 @@ In development, Vite serves the UI on loopback port 5173 and proxies `/api` to p
 | Other methods on `/api/health` | `405`, with `Allow: GET` |
 | `/api/catalog`, `/api/sessions`, `/api/commands`, `/api/receipts/*`, session `/events` and `/window` | [Bounded session protocol](session-protocol.md), strict local Host/Origin validation |
 | `/api/providers` and `/api/providers/*` | Native provider catalog, default/refresh/logout and owner-capability sign-in bridge; same local security guard |
+| `/api/personas` and `/api/personas/*` | [Bounded local persona management](personas.md), validation/revision-checked writes and effective provenance; same guard |
 | Unknown `/api` routes | JSON `404`, never frontend HTML |
 | `GET` / `HEAD` `/` | Built HTML entry, or `404` if not built |
 | `GET` / `HEAD` `/favicon.svg`, `/assets/*` | Existing permitted build assets, or `404` |
@@ -26,7 +27,7 @@ In development, Vite serves the UI on loopback port 5173 and proxies `/api` to p
 
 Static paths are decoded once, reject dot/hidden segments, nulls and backslashes, and must remain within the build root after resolving symlinks. Supported asset types are explicit. Builds are trusted local files, not user uploads. Requests are uncached in this starter. This intentionally small server is not a general-purpose static hosting service.
 
-The workspace uses real configured sessions and native messages/tool results through typed view state, not fixture conversations. Ask uses admitted backend workspace/configuration keys; Persona/Style remain unavailable. The status indicator reports actual client connectivity, not provider health. Providers & models is backed by native Pi auth/catalog/default persistence. Other settings/persona/source screens remain local drafts and clearly marked fixtures; their saves/connections are unavailable. Ask and independent session drafts survive route changes in memory; reload discards drafts and reconnects to the selected UUID. The browser may submit transient native secret/code responses through the sign-in bridge; no arbitrary native-file paths, provider configurations or secret references are accepted.
+The workspace uses real configured sessions and native messages/tool results through typed view state, not fixture conversations. Ask uses admitted backend workspace keys, saved personas, independent model selection and an advanced trusted host-policy choice. Style remains unavailable. The status indicator reports actual client connectivity, not provider health. Providers & models is backed by native Pi auth/catalog/default persistence. Persona management uses real backend persistence; other general/source settings remain marked local drafts with unavailable saves/connections. Ask and independent session drafts survive route changes in memory; reload discards drafts and reconnects to the selected UUID. The browser may submit transient native secret/code responses through the sign-in bridge; no arbitrary native-file paths, provider configurations or secret references are accepted.
 
 Hash routes need no server SPA fallback. Material Symbols is bundled locally under `/assets/` with its Apache 2.0 license and provenance in `apps/web/src/assets/fonts/`; no runtime CDN is used.
 
@@ -38,6 +39,10 @@ The [session runtime](session-runtime.md) owns explicit workspace/configuration 
 
 Real-SDK tests use a deterministic local provider, including two simultaneous sessions and killed-process recovery without tool replay. This is not external paid-provider verification. The current same-process policy admits trusted local code only, not sandboxed third-party execution. Compatibility and recovery limits are documented with the runtime API.
 
+## Persona and observability foundation
+
+Concrete modules under `src/personas` own strict definitions, bounded filesystem persistence, deterministic ordered composition and session admission. They do not own model execution or parse an alternate skill format. The existing native ResourceLoader consumes admitted instructions/standard skill copies; SessionManager remains the sole canonical transcript owner. Recovery verifies captured inputs and host policy without silently rereading changed sources. The shared client owns real persona/file drafts and saved selection; feature components reuse common controls/shell. `src/logger.ts` projects an allowlist into a serialized bounded sink, without credential/content/native-cause serialization. See [persona contracts and trust limits](personas.md).
+
 ## Next phase: follow the vision, then propose the smallest design
 
 [VISION.md §11](../VISION.md#11-direction-for-the-next-development-phase) governs the next phase: inspect Pi's current SDK and extension APIs, identify what PiSpark genuinely needs to own, propose the smallest coherent backend design, surface unresolved decisions, and obtain approval before substantial implementation.
@@ -46,4 +51,4 @@ The existing fixtures are UI examples—not a persona schema, native Pi event mo
 
 [Web-native Pi extensions](../VISION.md#7-web-native-pi-extensions) must inform foundational decisions. Ordinary Pi extensions may own Svelte components and domain-specific interactions; PiSpark supplies placement, lifecycle, and communication hosting. Conceptual `host.call()` / `host.on()` semantics do not establish a shipped API, transport choice, mandatory manifest, or separate extension ecosystem. The first-party component library is not a limit on extension presentation. Third-party code loading remains a trust decision requiring explicit design.
 
-Worker isolation, persona composition and extension UI hosting remain unimplemented. The initial [HTTP/SSE protocol](session-protocol.md) is implemented without freezing a future extension communication API. Keep proposals distinct from implementation facts, and return to VISION.md when evaluating these choices.
+Worker isolation, further persona resource types and extension UI hosting remain unimplemented. The initial [HTTP/SSE protocol](session-protocol.md) is implemented without freezing a future extension communication API. Keep proposals distinct from implementation facts, and return to VISION.md when evaluating these choices.

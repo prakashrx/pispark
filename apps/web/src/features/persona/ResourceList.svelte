@@ -1,67 +1,72 @@
 <script lang="ts">
   import Button from "../../lib/ui/Button.svelte";
-  import Symbol from "../../lib/ui/Symbol.svelte";
+  import Input from "../../lib/ui/Input.svelte";
   import Section from "../../lib/ui/Section.svelte";
-  import type { PersonaResource } from "./fixtures";
+  import OrderControls from "./OrderControls.svelte";
+  import type { PersonaSkill } from "../../../../server/src/persona-protocol";
   let {
-    title,
-    description,
-    singular,
     items = $bindable([]),
-  }: {
-    title: string;
-    description: string;
-    singular: string;
-    items: PersonaResource[];
-  } = $props();
+    readonly = false,
+  }: { items: PersonaSkill[]; readonly?: boolean } = $props();
+  function move(from: number, to: number) {
+    const next = [...items];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item!);
+    items = next;
+  }
 </script>
 
-<Section {title} {description} class="space-y-3 pt-4 border-t border-gray-100">
-  <div
-    class="border border-gray-200 rounded-xl divide-y divide-gray-100 bg-white shadow-sm overflow-hidden"
-  >
-    {#each items as item (item.name)}
-      <div
-        class="p-3.5 flex items-center justify-between hover:bg-gray-50/60 transition"
-      >
-        <div class="flex items-center space-x-3 min-w-0">
-          <div
-            class="w-7 h-7 rounded-lg bg-neutral-100 flex items-center justify-center text-neutral-700 shrink-0"
-          >
-            <Symbol name={item.icon} class="text-base" />
-          </div>
-          <div>
-            <div class="flex items-center space-x-2 flex-wrap">
-              <span class="text-xs font-mono font-bold text-neutral-900"
-                >{item.name}</span
-              >
-              {#if item.tag}<span
-                  class="text-[10px] font-mono bg-neutral-100 text-neutral-600 px-1.5 py-0.2 rounded"
-                  >{item.tag}</span
-                >{/if}
-              <span class="text-[10px] text-neutral-400 font-mono"
-                >source: {item.source}</span
-              >
-            </div>
-            <p class="text-xs text-neutral-500 mt-0.5">{item.description}</p>
-          </div>
-        </div>
-        <Button
-          class="text-neutral-400 hover:text-red-700 transition p-1 rounded"
-          aria-label={`Remove ${item.name} from local draft`}
-          title="Remove"
-          onclick={() => {
-            items = items.filter((value) => value.name !== item.name);
-          }}><Symbol name="close" class="text-base" /></Button
-        >
-      </div>
-    {/each}
-  </div>
-  <div class="pt-1">
-    <Button
-      class="persona-add"
-      unavailable="Resource selection requires a backend catalog"
-      ><Symbol name="add" class="text-sm" /><span>Add {singular}</span></Button
+<Section
+  title="Skills"
+  description="Reference existing standard skill directories containing SKILL.md and supporting files. No tools are granted by selecting skills."
+  class="space-y-3 pt-4 border-t border-gray-100"
+>
+  {#each items as item, index (item)}<div
+      class="p-4 border border-gray-200 rounded-xl space-y-3"
     >
-  </div>
+      <div class="flex gap-2 items-center flex-wrap">
+        <Input
+          label={`Skill ${index + 1} ID`}
+          class="source-input max-w-xs"
+          bind:value={item.id}
+          disabled={readonly}
+        /><OrderControls
+          {index}
+          count={items.length}
+          label={`skill ${index + 1}`}
+          {move}
+          remove={() => (items = items.filter((_, i) => i !== index))}
+          disabled={readonly}
+        />
+      </div>
+      <Input
+        label={`Skill ${index + 1} relative directory`}
+        class="source-input"
+        bind:value={item.directory}
+        disabled={readonly}
+      />
+      <label class="text-xs flex gap-2 items-center"
+        ><input
+          type="checkbox"
+          checked={item.replace === true}
+          disabled={readonly}
+          onchange={(event) => {
+            if (event.currentTarget.checked) item.replace = true;
+            else delete item.replace;
+          }}
+        />Replace inherited ID</label
+      >
+    </div>{/each}
+  {#if !items.length}<p class="text-xs text-neutral-500">
+      No local skills.
+    </p>{/if}
+  <Button
+    class="persona-add"
+    disabled={readonly || items.length >= 32}
+    onclick={() => {
+      let n = 1;
+      while (items.some((i) => i.id === `skill-${n}`)) n++;
+      items = [...items, { id: `skill-${n}`, directory: "skills/name" }];
+    }}>Add skill reference</Button
+  >
 </Section>

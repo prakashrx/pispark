@@ -2,7 +2,7 @@ export const routes = {
   workspace: { title: "Workspace review" },
   settings: { title: "General Settings" },
   providers: { title: "Providers & models" },
-  persona: { title: "Developer Persona" },
+  persona: { title: "Personas" },
   sources: { title: "Sources" },
 } as const;
 

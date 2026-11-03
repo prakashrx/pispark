@@ -4,7 +4,7 @@
   import Composer from "./features/workspace/Composer.svelte";
   import ProvidersPage from "./features/settings/providers/ProvidersPage.svelte";
   import GeneralSettings from "./features/settings/GeneralSettings.svelte";
-  import DeveloperPersona from "./features/persona/DeveloperPersona.svelte";
+  import PersonaPage from "./features/persona/PersonaPage.svelte";
   import Sources from "./features/sources/Sources.svelte";
   let { page }: { page: Page } = $props();
 </script>
@@ -26,7 +26,7 @@
   {:else if page === "settings"}
     <GeneralSettings />
   {:else if page === "persona"}
-    <DeveloperPersona />
+    <PersonaPage />
   {:else}
     <Sources />
   {/if}

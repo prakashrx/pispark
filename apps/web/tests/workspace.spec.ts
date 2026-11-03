@@ -37,7 +37,7 @@ test("four source pages render locally without errors or external requests", asy
   });
   page.on("request", (request) => {
     if (
-      !request.url().startsWith(new URL(baseURL!).origin + "/") &&
+      !request.url().startsWith(`${new URL(baseURL!).origin}/`) &&
       !request.url().startsWith("data:")
     )
       external.push(request.url());
@@ -45,7 +45,7 @@ test("four source pages render locally without errors or external requests", asy
   for (const [route, heading] of [
     ["workspace", "Start a session|Test-only deterministic"],
     ["settings", "General"],
-    ["persona", "Developer Persona"],
+    ["persona", "Personas"],
     ["sources", "Sources 3 active"],
   ]) {
     await page.goto(`/#/${route}`);
@@ -96,13 +96,13 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
   ).toBeFocused();
   await page
     .getByRole("button", {
-      name: "Resource configuration: Test-only deterministic",
+      name: "Persona: No persona (host defaults)",
     })
     .click();
   await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", {
-      name: "Resource configuration: Test-only deterministic",
+      name: "Persona: No persona (host defaults)",
     }),
   ).toBeFocused();
   await page.getByRole("button", { name: /^Sessions/ }).click();
@@ -117,16 +117,24 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
   await expect(
     page.getByRole("heading", { name: "General", level: 1 }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Developer", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Developer Persona" }),
-  ).toBeVisible();
   await page
-    .getByRole("textbox", { name: "Display Name" })
-    .fill("Local developer");
-  await page.getByRole("button", { name: "Add Text Prompt" }).click();
+    .getByRole("link", { name: "Manage personas", exact: true })
+    .click();
+  await expect(page.getByRole("heading", { name: "Personas" })).toBeVisible();
   await page
-    .getByRole("textbox", { name: "Text Prompt" })
+    .getByRole("textbox", { name: "New persona name" })
+    .fill("Keyboard writer");
+  await page
+    .getByRole("button", { name: "Create persona", exact: true })
+    .click();
+  await expect(page.getByRole("textbox", { name: "Display Name" })).toHaveValue(
+    "Keyboard writer",
+  );
+  await page
+    .getByRole("button", { name: "Add text instruction", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "Instruction 1 text", exact: true })
     .fill("Local instructions");
   await page.getByRole("link", { name: "Sources", exact: true }).click();
   await expect(
@@ -134,7 +142,7 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
   ).toBeVisible();
   await page.goBack();
   await expect(
-    page.getByRole("heading", { name: "Developer Persona" }),
+    page.getByRole("heading", { name: "Keyboard writer Persona" }),
   ).toBeVisible();
 });
 

@@ -2,7 +2,7 @@
 
 [VISION.md](../VISION.md) remains authoritative. Pi owns execution, tools, context, compaction, extensions and JSONL history. PiSpark owns session identity, explicit configuration, admissions, observation and orderly teardown.
 
-This is a **client-independent runtime**, now owned by the local HTTP entry point. See [configuration, bounded HTTP/SSE protocol and UI](session-protocol.md). Normal startup is unconfigured; personas, discovery UX and extension Svelte hosting remain deferred.
+This is a **client-independent runtime**, now owned by the local HTTP entry point. See [configuration, bounded HTTP/SSE protocol and UI](session-protocol.md). Normal startup is unconfigured; [local persona instructions/skills](personas.md) are supported. Remote discovery and extension Svelte hosting remain deferred.
 
 ## Entry point and ownership
 
@@ -23,7 +23,7 @@ Every session gets a separate `ModelRuntime`, `SettingsManager`, `ResourceLoader
 
 | Method | Meaning |
 | --- | --- |
-| `create({ workspace, configuration, model? })` | Validate host keys, reserve a live slot, initialize/bind native extensions, return snapshot. Unknown request fields are rejected. |
+| `create({ workspace, configuration, model?, persona? })` | Validate host keys, reserve a live slot, initialize/bind native extensions, return snapshot. Unknown request fields are rejected. |
 | `open(id)` | Claim a known UUID and reopen native history, or recreate an empty session. Never accepts a session-file path. Never prompts/replays tools. |
 | `list()` | Stored metadata summaries, including empty/unloaded sessions and interrupted status. |
 | `snapshot(id)` | Copy of live status, sequence, canonical native context, current messages, partial streaming output, queues and safe error code. |
@@ -51,7 +51,7 @@ Deadlines do not kill arbitrary JavaScript or tools. If an extension ignores can
 
 ## Persistence and recovery
 
-Each UUID owns a directory containing small `host.json` metadata, an ownership lock and Pi's native JSONL file. Metadata contains only host keys, resolved cwd, identity/time, native basename, active/history/interruption markers—not conversation content or credentials. Setup-only sessions need metadata because Pi does not persist JSONL until its first user/assistant message.
+Each UUID owns a directory containing small `host.json` metadata, an ownership lock and Pi's native JSONL file. Metadata contains host keys, resolved cwd, identity/time, native basename, active/history/interruption markers and an optional admitted persona summary/digest—not conversation content or credentials. Persona-bound sessions add the separately owned instruction/skill admission record and complete supported-tree copies; see [stability and recovery limits](personas.md#native-admission-history-and-recovery). Legacy no-persona sessions retain the existing layout/recovery without migration. Setup-only sessions need metadata because Pi does not persist JSONL until its first user/assistant message.
 
 The host marks activity before model/tool execution. On reopen, unfinished activity is reported as interrupted; native finalized messages/context are restored without resuming an old request. Tokens and queues are not durable. A crash may lose partial assistant/tool output; a tool side effect may have happened without a finalized result. **No exactly-once guarantee and no automatic replay.** User-driven continuation is a new request and can perform new effects. Extension startup runs normally on reopen, so trusted extensions must reconstruct state without repeating side effects themselves.
 

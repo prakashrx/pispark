@@ -7,6 +7,14 @@ import {
 import type { Catalog, Command, Receipt, SnapshotEvent } from "./protocol.js";
 import type { ProviderHttp } from "./provider-http.js";
 import { validChoice } from "./runtime/provider-storage.js";
+import {
+  correlated,
+  requestId,
+  silentLogger,
+  type SafeLogger,
+} from "./logger.js";
+import { PersonaHttp } from "./persona-http.js";
+import { ref as validatePersonaRef } from "./personas/schema.js";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -43,6 +51,7 @@ function validate(value: unknown): Command {
           "workspace",
           "configuration",
           ...(c.model === undefined ? [] : ["model"]),
+          ...(c.persona === undefined ? [] : ["persona"]),
         ]
       : ["open", "cancel", "stop"].includes(String(c.type))
         ? ["sessionId"]
@@ -57,7 +66,14 @@ function validate(value: unknown): Command {
     throw new RuntimeError("invalid-input");
   if (c.model !== undefined && !validChoice(c.model))
     throw new RuntimeError("invalid-input");
-  for (const key of keys.filter((key) => key !== "model"))
+  if (c.persona !== undefined) {
+    try {
+      validatePersonaRef(c.persona, true);
+    } catch {
+      throw new RuntimeError("invalid-input");
+    }
+  }
+  for (const key of keys.filter((key) => key !== "model" && key !== "persona"))
     if (typeof c[key] !== "string" || !(c[key] as string).trim())
       throw new RuntimeError("invalid-input");
   if ("sessionId" in c && !uuid.test(String(c.sessionId)))
@@ -65,7 +81,7 @@ function validate(value: unknown): Command {
   if (
     c.type === "create" &&
     keys
-      .filter((key) => key !== "model")
+      .filter((key) => key !== "model" && key !== "persona")
       .some((key) => (c[key] as string).length > 128)
   )
     throw new RuntimeError("invalid-input");
@@ -113,12 +129,16 @@ export class SessionHttp {
   private streams = new Set<ServerResponse>();
   private requests = 0;
   private closed = false;
+  private readonly personas: PersonaHttp;
   constructor(
     readonly runtime: SessionRuntime,
     readonly catalog: Catalog,
     private readonly developmentOrigin?: string,
     private readonly providers?: ProviderHttp,
-  ) {}
+    private readonly logger: SafeLogger = silentLogger,
+  ) {
+    this.personas = new PersonaHttp(runtime.personas);
+  }
   private secure(request: IncomingMessage) {
     const local = request.socket.localAddress;
     if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(local ?? ""))
@@ -191,6 +211,7 @@ export class SessionHttp {
               workspace: command.workspace,
               configuration: command.configuration,
               ...(command.model ? { model: command.model } : {}),
+              ...(command.persona ? { persona: command.persona } : {}),
             })
           ).id;
           break;
@@ -221,7 +242,7 @@ export class SessionHttp {
       }
       receipt.outcome ??= "completed";
     };
-    void execute()
+    void correlated({ operationId: requestId() }, execute)
       .catch((error) => {
         receipt.outcome = "failed";
         receipt.error = failure(error);
@@ -236,7 +257,19 @@ export class SessionHttp {
     request: IncomingMessage,
     response: ServerResponse,
   ): Promise<void> {
+    return correlated({ requestId: requestId() }, () =>
+      this.handleRequest(request, response),
+    );
+  }
+  private async handleRequest(
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
     if (!this.secure(request)) {
+      this.logger.event("http.reject", {
+        outcome: "rejected",
+        code: "forbidden",
+      });
       sendJson(response, 403, { error: "forbidden" });
       return;
     }
@@ -248,6 +281,10 @@ export class SessionHttp {
     try {
       const url = new URL(request.url!, "http://localhost");
       const path = url.pathname;
+      if (path === "/api/personas" || path.startsWith("/api/personas/")) {
+        await this.personas.handle(request, response);
+        return;
+      }
       if (path.startsWith("/api/providers") && this.providers) {
         await this.providers.handle(request, response);
         return;
@@ -314,6 +351,11 @@ export class SessionHttp {
         } else sendJson(response, 400, { error: "invalid-input" });
       }
     } catch (error) {
+      this.logger.event(
+        "http.failure",
+        { outcome: "failed", code: failure(error) },
+        "error",
+      );
       if (response.headersSent) response.destroy();
       else sendJson(response, 400, { error: failure(error) });
     } finally {

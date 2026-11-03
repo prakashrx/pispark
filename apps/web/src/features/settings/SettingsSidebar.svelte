@@ -14,7 +14,7 @@
       (
         link.label +
         (link.page === "persona"
-          ? " Developer General Code Reviewer Architect"
+          ? sessions.personas.items.map((p) => p.name).join(" ")
           : "")
       )
         .toLowerCase()
@@ -67,43 +67,25 @@
             {#if personasOpen}
               <div class="pl-5 pr-1 space-y-0.5 border-l border-gray-100 ml-4">
                 <a
-                  aria-disabled="true"
-                  title="This persona screen is not supplied"
-                  class={page === "sources"
-                    ? "flex items-center justify-between px-2.5 py-1.5 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition"
-                    : "flex items-center justify-between px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition"}
-                  ><span>General</span><span
-                    class="text-[10px] text-gray-400 font-mono bg-gray-100 px-1 py-0.5 rounded"
-                    >Default</span
-                  ></a
-                >
-                <a
                   href="#/persona"
                   aria-current={page === "persona" ? "page" : undefined}
-                  class="flex items-center justify-between px-2 py-1 text-xs font-medium text-gray-900 bg-gray-50 rounded-md transition"
-                  ><span class="flex items-center space-x-1.5"
-                    ><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"
-                    ></span><span>Developer</span></span
-                  ></a
+                  class="flex items-center px-2 py-1 text-xs font-medium text-gray-900 rounded-md hover:bg-gray-50"
+                  >Manage personas</a
                 >
-                {#each ["Code Reviewer", "Architect"] as name}<a
-                    aria-disabled="true"
-                    title="This persona screen is not supplied"
-                    class="flex items-center justify-between px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition"
-                    >{name}</a
+                {#each sessions.personas.items.slice(0, 16) as persona}<a
+                    href="#/persona"
+                    class="block px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 rounded-md truncate"
+                    onclick={() => void sessions.personas.select(persona.ref)}
+                    title={`${persona.ref.root}/${persona.ref.path}`}
+                    >{persona.valid
+                      ? persona.name
+                      : `${persona.ref.root}/${persona.ref.path} · Invalid`}</a
                   >{/each}
-                <Button
-                  unavailable="Persona creation is not included in the supplied screens"
-                  class="w-full flex items-center space-x-1.5 px-2 py-1 text-xs text-gray-400 hover:text-gray-700 hover:bg-gray-50 rounded-md transition border border-dashed border-gray-200 mt-1"
-                  ><Icon name="plus" class="w-3 h-3" /><span>Add persona</span
-                  ></Button
-                >
               </div>
             {/if}
           </div>
         {:else}
-          {@const active =
-            page === link.page}
+          {@const active = page === link.page}
           <a
             href={link.page ? "#/" + link.page : undefined}
             aria-disabled={!link.page}
@@ -146,7 +128,8 @@
     >
       <span>PiSpark backend</span><span
         class="font-mono text-gray-600 bg-gray-50 px-1 rounded"
-        title="Client connection state, not provider verification">{sessions.connection}</span
+        title="Client connection state, not provider verification"
+        >{sessions.connection}</span
       >
     </div>
     <a

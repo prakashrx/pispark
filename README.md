@@ -6,7 +6,7 @@ PiSpark is an open-source, self-hosted, web-native workspace being built on the 
 
 **[Read VISION.md](VISION.md) — the authoritative product direction and architectural principles.** Pi runs the agent. PiSpark hosts the experience. Extensions make it their own. The intended experience includes backend-owned independent sessions, composable personas, and ordinary Pi extensions contributing their own Svelte interfaces—not a browser terminal or another agent framework. These are product goals; current capabilities are listed below.
 
-## Status: local sessions and native provider settings
+## Status: local sessions, personas and native provider settings
 
 The shared shell, Ask, session sidebar and reply now connect to independently hosted Pi SDK sessions through bounded HTTP commands and streamed snapshots. Explicitly configured sessions support native tools/history, concurrent execution, cancellation, stop/unload and reconnect. No browser tab owns execution. Start unconfigured to explore the UI; Run remains unavailable until an operator supplies actual server-side workspace/model configuration.
 
@@ -14,7 +14,9 @@ See [setup, security gate and protocol](docs/session-protocol.md) and [runtime o
 
 Providers & models now supports Pi-native sign-in, stored credential removal, catalog refresh, model selection and a durable default for new catalog-enabled sessions. Configured/available is not verified account or subscription entitlement. Pi manages credentials at an explicit PiSpark-owned path; host environment credentials may also apply. Secret inputs pass transiently through the browser bridge, not browser storage. File-backed credentials are not encrypted by PiSpark.
 
-Persona/style execution, other settings saves, source connections/marketplace and extension Svelte hosting remain deferred. Those screens retain clearly marked local fixtures/drafts, not executable capabilities. Ask and per-session reply drafts survive route changes but reset on reload. Credentials persist server-side; the browser stores only the selected session UUID.
+[Local personas](docs/personas.md) now support real create/edit/validate/save, ordered inline/file system instructions, standard skill references, deterministic local inheritance and effective provenance. Ask selects a saved persona independently of model and trusted host policy. Session-owned resource copies keep admitted instructions/skill trees stable across source edits/restarts; tools are never granted implicitly. Structured content-free operational logs are bounded and instance-owned.
+
+Styles, other settings saves, source connections/marketplace and extension Svelte hosting remain deferred. Other settings/source screens retain marked local fixtures/drafts, not executable capabilities. Ask, reply and persona drafts survive route changes but reset on reload. Credentials persist server-side; the browser stores only the selected session UUID.
 
 ## Run locally
 

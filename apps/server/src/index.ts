@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { SafeLogger } from "./logger.js";
 import { fileURLToPath } from "node:url";
 import { createAppServer } from "./server.js";
 import { hostConfiguration, catalog } from "./host-configuration.js";
@@ -19,6 +21,15 @@ if (!/^\d+$/.test(portInput) || Number(portInput) > 65535) {
 }
 const webRoot = fileURLToPath(new URL("../../web/dist/", import.meta.url));
 const configuration = await hostConfiguration();
+const logger = new SafeLogger(
+  configuration.logging?.console
+    ? {}
+    : {
+        directory:
+          configuration.logging?.directory ??
+          join(dirname(configuration.storageDir), "logs"),
+      },
+);
 const developmentOrigin =
   process.env.PISPARK_DEV_ORIGIN ??
   (process.argv.includes("--dev") ? "http://127.0.0.1:5173" : undefined);
@@ -31,18 +42,21 @@ if (
   );
 const providers = await ProviderSettings.create(configuration);
 const sessions = new SessionHttp(
-  new SessionRuntime(configuration, providers),
+  new SessionRuntime(configuration, providers, logger),
   catalog(configuration),
   developmentOrigin,
   new ProviderHttp(providers),
+  logger,
 );
-const server = createAppServer({ webRoot, sessions });
+const server = createAppServer({ webRoot, sessions, logger });
 server.maxConnections = 64;
 server.requestTimeout = 10_000;
 server.headersTimeout = 10_000;
-server.on("error", (error) => {
-  console.error(
-    `PiSpark could not listen on ${host}:${portInput}: ${error.message}`,
+server.on("error", () => {
+  logger.event(
+    "http.failure",
+    { outcome: "failed", code: "configuration" },
+    "error",
   );
   process.exitCode = 1;
 });
@@ -51,6 +65,7 @@ server.listen(Number(portInput), host, () => {
   const port =
     address && typeof address !== "string" ? address.port : portInput;
   console.log(`PiSpark listening at http://${host}:${port}`);
+  logger.event("host.start", { outcome: "completed" });
   if (!existsSync(new URL("../../web/dist/index.html", import.meta.url))) {
     console.log(
       "Frontend not built. Use the Vite dev URL, or run npm run build from the repository root.",
@@ -59,25 +74,34 @@ server.listen(Number(portInput), host, () => {
 });
 
 let shuttingDown = false;
-function shutdown(signal: string): void {
+function shutdown(): void {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`PiSpark stopping (${signal}).`);
-  void sessions.shutdown().catch(() => {
-    console.error(
-      "Session shutdown failed; ownership is retained until cleanup finishes.",
-    );
-    process.exitCode = 1;
-  });
+  logger.event("host.stop", { outcome: "completed" });
+  void sessions
+    .shutdown()
+    .catch(() => {
+      logger.event(
+        "session.failure",
+        { outcome: "failed", code: "shutdown" },
+        "error",
+      );
+      process.exitCode = 1;
+    })
+    .finally(() => logger.close());
   const timeout = setTimeout(() => server.closeAllConnections(), 5000);
   timeout.unref();
   server.close((error) => {
     clearTimeout(timeout);
     if (error) {
-      console.error("Shutdown failed:", error.message);
+      logger.event(
+        "http.failure",
+        { outcome: "failed", code: "shutdown" },
+        "error",
+      );
       process.exitCode = 1;
     }
   });
 }
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

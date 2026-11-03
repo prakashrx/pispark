@@ -2,7 +2,13 @@ import { test, expect, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-const routes = ["workspace", "settings", "providers", "persona", "sources"] as const;
+const routes = [
+  "workspace",
+  "settings",
+  "providers",
+  "persona",
+  "sources",
+] as const;
 
 async function navigate(page: Page, route: string) {
   await page.evaluate((route) => {
@@ -115,6 +121,12 @@ test("one global Ask retains draft and all selectors through routes, history and
   page,
 }) => {
   await page.goto("/#/workspace");
+  await expect(
+    page.getByRole("status").filter({ hasText: /^idle$/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Run", exact: true }),
+  ).not.toHaveAttribute("aria-disabled", "true");
   const ask = page.getByRole("textbox", { name: "Ask anything" });
   const mountedAsk = await ask.elementHandle();
   await ask.fill("Persistent global question");
@@ -130,7 +142,7 @@ test("one global Ask retains draft and all selectors through routes, history and
     ).toHaveAttribute("aria-disabled", "true");
   await page
     .getByRole("button", {
-      name: "Resource configuration: Test-only deterministic",
+      name: "Persona: No persona (host defaults)",
     })
     .click();
   await page.keyboard.press("Escape");
@@ -145,7 +157,7 @@ test("one global Ask retains draft and all selectors through routes, history and
       "Folder: notes",
       "Model: host configuration",
       "Style",
-      "Resource configuration: Test-only deterministic",
+      "Persona: No persona (host defaults)",
     ]) {
       await expect(
         page.getByRole("button", { name: label, exact: true }),

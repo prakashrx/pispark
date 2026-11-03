@@ -3,6 +3,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 
 import type { SessionHttp } from "./session-http.js";
+import { silentLogger, type SafeLogger } from "./logger.js";
 
 const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -73,9 +74,11 @@ async function serveStatic(
 export function createAppServer({
   webRoot,
   sessions,
+  logger = silentLogger,
 }: {
   webRoot?: string;
   sessions?: SessionHttp;
+  logger?: SafeLogger;
 } = {}): Server {
   const root = webRoot ? resolve(webRoot) : undefined;
   return createServer(async (request, response) => {
@@ -124,7 +127,11 @@ export function createAppServer({
       json(response, 404, { error: "Not found" });
     } catch {
       // Request errors can contain provider/tool secrets; never log raw exceptions.
-      console.error("Request failed.");
+      logger.event(
+        "http.failure",
+        { code: "execution", outcome: "failed" },
+        "error",
+      );
       if (response.headersSent) response.end();
       else json(response, 500, { error: "Internal server error" });
     }

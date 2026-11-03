@@ -4,6 +4,7 @@
   import Selector from "../../lib/ui/Selector.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   import { useSessions } from "./session-client.svelte";
+  import { personaKey } from "../persona/persona-client.svelte";
   const sessions = useSessions();
   let {
     mode = "ask",
@@ -16,14 +17,57 @@
   let folder = $state("");
   let configuration = $state("");
   let model = $state("");
-  const managed = $derived(sessions.catalog.configurations.find(c => c.value === configuration)?.modelSelection === "catalog");
-  const models = $derived(sessions.providers.catalog.providers.flatMap(provider => provider.models.filter(m => m.available).map(m => ({ value: JSON.stringify({ provider: provider.id, id: m.id }), label: `${m.name} · ${provider.name}` }))));
+  const personaOptions = $derived([
+    { value: "", label: "No persona (host defaults)" },
+    ...sessions.personas.items
+      .filter((p) => p.valid && p.revision)
+      .map((p) => ({ value: personaKey(p.ref), label: p.name })),
+  ]);
+  const selectedPersona = $derived(
+    sessions.personas.items.find(
+      (p) => personaKey(p.ref) === sessions.personas.selected,
+    ),
+  );
+  const noReader = $derived(
+    !!selectedPersona?.skillCount &&
+      !sessions.catalog.configurations.find((c) => c.value === configuration)
+        ?.skillReader,
+  );
+  const managed = $derived(
+    sessions.catalog.configurations.find((c) => c.value === configuration)
+      ?.modelSelection === "catalog",
+  );
+  const models = $derived(
+    sessions.providers.catalog.providers.flatMap((provider) =>
+      provider.models
+        .filter((m) => m.available)
+        .map((m) => ({
+          value: JSON.stringify({ provider: provider.id, id: m.id }),
+          label: `${m.name} · ${provider.name}`,
+        })),
+    ),
+  );
   const defaultChoice = $derived(sessions.providers.catalog.defaultModel);
-  const selected = $derived(model ? models.find(m => m.value === model) : defaultChoice ? models.find(m => m.value === JSON.stringify(defaultChoice)) : undefined);
-  const modelOptions = $derived([{ value: "", label: defaultChoice ? `Default: ${selected && !model ? selected.label : defaultChoice.id}` : "Choose a model" }, ...models]);
+  const selected = $derived(
+    model
+      ? models.find((m) => m.value === model)
+      : defaultChoice
+        ? models.find((m) => m.value === JSON.stringify(defaultChoice))
+        : undefined,
+  );
+  const modelOptions = $derived([
+    {
+      value: "",
+      label: defaultChoice
+        ? `Default: ${selected && !model ? selected.label : defaultChoice.id}`
+        : "Choose a model",
+    },
+    ...models,
+  ]);
   $effect(() => {
     if (!folder) folder = sessions.catalog.workspaces[0]?.value ?? "";
-    if (!configuration) configuration = sessions.catalog.configurations[0]?.value ?? "";
+    if (!configuration)
+      configuration = sessions.catalog.configurations[0]?.value ?? "";
   });
   const unavailable = $derived(
     sessions.busy
@@ -31,9 +75,14 @@
       : mode === "ask"
         ? !folder || !configuration
           ? "Configure a workspace and resource configuration on the server first"
-          : managed && (!selected || sessions.providers.loading || sessions.providers.error)
-            ? "Choose an available model in Providers & models; unavailable choices are not replaced"
-            : undefined
+          : sessions.personas.selected && !sessions.personas.selection
+            ? "Selected persona is unavailable. Refresh or choose another saved persona."
+            : managed &&
+                (!selected ||
+                  sessions.providers.loading ||
+                  sessions.providers.error)
+              ? "Choose an available model in Providers & models; unavailable choices are not replaced"
+              : undefined
         : !sessions.selected || sessions.snapshot?.status !== "idle"
           ? "Select an idle session to reply"
           : undefined,
@@ -42,10 +91,28 @@
     if (unavailable) return;
     if (mode === "ask") {
       const revision = draftRevision;
-      const context = JSON.stringify([folder, configuration, model]);
+      const context = JSON.stringify([
+        folder,
+        configuration,
+        model,
+        sessions.personas.selected,
+      ]);
       if (
-        (await sessions.ask(draft, folder, configuration, managed && selected ? JSON.parse(selected.value) : undefined)) &&
-        revision === draftRevision && context === JSON.stringify([folder, configuration, model])
+        (await sessions.ask(
+          draft,
+          folder,
+          configuration,
+          managed && selected ? JSON.parse(selected.value) : undefined,
+          sessions.personas.selection,
+        )) &&
+        revision === draftRevision &&
+        context ===
+          JSON.stringify([
+            folder,
+            configuration,
+            model,
+            sessions.personas.selected,
+          ])
       )
         draft = "";
     } else await sessions.reply();
@@ -117,8 +184,52 @@
           <Icon name="chevronDown" class="w-3 h-3 text-zinc-400" />
         {/snippet}
       </Selector>
-      <Selector label="Resource configuration" options={sessions.catalog.configurations} bind:value={configuration} class={pill}>
-        {#snippet children(value)}<Icon name="person" class="w-3.5 h-3.5 text-zinc-600" /><span>{value || "Configuration"}</span><Icon name="chevronDown" class="w-3 h-3 text-zinc-400" />{/snippet}
+      <Selector
+        label="Persona"
+        options={personaOptions}
+        bind:value={sessions.personas.selected}
+        class={pill}
+      >
+        {#snippet children(value)}<Icon
+            name="person"
+            class="w-3.5 h-3.5 text-zinc-600"
+          /><span class="max-w-28 truncate"
+            >{value === "No persona (host defaults)"
+              ? "Persona"
+              : value || "Persona"}</span
+          ><Icon name="chevronDown" class="w-3 h-3 text-zinc-400" />{/snippet}
+        {#snippet footer()}
+          <p class="text-[11px] text-zinc-500 max-w-64">
+            Saved resources apply to new sessions. Persona selection never
+            grants tools.
+          </p>
+          {#if noReader}<p role="status" class="text-[11px] max-w-64 mt-2">
+              This host policy does not provide a skill-reading tool.
+            </p>{/if}
+          {#if sessions.personas.error}<p
+              role="alert"
+              class="text-[11px] max-w-64"
+            >
+              {sessions.personas.error}
+            </p>{/if}
+          <Button
+            class="source-action mt-2"
+            onclick={() => sessions.personas.refresh()}>Refresh personas</Button
+          >
+          {#if sessions.catalog.configurations.length > 1}<label
+              class="block mt-2 text-[11px]"
+              >Advanced · Host policy<select
+                aria-label="Host policy"
+                class="source-input mt-1"
+                bind:value={configuration}
+                >{#each sessions.catalog.configurations as policy}<option
+                    value={policy.value}>{policy.label}</option
+                  >{/each}</select
+              ></label
+            >{:else}<p class="text-[11px] mt-2">
+              Host policy: {configuration || "Not configured"}
+            </p>{/if}
+        {/snippet}
       </Selector>
       <Button
         aria-label="Style"
@@ -126,18 +237,23 @@
         class={pill}>Style</Button
       >
       {#if managed}<Selector
-        label="Model"
-        options={modelOptions}
-        searchable
-        bind:value={model}
-        class={pill}
-      >
-        {#snippet children(value)}
-          <Icon name="model" class="w-3.5 h-3.5 text-zinc-500" />
-          <span>{value}</span>
-          <Icon name="chevronDown" class="w-3 h-3 text-zinc-400" />
-        {/snippet}
-      </Selector>{:else}<Button class={pill} aria-label="Model: host configuration" unavailable="This resource configuration pins its model on the host. Choose a catalog-enabled configuration to select another model."><Icon name="model" class="w-3.5 h-3.5 text-zinc-500" />Host model</Button>{/if}
+          label="Model"
+          options={modelOptions}
+          searchable
+          bind:value={model}
+          class={pill}
+        >
+          {#snippet children(value)}
+            <Icon name="model" class="w-3.5 h-3.5 text-zinc-500" />
+            <span>{value}</span>
+            <Icon name="chevronDown" class="w-3 h-3 text-zinc-400" />
+          {/snippet}
+        </Selector>{:else}<Button
+          class={pill}
+          aria-label="Model: host configuration"
+          unavailable="This resource configuration pins its model on the host. Choose a catalog-enabled configuration to select another model."
+          ><Icon name="model" class="w-3.5 h-3.5 text-zinc-500" />Host model</Button
+        >{/if}
     {/if}
     <Button
       aria-label={mode === "reply" ? "Send reply" : "Run"}

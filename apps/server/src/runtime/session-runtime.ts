@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { SessionWindow } from "../protocol.js";
 import { messageWindow } from "./message-window.js";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import {
   createAgentSession,
@@ -24,6 +24,18 @@ import type { SessionMetadata } from "./storage.js";
 import type { ProviderSettings } from "./provider-settings.js";
 import type { ModelChoice } from "../provider-protocol.js";
 import { validChoice } from "./provider-storage.js";
+import { PersonaStore } from "../personas/store.js";
+import {
+  admitPersona,
+  restorePersona,
+  type AdmittedResources,
+} from "../personas/admission.js";
+import { ref as validatePersonaRef } from "../personas/schema.js";
+import type {
+  AdmittedPersonaSummary,
+  PersonaSelection,
+} from "../persona-protocol.js";
+import { silentLogger, type SafeLogger } from "../logger.js";
 
 export type SessionStatus =
   | "starting"
@@ -40,6 +52,7 @@ export interface SessionSummary {
   createdAt: string;
   status: SessionStatus | "unloaded";
   interrupted: boolean;
+  persona?: AdmittedPersonaSummary;
 }
 export interface SessionSnapshot extends SessionSummary {
   sequence: number;
@@ -81,11 +94,13 @@ interface HostedSession {
   unsubscribe?: () => void;
   loading?: Promise<SessionSnapshot>;
   extensionErrors: number;
+  persona?: AdmittedResources;
 }
 
 /** Client-independent local owner. No HTTP, browser lifetime, terminal configuration or replay of interrupted tools. */
 export class SessionRuntime {
   private readonly storage: SessionStorage;
+  readonly personas: PersonaStore;
   private readonly live = new Map<string, HostedSession>();
   private accepting = true;
   private readonly inputAdmission = new AsyncLocalStorage<{
@@ -97,6 +112,7 @@ export class SessionRuntime {
   constructor(
     private readonly configuration: RuntimeConfiguration,
     private readonly providers?: ProviderSettings,
+    private readonly logger: SafeLogger = silentLogger,
   ) {
     this.maxLive = configuration.maxLiveSessions ?? 8;
     this.timeout = configuration.operationTimeoutMs ?? 10_000;
@@ -108,6 +124,12 @@ export class SessionRuntime {
     )
       throw new RuntimeError("configuration");
     this.storage = new SessionStorage(configuration.storageDir);
+    this.personas = new PersonaStore(
+      configuration.personas?.directory ??
+        join(dirname(configuration.storageDir), "personas"),
+      configuration.personas?.roots,
+      logger,
+    );
   }
 
   list(): SessionSummary[] {
@@ -126,6 +148,16 @@ export class SessionRuntime {
       createdAt: metadata.createdAt,
       status: hosted?.status ?? "unloaded",
       interrupted: metadata.interrupted || (!hosted && metadata.active),
+      ...(metadata.persona
+        ? {
+            persona: {
+              ref: metadata.persona.ref,
+              name: metadata.persona.name,
+              revision: metadata.persona.revision,
+              effectiveRevision: metadata.persona.effectiveRevision,
+            },
+          }
+        : {}),
     };
   }
   private changed(hosted: HostedSession): void {
@@ -254,6 +286,7 @@ export class SessionRuntime {
     workspace: string;
     configuration: string;
     model?: ModelChoice;
+    persona?: PersonaSelection;
   }): Promise<SessionSnapshot> {
     this.admit();
     if (
@@ -262,7 +295,10 @@ export class SessionRuntime {
       typeof request.configuration !== "string" ||
       Object.keys(request).some(
         (key) =>
-          key !== "workspace" && key !== "configuration" && key !== "model",
+          key !== "workspace" &&
+          key !== "configuration" &&
+          key !== "model" &&
+          key !== "persona",
       )
     )
       throw new RuntimeError("invalid-input");
@@ -273,6 +309,13 @@ export class SessionRuntime {
       throw new RuntimeError("configuration");
     if (request.model !== undefined && !validChoice(request.model))
       throw new RuntimeError("invalid-input");
+    if (request.persona !== undefined) {
+      try {
+        validatePersonaRef(request.persona, true);
+      } catch {
+        throw new RuntimeError("invalid-input");
+      }
+    }
     const id = randomUUID();
     const metadata: SessionMetadata = {
       version: 1,
@@ -287,7 +330,7 @@ export class SessionRuntime {
       hasHistory: false,
       interrupted: false,
     };
-    return this.load(metadata, false);
+    return this.load(metadata, false, request.persona);
   }
   async open(id: string): Promise<SessionSnapshot> {
     this.admit();
@@ -298,6 +341,7 @@ export class SessionRuntime {
   private async load(
     metadata: SessionMetadata,
     reopening: boolean,
+    selection?: PersonaSelection,
   ): Promise<SessionSnapshot> {
     const release = this.storage.claim(metadata.id);
     const hosted: HostedSession = {
@@ -352,6 +396,17 @@ export class SessionRuntime {
         : SessionManager.create(cwd, dir, { id: metadata.id });
       metadata.nativeFile = basename(manager.getSessionFile()!);
       metadata.active = true;
+      if (metadata.persona)
+        hosted.persona = restorePersona(dir, metadata.persona, configuration);
+      else if (selection) {
+        hosted.persona = admitPersona(
+          this.personas,
+          selection,
+          configuration,
+          dir,
+        );
+        metadata.persona = hosted.persona.metadata;
+      }
       this.storage.write(metadata);
       const services = await createSessionServices(
         configuration,
@@ -370,6 +425,17 @@ export class SessionRuntime {
                 "AbortError",
               );
             }
+            try {
+              hosted.persona?.verify();
+            } catch (error) {
+              hosted.error = "resource-integrity";
+              this.logger.event("resource.integrity", {
+                sessionId: metadata.id,
+                outcome: "failed",
+                code: "resource-integrity",
+              });
+              throw error;
+            }
           },
           beforeSettle: async () => {
             const identity = hosted.identity;
@@ -381,6 +447,7 @@ export class SessionRuntime {
           },
         },
         managed,
+        hosted.persona,
       );
       hosted.secret = services.secret;
       let session: AgentSession;
@@ -425,7 +492,7 @@ export class SessionRuntime {
           event.message.stopReason === "error" &&
           !hosted.identity?.abortedBeforeDispatch
         )
-          hosted.error = "execution";
+          hosted.error ??= "execution";
         this.changed(hosted);
       });
       await session.bindExtensions({
@@ -458,11 +525,21 @@ export class SessionRuntime {
       metadata.hasHistory = existsSync(this.storage.nativePath(metadata));
       this.storage.write(metadata);
       hosted.status = "idle";
+      this.logger.event(reopening ? "session.recover" : "session.create", {
+        sessionId: metadata.id,
+        personaId: metadata.persona?.ref.id,
+        outcome: "completed",
+      });
       this.changed(hosted);
       return this.snapshot(metadata.id);
     };
     const operation = initialize().catch(async (error: unknown) => {
       hosted.error = runtimeError(error, "configuration").code;
+      this.logger.event("session.failure", {
+        sessionId: metadata.id,
+        outcome: "failed",
+        code: hosted.error,
+      });
       await this.disposeOwned(hosted);
       throw runtimeError(error, "configuration");
     });
@@ -489,6 +566,18 @@ export class SessionRuntime {
       throw runtimeError(error, "configuration");
     }
   }
+  private verifyPersona(hosted: HostedSession): void {
+    try {
+      hosted.persona?.verify();
+    } catch (error) {
+      this.logger.event("resource.integrity", {
+        sessionId: hosted.metadata.id,
+        outcome: "failed",
+        code: "resource-integrity",
+      });
+      throw error;
+    }
+  }
   private validateText(text: string): void {
     if (
       typeof text !== "string" ||
@@ -503,10 +592,13 @@ export class SessionRuntime {
     const hosted = this.get(id);
     if (hosted.status !== "idle" || hosted.input)
       throw new RuntimeError("busy");
+    this.verifyPersona(hosted);
+    const started = Date.now();
     hosted.metadata.active = true;
     hosted.metadata.interrupted = false;
     this.storage.write(hosted.metadata); // Before any model/tool side effects.
     hosted.status = "running";
+    this.logger.event("session.start", { sessionId: id, outcome: "completed" });
     hosted.error = undefined;
     const identity: RunIdentity = { cancelled: false, settled: false };
     hosted.identity = identity;
@@ -555,6 +647,16 @@ export class SessionRuntime {
         }
         if (hosted.status === "running")
           hosted.status = hosted.error ? "error" : "idle";
+        this.logger.event("session.settle", {
+          sessionId: id,
+          durationMs: Date.now() - started,
+          outcome: hosted.error
+            ? "failed"
+            : identity.cancelled
+              ? "cancelled"
+              : "completed",
+          code: hosted.error,
+        });
         this.changed(hosted);
       }
     })().then((result) =>
@@ -590,6 +692,7 @@ export class SessionRuntime {
       !identity.cancelled &&
       hosted.status === "running" &&
       !session.isIdle;
+    this.verifyPersona(hosted);
     const input = this.inputAdmission.run({ valid }, async () => {
       const outcome = await (kind === "steer"
         ? session.steer(text, undefined, { source: "rpc" })
@@ -620,6 +723,10 @@ export class SessionRuntime {
     const hosted = this.get(id);
     if (hosted.loading) throw new RuntimeError("busy");
     if (!hosted.cancel) {
+      this.logger.event("session.cancel", {
+        sessionId: id,
+        outcome: "completed",
+      });
       if (hosted.identity) hosted.identity.cancelled = true;
       if (hosted.status !== "stopping") hosted.status = "cancelling";
       this.changed(hosted);
@@ -706,9 +813,10 @@ export class SessionRuntime {
   }
   async shutdown(): Promise<void> {
     this.accepting = false;
-    const results = await Promise.allSettled(
-      [...this.live.keys()].map((id) => this.stop(id)),
-    );
+    const results = await Promise.allSettled([
+      this.personas.shutdown(),
+      ...[...this.live.keys()].map((id) => this.stop(id)),
+    ]);
     const failed = results.find((result) => result.status === "rejected");
     if (failed?.status === "rejected")
       throw runtimeError(failed.reason, "execution");

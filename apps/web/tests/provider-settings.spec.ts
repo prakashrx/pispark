@@ -86,10 +86,18 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   await expect(ask).toHaveValue("Keep shared Ask draft");
   await page
     .getByRole("button", {
-      name: "Resource configuration: Test-only deterministic",
+      name: "Persona: No persona (host defaults)",
     })
     .click();
-  await page.getByRole("option", { name: "Catalog resources" }).click();
+  await page
+    .getByRole("combobox", { name: "Host policy", exact: true })
+    .selectOption("Catalog resources");
+  await page
+    .getByRole("button", {
+      name: "Persona: No persona (host defaults)",
+      exact: true,
+    })
+    .click();
   await expect(
     page.getByRole("button", { name: /Model: Default:/ }),
   ).toContainText("Deterministic");

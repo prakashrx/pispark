@@ -26,6 +26,7 @@ import {
 } from "./native-model-runtime.js";
 import { ProviderError } from "./provider-errors.js";
 import type { ProviderSettings } from "./provider-settings.js";
+import type { AdmittedResources } from "../personas/admission.js";
 
 /** Trusted server configuration, never a client command payload. Paths are exact local files, not discovery roots. */
 export interface SessionConfiguration {
@@ -42,6 +43,8 @@ export interface SessionConfiguration {
 
 export interface RuntimeConfiguration {
   storageDir: string;
+  logging?: { directory?: string; console?: boolean };
+  personas?: { directory: string; roots?: Record<string, string> };
   providerSettings?: {
     directory: string;
     modelsPath?: string | null;
@@ -95,6 +98,7 @@ export async function createSessionServices(
     beforeProviderDispatch: () => void;
   },
   managed?: Awaited<ReturnType<ProviderSettings["select"]>>,
+  persona?: AdmittedResources,
 ) {
   const secret =
     "secretRef" in configuration.credential
@@ -195,15 +199,17 @@ export async function createSessionServices(
   );
   const [extensions, instructions, skills] = await Promise.all([
     exactFiles(configuration.extensions),
-    exactFiles(configuration.instructions),
-    exactFiles(configuration.skills),
+    persona ? [] : exactFiles(configuration.instructions),
+    persona ? persona.skillPaths : exactFiles(configuration.skills),
   ]);
-  const agentsFiles = await Promise.all(
-    instructions.map(async (path) => ({
-      path,
-      content: await readFile(path, "utf8"),
-    })),
-  );
+  const agentsFiles =
+    persona?.agentsFiles ??
+    (await Promise.all(
+      instructions.map(async (path) => ({
+        path,
+        content: await readFile(path, "utf8"),
+      })),
+    ));
   const loadedSkills = loadSkills({
     cwd,
     agentDir,
@@ -264,7 +270,7 @@ export async function createSessionServices(
     getAgentsFiles: () => ({ agentsFiles }),
     getSystemPrompt: () => configuration.systemPrompt,
     getSystemPromptSource: () => undefined,
-    getAppendSystemPrompt: () => [],
+    getAppendSystemPrompt: () => persona?.instructions ?? [],
     getAppendSystemPromptSources: () => [],
     extendResources: unsupported,
     reload: unsupported,

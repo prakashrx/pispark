@@ -14,6 +14,7 @@
     searchable = false,
     class: className = "",
     children,
+    footer,
   }: {
     label: string;
     options: Option[];
@@ -22,6 +23,7 @@
     searchable?: boolean;
     class?: string;
     children?: Snippet<[string]>;
+    footer?: Snippet;
   } = $props();
   let open = $state(false);
   let alignLeft = $state(false);
@@ -53,7 +55,7 @@
     alignLeft = false;
     open = true;
     await tick();
-    const popup = root?.querySelector<HTMLElement>('[data-selector-popup]');
+    const popup = root?.querySelector<HTMLElement>("[data-selector-popup]");
     alignLeft = (popup?.getBoundingClientRect().left ?? 0) < 8;
     search = root?.querySelector("input") ?? null;
     if (searchable) search?.focus();
@@ -68,7 +70,7 @@
       event.preventDefault();
       close(true);
     }
-    if (event.key === "Tab") close();
+    if (event.key === "Tab" && !footer) close();
     if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
       event.preventDefault();
       active =
@@ -92,6 +94,14 @@
   }
 </script>
 
+<svelte:window
+  onkeydown={(event) => {
+    if (open && footer && event.key === "Escape") {
+      event.preventDefault();
+      close(true);
+    }
+  }}
+/>
 <svelte:document
   onpointerdown={(event) => {
     if (open && !root?.contains(event.target as Node)) close();
@@ -103,7 +113,13 @@
       >{/each}
   </select>
 {:else}
-  <div class="relative inline-flex min-w-0" bind:this={root}>
+  <div
+    class="relative inline-flex min-w-0"
+    bind:this={root}
+    onfocusout={(event) => {
+      if (!root?.contains(event.relatedTarget as Node)) close();
+    }}
+  >
     <Button
       class={className}
       aria-label={`${label}: ${selected}`}
@@ -123,7 +139,8 @@
     {#if open}
       <div
         data-selector-popup
-        class={'absolute top-full z-50 mt-1 min-w-48 max-w-[85vw] rounded-lg border border-gray-200 bg-white p-1 text-xs text-gray-700 shadow-lg ' + (alignLeft ? 'left-0' : 'right-0')}
+        class={"absolute top-full z-50 mt-1 min-w-48 max-w-[85vw] rounded-lg border border-gray-200 bg-white p-1 text-xs text-gray-700 shadow-lg " +
+          (alignLeft ? "left-0" : "right-0")}
       >
         {#if searchable}
           <Input
@@ -169,6 +186,9 @@
               No matching options
             </p>{/each}
         </div>
+        {#if footer}<div class="border-t border-gray-100 mt-1 p-2">
+            {@render footer()}
+          </div>{/if}
       </div>
     {/if}
   </div>

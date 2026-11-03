@@ -31,7 +31,7 @@ export default {
 };
 ```
 
-This is an illustrative operator configuration, not a test provider or automatically enabled account. Use an absolute Windows path where applicable. The module's npm imports must resolve to the pinned installation (for example an operator-managed directory beneath the checkout with its own ignore rule, or explicit file-URL imports to the installed dependency). Do not put secrets in the module. The runtime validates the selected model, exact admitted resource files and backend workspace before execution. Native tools are cwd-bound, **not filesystem-confined**. Configuration/workspace keys (up to64 each,128 characters/key) are the browser's choices, not arbitrary browser-supplied host paths. Persona/style composition, remote/multi-user hosting, marketplace and extension Svelte hosting are deferred. Native provider OAuth is implemented through the browser bridge.
+This is an illustrative operator configuration, not a test provider or automatically enabled account. Use an absolute Windows path where applicable. The module's npm imports must resolve to the pinned installation (for example an operator-managed directory beneath the checkout with its own ignore rule, or explicit file-URL imports to the installed dependency). Do not put secrets in the module. The runtime validates the selected model, exact admitted resource files and backend workspace before execution. Native tools are cwd-bound, **not filesystem-confined**. Configuration/workspace keys (up to64 each,128 characters/key) are the browser's choices, not arbitrary browser-supplied host paths. [Local persona instruction/skill composition](personas.md) is implemented. Styles, remote/multi-user hosting, marketplace and extension Svelte hosting are deferred. Native provider OAuth is implemented through the browser bridge.
 
 ### Required runtime security gate
 
@@ -43,7 +43,7 @@ Development: `npm run dev` admits the exact Vite origin `http://127.0.0.1:5173` 
 
 ## Version1 wire contract
 
-Types: `apps/server/src/protocol.ts` and `provider-protocol.ts`. Browser-independent HTTP JSON plus SSE; no arbitrary extension EventBus, tool, credential-read, resource-loading or native-file RPC.
+Types: `apps/server/src/protocol.ts`, `provider-protocol.ts` and `persona-protocol.ts`. Persona management has its [own bounded operation table](personas.md#http-management). Browser-independent HTTP JSON plus SSE; no arbitrary extension EventBus, tool, credential-read, resource-loading or native-file RPC.
 
 | Endpoint | Meaning |
 | --- | --- |
@@ -54,7 +54,7 @@ Types: `apps/server/src/protocol.ts` and `provider-protocol.ts`. Browser-indepen
 | `GET /api/sessions/:uuid/events` | SSE `snapshot` events: initial boundary followed by replacement windows |
 | `GET /api/sessions/:uuid/window?before=N` | Bounded older window in current native context, not a durable history cursor |
 
-Commands: `create {workspace,configuration,model?}`, `open/cancel/stop {sessionId}`, `start/steer/follow-up {sessionId,text}`. All require `commandId`; unknown fields are rejected. Example:
+Commands: `create {workspace,configuration,model?,persona?}`, `open/cancel/stop {sessionId}`, `start/steer/follow-up {sessionId,text}`. All require `commandId`; unknown fields are rejected. Optional persona selection is `{root,path,id,revision}` for saved resources only; it is independent of model and host policy. Session summaries expose admitted persona identity/name/revisions, not full resources. Example:
 
 ```json
 {"commandId":"e4e803d2-72f3-4b3b-855b-a64814f18e43","type":"start","sessionId":"4f964eb2-43fa-4122-8b48-c81ea576c978","text":"Read the project overview."}

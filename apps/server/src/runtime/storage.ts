@@ -17,6 +17,10 @@ import { basename, join, resolve } from "node:path";
 import { RuntimeError } from "./errors.js";
 import { validChoice } from "./provider-storage.js";
 import type { ModelChoice } from "../provider-protocol.js";
+import {
+  validAdmissionMetadata,
+  type PersonaAdmissionMetadata,
+} from "../personas/admission.js";
 
 export interface SessionMetadata {
   version: 1;
@@ -24,6 +28,7 @@ export interface SessionMetadata {
   workspace: string;
   configuration: string;
   model?: ModelChoice;
+  persona?: PersonaAdmissionMetadata;
   cwd: string;
   createdAt: string;
   nativeFile: string;
@@ -72,6 +77,8 @@ export class SessionStorage {
       const value = JSON.parse(
         readFileSync(join(this.directory(id), "host.json"), "utf8"),
       ) as SessionMetadata;
+      if (value.persona !== undefined && !validAdmissionMetadata(value.persona))
+        throw new RuntimeError("resource-integrity");
       if (
         value.version !== 1 ||
         value.id !== id ||

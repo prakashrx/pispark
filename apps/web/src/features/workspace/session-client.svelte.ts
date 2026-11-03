@@ -10,6 +10,8 @@ export type { NativeMessage } from "../../../../server/src/protocol";
 import { snapshots } from "./snapshot-stream";
 import { ProviderClient } from "../settings/provider-client.svelte";
 import type { ModelChoice } from "../../../../server/src/provider-protocol";
+import type { PersonaSelection } from "../../../../server/src/persona-protocol";
+import { PersonaClient } from "../persona/persona-client.svelte";
 const context = Symbol("session-client");
 type InputCommand = Command extends infer C
   ? C extends Command
@@ -20,6 +22,7 @@ type InputCommand = Command extends infer C
 /** Transport is confined here; components consume state/actions and never persist canonical messages. */
 export class SessionClient {
   readonly providers = new ProviderClient();
+  readonly personas = new PersonaClient();
   catalog = $state<Catalog>({ workspaces: [], configurations: [] });
   sessions = $state<SessionInfo[]>([]);
   selected = $state("");
@@ -43,6 +46,12 @@ export class SessionClient {
     this.connection = "Reconnecting";
   };
   private online = () => this.reconnect();
+  private beforeUnload = (event: BeforeUnloadEvent) => {
+    if (this.personas.dirty || this.personas.hasUnsavedFiles) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  };
   private async json<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(path, {
       ...init,
@@ -74,6 +83,8 @@ export class SessionClient {
   }
   async mount() {
     void this.providers.refresh();
+    void this.personas.refresh();
+    window.addEventListener("beforeunload", this.beforeUnload);
     window.addEventListener("offline", this.offline);
     window.addEventListener("online", this.online);
     try {
@@ -263,6 +274,7 @@ export class SessionClient {
     workspace: string,
     configuration: string,
     model?: ModelChoice,
+    persona?: PersonaSelection,
   ): Promise<boolean> {
     if (this.busy || !text.trim() || !workspace || !configuration) return false;
     this.busy = true;
@@ -275,6 +287,7 @@ export class SessionClient {
           workspace,
           configuration,
           ...(model ? { model } : {}),
+          ...(persona ? { persona } : {}),
         }),
       );
       id = created.sessionId!;
@@ -360,6 +373,7 @@ export class SessionClient {
     this.source?.abort();
     this.controller.abort();
     clearInterval(this.refreshTimer);
+    window.removeEventListener("beforeunload", this.beforeUnload);
     window.removeEventListener("offline", this.offline);
     window.removeEventListener("online", this.online);
   }

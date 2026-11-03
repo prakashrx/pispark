@@ -1,4 +1,5 @@
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { dirname, join } from "node:path";
 import type {
   AssistantMessage,
   Model,
@@ -122,6 +123,45 @@ export class LocalProviderControl {
           message.stopReason = "error";
           message.errorMessage = `Fixture error ${options?.apiKey ?? ""}`;
           events.push({ type: "error", reason: "error", error: message });
+        } else if (
+          text === "read-skill-support" &&
+          context.messages.filter((m) => m.role === "toolResult").length < 2
+        ) {
+          const system = context.messages
+            .filter((m) => m.role === "system")
+            .map(
+              (m) =>
+                `${typeof m.content === "string" ? m.content : m.content.map((c) => c.text).join("\n")}\n${Object.values(m.sections ?? {}).join("\n")}`,
+            )
+            .join("\n");
+          const location = /<location>(.*?)<\/location>/
+            .exec(system)?.[1]
+            ?.replaceAll("&amp;", "&")
+            .replaceAll("&quot;", '"')
+            .replaceAll("&apos;", "'")
+            .replaceAll("&lt;", "<")
+            .replaceAll("&gt;", ">");
+          if (!location) {
+            message.stopReason = "error";
+            message.errorMessage = "No advertised native skill";
+            events.push({ type: "error", reason: "error", error: message });
+            return;
+          }
+          const support = context.messages.some((m) => m.role === "toolResult");
+          message.content = [
+            {
+              type: "toolCall",
+              id: support ? "skill-support" : "skill-instructions",
+              name: "read",
+              arguments: {
+                path: support
+                  ? join(dirname(location), "references", "check.md")
+                  : location,
+              },
+            },
+          ];
+          message.stopReason = "toolUse";
+          events.push({ type: "done", reason: "toolUse", message });
         } else if (text.startsWith("read:") && last?.role !== "toolResult") {
           message.content = [
             {

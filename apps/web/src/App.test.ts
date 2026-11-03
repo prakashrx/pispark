@@ -11,7 +11,11 @@ beforeEach(() => {
           JSON.stringify(
             url === "/api/catalog"
               ? { workspaces: [], configurations: [] }
-              : url === "/api/providers" ? { providers: [], defaultModel: null, networkBlocked: false } : { sessions: [], truncated: false },
+              : url.startsWith("/api/personas")
+                ? { personas: [] }
+                : url === "/api/providers"
+                  ? { providers: [], defaultModel: null, networkBlocked: false }
+                  : { sessions: [], truncated: false },
           ),
         ),
     ),
@@ -89,9 +93,7 @@ test("navigates among only the supplied settings pages and filters navigation", 
   expect(screen.getByRole("link", { name: "Sources" })).toBeTruthy();
   expect(screen.queryByRole("link", { name: /^General$/ })).toBeNull();
   await navigate("persona");
-  expect(
-    screen.getByRole("heading", { name: "Developer Persona" }),
-  ).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Personas" })).toBeTruthy();
   await navigate("sources");
   expect(
     screen.getByRole("heading", { name: /Sources 3 active/ }),
@@ -122,37 +124,13 @@ test("general preferences change locally and reset to source defaults", async ()
   ).toBe("true");
 });
 
-test("persona fields, prompts, commands and resource removal edit only local state", async () => {
+test("persona empty state is real and offers creation without fixture capabilities", async () => {
   window.location.hash = "/persona";
   render(App);
-  await fireEvent.input(screen.getByRole("textbox", { name: "Display Name" }), {
-    target: { value: "My developer" },
-  });
-  await fireEvent.click(
-    screen.getByRole("button", { name: "Add Text Prompt" }),
-  );
-  expect(screen.getByRole("textbox", { name: "Text Prompt" })).toBeTruthy();
-  await fireEvent.click(
-    screen.getByRole("button", {
-      name: "Remove git-diff-checker from local draft",
-    }),
-  );
-  expect(screen.queryByText("git-diff-checker")).toBeNull();
-  await fireEvent.click(screen.getByRole("button", { name: "Edit /review" }));
-  await fireEvent.input(
-    screen.getByRole("textbox", { name: "/review local draft" }),
-    { target: { value: "Review carefully." } },
-  );
-  await fireEvent.click(screen.getByRole("button", { name: "Edit /review" }));
-  expect(screen.getByText("Review carefully.")).toBeTruthy();
-  expect(
-    screen
-      .getByRole("button", { name: "Inspect JSON" })
-      .getAttribute("aria-disabled"),
-  ).toBe("true");
-  expect(
-    vi.mocked(fetch).mock.calls.every((call) => call[1]?.method !== "POST"),
-  ).toBe(true);
+  expect(await screen.findByText(/No personas yet/)).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Create persona" })).toBeTruthy();
+  expect(screen.queryByText("v1.4.2")).toBeNull();
+  expect(screen.queryByText("Active in session")).toBeNull();
 });
 
 test("keeps the mounted Ask and independent reply drafts across every route", async () => {

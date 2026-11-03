@@ -1,103 +1,120 @@
 <script lang="ts">
   import Button from "../../lib/ui/Button.svelte";
-  import Symbol from "../../lib/ui/Symbol.svelte";
+  import Input from "../../lib/ui/Input.svelte";
   import Textarea from "../../lib/ui/Textarea.svelte";
   import Section from "../../lib/ui/Section.svelte";
-  import type { PersonaPrompt } from "./fixtures";
-  let { items = $bindable([]) }: { items: PersonaPrompt[] } = $props();
-  let nextId = 3;
+  import OrderControls from "./OrderControls.svelte";
+  import InstructionFile from "./InstructionFile.svelte";
+  import type {
+    PersonaInstruction,
+    PersonaRef,
+  } from "../../../../server/src/persona-protocol";
+  import type { PersonaClient } from "./persona-client.svelte";
+  let {
+    items = $bindable([]),
+    reference,
+    declared = [],
+    readonly = false,
+    client,
+  }: {
+    items: PersonaInstruction[];
+    reference: PersonaRef;
+    declared?: string[];
+    readonly?: boolean;
+    client: PersonaClient;
+  } = $props();
+  function move(from: number, to: number) {
+    const next = [...items];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item!);
+    items = next;
+  }
+  function add(file = false) {
+    let n = 1;
+    while (items.some((i) => i.id === `instruction-${n}`)) n++;
+    items = [
+      ...items,
+      file
+        ? { id: `instruction-${n}`, file: "rules.md" }
+        : { id: `instruction-${n}`, text: "" },
+    ];
+  }
 </script>
 
 <Section
-  title="Prompts"
-  description="Set base system instructions either by typing directly or attaching a local file"
+  title="System instructions"
+  description="Ordered text or UTF-8 .md/.txt references on the backend host. Replacements retain their inherited position."
   class="space-y-3 pt-2"
 >
-  <div class="space-y-3">
-    {#each items as item (item.id)}
-      <div
-        class={item.kind === "Text"
-          ? "border border-gray-200 rounded-xl p-4 bg-white shadow-sm space-y-3"
-          : "border border-gray-200 rounded-xl p-4 bg-white shadow-sm flex items-center justify-between"}
-      >
-        {#if item.kind === "Text"}
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-2">
-              <span class="text-xs font-semibold text-neutral-800"
-                >{item.name}</span
-              ><span
-                class="text-[10px] font-medium bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-full"
-                >Text</span
-              >
-            </div>
-            <Button
-              class="text-neutral-400 hover:text-red-700 transition p-1 rounded"
-              aria-label={`Remove ${item.name} from local draft`}
-              title="Remove"
-              onclick={() => {
-                items = items.filter((value) => value.id !== item.id);
-              }}><Symbol name="delete" class="text-base" /></Button
-            >
-          </div>
-          <Textarea
-            label={item.name}
-            class="w-full text-xs font-mono bg-neutral-50 border border-gray-200 rounded-lg p-2.5 text-neutral-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-neutral-400 transition leading-relaxed resize-none"
-            rows={3}
-            bind:value={item.content}
-          />
-        {:else}
-          <div class="space-y-1">
-            <div class="flex items-center space-x-2">
-              <span class="text-xs font-semibold text-neutral-800"
-                >{item.name}</span
-              ><span
-                class="text-[10px] font-medium bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-full"
-                >File</span
-              >
-            </div>
-            <div
-              class="flex items-center space-x-1.5 text-xs text-neutral-600 font-mono"
-            >
-              <Symbol
-                name="description"
-                class="text-sm text-neutral-400"
-              /><span>{item.content}</span>
-            </div>
-          </div>
-          <div class="flex items-center space-x-2">
-            <Button
-              class="text-xs text-neutral-700 hover:text-neutral-900 border border-gray-200 hover:border-gray-300 px-2.5 py-1.5 rounded-lg transition font-medium bg-white"
-              unavailable="File selection must resolve on the backend machine"
-              >Change file</Button
-            ><Button
-              class="text-neutral-400 hover:text-red-700 transition p-1 rounded"
-              aria-label={`Remove ${item.name} from local draft`}
-              title="Remove"
-              onclick={() => {
-                items = items.filter((value) => value.id !== item.id);
-              }}><Symbol name="delete" class="text-base" /></Button
-            >
-          </div>
-        {/if}
-      </div>
-    {/each}
-  </div>
-  <div class="flex items-center space-x-2 pt-1">
-    <Button
-      class="persona-add"
-      onclick={() => {
-        items = [
-          ...items,
-          { id: nextId++, name: "Text Prompt", kind: "Text", content: "" },
-        ];
-      }}
-      ><Symbol name="add" class="text-sm" /><span>Add Text Prompt</span></Button
+  {#each items as item, index (item)}
+    <div
+      class="border border-gray-200 rounded-xl p-4 bg-white shadow-sm space-y-3"
     >
+      <div class="flex justify-between items-center gap-2 flex-wrap">
+        <Input
+          label={`Instruction ${index + 1} ID`}
+          class="source-input max-w-xs"
+          bind:value={item.id}
+          disabled={readonly}
+          maxlength={64}
+        />
+        <OrderControls
+          {index}
+          count={items.length}
+          label={`instruction ${index + 1}`}
+          {move}
+          remove={() => (items = items.filter((_, i) => i !== index))}
+          disabled={readonly}
+        />
+      </div>
+      <label class="text-xs flex items-center gap-2"
+        ><input
+          type="checkbox"
+          checked={item.replace === true}
+          disabled={readonly}
+          onchange={(event) => {
+            if (event.currentTarget.checked) item.replace = true;
+            else delete item.replace;
+          }}
+        />Replace inherited ID</label
+      >
+      {#if item.file !== undefined}
+        <Input
+          label={`Instruction ${index + 1} relative file`}
+          class="source-input"
+          bind:value={item.file}
+          disabled={readonly}
+        />
+        {#key `${reference.id}/${item.file}`}<InstructionFile
+            {reference}
+            path={item.file}
+            {readonly}
+            declared={declared.includes(item.file)}
+            {client}
+          />{/key}
+      {:else}
+        <Textarea
+          label={`Instruction ${index + 1} text`}
+          class="source-input"
+          rows={4}
+          bind:value={item.text}
+          disabled={readonly}
+        />
+      {/if}
+    </div>
+  {/each}
+  {#if !items.length}<p class="text-xs text-neutral-500">
+      No local instructions.
+    </p>{/if}
+  <div class="flex gap-2 flex-wrap">
     <Button
       class="persona-add"
-      unavailable="File selection must resolve on the backend machine"
-      ><Symbol name="attach_file" class="text-sm" /><span>Add File Prompt</span
-      ></Button
+      disabled={readonly || items.length >= 32}
+      onclick={() => add()}>Add text instruction</Button
+    ><Button
+      class="persona-add"
+      disabled={readonly || items.length >= 32}
+      onclick={() => add(true)}>Add file instruction</Button
     >
   </div>
 </Section>

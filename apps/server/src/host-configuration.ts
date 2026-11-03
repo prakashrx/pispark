@@ -69,6 +69,23 @@ export async function hostConfiguration(): Promise<RuntimeConfiguration> {
     throw new Error(
       "PiSpark provider paths must be explicit absolute host paths.",
     );
+  if (
+    configuration.logging?.directory &&
+    !isAbsolute(configuration.logging.directory)
+  )
+    throw new Error("PiSpark log directory must be an absolute host path.");
+  if (
+    configuration.personas &&
+    (!isAbsolute(configuration.personas.directory) ||
+      Object.keys(configuration.personas.roots ?? {}).length > 15 ||
+      Object.entries(configuration.personas.roots ?? {}).some(
+        ([key, path]) =>
+          key === "managed" ||
+          !/^[a-z][a-z0-9-]{0,63}$/.test(key) ||
+          !isAbsolute(path),
+      ))
+  )
+    throw new Error("Invalid PiSpark persona roots.");
   return configuration;
 }
 export function catalog(configuration: RuntimeConfiguration): Catalog {
@@ -84,6 +101,9 @@ export function catalog(configuration: RuntimeConfiguration): Catalog {
     configurations: options(Object.keys(configuration.configurations)).map(
       (option) => ({
         ...option,
+        skillReader: configuration.configurations[option.value]!.tools.some(
+          (tool) => tool === "read" || tool === "bash",
+        ),
         modelSelection:
           "stored" in configuration.configurations[option.value]!.credential
             ? "catalog"
