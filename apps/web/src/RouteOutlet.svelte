@@ -2,12 +2,11 @@
   import type { Page } from "./routes";
   import Conversation from "./features/workspace/Conversation.svelte";
   import Composer from "./features/workspace/Composer.svelte";
+  import ProvidersPage from "./features/settings/providers/ProvidersPage.svelte";
   import GeneralSettings from "./features/settings/GeneralSettings.svelte";
   import DeveloperPersona from "./features/persona/DeveloperPersona.svelte";
   import Sources from "./features/sources/Sources.svelte";
   let { page }: { page: Page } = $props();
-  // The session reply is separate from the shell's global Ask draft.
-  let replyDraft = $state("");
 </script>
 
 <div
@@ -19,9 +18,11 @@
     <Conversation />
     <footer class="p-6 pt-0 bg-transparent flex justify-center w-full z-10">
       <div class="w-full max-w-4xl relative">
-        <Composer mode="reply" bind:draft={replyDraft} />
+        <Composer mode="reply" />
       </div>
     </footer>
+  {:else if page === "providers"}
+    <ProvidersPage />
   {:else if page === "settings"}
     <GeneralSettings />
   {:else if page === "persona"}

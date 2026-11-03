@@ -1,59 +1,51 @@
 # Working on PiSpark
 
-## Product and engineering principles
+## Start here: VISION.md is authoritative
 
-- Preserve Pi's simplicity: small explicit modules, clear ownership, and extensibility through deliberate boundaries—not layers of speculative abstractions.
-- Build the smallest useful slice. Keep the project flexible; distinguish confirmed requirements, proposals, mockups, and implemented behavior.
-- Read existing code and relevant documentation before changing it. Reuse established patterns; avoid parallel implementations of the same control or behavior.
-- Prefer readable typed functions and composition. Avoid giant components, catch-all services, unnecessary class hierarchies, generic factories, and configuration-driven frameworks without a demonstrated need.
-- Keep dependencies purposeful. Do not add a library or package boundary to solve a hypothetical future problem.
+**Read [VISION.md](VISION.md) in full before planning, implementing, or reviewing work. Re-read the relevant sections before making architectural or product decisions.**
 
-## Design approval comes first
+**Pi runs the agent. PiSpark hosts the experience. Extensions make it their own.**
 
-- The original green-tinted starter dashboard is not an approved visual direction. Do not extend its decorative styling.
-- Before substantial UI changes, present reviewable mockups for all affected screens and interaction states, with a locally persisted comment layer, and obtain explicit approval. Record decisions; approval of the foundation is not approval of its appearance.
-- Keep unapproved prototypes separate from production application code. Implement designs only after explicit acceptance; commit or push only with publication authorization. Preserve feedback and reset affected approvals when a design is revised. The current four-screen frontend and shared shell are accepted for publication; backend integration remains unapproved.
-- Aim for a clean, professional, quiet workspace: restrained neutral surfaces, readable typography, subtle borders, consistent spacing, and minimal distraction.
-- Avoid hero slogans, promotional cards, decorative gradients, oversized headings, and saturated background palettes. Use color sparingly for meaningful states.
-- Do not select a final palette or expand the design without approval. A small green status dot does not imply a green application theme.
+VISION.md is the single source of truth for product direction and architectural principles. This file translates it into working rules; README and architecture docs describe current implementation, not competing visions. Historical plans, prototypes, fixtures, and task notes do not override it. If guidance conflicts, flag and reconcile the conflict with VISION.md rather than silently following stale instructions. Do not rewrite the vision to justify an implementation.
 
-## Required workspace direction
+- At task start, identify the relevant vision sections, intended outcome, and non-goals.
+- In design proposals, explain what Pi already provides and what PiSpark genuinely needs to own.
+- Before delivery/review, check the result against the vision and report deviations or unresolved decisions.
+- Include this authority and relevant vision context in delegated task handoffs. Task creation, a vision statement, or a passing review is not implementation or publication authorization.
 
-- Collapsible sidebar with Sessions, Archived, and Settings; sessions grouped by day in collapsible sections.
-- Logo at the upper left with a simple status dot. Give status an accessible text equivalent and report what it actually measures.
-- A top Ask bar spans the available content width. Put folder, Persona, optional Style, and Model selectors on its right; adapt cleanly on narrow screens.
-- Show Style only when the selected persona supplies styles.
-- Folder selection supports typing and a clean autocomplete dropdown. Resolve folders on the backend's machine, not implicitly on the browser's machine.
-- The global Ask composer and session follow-up composer share controls, styling, and interaction conventions. Clearly distinguish launching a session from replying to one.
-- These are enduring requirements. The current frontend uses local fixtures; folder resolution, sessions, and other runtime behavior still require backend integration.
+## Non-negotiable ownership boundaries
 
-## Frontend: reusable, accessible, consistent
+- **Pi is the engine:** use its Agent SDK and native extension/resource mechanisms. Do not reproduce model interaction, tools, context, compaction, or extension lifecycle in a competing agent framework. Keep integration small and explicit.
+- **PiSpark is the workspace:** own session hosting, navigation, configuration experience, presentation, and client communication. Backend-owned sessions must be independent of browser lifetime and support concurrent independent operation; future clients use the same runtime.
+- **Extensions own their experiences:** ordinary Pi extensions may add their own Svelte components and interactions. PiSpark hosts placement, loading, mounting, updating, disposal, and communication—not domain-specific extension behavior.
+- Do not limit extension UI to built-in widgets or invent a separate mandatory PiSpark extension framework, manifest, or package ecosystem when Pi's native mechanisms suffice. Web presentation is additive; retain terminal compatibility where supported.
+- Treat `host.call()` and `host.on()` in the vision as conceptual communication semantics, not an already implemented or frozen API. Keep transport details out of extension-owned UI and domain semantics out of the host.
+- **Personas compose capabilities**, not just personality prompts. Resolve instructions, skills, extensions, commands, model preferences, and resources through Pi's native capabilities wherever possible. Sources provide discovery/configuration UX, not a competing ecosystem.
+- Isolate PiSpark configuration, credentials, resources, and session history from terminal Pi unless explicitly configured otherwise. Explicit loading is not a security sandbox.
+- Third-party backend code and browser components are deliberate trust boundaries. Validate client inputs, keep secrets server-side, and define resource ownership, errors, cancellation, and cleanup; do not claim isolation that is not implemented.
 
-- Put generic independent UI primitives in a common frontend module area; compose them into feature-specific components.
-- Buttons, icon buttons, inputs, textareas, checkboxes, selectors, dropdown surfaces, and focus/disabled/error states must use shared primitives and styles—not bespoke copies in each feature.
-- Use one reusable selector/combobox foundation for folder, persona, style, model, and other applicable pickers. Preserve correct semantics: action menus and value selection are not interchangeable.
-- Generic controls accept typed data, values, and callbacks; they do not know about personas, sessions, API routes, or working directories. Domain adapters supply that behavior.
-- Share a composer foundation between Ask and follow-up inputs; configure differences explicitly rather than duplicating markup and styles.
-- Centralize colors, typography, spacing, borders, and state styles in design tokens. Avoid arbitrary per-screen values and inline theme overrides.
-- Prefer semantic native elements and Svelte composition. Keep reactive state local unless sharing is actually needed; do not introduce a global store for every interaction.
-- Support keyboard navigation, labels, visible focus, Escape/dismissal, focus return, loading/error/empty states, and mobile layout. Status cannot rely on color alone.
-- Keep mock data and demo behavior visibly distinct from real runtime behavior. Never fabricate successful agent runs or backend capabilities.
+## Backend work starts with evidence and approval
 
-## Backend: simple modules, independent runtime
+Follow VISION.md §11: inspect the current Pi SDK and extension APIs before proposing substantial integration. Present the smallest coherent design, identify unresolved decisions, and obtain approval before substantial implementation.
 
-- Keep HTTP handlers, runtime operations, and persistence responsibilities separate where they exist. Extract concrete shared behavior, not speculative service/repository frameworks.
-- Sessions belong to the backend runtime. Web and future messaging channels are interfaces to it; headless use must not require a web UI.
-- Integrate Pi through its SDK with explicit resource loading. Never silently inherit terminal Pi's credentials, settings, skills, extensions, or sessions.
-- Validate external input at boundaries, return clear errors, and support cancellation and cleanup for owned resources. Do not swallow failures.
-- Keep secrets server-side and logs safe. Configuration/process isolation is not a security sandbox; do not claim otherwise.
-- Add extension interfaces only for demonstrated needs, with narrow contracts and clear ownership. Avoid exposing internal mutable state as a public API.
+Start with real agent execution and session interaction, then resource composition and extension-to-web communication. Account for extension hosting from the beginning without implementing every capability upfront. Conceptual responsibilities are not prescribed services, packages, classes, protocols, databases, or worker models.
 
-## Work tracking and delivery
+## Quiet, consistent, extensible UI
 
-- When local `.work/` records exist, read the relevant goal and task metadata, track checkpoints, and preserve references and evidence. Use descriptive kebab-case work/task names, not numbered placeholders.
-- Optional `PLAN.md` files contain high-level outcomes only. Put detailed findings, mockups, attachments, and decisions in the relevant `files/` directory.
-- `.work/` is private and ignored. Public contributors must not need it or a globally installed skill; keep shareable project guidance in this file and `docs/`.
-- Keep chat updates concise. Do not treat an unapproved proposal as a settled decision, or task creation as authorization for unrelated implementation or publication.
-- Test changed behavior. Run `npm run check`, `npm test`, `npm run build`, and `npm run smoke` for code changes; Makefile targets wrap the same commands.
-- For UI changes, verify keyboard interactions, desktop/mobile layouts, and consistent control states in a real browser. Automated checks do not replace visual approval.
-- Review the final diff for accidental files, credentials, private artifacts, regressions, and unnecessary complexity. Report what passed, what was skipped, and what remains incomplete.
+- **Quiet by default. Powerful when you reach for it.** Preserve the accepted four-screen frontend and shared shell unless a visual change is approved. Keep unapproved prototypes separate; do not expand or redesign the product silently.
+- Keep one shared application shell and persistent global Ask across routes. Use common controls, tokens, geometry, and state ownership—not page-specific copies or cosmetic variants. Ask and reply share a foundation but retain distinct context/drafts.
+- Ask context consists of working directory, persona, optional persona-defined style, and model. Folder paths belong to the backend host, not implicitly the browser machine.
+- Prefer small typed Svelte components, semantic elements, and local state unless sharing is required. Generic primitives stay independent of domain/API concerns; feature components supply them.
+- Cover keyboard navigation, labels, focus, dismissal/focus return, empty/error/loading states, and narrow/wide layouts. Status must not depend on color alone.
+- Shared first-party UI foundations must not restrict extension-owned Svelte experiences to a fixed widget catalog.
+- Fixtures are not runtime evidence. Never fabricate agent execution, successful saves, source connections, or health. Distinguish current behavior from future intent in UI semantics and documentation.
+
+## Engineering, tracking, and delivery
+
+- Read existing code first. Prefer small explicit modules and reusable concrete behavior over giant components, catch-all services, generic factories, speculative abstractions, or unnecessary dependencies.
+- Maintain accurate implemented-state docs; link product direction to VISION.md instead of creating another vision document.
+- When `.work/` records exist, read/update relevant goals, tasks, checkpoints, and evidence. Use descriptive kebab-case names; preserve historical decisions as history, not current authority. Plans stay high-level.
+- `.work/` is private and ignored. Public builds, tests, and contributors must not depend on it or globally installed skills. Never publish credentials, runtime metadata, private feedback, or personal screenshots.
+- For code changes, run `npm run check`, `npm test`, `npm run build`, and `npm run smoke`. For UI changes, verify real-browser keyboard behavior, narrow/wide layouts, shared-route consistency, and production asset loading.
+- Before delivery, inspect the final diff for scope, secrets/private artifacts, regressions, and needless complexity. Report actual verification, skips, remaining risks, and vision alignment. Automated checks do not replace visual acceptance.
+- Commit, push, deploy, or publish only with authorization for the current work. Previous publication approval is not blanket permission for future changes.

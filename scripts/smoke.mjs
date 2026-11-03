@@ -2,11 +2,17 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-// Run the compiled entry point rather than importing the test server factory.
+// Run the real compiled entry with empty, private temporary configuration; never discover operator credentials.
+const root = await mkdtemp(join(tmpdir(), "pispark-smoke-"));
+const configuration = join(root, "configuration.mjs");
+await writeFile(configuration, `export default { storageDir: ${JSON.stringify(join(root, "state"))}, workspaces: {}, configurations: {}, resolveSecret: async () => undefined };`);
 const child = spawn(process.execPath, ["apps/server/dist/index.js"], {
   cwd: fileURLToPath(new URL("../", import.meta.url)),
-  env: { ...process.env, HOST: "127.0.0.1", PORT: "0" },
+  env: { ...process.env, PISPARK_CONFIG: configuration, PISPARK_DEV_ORIGIN: "", HOST: "127.0.0.1", PORT: "0" },
   stdio: ["ignore", "pipe", "pipe"],
 });
 let output = "";
@@ -37,6 +43,12 @@ try {
   assert.equal(health.status, 200);
   assert.deepEqual(await health.json(), { status: "ok", service: "pispark" });
   assert.equal((await fetch(`${base}/api/missing`)).status, 404);
+  const providers = await fetch(`${base}/api/providers`);
+  assert.equal(providers.status, 200);
+  const catalog = await providers.json();
+  assert(catalog.providers.length > 0);
+  assert.equal(catalog.defaultModel, null);
+  assert(catalog.providers.every(provider => !provider.stored));
   const page = await fetch(`${base}/`);
   assert.equal(page.status, 200);
   assert.match(page.headers.get("content-type") ?? "", /text\/html/);
@@ -59,12 +71,13 @@ try {
     assert((await response.arrayBuffer()).byteLength > 0, asset);
   }
   console.log(
-    `Production HTTP smoke passed: health, API 404, HTML, ${assets.length} built assets, favicon.`,
+    `Production HTTP smoke passed: health, private native provider catalog, API 404, HTML, ${assets.length} built assets, favicon.`,
   );
 } finally {
   clearTimeout(deadline);
   if (child.exitCode === null) child.kill("SIGTERM");
   await exited;
   // Windows forcibly terminates a child on kill; signal handlers are checked manually on POSIX.
-  console.log("Smoke server stopped.");
+  await rm(root, { recursive: true, force: true });
+  console.log("Smoke server stopped; temporary storage removed.");
 }

@@ -6,6 +6,8 @@
   import SettingsSidebar from "./features/settings/SettingsSidebar.svelte";
   import { pageFromHash, routes } from "./routes";
 
+  import { provideSessions } from "./features/workspace/session-client.svelte";
+  const sessions = provideSessions();
   let page = $state(pageFromHash(window.location.hash));
   function focusMain() {
     const main = document.querySelector("main");
@@ -13,6 +15,7 @@
     main?.focus({ preventScroll: true });
   }
   onMount(() => {
+    void sessions.mount();
     const navigate = async () => {
       page = pageFromHash(window.location.hash);
       await tick();
@@ -20,7 +23,10 @@
       focusMain();
     };
     window.addEventListener("hashchange", navigate);
-    return () => window.removeEventListener("hashchange", navigate);
+    return () => {
+      window.removeEventListener("hashchange", navigate);
+      sessions.dispose();
+    };
   });
 </script>
 

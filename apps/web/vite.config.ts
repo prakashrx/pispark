@@ -8,7 +8,12 @@ export default defineConfig(({ mode }) => ({
     host: "127.0.0.1",
     port: 5173,
     strictPort: true,
-    proxy: { "/api": "http://127.0.0.1:3000" },
+    proxy: {
+      "/api": {
+        target: process.env.PISPARK_API_TARGET ?? "http://127.0.0.1:3000",
+        changeOrigin: true,
+      },
+    },
   },
   // Preserve source alpha values: CSS minification rounds .7 to 8-bit hex alpha.
   build: { cssMinify: false },

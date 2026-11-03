@@ -1,0 +1,82 @@
+# Session runtime foundation
+
+[VISION.md](../VISION.md) remains authoritative. Pi owns execution, tools, context, compaction, extensions and JSONL history. PiSpark owns session identity, explicit configuration, admissions, observation and orderly teardown.
+
+This is a **client-independent runtime**, now owned by the local HTTP entry point. See [configuration, bounded HTTP/SSE protocol and UI](session-protocol.md). Normal startup is unconfigured; personas, discovery UX and extension Svelte hosting remain deferred.
+
+## Entry point and ownership
+
+`apps/server/src/runtime/session-runtime.ts` exports `SessionRuntime`, configuration/snapshot types and safe `RuntimeError` codes.
+
+Construct one owner with trusted server configuration:
+
+- `storageDir`: dedicated PiSpark local directory, never terminal Pi's history directory.
+- `workspaces`: stable keys mapped to absolute backend-host directories.
+- `configurations`: stable keys mapped to a `SessionConfiguration`: system prompt, tool allowlist and admitted resources, plus either a fixed model/provider with explicit secret reference or loopback keyless policy, or `credential: { stored: true }` for native catalog model selection.
+- `resolveSecret(reference)`: server-owned secret resolver. It must not be fed browser-supplied references or values. Fixed secret-reference values are kept in memory. Catalog-enabled configurations use Pi-managed authentication at the explicit PiSpark auth path; no terminal Pi store is opened.
+
+For fixed configurations a provider factory must return fresh session-local provider state. Their explicit host auth remains independent of native catalog sign-in. For catalog-enabled configurations, ProviderSettings selects a native provider/model; independent session ModelRuntimes use the same explicit native authPath and Pi's normal auth/refresh semantics (including process environment and cloud-provider configuration). Native store locking coordinates shared credential changes, not session state. Each catalog-enabled session loads its own native model configuration and cache using those same explicit paths, registers fresh original trusted provider definitions (not composed catalog copies), then admits the model from that runtime. Pi composes provider/model headers and auth at request time; secret request configuration is never copied into host metadata or serialized models. A fresh model that differs from catalog admission fails closed until settings are refreshed. Settings refresh and changed defaults do not refresh an active session's runtime; reopening uses current trusted configuration with its persisted provider/model identity. Native scopedModels/enabledModels retain the single admitted UI choice; trusted extensions still have native provider registration capabilities, not a model-security sandbox. Local keyless configuration permits literal loopback model URLs only and supplies a non-secret dummy key to prevent compatible transports falling back to environment keys. Trusted provider/extension code can bypass these policies; this is **not a sandbox**.
+
+Every session gets a separate `ModelRuntime`, `SettingsManager`, `ResourceLoader`, native extension runtime/EventBus, AgentSession and SessionManager. No process environment or working-directory switching. Settings are in memory with project trust explicitly false; cache warming, install telemetry and automatic retry are off. Native compaction remains Pi-owned. Explicit tools are cwd-bound but not filesystem-confined: read/write/shell and extension code carry host OS permissions. Admit only reviewed local code/tools/workspaces.
+
+## Runtime API
+
+| Method | Meaning |
+| --- | --- |
+| `create({ workspace, configuration, model? })` | Validate host keys, reserve a live slot, initialize/bind native extensions, return snapshot. Unknown request fields are rejected. |
+| `open(id)` | Claim a known UUID and reopen native history, or recreate an empty session. Never accepts a session-file path. Never prompts/replays tools. |
+| `list()` | Stored metadata summaries, including empty/unloaded sessions and interrupted status. |
+| `snapshot(id)` | Copy of live status, sequence, canonical native context, current messages, partial streaming output, queues and safe error code. |
+| `window(id, before?)` / `observeWindow(id)` | Bounded native content projection and atomic initial window+invalidation subscription for clients; no full-history serialization on tokens. |
+| `observe(id)` | Atomic initial snapshot plus async iterator of `{ sessionId, sequence, type: 'changed' }` invalidations. |
+| `start(id, text)` | Reserve the idle session and persist active marker before execution; returns `{ completion }`. Completion resolves to completed/cancelled/failed, not just command acceptance. |
+| `queue(id, text, 'steer' or 'follow-up')` | Native queued-input hooks/semantics; resolves queued/handled or rejects busy when cancelled/superseded. Only while running, one input admission in flight. |
+| `cancel(id)` | Prevent new inputs, clear both queues, abort/drain, clear again after outstanding input hooks. Cooperative; cannot undo tool effects. |
+| `stop(id)` | Stop admissions, abort/drain, await native `session_shutdown`, flush settings, dispose, release owner. History remains. |
+| `shutdown()` | Stop new sessions/inputs and drain all live sessions, including pending initialization. |
+
+A host-owned final native input handler and `agent_before_settle` handler associate pending queue preparation with its originating run. Settlement closes new admission and waits for that run’s already admitted preparation; Pi then rechecks its native queues. Cancelled preparation rejects explicitly without appending or deleting unrelated entries. Extension-originated inputs are not host RPC admissions. A stalled trusted hook retains ownership until it actually returns; deadlines still report timeout.
+
+Input text is literal conversation text: extension commands and prompt-template expansion are deliberately disabled on `start`, not silently exposed as RPC. Native command-context new/switch/fork/tree/reload operations throw unsupported. Resource expansion requested by extensions also throws; additional resources require host admission. Native extension hooks, tools, bus events and lifecycle remain available. No arbitrary EventBus channel is exposed to clients.
+
+Failures use safe codes, not raw provider/extension stacks. Snapshots omit SDK error diagnostics/stacks and redact the session's configured secret value. This is not a general DLP guarantee: trusted tools/extensions and model output can contain sensitive filesystem data. Native JSONL is private server-side data and may include raw provider errors; never serve it as an unauthenticated static asset.
+
+## Observation and limits
+
+Observers pull invalidations; SDK listeners never invoke subscribers, perform disk I/O, or copy/serialize transcripts. This matters because Pi emits `message_end` before native persistence. A slow observer retains **one latest invalidation**, not a growing token-event queue. Re-read `snapshot()` to render the complete current state, including partial output. Sequence gaps mean coalescing, not lost durable conversation. Sequence numbers are scoped to one live owner, not durable replay cursors; reopening/restarting begins a new observation lifetime. Closing an observer does not stop the session. Snapshot plus subscription registration is synchronous and has no interleaving gap.
+
+Defaults: 8 live sessions (including starting/stopping), 16 observers per session, 8 pending native inputs, 64KiB UTF-8 input, 32 exact files per resource category, 64MiB maximum native file on open, 10-second operation/cleanup wait, 5-minute cooperative run deadline. Live-session and deadline limits are trusted host options. History has no disk quota or retention manager. Clients must bound snapshot serialization/output independently.
+
+Deadlines do not kill arbitrary JavaScript or tools. If an extension ignores cancellation or shutdown hangs, the operation reports timeout and **retains ownership/admission** until actual cleanup completes. CPU-blocking trusted code can stall every same-process session. Strong adversarial isolation would require another approved design. A session with execution/storage error rejects new starts; inspect it, stop and reopen deliberately rather than automatically retry side effects.
+
+## Persistence and recovery
+
+Each UUID owns a directory containing small `host.json` metadata, an ownership lock and Pi's native JSONL file. Metadata contains only host keys, resolved cwd, identity/time, native basename, active/history/interruption markers—not conversation content or credentials. Setup-only sessions need metadata because Pi does not persist JSONL until its first user/assistant message.
+
+The host marks activity before model/tool execution. On reopen, unfinished activity is reported as interrupted; native finalized messages/context are restored without resuming an old request. Tokens and queues are not durable. A crash may lose partial assistant/tool output; a tool side effect may have happened without a finalized result. **No exactly-once guarantee and no automatic replay.** User-driven continuation is a new request and can perform new effects. Extension startup runs normally on reopen, so trusted extensions must reconstruct state without repeating side effects themselves.
+
+One live owner per session is enforced by exclusive local lock creation. A definitely dead PID can be reclaimed under a recovery gate; a live/reused PID or inaccessible/corrupt owner fails closed. A crash during lock acquisition/recovery can leave an unreadable lock or recovery gate requiring operator inspection/removal after confirming no owner. Local single-host storage only: no NFS/distributed locking guarantee. Symlink session directories/history files are refused. Native files with missing expected history, bad header/JSON or an unsupported format fail closed instead of silently starting a new session. Corrupt trailing bytes are not automatically repaired. Neither host metadata nor native history promises fsync/power-loss atomicity.
+
+## Explicit Pi compatibility adaptations
+
+Pinned `@earendil-works/pi-coding-agent` and `pi-ai` **1.4.0** require Node **22.23.4+** on the supported22 branch (other supported majors also undergo the bundled-undici gate). The integration contains three deliberately narrow compatibility debts:
+
+1. The package root exports ambient extension discovery, but not its explicit loader. Resolve the installed package entry, verify version1.4.0/function shape, and call its native internal `loadExtensions` with exact admitted paths and the real cwd. No copied loader and no ambient fallback. Instructions/skills are exact files; prompt values are explicit native values. No project/home resource discovery.
+2. Pi's default headless dialogs are success-shaped no-ops, while any supplied UI context advertises `hasUI=true`. Supply throwing unsupported UI actions and override **only the owned runner instance's** `hasUI()` to return false before startup. Mode is Pi's native `json`, not a fabricated web mode. Never mutate shared defaults/prototypes. Reopening creates and adapts a fresh runner; reload is unsupported.
+3. `session-runtime.ts` uses the typed but **INTERNAL** Pi1.4.0 `prompt.preflightResult("started")` boundary to reassert cancellation after input/auth preflight resets native abort state and before provider dispatch. Native `agent_start` honors the abort before its first request. Pi may record an empty assistant error for this pre-dispatch abort; the host reports cancellation rather than a new provider failure. Run identity preserves cancellation across preparation. Because native pre-start preparation can compact prior history, an instance-local wrapper on the owned runtime's public `stream`/`streamSimple` chains the public request `transformHeaders`: it awaits the SDK/extension transform, checks cancellation, then returns those headers unchanged. Pi invokes this after native auth resolution and immediately before provider dispatch. It survives native provider recomposition without re-registering a composed provider or duplicating auth/header logic; all other options and the signal are retained. Rejected dispatch uses an AbortError handled by native ModelRuntime’s lazy stream; compaction/recovery cannot bypass host cancellation. This adds no private import or execution loop. Already dispatched work retains native cooperative signal semantics. This does not undo prior effects or prevent already executing trusted input/`before_agent_start` hooks from performing their own effects.
+
+Provider auth/catalog integration uses only public `ModelRuntime.create({authPath, modelsPath, modelsStorePath})`, login/logout/refresh/status APIs. The pinned root does not export AuthStorage; the SDK constructs its own store from authPath. There is no private auth-storage/models-store import, literal credential wrapper or internal model-collection replacement/proxy. The public stream-method wrapper above is an explicit owned-instance adaptation, not a claim of zero adaptation. Trusted extensions can still replace methods or issue their own requests; this is not isolation from backend code.
+
+Upstream explicit-loader exports, headless capability negotiation and a stable cancellable-prompt boundary would remove these debts. SDK upgrades require revisiting the adapter and real-extension tests; do not silently loosen isolation to follow upstream defaults.
+
+## Evidence and remaining gates
+
+`apps/server/test/session-runtime.test.ts` uses the real pinned SDK with a deterministic **in-process local test provider**, ordinary native extension files and actual cwd-bound tools. It covers simultaneous sessions, partial snapshots, cancel/queue races, native lifecycle/headless failures, empty/native history, duplicate ownership, a killed child after a tool result, no replay, ambient-resource sentinels and explicit auth probes, storage failures and timeout ownership retention. The local provider is not a fake replacement AgentSession, but it is also **not an external hosted-provider/network certification**.
+
+External paid-provider execution was not performed. Provider-specific auth/streaming compatibility, real network cancellation and Node's bundled fetch security remain separate validation gates. See [dependency findings](development.md#dependency-findings). The [HTTP integration](session-protocol.md) keeps loopback binding, validates Host/Origin, accepts only host keys/UUIDs, separates command acceptance/settlement, bounds client output and maps invalidations without pretending they are a durable replay log. No publication/remote deployment is implied by runtime tests.
+
+## Native provider settings ownership
+
+One settings owner holds a separate directory claim. It supplies explicit auth and model-cache paths to Pi, validates native `getError()` and refresh outcomes, and fails model admission on configuration/composition/cache errors rather than silently accepting built-in endpoints. Errors returned to clients are sanitized codes. An explicit models file must be readable; malformed configuration fails startup/refresh. A failed refresh disables new selection until a successful repair/refresh or restart. Existing sessions retain their chosen model; changed defaults apply only to new catalog-enabled sessions. Removed/unavailable saved defaults stay visible, never silently replaced.
+
+Shutdown stops settings admission first and drains admitted default writes, refresh and logout before releasing its ownership claim. HTTP waits are bounded to15 seconds but a timeout does not cancel or prove failure of the operation; inspect status before retrying. Noncooperative native work can keep shutdown waiting indefinitely. Session shutdown starts independently, even if provider cleanup fails or hangs. Auth cancellation uses Pi's native abort semantics: it may stop waiting while trusted provider code continues; native locks/signals guard credential persistence, not arbitrary hook side effects. A credential can be committed before synchronization fails; login/logout report that partial outcome, never serialize its credential/cause. No forced teardown or rollback is claimed.

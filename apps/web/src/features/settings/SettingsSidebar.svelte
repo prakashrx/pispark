@@ -4,6 +4,8 @@
   import Icon from "../../lib/ui/Icon.svelte";
   import { settingsLinks } from "./navigation";
   import type { Page } from "../../routes";
+  import { useSessions } from "../workspace/session-client.svelte";
+  const sessions = useSessions();
   let { page }: { page: Page } = $props();
   let query = $state("");
   let personasOpen = $state(true);
@@ -101,9 +103,7 @@
           </div>
         {:else}
           {@const active =
-            page === "sources"
-              ? link.page === "sources"
-              : link.page === "settings"}
+            page === link.page}
           <a
             href={link.page ? "#/" + link.page : undefined}
             aria-disabled={!link.page}
@@ -144,10 +144,9 @@
     <div
       class="px-2 py-1 text-[11px] text-gray-400 flex items-center justify-between"
     >
-      <span>PiSpark Engine</span><span
-        class="font-mono text-emerald-600 bg-emerald-50 px-1 rounded"
-        aria-label="Fixture engine status: healthy; backend not connected"
-        title="Fixture status; no backend health check">healthy</span
+      <span>PiSpark backend</span><span
+        class="font-mono text-gray-600 bg-gray-50 px-1 rounded"
+        title="Client connection state, not provider verification">{sessions.connection}</span
       >
     </div>
     <a

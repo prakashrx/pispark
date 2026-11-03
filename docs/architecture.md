@@ -1,11 +1,13 @@
 # Architecture
 
+**Product authority: [VISION.md](../VISION.md).** This document describes the implementation that exists, not an alternative product direction or a prescribed backend design. Evaluate proposed changes against the vision, especially its ownership boundaries and defining web-native extension capability.
+
 ## Implemented today
 
 Two npm workspaces, with no shared package or framework layer:
 
-- **`apps/server`**: Node's native HTTP server, written in TypeScript. `src/server.ts` creates a testable server; `src/index.ts` owns configuration, listening, and signal handling. It has no runtime npm dependencies.
-- **`apps/web`**: Svelte 5 components compiled by Vite with local Tailwind CSS. `App.svelte` owns hash navigation; `routes.ts` and `RouteOutlet.svelte` map the four explicit routes (`#/workspace`, `#/settings`, `#/persona`, `#/sources`). One `lib/layout/AppShell.svelte` owns the common sidebar frame and persistent global Ask. Generic typed controls live in `lib/ui`; feature components and typed fixtures live in `features/workspace`, `settings`, `persona`, and `sources`. There is no router dependency, global store framework, or persistence.
+- **`apps/server`**: Node's native HTTP server, written in TypeScript. `src/server.ts` creates a testable server; `src/index.ts` owns configuration, listening, and signal handling. `src/runtime/session-runtime.ts` adds an independently constructible session owner backed by pinned Pi SDK1.4.0; the HTTP entry point owns its startup and shutdown via `SessionHttp`.
+- **`apps/web`**: Svelte 5 components compiled by Vite with local Tailwind CSS. `App.svelte` owns hash navigation; `routes.ts` and `RouteOutlet.svelte` map the four explicit routes (`#/workspace`, `#/settings`, `#/persona`, `#/sources`), plus the provider settings subroute `#/providers`. One `lib/layout/AppShell.svelte` owns the common sidebar frame and persistent global Ask. Generic typed controls live in `lib/ui`; feature components and typed fixtures live in `features/workspace`, `settings`, `persona`, and `sources`. A small context-owned session client adapter owns transport, selected session and drafts. There is no router dependency or global state framework; only the selected UUID is persisted in browser storage.
 
 In development, Vite serves the UI on loopback port 5173 and proxies `/api` to port 3000. In production, the compiled Node entry serves `apps/web/dist` relative to its own module location, not the working directory.
 
@@ -15,6 +17,8 @@ In development, Vite serves the UI on loopback port 5173 and proxies `/api` to p
 | --- | --- |
 | `GET /api/health` | `200` with `{ "status": "ok", "service": "pispark" }` |
 | Other methods on `/api/health` | `405`, with `Allow: GET` |
+| `/api/catalog`, `/api/sessions`, `/api/commands`, `/api/receipts/*`, session `/events` and `/window` | [Bounded session protocol](session-protocol.md), strict local Host/Origin validation |
+| `/api/providers` and `/api/providers/*` | Native provider catalog, default/refresh/logout and owner-capability sign-in bridge; same local security guard |
 | Unknown `/api` routes | JSON `404`, never frontend HTML |
 | `GET` / `HEAD` `/` | Built HTML entry, or `404` if not built |
 | `GET` / `HEAD` `/favicon.svg`, `/assets/*` | Existing permitted build assets, or `404` |
@@ -22,18 +26,24 @@ In development, Vite serves the UI on loopback port 5173 and proxies `/api` to p
 
 Static paths are decoded once, reject dot/hidden segments, nulls and backslashes, and must remain within the build root after resolving symlinks. Supported asset types are explicit. Builds are trusted local files, not user uploads. Requests are uncached in this starter. This intentionally small server is not a general-purpose static hosting service.
 
-The UI does not request backend health or call any backend operation. Its status dot, conversation, sessions, source locations/statuses, and version badge are display fixtures; even “Active” sources are not connected. Global Ask selections/draft and the independent reply draft survive route changes in application memory. Other form edits are local component state; reload discards all edits. Folder suggestions are fixture text, not browser or backend filesystem access. Backend-dependent actions remain unavailable rather than simulating successful runs or saves.
+The workspace uses real configured sessions and native messages/tool results through typed view state, not fixture conversations. Ask uses admitted backend workspace/configuration keys; Persona/Style remain unavailable. The status indicator reports actual client connectivity, not provider health. Providers & models is backed by native Pi auth/catalog/default persistence. Other settings/persona/source screens remain local drafts and clearly marked fixtures; their saves/connections are unavailable. Ask and independent session drafts survive route changes in memory; reload discards drafts and reconnects to the selected UUID. The browser may submit transient native secret/code responses through the sign-in bridge; no arbitrary native-file paths, provider configurations or secret references are accepted.
 
 Hash routes need no server SPA fallback. Material Symbols is bundled locally under `/assets/` with its Apache 2.0 license and provenance in `apps/web/src/assets/fonts/`; no runtime CDN is used.
 
-The entry point logs its listening address and handles SIGINT/SIGTERM by closing the server, allowing up to five seconds before closing remaining connections. Windows process managers may force-terminate rather than deliver POSIX signals.
+The entry point binds only literal loopback, logs its listening address and handles SIGINT/SIGTERM by closing observers and draining the runtime, allowing up to five seconds before closing remaining HTTP connections. Cooperative runtime cleanup retains ownership until it actually finishes. Windows process managers may force-terminate rather than deliver POSIX signals.
 
-## Next seam: Pi SDK integration
+## Internal runtime foundation
 
-Integrate the SDK inside the backend, not inside a Svelte component and not by launching terminal Pi. Keep PiSpark resources and sessions independent of any terminal installation, configuration, or session history. Use explicit configuration/resource loading rather than ambient discovery.
+The [session runtime](session-runtime.md) owns explicit workspace/configuration keys, concurrent native AgentSessions, bounded pull-based snapshot observation, cancellation and graceful unload. Pi owns tools/model execution, native extension lifecycle and canonical JSONL context. A small host metadata file records identity, empty sessions and interrupted activity; there is no parallel transcript database. Native extension loading is exact-path, with no ambient project/home resources or terminal Pi storage. Native provider auth intentionally retains operator process environment/ambient semantics.
 
-Before implementation, verify the current SDK API and agree on the minimum session lifecycle and event contract. A headless backend should be able to own a session without a browser attached. A later web or messaging adapter should communicate with that runtime, rather than become the owner of it.
+Real-SDK tests use a deterministic local provider, including two simultaneous sessions and killed-process recovery without tool replay. This is not external paid-provider verification. The current same-process policy admits trusted local code only, not sandboxed third-party execution. Compatibility and recovery limits are documented with the runtime API.
 
-The frontend suggests future commands for starting a session, replying/cancelling, resolving folders, saving preferences/personas, and managing sources. Its transcript would need ordered per-session/message updates, snapshots, and reconnect/replay with failure isolation. These are integration requirements to discuss, not an implemented or finalized protocol. Independent concurrent sessions belong to the backend runtime.
+## Next phase: follow the vision, then propose the smallest design
 
-No session manager, event transport, worker isolation, database, plugin API, persona schema, or SDK compatibility promise is implemented or finalized here. Add boundaries when the first real integration demonstrates the need.
+[VISION.md §11](../VISION.md#11-direction-for-the-next-development-phase) governs the next phase: inspect Pi's current SDK and extension APIs, identify what PiSpark genuinely needs to own, propose the smallest coherent backend design, surface unresolved decisions, and obtain approval before substantial implementation.
+
+The existing fixtures are UI examples—not a persona schema, native Pi event model, resource format, or transport contract. Do not derive a competing agent framework from them. Pi remains responsible for agent execution and its native lifecycle; PiSpark hosts independent concurrent sessions and clients without inheriting terminal configuration implicitly.
+
+[Web-native Pi extensions](../VISION.md#7-web-native-pi-extensions) must inform foundational decisions. Ordinary Pi extensions may own Svelte components and domain-specific interactions; PiSpark supplies placement, lifecycle, and communication hosting. Conceptual `host.call()` / `host.on()` semantics do not establish a shipped API, transport choice, mandatory manifest, or separate extension ecosystem. The first-party component library is not a limit on extension presentation. Third-party code loading remains a trust decision requiring explicit design.
+
+Worker isolation, persona composition and extension UI hosting remain unimplemented. The initial [HTTP/SSE protocol](session-protocol.md) is implemented without freezing a future extension communication API. Keep proposals distinct from implementation facts, and return to VISION.md when evaluating these choices.

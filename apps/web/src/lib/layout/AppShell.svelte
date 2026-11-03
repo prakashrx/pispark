@@ -3,6 +3,8 @@
   import Button from "../ui/Button.svelte";
   import Icon from "../ui/Icon.svelte";
   import Composer from "../../features/workspace/Composer.svelte";
+  import { useSessions } from "../../features/workspace/session-client.svelte";
+  const sessions = useSessions();
   let { sidebar, children }: { sidebar: Snippet; children: Snippet } = $props();
   let sidebarOpen = $state(true);
   let shell: HTMLDivElement;
@@ -56,13 +58,13 @@
             <span
               class="inline-flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse"
               role="img"
-              aria-label="Fixture status indicator; backend not connected"
-              title="Fixture status; backend not connected"
+              aria-label={`Backend: ${sessions.connection}`}
+              title={`Backend: ${sessions.connection}`}
             ></span>PiSpark
           </span>
           <span
             class="px-1.5 py-0.5 text-[10px] font-medium bg-zinc-200/60 text-zinc-600 rounded"
-            >v0.9</span
+            >v0.1</span
           >
         </a>
         <Button
@@ -91,6 +93,20 @@
         >{/if}
       <div class="w-full flex items-center gap-2 min-w-0"><Composer /></div>
     </header>
+    {#if sessions.error}<p
+        role="alert"
+        class="px-6 py-2 text-xs text-zinc-700 break-words"
+      >
+        Workspace: {sessions.error}
+      </p>{/if}
+    {#if sessions.sessionErrors[sessions.selected]}<p
+        role="alert"
+        class="px-6 py-2 text-xs text-zinc-700 break-words"
+      >
+        Session {sessions.selected.slice(0, 8)}: {sessions.sessionErrors[
+          sessions.selected
+        ]}
+      </p>{/if}
     {@render children()}
   </div>
 </div>

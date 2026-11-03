@@ -1,8 +1,8 @@
 # Security
 
-PiSpark is a local-development starter, not a hardened hosted service. There is no authentication or agent execution. Do not expose it directly to an untrusted network. The server and Vite bind to loopback by default; changing `HOST` can expose the production server.
+PiSpark is a trusted single-user local workspace, not a hardened hosted service. Its HTTP API can create, execute, cancel and unload backend-owned Pi sessions. There is no multi-user authentication. Production startup enforces literal-loopback `HOST` (`127.0.0.1` or `::1`); non-loopback values are rejected. Vite also defaults to loopback. Do not forward ports, use a public proxy, or share access with untrusted local users.
 
-The HTTP API currently provides health only. Static serving is limited to the built entry, favicon, and known asset types, with raw-path validation and canonical-path containment. Only trusted build artifacts should be placed in the frontend output directory; it is not an upload area.
+The [session protocol](docs/session-protocol.md) includes commands, retained receipts, native history windows and SSE observation, alongside health and the native provider settings/sign-in bridge. Session endpoints enforce the actual listener's Host/port, same-origin browser mutations (or the explicitly admitted loopback development origin), Fetch Metadata checks and bounded JSON input/output. These protections are not authentication against local processes. Static serving is limited to the built entry, favicon, and known asset types, with raw-path validation and canonical-path containment. Only trusted build artifacts should be placed in the frontend output directory; it is not an upload area.
 
 ## Reporting
 
@@ -10,8 +10,12 @@ Use [GitHub's private vulnerability reporting](https://github.com/prakashrx/pisp
 
 Only the current `main` branch is maintained during this pre-release stage. There is no response-time or production-support guarantee.
 
-## Dependencies and future integration
+## Dependencies and trusted integration
 
 Run `npm audit` and review findings, including development tools. Known starter toolchain limitations are recorded in [development](docs/development.md). Keep dev servers local and never run untrusted project configuration.
 
-Before adding the Pi SDK, design explicit resource loading, credential handling, tool permissions, workspace boundaries, and session isolation. Do not inherit terminal-Pi configuration or credentials implicitly.
+Follow [VISION.md](VISION.md), especially session independence and web-native extension hosting. The [internal runtime](docs/session-runtime.md) uses explicit resource loading, credential references and native history with independent session ownership. It does not discover terminal-Pi credentials or project/home resources. This is configuration isolation, not a security sandbox: admitted tools/extensions can access the host filesystem and process. No remote/multi-user deployment is supported.
+
+Third-party Pi extension code and extension-owned Svelte components are deliberate trust boundaries. Specify permitted host interactions, access to credentials/data, and mounting/disposal behavior before enabling them. Configuration independence alone does not sandbox backend or browser code. Browser extension components are not enabled. The operator-owned `PISPARK_CONFIG` ESM module and admitted backend extensions execute with full host privileges; neither namespaced storage nor explicit loading is a sandbox. Credentials persist server-side, but native text/secret/manual responses transit browser memory and HTTP requests. They are not in browser persistence or session replay. Native file-backed credentials are **not encrypted at rest by PiSpark**. Protect host directories, backups and client access. Native environment/cloud configuration, `$ENV` and credential commands are trusted operator semantics, not sandboxed or browser configuration evaluation. PiSpark supplies explicit auth/models/cache/resource/history paths, never terminal Pi storage. Logout removes stored credentials only; environment configuration and provider grants can remain active. Configured availability is not verified entitlement. All production startup is hard-gated before native auth-resolution/availability on a patched Node-bundled undici version with no waiver; an npm override does not patch Node fetch. See the [runtime security gate](docs/session-protocol.md#required-runtime-security-gate). Deterministic local-provider tests are not external authentication/network validation. Native cancellation is cooperative and may stop waiting without killing trusted provider code. Settings shutdown drains admitted writes before releasing ownership and starts session cleanup independently; an HTTP timeout is not rollback. Partial credential/synchronization failures are reported without credentials/error causes.
+
+External-provider validation and residual dependency findings (including the documented low development and moderate production findings) remain gates, not blanket risk acceptance.

@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-const routes = ["workspace", "settings", "persona", "sources"] as const;
+const routes = ["workspace", "settings", "providers", "persona", "sources"] as const;
 
 async function navigate(page: Page, route: string) {
   await page.evaluate((route) => {
@@ -21,6 +21,9 @@ for (const width of [1920, 3840]) {
       process.env.PISPARK_EVIDENCE_DIR ?? info.outputPath("evidence");
     await mkdir(evidence, { recursive: true });
     await page.goto("/#/workspace");
+    await expect(
+      page.getByRole("button", { name: "Folder: workspace" }),
+    ).toBeVisible();
     const measurements = [];
     for (const route of routes) {
       if (route !== "workspace") await navigate(page, route);
@@ -112,43 +115,41 @@ test("one global Ask retains draft and all selectors through routes, history and
   page,
 }) => {
   await page.goto("/#/workspace");
-  const ask = page.getByRole("textbox", { name: "Ask anything (local draft)" });
+  const ask = page.getByRole("textbox", { name: "Ask anything" });
   const mountedAsk = await ask.elementHandle();
   await ask.fill("Persistent global question");
   await page
-    .getByRole("textbox", { name: /Reply to Workspace/ })
+    .getByRole("textbox", { name: /Reply to session/ })
     .fill("Independent session follow-up");
-  await page.getByRole("button", { name: "Folder: pispark" }).click();
+  await page.getByRole("button", { name: "Folder: workspace" }).click();
   await page.getByRole("combobox", { name: "Search Folder" }).fill("notes");
   await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: "Persona: Developer" }).click();
-  await page.getByRole("option", { name: "Architect", exact: true }).click();
-  await expect(page.getByRole("button", { name: /^Style:/ })).toHaveCount(0);
-  await page.getByRole("button", { name: "Persona: Architect" }).click();
-  await page.getByRole("option", { name: "Developer", exact: true }).click();
-  // The honest fixtures currently supply one Style and one Model option.
-  for (const label of ["Style: Concise", "Model: balanced"]) {
-    await page.getByRole("button", { name: label }).click();
-    await page
-      .getByRole("option", { name: label.split(": ")[1], exact: true })
-      .click();
-  }
+  for (const label of ["Style", "Model: host configuration"])
+    await expect(
+      page.getByRole("button", { name: label, exact: true }),
+    ).toHaveAttribute("aria-disabled", "true");
+  await page
+    .getByRole("button", {
+      name: "Resource configuration: Test-only deterministic",
+    })
+    .click();
+  await page.keyboard.press("Escape");
   async function retained() {
     await expect(ask).toHaveValue("Persistent global question");
     expect(
       await mountedAsk!.evaluate(
-        (el) =>
-          el ===
-          document.querySelector('[aria-label="Ask anything (local draft)"]'),
+        (el) => el === document.querySelector('[aria-label="Ask anything"]'),
       ),
     ).toBe(true);
     for (const label of [
       "Folder: notes",
-      "Persona: Developer",
-      "Style: Concise",
-      "Model: balanced",
+      "Model: host configuration",
+      "Style",
+      "Resource configuration: Test-only deterministic",
     ]) {
-      await expect(page.getByRole("button", { name: label })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: label, exact: true }),
+      ).toBeVisible();
     }
     await expect(
       page.getByRole("form", { name: "New session draft" }),
@@ -181,18 +182,14 @@ test("one global Ask retains draft and all selectors through routes, history and
     await expect(page.getByRole("main")).toBeFocused();
     await retained();
   }
-  const reply = page.getByRole("textbox", { name: /Reply to Workspace/ });
+  const reply = page.getByRole("textbox", { name: /Reply to session/ });
   await expect(reply).toHaveValue("Independent session follow-up");
   await reply.fill("Changed reply only");
   await retained();
-  // Also prove a non-default persona survives a navigation, not merely the default.
-  await page.getByRole("button", { name: "Persona: Developer" }).click();
-  await page.getByRole("option", { name: "General", exact: true }).click();
   await navigate(page, "settings");
   await expect(
-    page.getByRole("button", { name: "Persona: General" }),
+    page.getByRole("button", { name: "Folder: notes" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Style:/ })).toHaveCount(0);
 });
 
 test("narrow shell preserves Ask across routes and keyboard sidebar toggles", async ({
@@ -215,13 +212,13 @@ test("narrow shell preserves Ask across routes and keyboard sidebar toggles", as
     await expect(
       page.getByRole("button", { name: "Collapse sidebar" }),
     ).toBeFocused();
-    await page.getByRole("button", { name: "Folder: pispark" }).click();
+    await page.getByRole("button", { name: "Folder: workspace" }).click();
     await expect(
       page.getByRole("combobox", { name: "Search Folder" }),
     ).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(
-      page.getByRole("button", { name: "Folder: pispark" }),
+      page.getByRole("button", { name: "Folder: workspace" }),
     ).toBeFocused();
     expect(
       await page.evaluate(

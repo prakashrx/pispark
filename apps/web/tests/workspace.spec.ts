@@ -25,7 +25,11 @@ test("four source pages render locally without errors or external requests", asy
     if (message.type() === "error") errors.push(message.text());
   });
   page.on("requestfailed", (request) => {
-    errors.push(`Request failed: ${request.url()}`);
+    if (
+      !request.url().includes("/events") &&
+      request.failure()?.errorText !== "net::ERR_ABORTED"
+    )
+      errors.push(`Request failed: ${request.url()}`);
   });
   page.on("response", (response) => {
     if (response.status() >= 400)
@@ -39,14 +43,14 @@ test("four source pages render locally without errors or external requests", asy
       external.push(request.url());
   });
   for (const [route, heading] of [
-    ["workspace", "Workspace review"],
+    ["workspace", "Start a session|Test-only deterministic"],
     ["settings", "General"],
     ["persona", "Developer Persona"],
     ["sources", "Sources 3 active"],
   ]) {
     await page.goto(`/#/${route}`);
     await expect(
-      page.getByRole("heading", { name: heading, level: 1 }),
+      page.getByRole("heading", { name: new RegExp(heading), level: 1 }),
     ).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
     if (await page.locator(".material-symbols-outlined").count()) {
@@ -72,24 +76,17 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
 }, info) => {
   await page.goto("/");
   await page
-    .getByRole("textbox", { name: "Ask anything (local draft)" })
+    .getByRole("textbox", { name: "Ask anything" })
     .fill("An unsent question");
   await page
-    .getByRole("textbox", { name: /Reply to Workspace/ })
+    .getByRole("textbox", { name: /Reply to session/ })
     .fill("An unsent follow-up");
-  await expect(
-    page.getByRole("button", { name: "Run", exact: true }),
-  ).toHaveAttribute("aria-disabled", "true");
-  const persona = page.getByRole("button", { name: "Persona: Developer" });
+  const persona = page.getByRole("button", { name: "Style", exact: true });
+  await expect(persona).toHaveAttribute("aria-disabled", "true");
   await persona.focus();
   await page.keyboard.press("Enter");
-  await page.keyboard.press("ArrowDown");
-  await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("button", { name: "Persona: General" }),
-  ).toBeFocused();
-  await expect(page.getByRole("button", { name: /^Style:/ })).toHaveCount(0);
-  const folder = page.getByRole("button", { name: "Folder: pispark" });
+  await expect(persona).toBeFocused();
+  const folder = page.getByRole("button", { name: "Folder: workspace" });
   await folder.click();
   await page.getByRole("combobox", { name: "Search Folder" }).fill("notes");
   await capture(page, info, "folder-popup");
@@ -97,13 +94,18 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
   await expect(
     page.getByRole("button", { name: "Folder: notes" }),
   ).toBeFocused();
-  await page.getByRole("button", { name: "Model: balanced" }).click();
+  await page
+    .getByRole("button", {
+      name: "Resource configuration: Test-only deterministic",
+    })
+    .click();
   await page.keyboard.press("Escape");
   await expect(
-    page.getByRole("button", { name: "Model: balanced" }),
+    page.getByRole("button", {
+      name: "Resource configuration: Test-only deterministic",
+    }),
   ).toBeFocused();
-  await page.getByRole("button", { name: "Today", exact: true }).click();
-  await expect(page.getByText("Confirm file change")).toHaveCount(0);
+  await page.getByRole("button", { name: /^Sessions/ }).click();
   await page.getByRole("textbox", { name: /Ask anything/ }).focus();
   await page.keyboard.press("Control+b");
   await expect(page.getByRole("complementary")).toBeVisible();
@@ -142,7 +144,8 @@ test("source modal traps focus, validates drafts, closes and restores focus with
   await page.goto("/#/sources");
   const requests: string[] = [];
   page.on("request", (request) => {
-    if (!request.url().startsWith("data:")) requests.push(request.url());
+    if (!request.url().startsWith("data:") && !request.url().includes("/api/"))
+      requests.push(request.url());
   });
   const add = page.getByRole("button", { name: "Add Source", exact: true });
   await add.click();
@@ -243,7 +246,7 @@ test("narrow pages reflow without clipping and popup/modal remain keyboard usabl
   await expect(
     page.getByRole("button", { name: "Add Source", exact: true }),
   ).toBeFocused();
-  await page.getByRole("button", { name: "Folder: pispark" }).click();
+  await page.getByRole("button", { name: "Folder: workspace" }).click();
   await expect(
     page.getByRole("combobox", { name: "Search Folder" }),
   ).toBeFocused();

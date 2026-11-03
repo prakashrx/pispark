@@ -2,6 +2,8 @@ import { createServer, type Server, type ServerResponse } from "node:http";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 
+import type { SessionHttp } from "./session-http.js";
+
 const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -70,8 +72,10 @@ async function serveStatic(
 
 export function createAppServer({
   webRoot,
+  sessions,
 }: {
   webRoot?: string;
+  sessions?: SessionHttp;
 } = {}): Server {
   const root = webRoot ? resolve(webRoot) : undefined;
   return createServer(async (request, response) => {
@@ -95,7 +99,9 @@ export function createAppServer({
         return;
       }
       if (path === "/api" || path.startsWith("/api/")) {
-        if (path !== "/api/health") {
+        if (sessions && path !== "/api/health") {
+          await sessions.handle(request, response);
+        } else if (path !== "/api/health") {
           json(response, 404, { error: "API route not found" });
         } else if (request.method === "GET") {
           json(response, 200, { status: "ok", service: "pispark" });
@@ -116,8 +122,9 @@ export function createAppServer({
       )
         return;
       json(response, 404, { error: "Not found" });
-    } catch (error) {
-      console.error("Request failed:", error);
+    } catch {
+      // Request errors can contain provider/tool secrets; never log raw exceptions.
+      console.error("Request failed.");
       if (response.headersSent) response.end();
       else json(response, 500, { error: "Internal server error" });
     }

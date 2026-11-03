@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { SessionRuntime } from '../../src/runtime/session-runtime.js';
+import { LocalProviderControl } from './local-provider.js';
+import { createSessionServices } from '../../src/runtime/configuration.js';
+import { createAgentSession, SessionManager } from '@earendil-works/pi-coding-agent';
+import { bindHeadlessCapabilities } from '../../src/runtime/pi-boundary.js';
+import { unsupported } from '../../src/runtime/errors.js';
+
+const root = process.argv[2]!;
+const provider = new LocalProviderControl(); provider.automatic = true;
+const config = { modelId: 'deterministic', provider: provider.provider, credential: { secretRef: 'only-explicit-reference' }, tools: [], systemPrompt: 'explicit-only' };
+const runtime = new SessionRuntime({ storageDir: join(root, 'state'), workspaces: { a: join(root, 'cwd') }, configurations: { a: config }, resolveSecret: async () => 'explicit-test-value' });
+const a = await runtime.create({ workspace: 'a', configuration: 'a' });
+assert.equal((await runtime.start(a.id, 'probe').completion).outcome, 'completed');
+assert.equal(provider.requests[0]!.apiKey, 'explicit-test-value');
+assert.doesNotMatch(JSON.stringify(provider.requests[0]!.context), /FORBIDDEN/);
+await runtime.shutdown();
+
+// Direct SDK boundary test: native extension commands fail, rather than fake success, on replacement/reload.
+const nativeExtension = join(root, 'explicit.mjs');
+await writeFile(nativeExtension, `export default (pi)=>{pi.events.on('probe',()=>pi.events.emit('observed',{}));pi.on('session_start',(_e,ctx)=>{if(ctx.hasUI) throw Error('UI advertised')});for(const name of ['reload','newSession','fork','switchSession','navigateTree']) pi.registerCommand(name,{handler:async(_args,ctx)=>{await ctx[name]('not-a-path')}})}`);
+await mkdir(join(root, 'agent', 'extensions'), { recursive: true });
+await writeFile(join(root, 'agent', 'extensions', 'global.js'), `export default ()=>{throw Error('Ambient global extension executed')}`);
+const services = await createSessionServices({ ...config, extensions: [nativeExtension] }, join(root, 'cwd'), join(root, 'agent'), async () => 'explicit-test-value');
+await assert.rejects(services.modelRuntime.getAuth('anthropic'), /credentials/);
+assert.equal(services.settingsManager.getCacheWarmingMode(), 'off');
+let busEvents = 0;
+services.eventBus.on('observed', () => { busEvents++; });
+services.eventBus.emit('probe', {});
+assert.equal(busEvents, 1);
+const { session } = await createAgentSession({ cwd: join(root, 'cwd'), agentDir: join(root, 'agent'), ...services, sessionManager: SessionManager.inMemory(join(root, 'cwd')), tools: [] });
+let errors = 0;
+await session.bindExtensions({ mode: 'json', uiContext: bindHeadlessCapabilities(session), onError: () => { errors++; }, commandContextActions: { waitForIdle: () => session.waitForIdle(), reload: unsupported, newSession: unsupported, fork: unsupported, switchSession: unsupported, navigateTree: unsupported } });
+for (const command of ['reload','newSession','fork','switchSession','navigateTree']) await session.prompt(`/${command}`);
+assert.equal(errors, 5);
+assert.equal(session.extensionRunner.hasUI(), false);
+await session.abort(); await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' }); session.dispose();
+services.eventBus.emit('probe', {});
+assert.equal(busEvents, 1, 'native invalidation removes extension bus subscriptions');
+await assert.rejects(readFile(join(root, 'ambient-executed')), { code: 'ENOENT' });
+console.log('isolated-home/project/resources and native unsupported-command probes passed');

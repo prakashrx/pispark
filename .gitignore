@@ -3,6 +3,12 @@
 .pi/
 .pi-lens/
 
+# Instance data belongs in the user's home directory, never in source control.
+.pispark/
+.pispark-dev/
+/auth.json
+/models-store.json
+
 node_modules/
 dist/
 coverage/

@@ -17,12 +17,27 @@ export default defineConfig({
     viewport: { width: 1440, height: 1000 },
     trace: "retain-on-failure",
   },
-  webServer: {
-    command: production
-      ? "node ../server/dist/index.js"
-      : `npm exec vite -- --host 127.0.0.1 --port ${port} --strictPort`,
-    env: { HOST: "127.0.0.1", PORT: port },
-    url: baseURL,
-    reuseExistingServer: !production && !process.env.CI,
-  },
+  webServer: [
+    {
+      command: "node --import tsx ../server/test/fixtures/browser-host.ts",
+      env: {
+        PORT: production ? port : "4182",
+        PISPARK_DEV_ORIGIN: production ? "" : baseURL,
+      },
+      url: production
+        ? `${baseURL}/api/health`
+        : "http://127.0.0.1:4182/api/health",
+      reuseExistingServer: false,
+    },
+    ...(production
+      ? []
+      : [
+          {
+            command: `npm exec vite -- --host 127.0.0.1 --port ${port} --strictPort`,
+            env: { PISPARK_API_TARGET: "http://127.0.0.1:4182" },
+            url: baseURL,
+            reuseExistingServer: false,
+          },
+        ]),
+  ],
 });

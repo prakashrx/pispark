@@ -1,7 +1,22 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
-import { afterEach, expect, test, vi } from "vitest";
+import { beforeEach, afterEach, expect, test, vi } from "vitest";
 import App from "./App.svelte";
 
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async (url: string) =>
+        new Response(
+          JSON.stringify(
+            url === "/api/catalog"
+              ? { workspaces: [], configurations: [] }
+              : url === "/api/providers" ? { providers: [], defaultModel: null, networkBlocked: false } : { sessions: [], truncated: false },
+          ),
+        ),
+    ),
+  );
+});
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
@@ -13,21 +28,17 @@ async function navigate(page: string) {
   await fireEvent(window, new Event("hashchange"));
 }
 
-test("renders the supplied fixture conversation without contacting any backend", async () => {
-  const fetch = vi.fn();
-  vi.stubGlobal("fetch", fetch);
+test("renders truthful unconfigured state and never submits a draft without configuration", async () => {
   render(App);
-  expect(
-    screen.getByRole("heading", { name: "Workspace review" }),
-  ).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Start a session" })).toBeTruthy();
   expect(screen.getByRole("main").getAttribute("aria-label")).toContain(
-    "no agent or tools",
+    "Session conversation",
   );
   expect(
     screen.getByRole("button", { name: "Run" }).getAttribute("aria-disabled"),
   ).toBe("true");
   const ask = screen.getByRole("textbox", {
-    name: "Ask anything (local draft)",
+    name: "Ask anything",
   });
   await fireEvent.input(ask, { target: { value: "Keep this draft local" } });
   await fireEvent.submit(
@@ -37,19 +48,21 @@ test("renders the supplied fixture conversation without contacting any backend",
   expect(
     (
       screen.getByRole("textbox", {
-        name: /Reply to Workspace/,
+        name: /Reply to session/,
       }) as HTMLInputElement
     ).value,
   ).toBe("");
-  expect(fetch).not.toHaveBeenCalled();
+  expect(
+    vi.mocked(fetch).mock.calls.every((call) => call[1]?.method !== "POST"),
+  ).toBe(true);
 });
 
-test("collapses the sidebar and day groups; shortcut ignores editable inputs", async () => {
+test("collapses the sidebar and session group; shortcut ignores editable inputs", async () => {
   render(App);
-  await fireEvent.click(screen.getByRole("button", { name: "Today" }));
-  expect(screen.queryByText("Confirm file change")).toBeNull();
-  await fireEvent.click(screen.getByRole("button", { name: "Today" }));
-  expect(screen.getByText("Confirm file change")).toBeTruthy();
+  await fireEvent.click(screen.getByRole("button", { name: /Sessions/ }));
+  expect(screen.queryByText("No sessions yet.")).toBeNull();
+  await fireEvent.click(screen.getByRole("button", { name: /Sessions/ }));
+  expect(screen.getByText("No sessions yet.")).toBeTruthy();
   await fireEvent.keyDown(
     screen.getByRole("textbox", { name: /Ask anything/ }),
     { key: "b", ctrlKey: true },
@@ -110,8 +123,6 @@ test("general preferences change locally and reset to source defaults", async ()
 });
 
 test("persona fields, prompts, commands and resource removal edit only local state", async () => {
-  const fetch = vi.fn();
-  vi.stubGlobal("fetch", fetch);
   window.location.hash = "/persona";
   render(App);
   await fireEvent.input(screen.getByRole("textbox", { name: "Display Name" }), {
@@ -139,7 +150,9 @@ test("persona fields, prompts, commands and resource removal edit only local sta
       .getByRole("button", { name: "Inspect JSON" })
       .getAttribute("aria-disabled"),
   ).toBe("true");
-  expect(fetch).not.toHaveBeenCalled();
+  expect(
+    vi.mocked(fetch).mock.calls.every((call) => call[1]?.method !== "POST"),
+  ).toBe(true);
 });
 
 test("keeps the mounted Ask and independent reply drafts across every route", async () => {
@@ -147,7 +160,7 @@ test("keeps the mounted Ask and independent reply drafts across every route", as
   const ask = screen.getByRole("textbox", { name: /Ask anything/ });
   await fireEvent.input(ask, { target: { value: "Global unsent question" } });
   await fireEvent.input(
-    screen.getByRole("textbox", { name: /Reply to Workspace/ }),
+    screen.getByRole("textbox", { name: /Reply to session/ }),
     {
       target: { value: "Session-only follow-up" },
     },
@@ -164,7 +177,7 @@ test("keeps the mounted Ask and independent reply drafts across every route", as
   expect(
     (
       screen.getByRole("textbox", {
-        name: /Reply to Workspace/,
+        name: /Reply to session/,
       }) as HTMLInputElement
     ).value,
   ).toBe("Session-only follow-up");
