@@ -64,9 +64,9 @@
         {@const local =
           !!client.view && samePersona(resource.origin, client.view.ref)}
         {@const label = resourceLabel(resource)}
-        <div class="border border-neutral-200 rounded-xl p-4 space-y-2 text-xs">
+        <div class="border border-zinc-200 rounded-xl p-4 space-y-2 text-xs">
           <p class="font-medium break-words">{index + 1}. {label}</p>
-          <p class="text-neutral-500">
+          <p class="text-zinc-500">
             {local
               ? "This persona"
               : `From ${personaName(resource.origin, options)}`}
@@ -104,7 +104,7 @@
               >
             </div>{/if}
         </div>
-      {:else}<p class="text-xs text-neutral-500">
+      {:else}<p class="text-xs text-zinc-500">
           No {type} in this preview.
         </p>{/each}
     </section>

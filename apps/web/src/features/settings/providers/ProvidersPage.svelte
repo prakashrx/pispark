@@ -57,18 +57,18 @@
   class="flex-1 overflow-y-auto px-8 py-8 bg-white"
 >
   <div class="max-w-3xl mx-auto space-y-6 pb-20">
-    <div class="border-b border-gray-100 pb-5">
-      <h1 class="text-xl font-semibold tracking-tight text-gray-900">
+    <div class="border-b border-zinc-100 pb-5">
+      <h1 class="text-xl font-semibold tracking-tight text-zinc-900">
         Providers &amp; models
       </h1>
-      <p class="text-xs text-gray-500 mt-1">
+      <p class="text-sm text-zinc-500 mt-1">
         Connect an account and choose models for your chats.
       </p>
     </div>
     <div class="flex items-center justify-between gap-3 form-row">
       <div class="min-w-0">
-        <h2 class="text-xs font-medium text-gray-900">Default model</h2>
-        <p class="text-[11px] text-gray-500 mt-1 break-words">
+        <h2 class="text-xs font-medium text-zinc-900">Default model</h2>
+        <p class="text-[11px] text-zinc-500 mt-1 break-words">
           {defaultChoice
             ? `${defaultModel?.name ?? defaultChoice.id} · ${defaultProvider?.name ?? defaultChoice.provider}${defaultModel?.available ? "" : " · unavailable, saved choice retained"}`
             : "Not selected. Browse a provider’s models to choose."}
@@ -81,12 +81,12 @@
         >{/if}
     </div>
     {#if client.catalog.networkBlocked}<p
-        class="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3"
+        class="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg p-3"
         role="status"
       >
         {providerErrorMessages["network-blocked"]}
       </p>{/if}
-    {#if client.error}<p class="text-xs text-gray-700" role="alert">
+    {#if client.error}<p class="text-xs text-zinc-700" role="alert">
         {client.error}
       </p>{/if}
     <Section
@@ -115,13 +115,13 @@
           onclick={() => void client.refresh()}>Reload status</Button
         >
       </div>
-      <p class="text-[11px] text-gray-400" role="status">
+      <p class="text-[11px] text-zinc-400" role="status">
         {client.loading
           ? "Loading provider catalog…"
           : `${visible.length} of ${providers.length} providers`}
       </p>
       <ul
-        class="border border-gray-200/80 rounded-xl divide-y divide-gray-100 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+        class="border border-zinc-200/80 rounded-xl divide-y divide-zinc-100 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
       >
         {#each visible as provider (provider.id)}<ProviderRow
             {provider}
@@ -129,7 +129,7 @@
             onconnect={() => open(provider, "connect")}
             onmodels={() => open(provider, "models")}
             ondisconnect={() => open(provider, "disconnect")}
-          />{:else}<li class="p-5 text-xs text-gray-500">
+          />{:else}<li class="p-5 text-xs text-zinc-500">
             {client.loading
               ? "Loading…"
               : providers.length
@@ -138,10 +138,10 @@
           </li>{/each}
       </ul>
     </Section>
-    <p class="text-[11px] text-gray-400">
+    <p class="text-[11px] text-zinc-400">
       Used for new chats. Existing chats keep their model.
     </p>
-    <p class="text-xs text-gray-500" role="status">{notice}</p>
+    <p class="text-xs text-zinc-500" role="status">{notice}</p>
   </div>
 </main>
 {#if current && dialog === "connect"}<ConnectionDialog
@@ -173,7 +173,7 @@
     onclose={close}
     ><div class="p-6 space-y-4">
       <h2 class="text-sm font-semibold">Disconnect {current.name}?</h2>
-      <p class="text-xs text-gray-600">
+      <p class="text-xs text-zinc-600">
         Disconnect removes only the stored PiSpark credential. It does not
         revoke provider access or remove host or model configuration. Existing
         chats keep their model but future requests may need credentials again.

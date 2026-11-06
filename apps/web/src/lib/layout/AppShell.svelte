@@ -67,7 +67,14 @@
             class="font-semibold text-sm tracking-tight text-zinc-900 flex items-center gap-2"
           >
             <span
-              class="inline-flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse"
+              class={[
+                "inline-flex h-2 w-2 rounded-full",
+                sessions.connection === "Connected" || sessions.connection === "Reconnecting"
+                  ? "bg-emerald-500 animate-pulse"
+                  : sessions.connection === "Disconnected"
+                    ? "bg-red-400"
+                    : "bg-amber-400"
+              ].join(" ")}
               role="img"
               aria-label={`Backend: ${sessions.connection}`}
               title={`Backend: ${sessions.connection}`}

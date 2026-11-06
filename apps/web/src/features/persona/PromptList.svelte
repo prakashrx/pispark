@@ -212,7 +212,7 @@
         : (local?.text ?? source?.text)}
     {@const inherited = !local && source}
     {@const localIndex = local ? items.indexOf(local) : -1}
-    <article class="prompt-row border-b border-neutral-100 pb-3 space-y-2">
+    <article class="prompt-row border-b border-zinc-100 pb-3 space-y-2">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0 flex-1">
           {#if text !== undefined}<p
@@ -221,14 +221,14 @@
             >
               {text}
             </p>
-          {:else}<p class="text-xs text-neutral-500">
+          {:else}<p class="text-xs text-zinc-500">
               Prompt text unavailable. Load the existing file to read it.
             </p>{/if}
-          {#if inherited}<p class="text-xs text-neutral-500 mt-1">
+          {#if inherited}<p class="text-xs text-zinc-500 mt-1">
               From {personaName(inherited.origin, client.items)}
             </p>{/if}
           {#if !client.resourcesCurrent && local}<p
-              class="text-xs text-neutral-500"
+              class="text-xs text-zinc-500"
             >
               Local draft
             </p>{/if}
@@ -319,7 +319,7 @@
             : "Read prompt"}</Button
         >{/if}
     </article>
-  {:else}<p class="text-xs text-neutral-500">No prompts to show.</p>{/each}
+  {:else}<p class="text-xs text-zinc-500">No prompts to show.</p>{/each}
   <Button
     disabled={readonly || items.length >= 32}
     onclick={() => open(undefined, undefined, "add")}>Add prompt</Button
