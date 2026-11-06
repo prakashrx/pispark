@@ -34,7 +34,7 @@
         {provider.stored ? "Manage" : "Connect"}
         {provider.name}
       </h2>
-      <p class="mt-1 text-[11px] text-gray-500">
+      <p class="mt-1 text-[11px] text-zinc-500">
         {provider.stored
           ? "Sign-in saved"
           : provider.configured
@@ -43,16 +43,16 @@
       </p>
     </div>
     <p
-      class="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3"
+      class="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg p-3"
     >
       Pi supplies the sign-in steps. Credentials stay on the PiSpark host.
       Closing cancels this sign-in, not your chats.
     </p>
-    {#if auth.error}<p class="text-xs text-gray-700" role="alert">
+    {#if auth.error}<p class="text-xs text-zinc-700" role="alert">
         {auth.error}
       </p>{/if}
     {#if auth.view && auth.view.state !== "pending"}
-      <p role="status" class="text-xs text-gray-700">
+      <p role="status" class="text-xs text-zinc-700">
         {auth.view.state === "saved"
           ? "Sign-in saved. Available models depend on your account."
           : auth.view.state === "saved-sync-failed"
@@ -62,7 +62,7 @@
               : providerErrorMessages["provider-failed"]}
       </p>
     {:else if auth.view}
-      <div class="space-y-3 text-xs text-gray-600" aria-live="polite">
+      <div class="space-y-3 text-xs text-zinc-600" aria-live="polite">
         {#each auth.view.events as event}
           {#if event.type === "auth_url"}<p>{event.instructions}</p>
             <a
@@ -74,7 +74,7 @@
           {:else if event.type === "device_code"}<p>
               Enter this code on the provider's device page.
             </p>
-            <p class="font-mono text-lg tracking-wider text-gray-900">
+            <p class="font-mono text-lg tracking-wider text-zinc-900">
               {event.userCode}
             </p>
             <a
@@ -98,7 +98,7 @@
             prompt={auth.view.prompt}
             busy={auth.busy}
             onrespond={(id, value) => auth.respond(id, value)}
-          />{/key}{:else}<p class="text-xs text-gray-500" role="status">
+          />{/key}{:else}<p class="text-xs text-zinc-500" role="status">
           Waiting for Pi's sign-in flow…
         </p>{/if}
     {:else}
@@ -113,7 +113,7 @@
                 : undefined}
             onclick={() => void auth.start(provider.id, method.type)}
             >{method.label}<span
-              class="block text-[11px] text-gray-400 font-normal mt-1"
+              class="block text-[11px] text-zinc-400 font-normal mt-1"
               >{method.interactive
                 ? method.type === "oauth"
                   ? "Browser, device or code prompts supplied by Pi"
@@ -123,14 +123,14 @@
           >{/each}
       </div>
     {/if}
-    <div class="pt-4 border-t border-gray-100">
+    <div class="pt-4 border-t border-zinc-100">
       <Button onclick={onclose}
         >{auth.view && auth.view.state !== "pending"
           ? "Close"
           : "Cancel"}</Button
       >
     </div>
-    <details class="border-t border-gray-200 pt-3 text-[11px] text-gray-500">
+    <details class="border-t border-zinc-200 pt-3 text-[11px] text-zinc-500">
       <summary tabindex="0" class="cursor-pointer"
         >Sign-in privacy &amp; limitations</summary
       >

@@ -214,7 +214,7 @@
   {#each parents as parent, index (parent)}
     {@const read = reads[referenceKey(parent)]}
 
-    <article class="border-b border-neutral-100 pb-3 space-y-2">
+    <article class="border-b border-zinc-100 pb-3 space-y-2">
       <div class="flex items-center justify-between gap-3">
         <h3 class="text-sm font-medium break-words">
           {personaName(parent, options)}

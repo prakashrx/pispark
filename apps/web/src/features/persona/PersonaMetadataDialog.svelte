@@ -79,7 +79,7 @@
     {#if creating}<PersonaDetails
         error={client.editorError}
         context="draft"
-      />{:else}<p class="text-xs text-neutral-500">
+      />{:else}<p class="text-xs text-zinc-500">
         Save changes in the editor to keep these edits.
       </p>{/if}
   </form>
