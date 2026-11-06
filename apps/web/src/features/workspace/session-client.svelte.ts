@@ -75,7 +75,11 @@ export class SessionClient {
   };
   private online = () => this.reconnect();
   private beforeUnload = (event: BeforeUnloadEvent) => {
-    if (this.personas.dirty || this.personas.hasUnsavedFiles) {
+    if (
+      this.personas.dirty ||
+      this.personas.hasUnsavedFiles ||
+      this.personas.hasUnappliedContent
+    ) {
       event.preventDefault();
       event.returnValue = "";
     }

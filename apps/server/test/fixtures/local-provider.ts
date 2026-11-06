@@ -162,6 +162,17 @@ export class LocalProviderControl {
           ];
           message.stopReason = "toolUse";
           events.push({ type: "done", reason: "toolUse", message });
+        } else if (text.startsWith("title:") && last?.role !== "toolResult") {
+          message.content = [
+            {
+              type: "toolCall",
+              id: "local-title",
+              name: "pispark_set_title",
+              arguments: JSON.parse(text.slice(6)),
+            },
+          ];
+          message.stopReason = "toolUse";
+          events.push({ type: "done", reason: "toolUse", message });
         } else if (text.startsWith("read:") && last?.role !== "toolResult") {
           message.content = [
             {

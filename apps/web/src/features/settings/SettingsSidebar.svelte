@@ -40,7 +40,7 @@
       <Input
         label="Search settings"
         bind:value={query}
-        class="w-full text-xs bg-gray-50/60 border border-gray-200 rounded-md px-3 py-1.5 text-gray-700 placeholder-gray-400 focus:bg-white focus:outline-none focus:border-gray-400 focus:ring-0 transition"
+        density="compact"
         placeholder="Search settings..."
       />
     </div>
@@ -70,12 +70,17 @@
                   href="#/persona"
                   aria-current={page === "persona" ? "page" : undefined}
                   class="flex items-center px-2 py-1 text-xs font-medium text-gray-900 rounded-md hover:bg-gray-50"
+                  onclick={() => sessions.personas.collection()}
                   >Manage personas</a
                 >
                 {#each sessions.personas.items.slice(0, 16) as persona}<a
                     href="#/persona"
                     class="block px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 rounded-md truncate"
-                    onclick={() => void sessions.personas.select(persona.ref)}
+                    onclick={() =>
+                      void sessions.personas.open(
+                        persona.ref,
+                        page !== "persona",
+                      )}
                     title={`${persona.ref.root}/${persona.ref.path}`}
                     >{persona.valid
                       ? persona.name

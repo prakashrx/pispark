@@ -133,8 +133,10 @@ test("General shows actual read-only appearance and no fictional preferences, sa
 test("persona empty state is real and offers creation without fixture capabilities", async () => {
   window.location.hash = "/persona";
   render(App);
-  expect(await screen.findByText(/No personas yet/)).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Create persona" })).toBeTruthy();
+  expect(
+    await screen.findByText(/Create a persona to give your chats/),
+  ).toBeTruthy();
+  expect(screen.getByRole("button", { name: "New persona" })).toBeTruthy();
   expect(screen.queryByText("v1.4.2")).toBeNull();
   expect(screen.queryByText("Active in session")).toBeNull();
 });

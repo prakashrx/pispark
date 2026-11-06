@@ -38,6 +38,18 @@ const doc: PersonaDocument = {
 const options: PersonaSummary[] = [
   { ref, name: "Base", valid: true, writable: true, diagnostics: [] },
 ];
+Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+  configurable: true,
+  value: function (this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  },
+});
+Object.defineProperty(HTMLDialogElement.prototype, "close", {
+  configurable: true,
+  value: function (this: HTMLDialogElement) {
+    this.removeAttribute("open");
+  },
+});
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -129,15 +141,18 @@ test("late parent reads cannot replace new reference state; unavailable parent p
     screen.queryByRole("checkbox", { name: "1 · instructions · First rule" }),
   ).toBeNull();
   expect(parent.include.instructions).toEqual(["retain-me"]);
-  const advanced = screen.getAllByText("Advanced")[0]!;
-  await fireEvent.click(advanced);
+  await fireEvent.click(
+    screen.getByRole("button", { name: "reused persona 1 actions" }),
+  );
+  await fireEvent.click(
+    screen.getByRole("menuitem", { name: "Advanced settings" }),
+  );
   expect(
-    (
-      screen.getByRole("textbox", {
-        name: "Parent 1 included instructions",
-      }) as HTMLInputElement
-    ).value,
-  ).toBe("retain-me");
+    screen.getAllByRole("group", { name: "Reference names" })[0]!.textContent,
+  ).toContain("retain-me");
+  expect(
+    screen.getAllByRole("group", { name: "Reference names" })[0]!.textContent,
+  ).toContain("Unavailable");
 });
 
 test("same-reference successful reload refreshes choices; unchecking old preserves newly inherited resources and does not refetch on edits", async () => {

@@ -1,4 +1,5 @@
-import { chatTitle } from "./chat-title.js";
+import { TITLE_TOOL } from "../extensions/host-protocol.js";
+import { chatTitle, toolChatTitle } from "./chat-title.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { SessionWindow } from "../protocol.js";
@@ -95,6 +96,8 @@ interface HostedSession {
   cancel?: Promise<void>;
   stop?: Promise<void>;
   unsubscribe?: () => void;
+  disposeHost?: () => void;
+  hostClosed?: boolean;
   loading?: Promise<SessionSnapshot>;
   extensionErrors: number;
   persona?: AdmittedResources;
@@ -453,6 +456,12 @@ export class SessionRuntime {
         },
         managed,
         hosted.persona,
+        {
+          setTitle: (title, signal) => this.setTitle(hosted, title, signal),
+          ownCleanup: (cleanup) => {
+            hosted.disposeHost = cleanup;
+          },
+        },
       );
       hosted.secret = services.secret;
       let session: AgentSession;
@@ -465,7 +474,7 @@ export class SessionRuntime {
           settingsManager: services.settingsManager,
           resourceLoader: services.resourceLoader,
           sessionManager: manager,
-          tools: [...configuration.tools],
+          tools: [...new Set([...configuration.tools, TITLE_TOOL])],
           thinkingLevel: "off",
           scopedModels: [{ model: services.model, thinkingLevel: "off" }],
           sessionStartEvent: {
@@ -559,6 +568,7 @@ export class SessionRuntime {
     } catch (error) {
       if (error instanceof RuntimeError && error.code === "timeout") {
         hosted.error = "timeout";
+        hosted.hostClosed = true;
         hosted.status = "stopping";
         // Setup may still own extension work. Retain admission/lock until it actually finishes.
         void operation
@@ -570,6 +580,28 @@ export class SessionRuntime {
       }
       throw runtimeError(error, "configuration");
     }
+  }
+  private setTitle(
+    hosted: HostedSession,
+    input: string,
+    signal: AbortSignal,
+  ): void {
+    if (
+      !this.accepting ||
+      hosted.hostClosed ||
+      this.live.get(hosted.metadata.id) !== hosted ||
+      !hosted.session ||
+      !["idle", "running"].includes(hosted.status) ||
+      signal.aborted ||
+      hosted.cancel ||
+      (hosted.status === "running" && hosted.identity?.cancelled)
+    )
+      throw new RuntimeError("closed");
+    const title = toolChatTitle(input);
+    const metadata = { ...hosted.metadata, title };
+    this.storage.write(metadata);
+    hosted.metadata = metadata;
+    this.changed(hosted);
   }
   private verifyPersona(hosted: HostedSession): void {
     try {
@@ -783,6 +815,10 @@ export class SessionRuntime {
     await deadline(hosted.stop, this.timeout);
   }
   private async disposeOwned(hosted: HostedSession): Promise<void> {
+    hosted.status = "stopping";
+    hosted.hostClosed = true;
+    hosted.disposeHost?.();
+    hosted.disposeHost = undefined;
     let cleanupError: RuntimeErrorCode | undefined;
     const session = hosted.session;
     if (session) {

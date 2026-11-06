@@ -1,9 +1,6 @@
 <script lang="ts">
   import Button from "../../../lib/ui/Button.svelte";
-  import {
-    actionClass,
-    type ProviderInfo,
-  } from "./types";
+  import type { ProviderInfo } from "./types";
   let {
     provider,
     hasCredential,
@@ -28,7 +25,13 @@
 >
   <div class="min-w-0 flex-1">
     <h3 class="text-xs font-medium text-gray-900">{provider.name}</h3>
-    <p class="text-[11px] text-gray-500 mt-1">{hasCredential ? "Sign-in saved" : provider.configured ? "Set up on this computer" : "Not set up"}</p>
+    <p class="text-[11px] text-gray-500 mt-1">
+      {hasCredential
+        ? "Sign-in saved"
+        : provider.configured
+          ? "Set up on this computer"
+          : "Not set up"}
+    </p>
     <p class="text-[11px] text-gray-400 mt-1 break-words">
       {provider.methods
         .map(
@@ -39,15 +42,11 @@
     </p>
   </div>
   <div class="flex flex-wrap items-center gap-2 shrink-0">
-    <Button
-      class={actionClass}
-      aria-label={`Models for ${provider.name}`}
-      onclick={onmodels}
+    <Button aria-label={`Models for ${provider.name}`} onclick={onmodels}
       >Models <span class="text-gray-400 ml-1">{provider.models.length}</span
       ></Button
     >
     <Button
-      class={actionClass}
       aria-label={`${hasCredential ? "Manage" : "Connect"} ${provider.name}`}
       onclick={onconnect}
       unavailable={!interactive
@@ -60,7 +59,8 @@
         : "Host setup"}</Button
     >
     {#if hasCredential}<Button
-        class="text-xs text-gray-500 underline underline-offset-2 px-1 py-1.5"
+        variant="ghost"
+        size="compact"
         aria-label={`Disconnect ${provider.name}`}
         onclick={ondisconnect}>Disconnect</Button
       >{/if}

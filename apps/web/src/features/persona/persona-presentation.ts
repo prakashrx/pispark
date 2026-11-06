@@ -11,8 +11,10 @@ export function resourceLabel(resource: EffectiveResource): string {
   const text =
     resource.nativeName ||
     resource.text?.split(/\r?\n/u).find((line) => line.trim()) ||
-    resource.file ||
-    resource.directory ||
+    (resource.file || resource.directory)
+      ?.split(/[/]/)
+      .filter(Boolean)
+      .at(-1) ||
     `Reference ${resource.id}`;
   return Array.from(text.replace(/[\p{Cc}\p{Cf}\s]+/gu, " ").trim())
     .slice(0, 80)
@@ -67,4 +69,39 @@ export function personaError(
   if (/^(busy|shutdown|closed)$/.test(code))
     return "The workspace is busy. Try again shortly.";
   return `Couldn’t complete that action.${retainedEdits ? " Your edits are still here." : ""}`;
+}
+
+// Present authoritative order, substituting current local draft entries without resolving inheritance.
+// While stale, retained inherited rows are explicitly labelled as the last checked result by the page.
+export function resourceRows<
+  T extends { id: string; file?: string; directory?: string },
+>(
+  local: T[],
+  effective: EffectiveResource[],
+  owner: PersonaRef,
+): { local?: T; resolved?: EffectiveResource }[] {
+  const shown = new Set<T>();
+  const rows = effective.flatMap<{ local?: T; resolved?: EffectiveResource }>(
+    (resolved) => {
+      if (!samePersona(resolved.origin, owner)) return [{ resolved }];
+      const item = local.find((entry) => entry.id === resolved.id);
+      if (!item) return [];
+      shown.add(item);
+      return [
+        {
+          local: item,
+          resolved:
+            item.file === resolved.file && item.directory === resolved.directory
+              ? resolved
+              : undefined,
+        },
+      ];
+    },
+  );
+  return [
+    ...rows,
+    ...local
+      .filter((item) => !shown.has(item))
+      .map((item) => ({ local: item })),
+  ];
 }

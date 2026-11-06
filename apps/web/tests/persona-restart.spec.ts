@@ -1,4 +1,13 @@
 import { test, expect } from "@playwright/test";
+import {
+  createPersona,
+  openPersona,
+  resourceAction,
+  action,
+  save,
+  refFor,
+  addParent,
+} from "./persona-journey";
 import { fork, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, mkdir, rm, writeFile, appendFile } from "node:fs/promises";
@@ -90,20 +99,8 @@ test("skill reference directory editing survives an actual fixture backend proce
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/#/persona");
-    await page
-      .getByRole("textbox", { name: "New persona name", exact: true })
-      .fill("Restart skill editor");
-    await page
-      .getByRole("textbox", { name: "New persona name", exact: true })
-      .press("Enter");
-    await expect(
-      page.getByRole("textbox", { name: "Name", exact: true }),
-    ).toHaveValue("Restart skill editor");
-    const ref = JSON.parse(
-      await page
-        .getByRole("combobox", { name: "Choose a persona", exact: true })
-        .inputValue(),
-    );
+    await createPersona(page, "Restart skill editor");
+    const ref = await refFor(context.request, "Restart skill editor");
     for (const name of ["first", "second"]) {
       const directory = join(root, "personas", ref.path, "skills", name);
       await mkdir(directory, { recursive: true });
@@ -113,46 +110,95 @@ test("skill reference directory editing survives an actual fixture backend proce
       );
       await writeFile(join(directory, "support.txt"), `Support ${name}`);
     }
-    await page.getByRole("button", { name: "Add skill", exact: true }).click();
-    await page
-      .locator("details")
-      .filter({
-        has: page.getByRole("textbox", {
-          name: "Skill 1 reference name",
-          exact: true,
-          includeHidden: true,
-        }),
+    await addParent(page, "Test review library");
+    await save(page);
+    const savedBeforeCustomize = await (
+      await context.request.post(`${baseURL}/api/personas/read`, {
+        data: { ref },
       })
-      .locator("summary")
+    ).json();
+    await action(page, "Preview");
+    await page
+      .getByRole("button", { name: "Customize review", exact: true })
       .click();
+    let skillDialog = page.getByRole("dialog", {
+      name: "Customize skill",
+      exact: true,
+    });
+    await expect(
+      skillDialog.getByRole("textbox", { name: "Skill folder", exact: true }),
+    ).toHaveValue("");
+    await expect(skillDialog).toContainText("No files will be copied.");
+    await skillDialog
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
+    await expect(page.locator("[data-skills]")).toContainText(
+      "From Test review library",
+    );
+    await expect(
+      page.getByRole("button", { name: "Save changes", exact: true }),
+    ).toBeDisabled();
+    await action(page, "Preview");
     await page
-      .getByRole("textbox", { name: "Skill 1 reference name", exact: true })
-      .fill("review");
-    await page
-      .getByRole("textbox", { name: "Skill folder 1", exact: true })
+      .getByRole("button", { name: "Customize review", exact: true })
+      .click();
+    skillDialog = page.getByRole("dialog", {
+      name: "Customize skill",
+      exact: true,
+    });
+    await skillDialog
+      .getByRole("textbox", { name: "Skill folder", exact: true })
       .fill("skills/first");
-    await page.getByText("Preview", { exact: true }).click();
+    await skillDialog
+      .getByRole("button", { name: "Use this skill", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Skill 1 actions", exact: true }),
+    ).toBeFocused();
+    expect(
+      (
+        await (
+          await context.request.post(`${baseURL}/api/personas/read`, {
+            data: { ref },
+          })
+        ).json()
+      ).definition,
+    ).toEqual(savedBeforeCustomize.definition);
+    // A confirmed customization is local; opening it edits the same override.
+    await resourceAction(page, "Skill", 1, "Edit skill");
+    await expect(
+      page
+        .getByRole("dialog", { name: "Edit skill", exact: true })
+        .getByRole("textbox", { name: "Skill folder", exact: true }),
+    ).toHaveValue("skills/first");
+    await page.keyboard.press("Escape");
+    await action(page, "Preview");
     await page
       .getByRole("button", { name: "Check changes", exact: true })
       .click();
     await expect(
-      page.getByText("Restart supporting fixture", { exact: true }),
+      page
+        .getByRole("dialog")
+        .getByText("Restart supporting fixture", { exact: true }),
     ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await save(page);
+    const customized = await (
+      await context.request.post(`${baseURL}/api/personas/read`, {
+        data: { ref },
+      })
+    ).json();
+    expect(customized.definition.skills).toEqual([
+      { id: "review", directory: "skills/first", replace: true },
+    ]);
+    await resourceAction(page, "Skill", 1, "Edit skill");
     await page
-      .getByRole("button", { name: "Save persona", exact: true })
-      .click();
-    await expect(
-      page.getByRole("status").filter({ hasText: /^Saved$/ }),
-    ).toBeVisible();
-    await page
-      .getByRole("textbox", { name: "Skill folder 1", exact: true })
+      .getByRole("textbox", { name: "Skill folder", exact: true })
       .fill("skills/second");
     await page
-      .getByRole("button", { name: "Save persona", exact: true })
+      .getByRole("button", { name: "Apply changes", exact: true })
       .click();
-    await expect(
-      page.getByRole("status").filter({ hasText: /^Saved$/ }),
-    ).toBeVisible();
+    await save(page);
     const before = await (
       await context.request.post(`${baseURL}/api/personas/read`, {
         data: { ref },
@@ -162,15 +208,12 @@ test("skill reference directory editing survives an actual fixture backend proce
     await start();
     expect(pids[0]).not.toBe(pids[1]);
     await page.reload();
-    await page
-      .getByRole("combobox", { name: "Choose a persona", exact: true })
-      .selectOption(JSON.stringify(ref));
+    await openPersona(page, "Restart skill editor");
+    await resourceAction(page, "Skill", 1, "Edit skill");
     await expect(
-      page.getByRole("textbox", {
-        name: "Skill folder 1",
-        exact: true,
-      }),
+      page.getByRole("textbox", { name: "Skill folder", exact: true }),
     ).toHaveValue("skills/second");
+    await page.keyboard.press("Escape");
     const after = await (
       await context.request.post(`${baseURL}/api/personas/read`, {
         data: { ref },
@@ -197,8 +240,11 @@ test("skill reference directory editing survives an actual fixture backend proce
     );
     throw error;
   } finally {
-    await context.close();
-    await stop();
-    await rm(root, { recursive: true, force: true });
+    try {
+      await context.close();
+    } finally {
+      await stop();
+      await rm(root, { recursive: true, force: true });
+    }
   }
 });

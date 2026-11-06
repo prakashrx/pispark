@@ -1,4 +1,45 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+import {
+  collection,
+  createPersona,
+  openPersona,
+  action,
+  metadata,
+  save,
+  addFile,
+  addPrompt,
+  editFile,
+  resourceAction,
+  reference,
+  addParent,
+  refFor,
+  capture,
+} from "./persona-journey";
+
+async function openRef(page: Page, ref: unknown) {
+  await collection(page);
+  await page
+    .getByRole("textbox", { name: "Search personas", exact: true })
+    .fill("");
+  const row = page
+    .locator("[data-persona-key]")
+    .filter({ has: page.locator("span") });
+  await expect
+    .poll(async () =>
+      row.evaluateAll(
+        (elements, key) =>
+          elements.some((e) => e.getAttribute("data-persona-key") === key),
+        JSON.stringify(ref),
+      ),
+    )
+    .toBe(true);
+  const index = await row.evaluateAll(
+    (elements, key) =>
+      elements.findIndex((e) => e.getAttribute("data-persona-key") === key),
+    JSON.stringify(ref),
+  );
+  await row.nth(index).click();
+}
 
 test("real persona editor persists ordered text/files, inheritance/overrides and native skill support reads", async ({
   page,
@@ -8,71 +49,15 @@ test("real persona editor persists ordered text/files, inheritance/overrides and
     base = `Base ${suffix}`,
     child = `Writer ${suffix}`;
   await page.goto("/#/persona");
-  await page
-    .getByRole("textbox", { name: "New persona name", exact: true })
-    .fill(base);
-  await page
-    .getByRole("textbox", { name: "New persona name", exact: true })
-    .press("Enter");
-  await expect(
-    page.getByRole("textbox", { name: "Name", exact: true }),
-  ).toHaveValue(base);
-  await page
-    .getByRole("button", { name: "Add instruction", exact: true })
-    .click();
-  await page
-    .locator("details")
-    .filter({
-      has: page.getByRole("textbox", {
-        name: "Instruction 1 reference name",
-        exact: true,
-        includeHidden: true,
-      }),
-    })
-    .locator("summary")
-    .click();
-  await page
-    .getByRole("textbox", { name: "Instruction 1 reference name", exact: true })
-    .fill("tone");
-  await page
-    .getByRole("textbox", { name: "Instruction 1 text", exact: true })
-    .fill("Base tone");
-  await page
-    .getByRole("button", { name: "Add instruction", exact: true })
-    .click();
-  await page
-    .locator("details")
-    .filter({
-      has: page.getByRole("textbox", {
-        name: "Instruction 2 reference name",
-        exact: true,
-        includeHidden: true,
-      }),
-    })
-    .locator("summary")
-    .click();
-  await page
-    .getByRole("textbox", { name: "Instruction 2 reference name", exact: true })
-    .fill("extra");
-  await page
-    .getByRole("textbox", { name: "Instruction 2 text", exact: true })
-    .fill("Exclude this inherited entry");
-  await page.getByRole("button", { name: "Use a file", exact: true }).click();
-  await page
-    .locator("details")
-    .filter({
-      has: page.getByRole("textbox", {
-        name: "Instruction 3 reference name",
-        exact: true,
-        includeHidden: true,
-      }),
-    })
-    .locator("summary")
-    .click();
-  await page
-    .getByRole("textbox", { name: "Instruction 3 reference name", exact: true })
-    .fill("rules");
-  await page.getByText("Edit file", { exact: true }).click();
+  await createPersona(page, base);
+  await addPrompt(page, "Base tone");
+  await reference(page, 1, "tone");
+  await addPrompt(page, "Exclude this inherited entry");
+  await reference(page, 2, "extra");
+  await save(page);
+  await addFile(page);
+  await reference(page, 3, "rules");
+  await editFile(page, 3);
   await page
     .getByRole("textbox", { name: "File text: rules.md", exact: true })
     .fill("File rules persisted separately");
@@ -80,29 +65,13 @@ test("real persona editor persists ordered text/files, inheritance/overrides and
   await expect(
     page.getByRole("status").filter({ hasText: /^File saved\.$/ }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Move instruction 3 up", exact: true })
-    .focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  await resourceAction(page, "Instruction", 3, "Move up");
   await expect(
-    page.getByRole("textbox", {
-      name: "Instruction 2 reference name",
-      exact: true,
-    }),
-  ).toHaveValue("rules");
-  await expect(
-    page.getByRole("button", { name: "Move instruction 2 up", exact: true }),
+    page.getByRole("button", { name: "Prompt 2 actions", exact: true }),
   ).toBeFocused();
-  await page.getByRole("button", { name: "Save persona", exact: true }).click();
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Saved$/ }),
-  ).toBeVisible();
-  const fileEditor = page.locator("details").filter({
-    has: page.getByText("Edit file", { exact: true }),
-  });
-  if ((await fileEditor.getAttribute("open")) === null)
-    await fileEditor.locator("summary").click();
-  await page.getByRole("button", { name: "Load file", exact: true }).click();
+  await save(page);
+  await editFile(page, 2);
   await expect(
     page.getByRole("textbox", { name: "File text: rules.md", exact: true }),
   ).toHaveValue("File rules persisted separately");
@@ -113,29 +82,9 @@ test("real persona editor persists ordered text/files, inheritance/overrides and
   await expect(
     page.getByRole("status").filter({ hasText: /^File saved\.$/ }),
   ).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "New persona name", exact: true })
-    .fill(child);
-  await page
-    .getByRole("button", { name: "Create persona", exact: true })
-    .click();
-  await expect(
-    page.getByRole("textbox", { name: "Name", exact: true }),
-  ).toHaveValue(child);
-  await page
-    .getByRole("combobox", {
-      name: "Choose a persona to build on",
-      exact: true,
-    })
-    .selectOption({ label: base });
-  await page.getByRole("button", { name: "Add persona", exact: true }).click();
-  await page
-    .getByRole("combobox", {
-      name: "Choose a persona to build on",
-      exact: true,
-    })
-    .selectOption({ label: "Test review library" });
-  await page.getByRole("button", { name: "Add persona", exact: true }).click();
+  await createPersona(page, child);
+  await addParent(page, base);
+  await addParent(page, "Test review library");
   await page.getByText("Choose what to use", { exact: true }).first().click();
   await expect(
     page.getByRole("checkbox", {
@@ -149,95 +98,72 @@ test("real persona editor persists ordered text/files, inheritance/overrides and
       exact: true,
     })
     .uncheck();
-  await page.getByText("Preview", { exact: true }).click();
+  await action(page, "Preview");
   await page
     .getByRole("button", { name: "Check changes", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "Customize Base tone", exact: true }),
-  ).toBeVisible();
   await page
     .getByRole("button", { name: "Customize Base tone", exact: true })
     .click();
   await page
-    .getByRole("textbox", { name: "Instruction 1 text", exact: true })
+    .getByRole("textbox", { name: "Instructions", exact: true })
     .fill("Child tone override");
-  await page.getByRole("button", { name: "Save persona", exact: true }).click();
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Saved$/ }),
-  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Apply changes", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await save(page);
+  await action(page, "Preview");
   await page
     .getByRole("button", {
       name: "Don’t use File rules edited with its own revision",
       exact: true,
     })
     .click();
-  await page.getByRole("button", { name: "Save persona", exact: true }).click();
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Saved$/ }),
-  ).toBeVisible();
-  await page
-    .locator("main > div > details")
-    .filter({
-      has: page.locator(":scope > summary", { hasText: /^Advanced$/ }),
-    })
-    .locator(":scope > summary")
-    .click();
-  await page.getByRole("button", { name: "View JSON", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await save(page);
+  await action(page, "Advanced settings");
+  await page.getByText("View JSON", { exact: true }).click();
   await expect(
     page.getByRole("region", { name: "Persona JSON", exact: true }),
   ).toContainText("replace");
-  for (const width of [390, 1920, 3840]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
-    await page.screenshot({
-      path: info.outputPath(`persona-${width}.png`),
-      fullPage: true,
-    });
-  }
+  await page.keyboard.press("Escape");
   await page.reload();
-  await page
-    .getByRole("combobox", { name: "Choose a persona", exact: true })
-    .selectOption({ label: child });
+  await openPersona(page, child);
   await expect(
-    page.getByRole("textbox", { name: "Instruction 1 text", exact: true }),
-  ).toHaveValue("Child tone override");
+    page
+      .locator("[data-instructions] .prompt-text")
+      .filter({ hasText: "Child tone override" }),
+  ).toBeVisible();
   await page
-    .getByRole("button", {
-      name: "Persona: No persona",
-      exact: true,
-    })
+    .getByRole("button", { name: "Persona: No persona", exact: true })
     .click();
   await page
     .getByRole("listbox", { name: "Persona", exact: true })
     .getByRole("option", { name: child, exact: true })
     .click();
-  const personaContext = page.getByRole("button", {
+  const context = page.getByRole("button", {
     name: `Persona: ${child}`,
     exact: true,
   });
-  await personaContext.click();
+  await context.click();
   await page.locator("[data-selector-popup] summary").click();
+  await page.getByRole("button", { name: /^Chat setup:/ }).click();
   await page
-    .getByRole("combobox", { name: "Chat setup", exact: true })
-    .selectOption("Catalog resources");
+    .getByRole("option", { name: "Catalog resources", exact: true })
+    .click();
   await expect(
     page.getByText(
       "Skills need file access, which this chat setup doesn’t allow.",
-      {
-        exact: true,
-      },
+      { exact: true },
     ),
   ).toBeVisible();
+  await page.getByRole("button", { name: /^Chat setup:/ }).click();
   await page
-    .getByRole("combobox", { name: "Chat setup", exact: true })
-    .selectOption("Test-only deterministic");
+    .getByRole("option", { name: "Test-only deterministic", exact: true })
+    .click();
   await page.keyboard.press("Escape");
-  await expect(personaContext).toBeFocused();
+  await expect(context).toBeFocused();
   await page
     .getByRole("textbox", { name: "Ask anything", exact: true })
     .fill("read-skill-support");
@@ -246,75 +172,73 @@ test("real persona editor persists ordered text/files, inheritance/overrides and
     .press("Enter");
   await expect(page.getByText(/local:.*NATIVE-COPIED-SUPPORT/)).toBeVisible();
   await expect(page.getByText(/Admitted persona:/)).toHaveCount(0);
-  await page.getByText("Chat details", { exact: true }).click();
-  await expect(page.getByText(child, { exact: true }).last()).toBeVisible();
+  await page.getByRole("button", { name: "Chat actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Chat info", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Chat info", exact: true }),
+  ).toContainText(child);
+  await capture(page, info, "inherited-chat-info");
+  await page.keyboard.press("Escape");
   const { sessions } = await (await request.get("/api/sessions")).json();
-  const admitted = sessions.find(
-    (s: { persona?: { name: string } }) => s.persona?.name === child,
-  );
-  expect(admitted.persona.name).toBe(child);
-  await page.getByRole("button", { name: "Stop agent", exact: true }).click();
+  expect(
+    sessions.find(
+      (s: { persona?: { name: string } }) => s.persona?.name === child,
+    ).persona.name,
+  ).toBe(child);
+  await page.getByRole("button", { name: "Chat actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Stop agent", exact: true }).click();
 });
 
 test("real stale save keeps editor draft and route navigation keeps unsaved file drafts", async ({
   page,
   request,
 }) => {
+  const name = `Conflict ${Date.now()}`;
   await page.goto("/#/persona");
-  await page
-    .getByRole("textbox", { name: "New persona name" })
-    .fill(`Conflict ${Date.now()}`);
-  await page
-    .getByRole("button", { name: "Create persona", exact: true })
-    .click();
-  await expect(
-    page.getByRole("textbox", { name: "Name", exact: true }),
-  ).toBeVisible();
-  const key = await page
-    .getByRole("combobox", { name: "Choose a persona", exact: true })
-    .inputValue();
-  const ref = JSON.parse(key);
+  await createPersona(page, name);
+  await addFile(page);
+  const ref = await refFor(request, name);
   const saved = await (
     await request.post("/api/personas/read", { data: { ref } })
   ).json();
-  const response = await request.post("/api/personas/save", {
-    data: {
-      ref,
-      expectedRevision: saved.revision,
-      definition: { ...saved.definition, description: "Other tab saved" },
-    },
-  });
-  expect(response.ok()).toBe(true);
-  await page
-    .getByRole("textbox", { name: "Persona description" })
-    .fill("Keep my stale draft");
-  await page.getByRole("button", { name: "Save persona", exact: true }).click();
+  expect(
+    (
+      await request.post("/api/personas/save", {
+        data: {
+          ref,
+          expectedRevision: saved.revision,
+          definition: { ...saved.definition, description: "Other tab saved" },
+        },
+      })
+    ).ok(),
+  ).toBe(true);
+  await metadata(page, "Keep my stale draft");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(
     page
       .getByRole("alert")
       .filter({ hasText: /This persona changed elsewhere/ }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("textbox", { name: "Persona description" }),
-  ).toHaveValue("Keep my stale draft");
-  await page.getByRole("button", { name: "Use a file", exact: true }).click();
-  await page.getByText("Edit file", { exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Keep my stale draft");
+  await editFile(page);
   await page
     .getByRole("textbox", { name: "File text: rules.md" })
     .fill("Unsaved separate file draft");
+  await page.keyboard.press("Escape");
   await page.getByRole("link", { name: "Sources", exact: true }).click();
   await page
     .getByRole("link", { name: "Manage personas", exact: true })
     .last()
     .click();
-  await page
-    .getByText("Edit file · Unsaved changes", {
-      exact: true,
-    })
-    .click();
+  await expect(
+    page.getByRole("heading", { name: "Personas", exact: true }),
+  ).toBeVisible();
+  await openPersona(page, name);
+  await editFile(page);
   await expect(
     page.getByRole("textbox", { name: "File text: rules.md" }),
   ).toHaveValue("Unsaved separate file draft");
+  await expect(page.getByRole("main")).toContainText("Keep my stale draft");
 });
 
 test("invalid catalog entries retain distinct safe identities and diagnostics without lossy editing", async ({
@@ -338,66 +262,25 @@ test("invalid catalog entries retain distinct safe identities and diagnostics wi
     const item = catalog.personas.find(
       (p: { ref: { path: string } }) => p.ref.path === path,
     );
-    await page
-      .getByRole("combobox", { name: "Choose a persona", exact: true })
-      .selectOption(JSON.stringify(item.ref));
+    await openRef(page, item.ref);
     const diagnostics = page.getByRole("region", {
       name: "Catalog diagnostics",
     });
     await expect(diagnostics).toContainText(`examples/${path}`);
-    if ((await diagnostics.locator("details").getAttribute("open")) === null)
-      await diagnostics.locator("summary").click();
+    await diagnostics.getByText("Details", { exact: true }).click();
     await expect(diagnostics).toContainText(item.diagnostics[0].code);
     await expect(
-      page.getByRole("button", { name: "Save persona", exact: true }),
+      page.getByRole("button", { name: "Save changes", exact: true }),
     ).toBeDisabled();
-    if (["malformed-one", "malformed-two", "unsupported"].includes(path)) {
-      await expect(
-        page.getByRole("textbox", { name: "Name", exact: true }),
-      ).toHaveCount(0);
+    if (["malformed-one", "malformed-two", "unsupported"].includes(path))
       await expect(diagnostics).toContainText("has not been reconstructed");
-    } else {
+    else
       await expect(
-        page.getByRole("textbox", { name: "Name", exact: true }),
+        page.getByRole("button", { name: "Add prompt", exact: true }),
       ).toBeDisabled();
-    }
   }
   expect(invalidReads).toBe(0);
-  const malformed = catalog.personas.find(
-    (p: { ref: { path: string } }) => p.ref.path === "malformed-one",
-  );
-  await page
-    .getByRole("combobox", { name: "Choose a persona", exact: true })
-    .selectOption(JSON.stringify(malformed.ref));
-  await expect(
-    page.getByRole("region", { name: "Catalog diagnostics" }),
-  ).toContainText("examples/malformed-one");
-  const invalidOptions = await page
-    .getByRole("combobox", { name: "Choose a persona", exact: true })
-    .locator("option")
-    .allTextContents();
-  expect(
-    invalidOptions.some((label) =>
-      label.includes("Needs attention · malformed-one"),
-    ),
-  ).toBe(true);
-  expect(
-    invalidOptions.some((label) =>
-      label.includes("Needs attention · malformed-two"),
-    ),
-  ).toBe(true);
-  for (const width of [390, 1920, 3840]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
-    await page.screenshot({
-      path: info.outputPath(`invalid-${width}.png`),
-      fullPage: true,
-    });
-  }
+  await capture(page, info, "invalid");
 });
 
 for (const graph of ["definition", "parent"] as const)
@@ -424,228 +307,158 @@ for (const graph of ["definition", "parent"] as const)
           parents: [parent.ref],
         },
       });
-      if (!newFile) {
-        await post("instruction", {
-          ref: child.ref,
-          path: "rules.md",
-          expectedRevision: null,
-          text: "Original file",
-        });
-        child = await post("save", {
-          ref: child.ref,
-          expectedRevision: child.revision,
-          definition: {
-            ...child.definition,
-            instructions: [{ id: "rules", file: "rules.md" }],
-          },
-        });
-      }
-      await page.goto("/#/persona");
-      await page
-        .getByRole("combobox", { name: "Choose a persona", exact: true })
-        .selectOption(JSON.stringify(child.ref));
-      await expect(
-        page.getByRole("textbox", { name: "Name", exact: true }),
-      ).toHaveValue(child.definition.name);
-      const other = await context.newPage();
-      await other.goto("/#/persona");
-      const target = graph === "parent" ? parent : child;
-      await other
-        .getByRole("combobox", { name: "Choose a persona", exact: true })
-        .selectOption(JSON.stringify(target.ref));
-      await other
-        .getByRole("textbox", { name: "Persona description", exact: true })
-        .fill("Other tab durable update");
-      await other
-        .getByRole("button", { name: "Save persona", exact: true })
-        .click();
-      await expect(
-        other.getByRole("status").filter({ hasText: /^Saved$/ }),
-      ).toBeVisible();
-      await page
-        .getByRole("textbox", { name: "Persona description", exact: true })
-        .fill("Keep my stale definition draft");
-      if (newFile)
-        await page
-          .getByRole("button", { name: "Use a file", exact: true })
-          .click();
-      await page.getByText("Edit file", { exact: true }).click();
-      if (!newFile)
-        await page
-          .getByRole("button", { name: "Load file", exact: true })
-          .click();
-      await page
-        .getByRole("textbox", { name: "File text: rules.md", exact: true })
-        .fill("File save still succeeds");
-      await page
-        .getByRole("button", { name: "Save file", exact: true })
-        .click();
-      await expect(
-        page.getByRole("status").filter({ hasText: /^File saved\.$/ }),
-      ).toBeVisible();
-      await expect(
-        page.getByRole("alert").filter({
-          hasText: /The file was saved, but this persona changed elsewhere/,
-        }),
-      ).toBeVisible();
-      await expect(
-        page.getByRole("textbox", { name: "Persona description", exact: true }),
-      ).toHaveValue("Keep my stale definition draft");
-      await expect(
-        page.getByRole("textbox", { name: "File text: rules.md", exact: true }),
-      ).toHaveValue("File save still succeeds");
-      await expect(
-        page.getByRole("button", { name: "Save persona", exact: true }),
-      ).toBeDisabled();
-      const durable = await post("read", { ref: target.ref });
-      expect(durable.definition.description).toBe("Other tab durable update");
-      const stale = await request.post("/api/personas/save", {
-        data: {
-          ref: child.ref,
-          expectedRevision: child.revision,
-          definition: { ...child.definition, description: "Stale overwrite" },
+      await post("instruction", {
+        ref: child.ref,
+        path: "rules.md",
+        expectedRevision: null,
+        text: "Original file",
+      });
+      child = await post("save", {
+        ref: child.ref,
+        expectedRevision: child.revision,
+        definition: {
+          ...child.definition,
+          instructions: [{ id: "rules", file: "rules.md" }],
         },
       });
-      expect(stale.status()).toBe(409);
-      if (graph === "parent" && newFile)
-        for (const width of [390, 1920, 3840]) {
-          await page.setViewportSize({
-            width,
-            height: width === 390 ? 844 : 1200,
-          });
-          expect(
-            await page.evaluate(
-              () => document.documentElement.scrollWidth <= innerWidth,
-            ),
-          ).toBe(true);
-          await page.screenshot({
-            path: info.outputPath(`reconciliation-${width}.png`),
-            fullPage: true,
-          });
+      await page.goto("/#/persona");
+      await openPersona(page, child.definition.name);
+      const other = await context.newPage();
+      const target = graph === "parent" ? parent : child;
+      try {
+        await other.goto("/#/persona");
+        await openPersona(other, target.definition.name);
+        await metadata(other, "Other tab durable update");
+        await save(other);
+        await metadata(page, "Keep my stale definition draft");
+        if (newFile) {
+          await resourceAction(page, "Instruction", 1, "Advanced settings");
+          await page
+            .getByRole("textbox", { name: "File name", exact: true })
+            .fill("new-rules.md");
+          await page.getByRole("button", { name: "Done", exact: true }).click();
         }
-      await other.close();
+        await editFile(page);
+        if (!newFile)
+          await page
+            .getByRole("button", { name: "Load file", exact: true })
+            .click();
+        await page
+          .getByRole("textbox", {
+            name: `File text: ${newFile ? "new-rules.md" : "rules.md"}`,
+            exact: true,
+          })
+          .fill("File save still succeeds");
+        await page
+          .getByRole("button", { name: "Save file", exact: true })
+          .click();
+        await expect(
+          page.getByRole("status").filter({ hasText: /^File saved\.$/ }),
+        ).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(
+          page.getByRole("alert").filter({
+            hasText: /The file was saved, but this persona changed elsewhere/,
+          }),
+        ).toBeVisible();
+        await expect(page.getByRole("main")).toContainText(
+          "Keep my stale definition draft",
+        );
+        await editFile(page);
+        await expect(
+          page.getByRole("textbox", {
+            name: `File text: ${newFile ? "new-rules.md" : "rules.md"}`,
+            exact: true,
+          }),
+        ).toHaveValue("File save still succeeds");
+        await page.keyboard.press("Escape");
+        await expect(
+          page.getByRole("button", { name: "Save changes", exact: true }),
+        ).toBeDisabled();
+        expect(
+          (await post("read", { ref: target.ref })).definition.description,
+        ).toBe("Other tab durable update");
+        expect(
+          (
+            await request.post("/api/personas/save", {
+              data: {
+                ref: child.ref,
+                expectedRevision: child.revision,
+                definition: {
+                  ...child.definition,
+                  description: "Stale overwrite",
+                },
+              },
+            })
+          ).status(),
+        ).toBe(409);
+        if (graph === "parent" && newFile)
+          await capture(page, info, "reconciliation");
+      } finally {
+        await other.close();
+      }
     });
   }
 
-test("ordinary journey creates instructions without reference editing, shows real settings and names a quiet chat", async ({
+test("ordinary collection/continuous/dialog journey uses checked preview, real settings and actual native title tool", async ({
   page,
   request,
 }, info) => {
   const name = `Simple writer ${Date.now().toString(36)}`;
   await page.goto("/#/persona");
-  await page
-    .getByRole("textbox", { name: "New persona name", exact: true })
-    .fill(name);
-  await page
-    .getByRole("button", { name: "Create persona", exact: true })
-    .click();
+  await capture(page, info, "collection");
+  await page.getByRole("button", { name: "New persona", exact: true }).click();
+  await capture(page, info, "create-dialog");
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("button", { name: "New persona", exact: true }),
+  ).toBeFocused();
+  await createPersona(page, name);
   await expect(
     page.getByRole("textbox", { name: "Name", exact: true }),
-  ).toHaveValue(name);
-  await page
-    .getByRole("button", { name: "Add instruction", exact: true })
-    .click();
-  await page
-    .getByRole("textbox", { name: "Instruction 1 text", exact: true })
-    .fill("Explain things simply.");
-  await expect(
-    page.getByRole("textbox", {
-      name: "Instruction 1 reference name",
-      exact: true,
-    }),
   ).toHaveCount(0);
+  await addPrompt(page, "Explain things simply.");
   await expect(
-    page.getByRole("button", { name: "Check changes", exact: true }),
+    page.getByRole("textbox", { name: "Reference name", exact: true }),
   ).toHaveCount(0);
+  await expect(page.getByRole("tab")).toHaveCount(0);
+  await capture(page, info, "continuous-prompts");
+  await page.getByRole("button", { name: "Add skill", exact: true }).click();
+  await capture(page, info, "skill-dialog");
+  await page.keyboard.press("Escape");
+  await capture(page, info, "continuous-skills");
+  await action(page, "Preview");
   await expect(
-    page.getByRole("button", { name: "View JSON", exact: true }),
-  ).toHaveCount(0);
-  await page.getByRole("textbox", { name: "Name", exact: true }).fill("");
-  await page.getByText("Preview", { exact: true }).click();
+    page.getByRole("status").filter({ hasText: "Checked draft" }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Check changes", exact: true })
     .click();
-  await expect(page.getByRole("alert")).toHaveText(
-    "Check this persona’s name, instructions, and skills.",
-  );
   await expect(
-    page.getByRole("textbox", { name: "Name", exact: true }),
-  ).toHaveValue("");
-  await expect(
-    page.getByRole("textbox", { name: "Instruction 1 text", exact: true }),
-  ).toHaveValue("Explain things simply.");
-  expect(await page.getByRole("main").innerText()).not.toContain(
-    "invalid-definition",
-  );
-  await page
-    .getByRole("main")
-    .getByText("Details", { exact: true })
-    .first()
-    .click();
-  await expect(page.getByText(/^invalid-definition/)).toBeVisible();
-  await page
-    .getByRole("main")
-    .getByText("Details", { exact: true })
-    .first()
-    .click();
-  await page.getByRole("textbox", { name: "Name", exact: true }).fill(name);
-  await page.getByText("Preview", { exact: true }).click();
-  await page.getByRole("button", { name: "Save persona", exact: true }).click();
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Saved$/ }),
+    page.getByRole("status").filter({ hasText: "Checked draft" }),
   ).toBeVisible();
-  const ref = JSON.parse(
-    await page
-      .getByRole("combobox", { name: "Choose a persona", exact: true })
-      .inputValue(),
-  );
+  await page.keyboard.press("Escape");
+  await save(page);
+  const ref = await refFor(request, name);
   const saved = await (
     await request.post("/api/personas/read", { data: { ref } })
   ).json();
   expect(saved.definition.instructions).toEqual([
     { id: "instruction-1", text: "Explain things simply." },
   ]);
-  const capture = async (surface: string) => {
-    for (const width of [390, 1920, 3840]) {
-      await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      ).toBe(true);
-      await page.screenshot({
-        path: info.outputPath(`ordinary-${surface}-${width}.png`),
-        fullPage: true,
-        animations: "disabled",
-      });
-    }
-  };
-  expect(await page.getByRole("main").innerText()).not.toContain(ref.id);
-  await capture("persona");
-  await page.getByText("Preview", { exact: true }).focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByText("This persona", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Check changes", exact: true }),
-  ).toBeVisible();
+  await action(page, "Edit name and description");
+  await capture(page, info, "metadata-dialog");
+  await page.keyboard.press("Escape");
   await page.goto("/#/settings");
+  await expect(
+    page.getByRole("main").getByText("Light", { exact: true }),
+  ).toBeVisible();
   const catalog = await (await request.get("/api/catalog")).json();
   for (const folder of catalog.workspaces)
     await expect(
       page.getByRole("main").getByText(folder.label, { exact: true }),
     ).toBeVisible();
-  await expect(
-    page.getByRole("main").getByText("Light", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("combobox", { name: "Default persona" }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", {
-      name: /Save changes|Reset to defaults|Dark|System/,
-    }),
-  ).toHaveCount(0);
-  await capture("general");
+  await capture(page, info, "general");
   await page.getByRole("link", { name: "Sources", exact: true }).click();
   await expect(
     page.getByText(/Source connections aren’t available yet/),
@@ -653,49 +466,48 @@ test("ordinary journey creates instructions without reference editing, shows rea
   await expect(
     page.getByRole("button", { name: /Add Source|Sync/ }),
   ).toHaveCount(0);
-  await capture("sources");
-  await page
-    .getByRole("main")
-    .getByRole("link", { name: "Manage personas", exact: true })
-    .click();
+  await capture(page, info, "sources");
   await page
     .getByRole("button", { name: "Persona: No persona", exact: true })
     .click();
-  await page
-    .getByRole("listbox", { name: "Persona", exact: true })
-    .getByRole("option", { name, exact: true })
-    .click();
+  await page.getByRole("option", { name, exact: true }).click();
   await page
     .getByRole("textbox", { name: "Ask anything", exact: true })
-    .fill("A friendly chat name");
+    .fill('title:{"title":"Planning a quiet workspace"}');
   await page.getByRole("button", { name: "Start chat", exact: true }).click();
   await expect(
-    page.getByText("local:A friendly chat name", { exact: true }),
+    page.getByRole("heading", {
+      name: "Planning a quiet workspace",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /^Planning a quiet workspace/ }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Send message", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");
-  const id = await page.evaluate(() => localStorage.getItem("pispark-session"));
+  const ordinary = await page.getByRole("main").innerText();
+  expect(ordinary).not.toMatch(/Admitted|Queued:|idle|Live|Connected/);
+  expect(ordinary).not.toContain(ref.id);
+  expect(ordinary).not.toContain(saved.revision);
+  await capture(page, info, "named-chat");
+  await page.getByRole("button", { name: "Chat actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Chat info", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Chat info", exact: true });
+  for (const field of ["Persona", "Model", "Working folder", "Started"])
+    await expect(dialog.getByText(field, { exact: true })).toBeVisible();
+  expect(await dialog.innerText()).not.toMatch(
+    /Chat ID|Revision|History window|Queue|idle|Live|\{"root/,
+  );
+  expect(await dialog.innerText()).not.toContain(saved.revision);
+  await capture(page, info, "chat-info");
+  await page.keyboard.press("Escape");
   await expect(
-    page.getByRole("heading", { name: "A friendly chat name", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /^A friendly chat name/ }),
-  ).toBeVisible();
-  const ordinaryText = await page.getByRole("main").innerText();
-  expect(ordinaryText).not.toMatch(/Admitted|Queued:|idle|Live|Connected/);
-  expect(ordinaryText).not.toContain(id!);
-  expect(ordinaryText).not.toContain(saved.revision);
-  await expect(
-    page.getByRole("button", { name: "Stop agent", exact: true }),
-  ).toHaveCount(0);
-  await capture("chat");
-  await page.getByText("Chat details", { exact: true }).focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByText(id!, { exact: true })).toBeVisible();
-  await expect(page.getByText(saved.revision, { exact: true })).toBeVisible();
-  await capture("chat-details");
-  await page.getByRole("button", { name: "Stop agent", exact: true }).click();
+    page.getByRole("button", { name: "Chat actions", exact: true }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Chat actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Stop agent", exact: true }).click();
   await expect(
     page.getByText("Connection lost. Your chat may still be running."),
   ).toHaveCount(0);
@@ -726,9 +538,7 @@ test("two real tabs reload Based on choices and unchecking an old instruction pr
     },
   });
   await page.goto("/#/persona");
-  await page
-    .getByRole("combobox", { name: "Choose a persona", exact: true })
-    .selectOption(JSON.stringify(child.ref));
+  await openPersona(page, child.definition.name);
   await page.getByText("Choose what to use", { exact: true }).click();
   await expect(
     page.getByRole("checkbox", {
@@ -739,28 +549,10 @@ test("two real tabs reload Based on choices and unchecking an old instruction pr
   const other = await context.newPage();
   try {
     await other.goto("/#/persona");
-    await other
-      .getByRole("combobox", { name: "Choose a persona", exact: true })
-      .selectOption(JSON.stringify(parent.ref));
-    await other
-      .getByRole("button", { name: "Add instruction", exact: true })
-      .click();
-    await other
-      .getByRole("textbox", { name: "Instruction 2 text", exact: true })
-      .fill("Newly inherited instruction");
-    await other
-      .getByRole("button", { name: "Save persona", exact: true })
-      .click();
-    await expect(
-      other.getByRole("status").filter({ hasText: /^Saved$/ }),
-    ).toBeVisible();
-    const advanced = page.locator("main > div > details").filter({
-      has: page.locator(":scope > summary", { hasText: /^Advanced$/ }),
-    });
-    await advanced.locator(":scope > summary").click();
-    await page
-      .getByRole("button", { name: "Reload saved version", exact: true })
-      .click();
+    await openPersona(other, parent.definition.name);
+    await addPrompt(other, "Newly inherited instruction");
+    await save(other);
+    await action(page, "Reload saved version");
     const added = page.getByRole("checkbox", {
       name: "1 · instructions · Newly inherited instruction",
       exact: true,
@@ -772,14 +564,8 @@ test("two real tabs reload Based on choices and unchecking an old instruction pr
         includeHidden: true,
       }),
     ).toHaveCount(1);
-    const choices = page.locator("details").filter({
-      has: page.locator(":scope > summary", {
-        hasText: /^Choose what to use$/,
-      }),
-    });
-    if ((await choices.getAttribute("open")) === null)
-      await choices.locator(":scope > summary").click();
-    await expect(added).toBeVisible();
+    const choices = page.getByText("Choose what to use", { exact: true });
+    if (!(await added.isVisible())) await choices.click();
     await expect(added).toBeChecked();
     await page
       .getByRole("checkbox", {
@@ -788,19 +574,8 @@ test("two real tabs reload Based on choices and unchecking an old instruction pr
       })
       .uncheck();
     await expect(added).toBeChecked();
-    for (const width of [390, 1920]) {
-      await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
-      await page.screenshot({
-        path: info.outputPath(`reloaded-choices-${width}.png`),
-        fullPage: true,
-      });
-    }
-    await page
-      .getByRole("button", { name: "Save persona", exact: true })
-      .click();
-    await expect(
-      page.getByRole("status").filter({ hasText: /^Saved$/ }),
-    ).toBeVisible();
+    await capture(page, info, "reloaded-choices", [390, 1920]);
+    await save(page);
     const saved = await post("read", { ref: child.ref });
     expect(saved.instructions.map((r: { text: string }) => r.text)).toEqual([
       "Newly inherited instruction",
@@ -813,28 +588,16 @@ test("two real tabs reload Based on choices and unchecking an old instruction pr
   }
 });
 
-test("creation completed while editing is a visible success status, not a failed-save alert", async ({
+test("busy creation protects inputs and explicit collection navigation supersedes delayed completion", async ({
   page,
+  request,
 }, info) => {
+  const original = `Original editor ${Date.now()}`;
   await page.goto("/#/persona");
-  const newName = page.getByRole("textbox", {
-    name: "New persona name",
-    exact: true,
-  });
-  await newName.fill(`Original editor ${Date.now()}`);
-  await page
-    .getByRole("button", { name: "Create persona", exact: true })
-    .click();
-  const name = page.getByRole("textbox", { name: "Name", exact: true });
-  await expect(name).toBeVisible();
-  let release!: () => void;
-  let entered!: () => void;
-  const gate = new Promise<void>((r) => {
-    release = r;
-  });
-  const entering = new Promise<void>((r) => {
-    entered = r;
-  });
+  await createPersona(page, original);
+  let release!: () => void, entered!: () => void;
+  const gate = new Promise<void>((r) => (release = r)),
+    entering = new Promise<void>((r) => (entered = r));
   await page.route("**/api/personas/create", async (route) => {
     const response = await route.fetch();
     entered();
@@ -842,53 +605,47 @@ test("creation completed while editing is a visible success status, not a failed
     await route.fulfill({ response });
   });
   const created = `Created elsewhere ${Date.now()}`;
-  await newName.fill(created);
+  await collection(page);
+  await page.getByRole("button", { name: "New persona", exact: true }).click();
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill(created);
   await page
     .getByRole("button", { name: "Create persona", exact: true })
     .click();
   await entering;
-  await name.fill("Current unsaved name");
-  release();
-  const copy =
-    "Persona created. Your current edits are still here. Choose the new persona from the list when you’re ready.";
-  await expect(page.getByText(copy, { exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
   await expect(
-    page.getByRole("status").filter({ hasText: copy }),
+    page.getByRole("button", { name: /Create persona$/ }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  // Deliberate route navigation can supersede in-flight work even though the modal prevents accidental underlying edits.
+  await page.evaluate(() => (window.location.hash = "/sources"));
+  await expect(
+    page.getByRole("heading", { name: "Sources", exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(name).toHaveValue("Current unsaved name");
-  await expect(
-    page
-      .getByRole("combobox", { name: "Choose a persona", exact: true })
-      .locator("option")
-      .filter({ hasText: created }),
-  ).toHaveCount(1);
-  await expect(
-    page.getByText("No instructions added here.", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("No skills added here.", { exact: true }),
-  ).toBeVisible();
-  for (const width of [390, 1920]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
-    await page.screenshot({
-      path: info.outputPath(`created-status-${width}.png`),
-      fullPage: true,
-    });
-  }
-  await page.getByText("Preview", { exact: true }).click();
   await page
-    .getByRole("button", { name: "Check changes", exact: true })
+    .getByRole("link", { name: "Manage personas", exact: true })
+    .last()
     .click();
-  await expect(page.getByText(copy, { exact: true })).toHaveCount(0);
-  await expect(name).toHaveValue("Current unsaved name");
+  await expect(
+    page.getByRole("heading", { name: "Personas", exact: true }),
+  ).toBeVisible();
+  release();
+  await expect(
+    page.getByRole("main").getByRole("button", { name: created, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Personas", exact: true }),
+  ).toBeVisible();
+  await openPersona(page, original);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(await refFor(request, created)).toBeTruthy();
+  await capture(page, info, "superseded-create", [390, 1920]);
 });
 
 test("duplicate empty persona files show identity repair copy with closed technical Details", async ({
   page,
 }, info) => {
-  // Browser-only catalog fixture: native duplicate detection blocks writes across the entire store.
-  // Keep that malformed collection isolated from the shared real-backend journey fixture.
   const personas = ["duplicate-empty-one", "duplicate-empty-two"].map(
     (path) => ({
       ref: {
@@ -927,91 +684,567 @@ test("duplicate empty persona files show identity repair copy with closed techni
     });
   });
   await page.goto("/#/persona");
-  for (const path of ["duplicate-empty-one", "duplicate-empty-two"]) {
-    const item = personas.find(
-      (p: { ref: { path: string } }) => p.ref.path === path,
-    )!;
-    expect(item.valid).toBe(false);
-    await page
-      .getByRole("combobox", { name: "Choose a persona", exact: true })
-      .selectOption(JSON.stringify(item.ref));
+  for (const item of personas) {
+    await openRef(page, item.ref);
     const region = page.getByRole("region", { name: "Catalog diagnostics" });
-    const reason = region.getByText(
-      "These persona files share the same identity. Fix the duplicate files to continue.",
-      { exact: true },
-    );
-    await expect(reason).toBeVisible();
-    await expect(region.locator("details")).not.toHaveAttribute("open", "");
-    await expect(region).toContainText(`examples/${path}`);
-    await expect(region).not.toContainText("same reference name");
-    await region.getByText("Details", { exact: true }).click();
     await expect(
-      region.getByText("duplicate-identity", { exact: true }),
+      region.getByText(
+        "These persona files share the same identity. Fix the duplicate files to continue.",
+        { exact: true },
+      ),
     ).toBeVisible();
+    await expect(region.locator("details")).not.toHaveAttribute("open", "");
+    await expect(region).toContainText(`examples/${item.ref.path}`);
+    await region.getByText("Details", { exact: true }).click();
     await expect(region).toContainText(item.ref.id);
     await region.getByText("Details", { exact: true }).click();
   }
-  for (const width of [390, 1920]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
-    await page.screenshot({
-      path: info.outputPath(`duplicate-identity-${width}.png`),
-      fullPage: true,
-    });
-  }
+  await capture(page, info, "duplicate-identity", [390, 1920]);
 });
 
 test("32 dirty file drafts block a new editor with visible recovery copy and preserve the first draft", async ({
   page,
 }, info) => {
   await page.goto("/#/persona");
-  await page
-    .getByRole("textbox", { name: "New persona name", exact: true })
-    .fill(`Draft capacity ${Date.now()}`);
-  await page
-    .getByRole("button", { name: "Create persona", exact: true })
-    .click();
-  await expect(
-    page.getByRole("textbox", { name: "Name", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Use a file", exact: true }).click();
-  const path = page.getByRole("textbox", {
-    name: "File · instruction 1",
-    exact: true,
-  });
+  await createPersona(page, `Draft capacity ${Date.now()}`);
+  await addFile(page);
+  const repair = async (name: string) => {
+    await resourceAction(page, "Instruction", 1, "Advanced settings");
+    await page
+      .getByRole("textbox", { name: "File name", exact: true })
+      .fill(name);
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+  };
   for (let i = 0; i < 32; i++) {
-    await path.fill(`draft-${i}.md`);
-    await page.getByText("Edit file", { exact: true }).click();
+    await repair(`draft-${i}.md`);
+    await editFile(page);
     await page
       .getByRole("textbox", { name: `File text: draft-${i}.md`, exact: true })
       .fill(`Retained file draft ${i}`);
+    await page.keyboard.press("Escape");
   }
-  await path.fill("blocked.md");
-  await page.getByText("Edit file", { exact: true }).click();
-  const reason = page.getByText(
-    "Too many files have unsaved changes. Save one, then reopen this file.",
-    { exact: true },
-  );
+  await repair("blocked.md");
+  await editFile(page);
+  const reason = page.getByRole("alert").filter({
+    hasText:
+      "Too many files have unsaved changes. Save one, then reopen this file.",
+  });
   await expect(reason).toBeVisible();
-  await expect(reason).toHaveAttribute("role", "alert");
   await expect(
     page.getByRole("textbox", { name: "File text: blocked.md", exact: true }),
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "Save file", exact: true }),
   ).toBeDisabled();
-  await expect(
-    page.getByRole("alert").locator("..").locator("details"),
-  ).not.toHaveAttribute("open", "");
-  for (const width of [390, 1920]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
-    await page.screenshot({
-      path: info.outputPath(`draft-capacity-${width}.png`),
-      fullPage: true,
-    });
-  }
-  await path.fill("draft-0.md");
-  await page.getByText("Edit file · Unsaved changes", { exact: true }).click();
+  await expect(reason.locator("..").locator("details")).not.toHaveAttribute(
+    "open",
+    "",
+  );
+  await capture(page, info, "draft-capacity", [390, 1920]);
+  await page.keyboard.press("Escape");
+  await repair("draft-0.md");
+  await editFile(page);
   await expect(
     page.getByRole("textbox", { name: "File text: draft-0.md", exact: true }),
   ).toHaveValue("Retained file draft 0");
+});
+
+test("creation error retains dialog fields, no fake saved row, and empty/search states are truthful", async ({
+  page,
+}, info) => {
+  // Presentation-only empty catalog fixture; no installed examples or fake durable row.
+  await page.route("**/api/personas", (route) =>
+    route.fulfill({ json: { personas: [] } }),
+  );
+  await page.route("**/api/personas/create", (route) =>
+    route.fulfill({ status: 500, json: { error: "storage" } }),
+  );
+  await page.goto("/#/persona");
+  await expect(
+    page.getByText(
+      "Create a persona to give your chats a reusable set of instructions and skills.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await capture(page, info, "empty-collection");
+  await page.getByRole("button", { name: "New persona", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("textbox", { name: "Name", exact: true })
+    .fill("Keep creation draft");
+  await dialog
+    .getByRole("textbox", { name: "Description", exact: true })
+    .fill("Keep description");
+  await dialog
+    .getByRole("button", { name: "Create persona", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "Couldn’t save the changes.",
+  );
+  await expect(
+    dialog.getByRole("textbox", { name: "Name", exact: true }),
+  ).toHaveValue("Keep creation draft");
+  await expect(
+    dialog.getByRole("textbox", { name: "Description", exact: true }),
+  ).toHaveValue("Keep description");
+  await expect(
+    page.getByRole("heading", { name: "Keep creation draft", exact: true }),
+  ).toHaveCount(0);
+  await capture(page, info, "create-failure", [390, 1920]);
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("button", { name: "New persona", exact: true }),
+  ).toBeFocused();
+});
+
+test("preview failure keeps draft and saved identity; collection refresh/search and same-hash Manage resume it", async ({
+  page,
+  request,
+}) => {
+  const name = `Checked draft ${Date.now()}`;
+  await page.goto("/#/persona");
+  await createPersona(page, name);
+  await addPrompt(page, "Keep this text");
+
+  await reference(page, 1, "NOT valid");
+  await action(page, "Preview");
+  await page
+    .getByRole("button", { name: "Check changes", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "Check this persona’s name, instructions, and skills.",
+  );
+  await expect(dialog.getByRole("status")).toHaveText("Changes not checked");
+  await dialog.getByText("Details", { exact: true }).first().click();
+  await expect(dialog).toContainText("invalid-definition");
+  await page.keyboard.press("Escape");
+  await collection(page);
+  await page
+    .getByRole("textbox", { name: "Search personas", exact: true })
+    .fill("NO MATCHING PERSONA");
+  await expect(
+    page.getByText("No matching personas.", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Persona collection actions", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Personas", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("link", { name: "Manage personas", exact: true })
+    .last()
+    .click();
+  await openPersona(page, name);
+  await expect(
+    page
+      .locator("[data-instructions] .prompt-text")
+      .filter({ hasText: "Keep this text" }),
+  ).toBeVisible();
+  await reference(page, 1, "instruction-1");
+  await save(page);
+  await action(page, "Edit name and description");
+  await page
+    .getByRole("textbox", { name: "Name", exact: true })
+    .fill("Draft-only name");
+  await page
+    .getByRole("button", { name: "Apply changes", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Draft-only name", exact: true }),
+  ).toBeVisible();
+  expect(await refFor(request, name)).toBeTruthy();
+  await collection(page);
+  await page
+    .getByRole("textbox", { name: "Search personas", exact: true })
+    .fill(name);
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("button", { name: new RegExp(`^${name}`) }),
+  ).toContainText("Unsaved changes");
+});
+
+test("Based on expert tokens preserve unknown draft references, validate custom names, and checkboxes keep all/none/subset", async ({
+  page,
+  request,
+}, info) => {
+  const post = async (op: string, data: unknown) => {
+    const response = await request.post(`/api/personas/${op}`, { data });
+    expect(response.ok()).toBe(true);
+    return response.json();
+  };
+  const parent = await post("create", {
+    definition: {
+      schemaVersion: 1,
+      name: `Token base ${Date.now()}`,
+      instructions: [
+        { id: "one", text: "Known rule" },
+        { id: "two", text: "Other rule" },
+      ],
+    },
+  });
+  const child = await post("create", {
+    definition: {
+      schemaVersion: 1,
+      name: `Token child ${Date.now()}`,
+      parents: [{ ...parent.ref, include: { instructions: ["one"] } }],
+    },
+  });
+  await page.goto("/#/persona");
+  await openPersona(page, child.definition.name);
+  await page.getByText("Choose what to use", { exact: true }).click();
+  await expect(
+    page.getByRole("checkbox", {
+      name: "1 · instructions · Known rule",
+      exact: true,
+    }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole("checkbox", {
+      name: "1 · instructions · Other rule",
+      exact: true,
+    }),
+  ).not.toBeChecked();
+  await page
+    .getByRole("button", { name: "reused persona 1 actions", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Advanced settings", exact: true })
+    .click();
+  let dialog = page.getByRole("dialog");
+  const custom = dialog.getByRole("textbox", {
+    name: "Custom Reference names",
+    exact: true,
+  });
+  await custom.fill("NOT valid");
+  await custom.press("Enter");
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await custom.fill("unknown");
+  await custom.press("Enter");
+  await expect(
+    dialog.getByRole("button", { name: "Remove unknown", exact: true }),
+  ).toBeVisible();
+  await expect(dialog).toContainText("Unavailable");
+  await dialog.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(
+    page.getByRole("checkbox", {
+      name: "Reference unknown · unavailable",
+      exact: true,
+    }),
+  ).toBeChecked();
+  await action(page, "Preview");
+  await page
+    .getByRole("button", { name: "Check changes", exact: true })
+    .click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "reused persona 1 actions", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Advanced settings", exact: true })
+    .click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("unknown");
+  await capture(page, info, "reference-tokens", [390, 1920]);
+  await dialog
+    .getByRole("button", { name: "Remove unknown", exact: true })
+    .focus();
+  await page.keyboard.press("Delete");
+  await expect(
+    dialog.getByRole("button", { name: "Remove Known rule", exact: true }),
+  ).toBeFocused();
+  await dialog.getByRole("button", { name: "Done", exact: true }).click();
+  await page
+    .getByRole("checkbox", {
+      name: "1 · instructions · Known rule",
+      exact: true,
+    })
+    .uncheck();
+  await save(page);
+  let saved = await post("read", { ref: child.ref });
+  expect(saved.definition.parents[0].include.instructions).toEqual([]);
+  await page
+    .getByRole("checkbox", {
+      name: "1 · instructions · Known rule",
+      exact: true,
+    })
+    .check();
+  await save(page);
+  saved = await post("read", { ref: child.ref });
+  expect(saved.definition.parents[0].include.instructions).toEqual(["one"]);
+  await page
+    .getByRole("checkbox", {
+      name: "1 · instructions · Other rule",
+      exact: true,
+    })
+    .check();
+  await save(page);
+  saved = await post("read", { ref: child.ref });
+  expect(saved.definition.parents[0].include?.instructions).toBeUndefined();
+});
+
+test("file save marks last preview stale; explicit check refreshes text and independent save revision stays guarded", async ({
+  page,
+  request,
+}) => {
+  const name = `File preview ${Date.now()}`;
+  await page.goto("/#/persona");
+  await createPersona(page, name);
+  await addFile(page);
+  await editFile(page);
+  const file = page.getByRole("textbox", {
+    name: "File text: rules.md",
+    exact: true,
+  });
+  await file.fill("Old saved file preview");
+  await page.getByRole("button", { name: "Save file", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^File saved\.$/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Load file", exact: true }),
+  ).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await action(page, "Reload saved version");
+  await expect(page.getByText("Loading persona…", { exact: true })).toHaveCount(
+    0,
+  );
+  await action(page, "Preview");
+  await expect(page.getByRole("dialog").getByRole("status")).toHaveText(
+    "Saved version",
+  );
+  await page.keyboard.press("Escape");
+  await editFile(page);
+  await file.fill("New saved file preview");
+  await page.getByRole("button", { name: "Save file", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^File saved\.$/ }),
+  ).toBeVisible();
+  const ref = await refFor(request, name);
+  const before = await (
+    await request.post("/api/personas/read", { data: { ref } })
+  ).json();
+  await page.keyboard.press("Escape");
+  await action(page, "Preview");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("status")).toHaveText("Changes not checked");
+  await expect(dialog).toContainText("Old saved file preview");
+  await dialog
+    .getByRole("button", { name: "Check changes", exact: true })
+    .click();
+  await expect(dialog).toContainText("New saved file preview");
+  await expect(dialog.getByRole("status")).toHaveText("Saved version");
+  await page.keyboard.press("Escape");
+  expect(
+    (await (await request.post("/api/personas/read", { data: { ref } })).json())
+      .revision,
+  ).toBe(before.revision);
+  await expect(
+    page.getByRole("button", { name: "Save changes", exact: true }),
+  ).toBeDisabled();
+  await action(page, "Reload saved version");
+  await action(page, "Preview");
+  await expect(page.getByRole("dialog").getByRole("status")).toHaveText(
+    "Saved version",
+  );
+});
+
+test("actual Advanced and local Preview disclosures support native keyboard traversal", async ({
+  page,
+}, info) => {
+  await page.goto("/#/persona");
+  await createPersona(page, `Keyboard disclosures ${Date.now().toString(36)}`);
+  await addPrompt(page, "Local keyboard instruction");
+
+  await save(page);
+  const trigger = page.getByRole("button", {
+    name: "Persona actions",
+    exact: true,
+  });
+  await action(page, "Advanced settings");
+  const advanced = page.getByRole("dialog", {
+    name: "Advanced settings",
+    exact: true,
+  });
+  const close = advanced.getByRole("button", {
+    name: "Close dialog",
+    exact: true,
+  });
+  const definition = advanced
+    .locator("summary")
+    .filter({ hasText: /^Definition details$/ });
+  const json = advanced.locator("summary").filter({ hasText: /^View JSON$/ });
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(definition).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(advanced.getByText("Persona ID", { exact: true })).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(advanced.getByText("Persona ID", { exact: true })).toBeHidden();
+  await page.keyboard.press("Tab");
+  await expect(json).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(
+    advanced.getByRole("region", { name: "Persona JSON" }),
+  ).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(
+    advanced.getByRole("region", { name: "Persona JSON" }),
+  ).toBeHidden();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(json).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(definition).toBeFocused();
+  await page.keyboard.press("Enter");
+  await capture(page, info, "keyboard-advanced");
+  await page.keyboard.press("Escape");
+  await expect(advanced).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  await action(page, "Preview");
+  const preview = page.getByRole("dialog", {
+    name: "Persona preview",
+    exact: true,
+  });
+  const previewClose = preview.getByRole("button", {
+    name: "Close dialog",
+    exact: true,
+  });
+  const check = preview.getByRole("button", {
+    name: "Check changes",
+    exact: true,
+  });
+  const text = preview
+    .locator("summary")
+    .filter({ hasText: /^Instruction text$/ });
+  const details = preview.locator("summary").filter({ hasText: /^Details$/ });
+  await expect(previewClose).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(check).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(text).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(
+    preview.getByText("Local keyboard instruction", { exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(
+    preview.getByText("Local keyboard instruction", { exact: true }),
+  ).toBeHidden();
+  await page.keyboard.press("Tab");
+  await expect(details).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    preview.getByText("Reference name", { exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(
+    preview.getByText("Reference name", { exact: true }),
+  ).toBeHidden();
+  await page.keyboard.press("Tab");
+  await expect(previewClose).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(details).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(text).toBeFocused();
+  await page.keyboard.press("Space");
+  await capture(page, info, "keyboard-local-preview");
+  await page.keyboard.press("Escape");
+  await expect(preview).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
+test("retained file changes stay attributed to their persona while a clean different persona is held", async ({
+  page,
+  request,
+}, info) => {
+  const suffix = Date.now().toString(36);
+  const a = `Retained file A ${suffix}`,
+    b = `Clean B ${suffix}`;
+  await page.goto("/#/persona");
+  await createPersona(page, b);
+  const bRef = await refFor(request, b);
+  await createPersona(page, a);
+  const aRef = await refFor(request, a);
+  await addFile(page);
+  await editFile(page);
+  const contents = page.getByRole("textbox", {
+    name: "File text: rules.md",
+    exact: true,
+  });
+  await contents.fill("Saved A contents");
+  await page.getByRole("button", { name: "Save file", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^File saved\.$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await action(page, "Reload saved version");
+  await editFile(page);
+  await contents.fill("Retained A unsaved contents");
+  await collection(page);
+  const row = (ref: unknown) =>
+    page.locator("[data-persona-key]").filter({
+      has: page.locator("span.font-medium", { hasText: ref === aRef ? a : b }),
+    });
+  await expect(row(aRef)).toContainText("Unsaved changes");
+  let confirmations = 0;
+  page.on("dialog", async (dialog) => {
+    expect(dialog.message()).toBe(
+      "Leave unsaved instruction file text? Your file drafts will stay here.",
+    );
+    confirmations++;
+    await dialog.accept();
+  });
+  await openRef(page, bRef);
+  await expect(
+    page.getByRole("heading", { name: b, exact: true }),
+  ).toBeVisible();
+  expect(confirmations).toBe(1);
+  await collection(page);
+  await expect(row(aRef)).toContainText("Unsaved changes");
+  await expect(row(bRef)).not.toContainText("Unsaved changes");
+  await page
+    .getByRole("button", { name: "Persona collection actions", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByText("Loading personas…", { exact: true }),
+  ).toHaveCount(0);
+  await expect(row(aRef)).toContainText("Unsaved changes");
+  await expect(row(bRef)).not.toContainText("Unsaved changes");
+  await capture(page, info, "retained-a-clean-b-collection");
+  await openRef(page, aRef);
+  await expect(
+    page.getByRole("heading", { name: a, exact: true }),
+  ).toBeVisible();
+  expect(confirmations).toBe(2);
+  await editFile(page);
+  await expect(contents).toHaveValue("Retained A unsaved contents");
+  await page.getByRole("button", { name: "Save file", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^File saved\.$/ }),
+  ).toBeVisible();
+  const saved = await (
+    await request.post("/api/personas/instruction/read", {
+      data: { ref: aRef, path: "rules.md" },
+    })
+  ).json();
+  expect(saved.text).toBe("Retained A unsaved contents");
+  await collection(page);
+  await expect(row(aRef)).not.toContainText("Unsaved changes");
+  await expect(row(bRef)).not.toContainText("Unsaved changes");
+  await openRef(page, bRef);
+  await expect(
+    page.getByRole("heading", { name: b, exact: true }),
+  ).toBeVisible();
+  await metadata(page, "Held definition draft");
+  await collection(page);
+  await expect(row(aRef)).not.toContainText("Unsaved changes");
+  await expect(row(bRef)).toContainText("Unsaved changes");
 });

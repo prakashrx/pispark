@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Disclosure from "../../lib/ui/Disclosure.svelte";
   import type { PersonaDiagnostic } from "../../../../server/src/persona-protocol";
   import {
     personaError,
@@ -25,14 +26,15 @@
 
 {#if reasons.length}<div class="text-xs space-y-2 break-words">
     {#each reasons as reason}<p role="alert">{reason}</p>{/each}
-    <details>
-      <summary class="cursor-pointer">Details</summary>
+    <Disclosure title="Details">
       {#if error}<p class="mt-2">{error}</p>{/if}
       {#each diagnostics as diagnostic}<dl class="mt-2 space-y-1">
           <dt>Code</dt>
           <dd>{diagnostic.code}</dd>
           {#if diagnostic.field}<dt>Field</dt>
-            <dd>{diagnostic.field}</dd>{/if}{#if diagnostic.resourceType || diagnostic.resourceId}<dt>
+            <dd>
+              {diagnostic.field}
+            </dd>{/if}{#if diagnostic.resourceType || diagnostic.resourceId}<dt>
               Resource
             </dt>
             <dd>
@@ -41,5 +43,5 @@
             </dd>{/if}{#each diagnostic.refs ?? [] as ref}<dt>Reference</dt>
             <dd class="break-all">{ref.root}/{ref.path} · {ref.id}</dd>{/each}
         </dl>{/each}
-    </details>
+    </Disclosure>
   </div>{/if}

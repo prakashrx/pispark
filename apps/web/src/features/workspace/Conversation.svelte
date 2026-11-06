@@ -2,7 +2,7 @@
   import Button from "../../lib/ui/Button.svelte";
   import NativeTurn from "./NativeTurn.svelte";
   import ChatDetails from "./ChatDetails.svelte";
-  import { chatName, chatStatus } from "./chat-presentation";
+  import { chatName, chatStatus, chatStarted } from "./chat-presentation";
   import { useSessions } from "./session-client.svelte";
   const client = useSessions();
   const snapshot = $derived(client.snapshot);
@@ -52,6 +52,7 @@
                   (w) => w.value === chat.workspace,
                 )?.label ?? chat.workspace,
                 modelName,
+                chatStarted(chat),
               ]
                 .filter(Boolean)
                 .join(" · ")}

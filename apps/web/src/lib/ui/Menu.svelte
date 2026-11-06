@@ -1,0 +1,60 @@
+<script lang="ts">
+  import type { Snippet } from "svelte";
+  import Popover from "./Popover.svelte";
+  let {
+    label,
+    items,
+    trigger,
+    disabled = false,
+  }: {
+    label: string;
+    trigger?: Snippet;
+    disabled?: boolean;
+    items: {
+      id: string;
+      label: string;
+      disabled?: boolean;
+      destructive?: boolean;
+      onselect: () => void;
+    }[];
+  } = $props();
+  function navigate(event: KeyboardEvent) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const target = event.target as HTMLElement;
+    const menu = target.closest('[role="menu"]');
+    if (!menu) return;
+    event.preventDefault();
+    const buttons = [
+      ...menu.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitem"]:not(:disabled)',
+      ),
+    ];
+    const current = buttons.indexOf(target as HTMLButtonElement);
+    const index =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? buttons.length - 1
+          : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) %
+            buttons.length;
+    buttons[index]?.focus();
+  }
+</script>
+
+<Popover {label} {trigger} {disabled} role="menu" onkeydown={navigate}>
+  {#snippet children(close)}
+    {#each items as item (item.id)}
+      <button
+        type="button"
+        role="menuitem"
+        disabled={item.disabled}
+        class="block w-full rounded px-3 py-2 text-left text-xs text-neutral-700 hover:bg-neutral-100 focus:bg-neutral-100 disabled:opacity-50"
+        class:!text-red-700={item.destructive}
+        onclick={() => {
+          close();
+          item.onselect();
+        }}>{item.label}</button
+      >
+    {/each}
+  {/snippet}
+</Popover>

@@ -152,13 +152,7 @@ button[aria-disabled="true"] {
   }
 }
 @layer components {
-  .persona-add {
-    @apply inline-flex items-center space-x-1 px-3 py-1.5 border border-dashed border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-neutral-700 rounded-lg text-xs font-medium transition;
-  }
   .source-action {
     @apply px-2.5 py-1 text-xs font-medium text-gray-700 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-md transition shadow-sm;
-  }
-  .source-input {
-    @apply w-full text-xs font-mono bg-gray-50 focus:bg-white rounded-lg px-3 py-2 text-gray-800 placeholder-gray-400 transition shadow-inner focus:outline-none focus:ring-1 focus:ring-gray-300;
   }
 }

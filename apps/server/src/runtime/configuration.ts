@@ -1,5 +1,7 @@
 import { realpath, readFile, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
+import { bindHost, TITLE_TOOL } from "../extensions/host-protocol.js";
 import { isDeepStrictEqual } from "node:util";
 import {
   createEventBus,
@@ -99,6 +101,10 @@ export async function createSessionServices(
   },
   managed?: Awaited<ReturnType<ProviderSettings["select"]>>,
   persona?: AdmittedResources,
+  host?: {
+    setTitle: (title: string, signal: AbortSignal) => void;
+    ownCleanup: (cleanup: () => void) => void;
+  },
 ) {
   const secret =
     "secretRef" in configuration.credential
@@ -193,7 +199,7 @@ export async function createSessionServices(
       defaultProvider: provider.id,
       defaultModel: selectedModel.id,
       enabledModels: [`${provider.id}/${selectedModel.id}`],
-      defaultTools: [...configuration.tools],
+      defaultTools: [...new Set([...configuration.tools, TITLE_TOOL])],
     },
     { projectTrusted: false },
   );
@@ -217,15 +223,44 @@ export async function createSessionServices(
     includeDefaults: false,
   });
   if (loadedSkills.diagnostics.length) throw new RuntimeError("resources");
+  const builtIn = await exactFiles([
+    fileURLToPath(
+      new URL(
+        import.meta.url.endsWith(".ts")
+          ? "../extensions/pispark.ts"
+          : "../extensions/pispark.js",
+        import.meta.url,
+      ),
+    ),
+  ]);
   const eventBus = createEventBus();
-  const loadedExtensions = await loadExplicitExtensions(
-    extensions,
-    cwd,
+  const cleanupHost = bindHost(
     eventBus,
+    host?.setTitle ??
+      (() => {
+        throw new RuntimeError("closed");
+      }),
   );
-  if (loadedExtensions.errors.length) {
-    loadedExtensions.runtime.invalidate("Resource loading failed");
-    throw new RuntimeError("resources");
+  host?.ownCleanup(cleanupHost);
+  let loadedExtensions;
+  try {
+    loadedExtensions = await loadExplicitExtensions(
+      [...builtIn, ...extensions],
+      cwd,
+      eventBus,
+    );
+    if (
+      loadedExtensions.errors.length ||
+      loadedExtensions.extensions
+        .slice(1)
+        .some((extension) => extension.tools.has(TITLE_TOOL))
+    ) {
+      loadedExtensions.runtime.invalidate("Resource loading failed");
+      throw new RuntimeError("resources");
+    }
+  } catch (error) {
+    cleanupHost();
+    throw error;
   }
   // Last native input handler: user hooks run normally, but stale host queue admissions
   // must not append after their owning run settles. Extension-originated input is separate.

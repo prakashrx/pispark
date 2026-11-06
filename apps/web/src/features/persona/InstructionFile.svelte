@@ -2,6 +2,8 @@
   import PersonaDetails from "./PersonaDetails.svelte";
   import { untrack } from "svelte";
   import Button from "../../lib/ui/Button.svelte";
+  import Disclosure from "../../lib/ui/Disclosure.svelte";
+  import FormField from "../../lib/ui/FormField.svelte";
   import Textarea from "../../lib/ui/Textarea.svelte";
   import type { PersonaRef } from "../../../../server/src/persona-protocol";
   import { personaRequest, type PersonaClient } from "./persona-client.svelte";
@@ -77,31 +79,28 @@
 </script>
 
 {#if file.dirty}<p class="text-xs">This file has unsaved changes.</p>{/if}
-<details class="text-xs space-y-2">
-  <summary class="cursor-pointer"
-    >{readonly ? "View file" : "Edit file"}
-    {file.dirty ? "· Unsaved changes" : ""}</summary
-  >
-  <p class="text-neutral-500">
-    {declared
-      ? "File contents are saved separately."
-      : "Save file contents here, then save the persona to add this file."}
-  </p>
-  {#if declared}<Button
-      class="source-action"
-      disabled={file.busy || file.blocked}
-      onclick={load}>Load file</Button
+<Disclosure
+  title={`${readonly ? "View file" : "Edit file"}${file.dirty ? " · Unsaved changes" : ""}`}
+>
+  <p class="text-xs text-neutral-500">File contents are saved separately.</p>
+  {#if !declared}<p class="text-xs text-neutral-500">
+      Save file contents here, then save the persona to add this file.
+    </p>{/if}
+  {#if declared}<Button disabled={file.busy || file.blocked} onclick={load}
+      >Load file</Button
     >{/if}
   {#if file.loaded || !declared}
-    <Textarea
-      label={`File text: ${path}`}
-      rows={5}
-      class="source-input"
-      bind:value={file.content}
-      disabled={readonly || file.busy || file.blocked}
-    />
+    <FormField label="Contents"
+      >{#snippet children(id, describedby)}<Textarea
+          {id}
+          aria-describedby={describedby}
+          aria-label={`File text: ${path}`}
+          rows={5}
+          bind:value={file.content}
+          disabled={readonly || file.busy || file.blocked}
+        />{/snippet}</FormField
+    >
     <Button
-      class="persona-add"
       disabled={readonly ||
         file.busy ||
         file.blocked ||
@@ -116,4 +115,4 @@
     retainedEdits={file.dirty}
   />
   <p role="status">{file.status}</p>
-</details>
+</Disclosure>

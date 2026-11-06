@@ -56,8 +56,10 @@
         <FieldRow
           label="Personas"
           description="Manage instructions and skills for your chats."
-          ><a class="text-xs underline underline-offset-2" href="#/persona"
-            >Manage personas</a
+          ><a
+            class="text-xs underline underline-offset-2"
+            href="#/persona"
+            onclick={() => client.personas.collection()}>Manage personas</a
           ></FieldRow
         >
         <FieldRow

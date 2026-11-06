@@ -1,3 +1,5 @@
+import { RuntimeError } from "./errors.js";
+
 /** User content: never include titles in diagnostic logs. */
 export function chatTitle(input: string): string {
   const line =
@@ -15,4 +17,13 @@ export function validChatTitle(value: unknown): value is string {
     Array.from(value).length <= 80 &&
     chatTitle(value) === value
   );
+}
+
+/** Tool input is bounded before normalization; titles never enter operational errors. */
+export function toolChatTitle(value: unknown): string {
+  if (typeof value !== "string" || value.length > 4096)
+    throw new RuntimeError("invalid-input");
+  const title = chatTitle(value);
+  if (!title) throw new RuntimeError("invalid-input");
+  return title;
 }

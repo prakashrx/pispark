@@ -15,11 +15,13 @@ test("one friendly title policy handles new, legacy, unavailable dates and expli
   ).toBe("My first question");
   expect(chatName({ ...chat, hasHistory: false })).toBe("New chat");
   for (const hasHistory of [true, undefined]) {
-    expect(chatName({ ...chat, hasHistory })).toMatch(/^Chat · /);
+    expect(chatName({ ...chat, hasHistory })).toBe("Untitled chat");
     expect(chatName({ ...chat, hasHistory, createdAt: "invalid" })).toBe(
-      "Saved chat",
+      "Untitled chat",
     );
-    expect(chatName({ ...chat, hasHistory, createdAt: "" })).toBe("Saved chat");
+    expect(chatName({ ...chat, hasHistory, createdAt: "" })).toBe(
+      "Untitled chat",
+    );
   }
   expect(chatName()).toBe("This chat");
   expect(chatName(chat)).not.toMatch(/private-uuid|revision-setup/);

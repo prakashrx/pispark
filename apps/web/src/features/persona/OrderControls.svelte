@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
-  import Button from "../../lib/ui/Button.svelte";
+  import Menu from "../../lib/ui/Menu.svelte";
   let {
     index,
     count,
@@ -8,6 +7,7 @@
     move,
     remove,
     disabled = false,
+    onadvanced,
   }: {
     index: number;
     count: number;
@@ -15,39 +15,32 @@
     move: (from: number, to: number) => void;
     remove: () => void;
     disabled?: boolean;
+    onadvanced?: () => void;
   } = $props();
-  let root: HTMLDivElement;
-  async function reorder(to: number) {
-    const direction = to < index ? "up" : "down";
-    move(index, to);
-    await tick();
-    const target =
-      root.querySelector<HTMLButtonElement>(
-        `[data-order="${direction}"]:not(:disabled)`,
-      ) ?? root.querySelector<HTMLButtonElement>("button:not(:disabled)");
-    target?.focus();
-  }
 </script>
 
-<div class="flex items-center gap-1 flex-wrap" bind:this={root}>
-  <Button
-    class="source-action"
-    aria-label={`Move ${label} up`}
-    data-order="up"
-    disabled={disabled || index === 0}
-    onclick={() => reorder(index - 1)}>↑</Button
-  >
-  <Button
-    class="source-action"
-    aria-label={`Move ${label} down`}
-    data-order="down"
-    disabled={disabled || index === count - 1}
-    onclick={() => reorder(index + 1)}>↓</Button
-  >
-  <Button
-    class="source-action"
-    aria-label={`Remove ${label}`}
-    {disabled}
-    onclick={remove}>Remove</Button
-  >
-</div>
+<Menu
+  label={`${label} actions`}
+  {disabled}
+  items={[
+    {
+      id: "up",
+      label: "Move up",
+      disabled: index === 0,
+      onselect: () => move(index, index - 1),
+    },
+    {
+      id: "down",
+      label: "Move down",
+      disabled: index === count - 1,
+      onselect: () => move(index, index + 1),
+    },
+    ...(onadvanced
+      ? [{ id: "advanced", label: "Advanced settings", onselect: onadvanced }]
+      : []),
+    { id: "remove", label: "Remove", destructive: true, onselect: remove },
+  ]}
+  >{#snippet trigger()}<span aria-hidden="true" class="text-lg leading-none"
+      >⋯</span
+    >{/snippet}</Menu
+>

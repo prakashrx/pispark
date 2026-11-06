@@ -98,9 +98,10 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
     })
     .click();
   await page.locator("[data-selector-popup] summary").click();
+  await page.getByRole("button", { name: /^Chat setup:/ }).click();
   await page
-    .getByRole("combobox", { name: "Chat setup", exact: true })
-    .selectOption("Catalog resources");
+    .getByRole("option", { name: "Catalog resources", exact: true })
+    .click();
   await page
     .getByRole("button", {
       name: "Persona: No persona",
@@ -349,4 +350,64 @@ test("AuthPrompt: blank secret/text/manual responses preserve native validation 
   await expect(
     page.getByRole("button", { name: `Manage ${provider}`, exact: true }),
   ).toBeFocused();
+});
+
+test("shared model radios preserve native keyboard grouping, disabled options, default save errors and focus return", async ({
+  page,
+  request,
+}) => {
+  await openLocal(page);
+  await login(page);
+  // Add only an unavailable display fixture between two actual local provider models.
+  await page.route("**/api/providers", async (route) => {
+    const response = await route.fetch(),
+      catalog = await response.json();
+    const local = catalog.providers.find((p: { id: string }) => p.id === id);
+    local.models.splice(1, 0, {
+      ...local.models[0],
+      id: "unavailable-display-fixture",
+      name: "Unavailable display fixture",
+      available: false,
+    });
+    await route.fulfill({ response, json: catalog });
+  });
+  await page
+    .getByRole("button", { name: "Reload status", exact: true })
+    .click();
+  const trigger = page.getByRole("button", {
+    name: `Models for ${provider}`,
+    exact: true,
+  });
+  await trigger.click();
+  const dialog = page.getByRole("dialog");
+  const radios = dialog.getByRole("radio");
+  await expect(radios).toHaveCount(3);
+  await expect(radios.nth(1)).toBeDisabled();
+  let writes = 0;
+  page.on("request", (req) => {
+    if (req.url().endsWith("/api/providers/default") && req.method() === "POST")
+      writes++;
+  });
+  await radios.nth(0).focus();
+  expect(writes).toBe(0);
+  await page.keyboard.press("Space");
+  await expect(radios.nth(0)).toBeChecked();
+  await expect.poll(() => writes).toBe(1);
+  await expect(radios.nth(2)).toBeEnabled();
+  await radios.nth(0).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(radios.nth(2)).toBeChecked();
+  await expect.poll(() => writes).toBe(2);
+  await expect(radios.nth(1)).not.toBeChecked();
+  await expect(radios.nth(0)).toBeEnabled();
+  await page.route("**/api/providers/default", (route) =>
+    route.fulfill({ status: 500, json: { error: "storage" } }),
+  );
+  await radios.nth(0).check();
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  expect(
+    (await (await request.get("/api/providers")).json()).defaultModel.id,
+  ).toBe("second");
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
 });

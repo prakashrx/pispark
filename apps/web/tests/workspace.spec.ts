@@ -1,4 +1,5 @@
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import { addPrompt, createPersona, openPersona } from "./persona-journey";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -123,24 +124,15 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
     .last()
     .click();
   await expect(page.getByRole("heading", { name: "Personas" })).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "New persona name" })
-    .fill("Keyboard writer");
-  await page
-    .getByRole("button", { name: "Create persona", exact: true })
-    .click();
-  await expect(
-    page.getByRole("textbox", { name: "Name", exact: true }),
-  ).toHaveValue("Keyboard writer");
-  await page
-    .getByRole("button", { name: "Add instruction", exact: true })
-    .click();
-  await page
-    .getByRole("textbox", { name: "Instruction 1 text", exact: true })
-    .fill("Local instructions");
+  await createPersona(page, "Keyboard writer");
+  await addPrompt(page, "Local instructions");
   await page.getByRole("link", { name: "Sources", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
   await page.goBack();
+  await expect(
+    page.getByRole("heading", { name: "Personas", exact: true }),
+  ).toBeVisible();
+  await openPersona(page, "Keyboard writer");
   await expect(
     page.getByRole("heading", { name: "Keyboard writer" }),
   ).toBeVisible();

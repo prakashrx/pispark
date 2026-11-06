@@ -2,7 +2,7 @@
   import Button from "../../lib/ui/Button.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   import { useSessions } from "./session-client.svelte";
-  import { chatName, chatStatus } from "./chat-presentation";
+  import { chatName, chatStatus, chatStarted } from "./chat-presentation";
   const client = useSessions();
   let collapsed = $state(false);
 </script>
@@ -36,8 +36,16 @@
                   <div class="truncate text-xs font-semibold">
                     {chatName(session)}
                   </div>
-                  <div class="text-[11px] text-zinc-500 font-mono truncate">
-                    {client.catalog.workspaces.find((w) => w.value === session.workspace)?.label ?? session.workspace}
+                  <div class="text-[11px] text-zinc-500 truncate">
+                    {[
+                      session.persona?.name,
+                      client.catalog.workspaces.find(
+                        (w) => w.value === session.workspace,
+                      )?.label ?? session.workspace,
+                      chatStarted(session),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </div>
                 </div>
                 <span
@@ -45,9 +53,7 @@
                   >{chatStatus(session.status, session.interrupted)}</span
                 >
               </a>
-            {:else}<p class="px-2.5 py-2 text-zinc-500">
-                No chats yet.
-              </p>{/each}
+            {:else}<p class="px-2.5 py-2 text-zinc-500">No chats yet.</p>{/each}
           </div>
         {/if}
       </div>

@@ -2,6 +2,7 @@
   import Button from "../../lib/ui/Button.svelte";
   import Input from "../../lib/ui/Input.svelte";
   import Selector from "../../lib/ui/Selector.svelte";
+  import Disclosure from "../../lib/ui/Disclosure.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   import { useSessions } from "./session-client.svelte";
   import { personaKey } from "../persona/persona-client.svelte";
@@ -20,6 +21,18 @@
   let model = $state("");
   const personaOptions = $derived([
     { value: "", label: "No persona" },
+    ...(sessions.personas.selected &&
+    !sessions.personas.items.some(
+      (p) => personaKey(p.ref) === sessions.personas.selected,
+    )
+      ? [
+          {
+            value: sessions.personas.selected,
+            label: "Unavailable persona",
+            disabled: true,
+          },
+        ]
+      : []),
     ...sessions.personas.items
       .filter((p) => p.valid && p.revision)
       .map((p) => ({ value: personaKey(p.ref), label: p.name })),
@@ -63,6 +76,9 @@
         ? `Default: ${selected && !model ? selected.label : defaultChoice.id}`
         : "Choose a model",
     },
+    ...(model && !models.some((m) => m.value === model)
+      ? [{ value: model, label: "Unavailable model", disabled: true }]
+      : []),
     ...models,
   ]);
   $effect(() => {
@@ -118,8 +134,6 @@
         draft = "";
     } else await sessions.reply();
   }
-  const pill =
-    "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-zinc-700 bg-white hover:bg-zinc-50 border border-zinc-200 rounded-lg transition-colors shadow-elevation-sm";
 </script>
 
 <form
@@ -152,7 +166,7 @@
           draft = text;
         } else sessions.setDraft(text);
       }}
-      class="w-full text-xs bg-transparent border-none p-0 text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-0 focus:border-transparent outline-none font-sans min-w-0"
+      appearance="composer"
       placeholder={mode === "ask" ? "Ask anything…" : "Message…"}
     />
   </div>
@@ -167,7 +181,6 @@
         options={sessions.catalog.workspaces}
         bind:value={folder}
         searchable
-        class={pill}
       >
         {#snippet children(value)}
           <Icon name="folder" class="w-3.5 h-3.5 text-zinc-500" />
@@ -179,7 +192,6 @@
         label="Persona"
         options={personaOptions}
         bind:value={sessions.personas.selected}
-        class={pill}
       >
         {#snippet children(value)}<Icon
             name="person"
@@ -188,29 +200,28 @@
             >{value === "No persona" ? "Persona" : value || "Persona"}</span
           ><Icon name="chevronDown" class="w-3 h-3 text-zinc-400" />{/snippet}
         {#snippet footer()}
-          <a class="text-xs underline" href="#/persona">Manage personas</a>
+          <a
+            class="text-xs underline"
+            href="#/persona"
+            onclick={() => sessions.personas.collection()}>Manage personas</a
+          >
           {#if noReader}<p role="status" class="text-[11px] max-w-64 mt-2">
               Skills need file access, which this chat setup doesn’t allow.
             </p>{/if}
           <PersonaDetails error={sessions.personas.error} />
-          <Button
-            class="source-action mt-2"
-            onclick={() => sessions.personas.refresh()}>Refresh personas</Button
+          <Button class="mt-2" onclick={() => sessions.personas.refresh()}
+            >Refresh personas</Button
           >
-          {#if sessions.catalog.configurations.length > 1}<details
-              class="mt-2 text-xs"
+          {#if sessions.catalog.configurations.length > 1}<Disclosure
+              title="Advanced"
             >
-              <summary>Advanced</summary><label class="block mt-2"
-                >Chat setup<select
-                  aria-label="Chat setup"
-                  class="source-input mt-1"
-                  bind:value={configuration}
-                  >{#each sessions.catalog.configurations as policy}<option
-                      value={policy.value}>{policy.label}</option
-                    >{/each}</select
-                ></label
-              >
-            </details>{/if}
+              <Selector
+                label="Chat setup"
+                display="field"
+                options={sessions.catalog.configurations}
+                bind:value={configuration}
+              />
+            </Disclosure>{/if}
         {/snippet}
       </Selector>
       {#if managed}<Selector
@@ -218,7 +229,6 @@
           options={modelOptions}
           searchable
           bind:value={model}
-          class={pill}
         >
           {#snippet children(value)}
             <Icon name="model" class="w-3.5 h-3.5 text-zinc-500" />
@@ -226,7 +236,6 @@
             <Icon name="chevronDown" class="w-3 h-3 text-zinc-400" />
           {/snippet}
         </Selector>{:else}<Button
-          class={pill}
           aria-label="Preset model"
           unavailable="This chat setup chooses the model."
           ><Icon name="model" class="w-3.5 h-3.5 text-zinc-500" />Preset model</Button
