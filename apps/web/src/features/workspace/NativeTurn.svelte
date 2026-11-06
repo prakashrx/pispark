@@ -6,7 +6,7 @@
 </script>
 
 {#if message.role === "user"}
-  <UserTurn time="" text={message.parts.map((part) => part.text).join("\n")} />
+  <UserTurn text={message.parts.map((part) => part.text).join("\n")} />
 {:else}
   <div class="space-y-4" data-purpose="assistant-turn-stream">
     {#if message.role === "toolResult"}<ToolCard
