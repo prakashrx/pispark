@@ -68,15 +68,13 @@ test("GET /api/health returns real service health", async (t) => {
   assert.equal(post.headers.get("allow"), "GET");
 });
 
-test("unknown API and frontend paths return 404, never the app entry", async (t) => {
+test("unknown API and asset paths return 404, never the app entry", async (t) => {
   const { webRoot } = await fixture(t);
   const base = await listen(t, createAppServer({ webRoot }));
   for (const path of [
     "/api",
     "/api/missing",
-    "/missing",
     "/assets/missing.js",
-    "/index.html",
   ]) {
     const response = await fetch(`${base}${path}`);
     assert.equal(response.status, 404, path);
@@ -85,6 +83,26 @@ test("unknown API and frontend paths return 404, never the app entry", async (t)
       /application\/json/,
     );
   }
+});
+
+test("serves the SPA entry for frontend GET routes only", async (t) => {
+  const { webRoot } = await fixture(t);
+  const base = await listen(t, createAppServer({ webRoot }));
+  for (const path of ["/missing", "/sessions/example?view=details", "/index.html"]) {
+    const response = await fetch(`${base}${path}`);
+    assert.equal(response.status, 200, path);
+    assert.match(response.headers.get("content-type") ?? "", /text\/html/);
+    assert.equal(await response.text(), "<!doctype html><title>PiSpark</title>");
+  }
+  assert.equal((await fetch(`${base}/missing`, { method: "HEAD" })).status, 404);
+  assert.equal((await fetch(`${base}/missing`, { method: "POST" })).status, 405);
+});
+
+test("SPA fallback returns 404 when the entry is unavailable", async (t) => {
+  const { webRoot } = await fixture(t);
+  await rm(join(webRoot, "index.html"));
+  const base = await listen(t, createAppServer({ webRoot }));
+  assert.equal((await fetch(`${base}/sessions/example`)).status, 404);
 });
 
 test("serves built HTML and assets with types, HEAD, and method boundaries", async (t) => {

@@ -92,7 +92,7 @@ export function catalog(configuration: RuntimeConfiguration): Catalog {
   const options = (values: string[]) => {
     if (values.length > 64 || values.some((key) => !key || key.length > 128))
       throw new Error(
-        "At most64 configuration/workspace keys of1–128 characters are supported.",
+        "At most 64 configuration/workspace keys of1–128 characters are supported.",
       );
     return values.map((value) => ({ value, label: value }));
   };
