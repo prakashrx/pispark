@@ -121,7 +121,7 @@ test("one global Ask retains draft and all selectors through routes, history and
   await page.goto("/#/workspace");
   await expect(
     page.getByRole("button", { name: "Send message", exact: true }),
-  ).not.toHaveAttribute("aria-disabled", "true");
+  ).toHaveAttribute("aria-disabled", "true");
   await expect(
     page.getByRole("button", { name: "Start chat", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");

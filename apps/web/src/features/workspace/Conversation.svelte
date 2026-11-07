@@ -39,7 +39,7 @@
             <h1
               class="text-xl font-bold tracking-tight text-zinc-900 break-words"
             >
-              {chat ? chatName(chat) : "Start a chat"}
+              {chat ? chatName(chat) : "New chat"}
             </h1>
             {#if status}<span role="status" class="text-xs text-zinc-500"
                 >{status}</span
@@ -57,7 +57,7 @@
                 .filter(Boolean)
                 .join(" · ")}
             </p>{:else}<p class="text-xs text-zinc-400 mt-1">
-              Ask a question above to get started.
+              Type a message below to get started.
             </p>{/if}
         </div>
         {#if snapshot && ["running", "cancelling"].includes(snapshot.status)}<Button

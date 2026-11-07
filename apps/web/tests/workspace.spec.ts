@@ -44,7 +44,7 @@ test("four source pages render locally without errors or external requests", asy
       external.push(request.url());
   });
   for (const [route, heading] of [
-    ["workspace", "Start a chat|Test-only deterministic"],
+    ["workspace", "New chat|Test-only deterministic"],
     ["settings", "General"],
     ["persona", "Personas"],
     ["sources", "Sources"],
