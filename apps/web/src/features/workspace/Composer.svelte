@@ -137,7 +137,7 @@
 </script>
 
 <form
-  class="composer w-full bg-zinc-50 border border-zinc-200/80 rounded-full px-3 py-1.5 flex items-center gap-2 transition-all shadow-elevation-sm focus-within:border-zinc-400 focus-within:ring-2 focus-within:ring-zinc-950/5 focus-within:bg-white"
+  class="composer w-full rounded-[var(--radius-lg)] px-3 py-1.5 flex items-center gap-2 transition-all"
   class:composer-reply={mode === "reply"}
   aria-label={mode === "ask" ? "New chat" : "Reply to chat"}
   onsubmit={(event) => {
@@ -149,10 +149,6 @@
     class={"composer-input flex items-center flex-1 min-w-0 gap-2" +
       (mode === "ask" ? " pl-1" : "")}
   >
-    {#if mode === "ask"}<Icon
-        name="search"
-        class="w-4 h-4 text-zinc-400 flex-shrink-0"
-      />{/if}
     <Input
       label={mode === "ask" ? "Ask anything" : "Reply to chat"}
       maxlength={65536}
@@ -245,8 +241,39 @@
       aria-label={mode === "reply" ? "Send message" : "Start chat"}
       type="submit"
       {unavailable}
-      class="w-8 h-8 rounded-full bg-zinc-900 text-white flex items-center justify-center hover:bg-zinc-800 transition-colors shadow-sm ml-0.5 active:scale-95 flex-shrink-0"
-      ><Icon name="arrowUp" class="w-4 h-4" /></Button
+      class="send-btn flex-shrink-0"
+      ><Icon name="arrowUp" class="w-3.5 h-3.5" /></Button
     >
   </div>
 </form>
+
+<style>
+  :global(.composer) {
+    background: var(--background);
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  :global(.composer:focus-within) {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 12%, transparent);
+  }
+  :global(.send-btn) {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border-radius: 50%;
+    border: none;
+    background: var(--interactive);
+    color: var(--interactive-foreground);
+    transition: opacity 0.1s;
+  }
+  :global(.send-btn:hover:not(:disabled):not([aria-disabled="true"])) {
+    opacity: 0.88;
+    background: var(--interactive);
+  }
+  :global(.send-btn[aria-disabled="true"]) {
+    background: var(--muted);
+    color: var(--muted-foreground);
+    opacity: 1;
+  }
+</style>

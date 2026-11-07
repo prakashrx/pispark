@@ -1,29 +1,61 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import Icon from "../../lib/ui/Icon.svelte";
-  let {
-    children,
-  }: { children: Snippet } = $props();
-
+  let { children }: { children: Snippet } = $props();
   let expanded = $state(false);
 </script>
 
-<div class="border border-zinc-200/60 rounded-lg overflow-hidden text-xs">
-  <button
-    type="button"
-    class="w-full flex items-center justify-between px-3 py-1.5 bg-zinc-50/80 hover:bg-zinc-100 transition-colors font-sans text-[11px] text-zinc-500"
-    onclick={() => (expanded = !expanded)}
-    aria-expanded={expanded}
-  >
-    <span class="flex items-center gap-1.5 text-zinc-600 font-medium">
-      <Icon name="thought" class="w-3.5 h-3.5 text-zinc-400" />
-      Thinking
-    </span>
-    <span class="text-zinc-400">{expanded ? "▴" : "▾"}</span>
+<div class="thought">
+  <button type="button" class="thought-toggle" onclick={() => (expanded = !expanded)} aria-expanded={expanded}>
+    <span class="thought-icon">◆</span>
+    <span>Thinking</span>
+    <span class="thought-chevron">{expanded ? "▴" : "▾"}</span>
   </button>
   {#if expanded}
-    <div class="px-3 py-2 border-t border-zinc-200/60 text-[11px] text-zinc-500 leading-relaxed font-sans">
+    <div class="thought-body">
       {@render children()}
     </div>
   {/if}
 </div>
+
+<style>
+  .thought {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .thought-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0;
+    background: none;
+    border: none;
+    font: inherit;
+    font-size: 11px;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    transition: color 0.1s;
+  }
+  .thought-toggle:hover {
+    color: var(--foreground);
+  }
+  .thought-icon {
+    font-size: 8px;
+    color: var(--warning);
+    opacity: 0.8;
+  }
+  .thought-chevron {
+    font-size: 10px;
+    opacity: 0.6;
+  }
+  .thought-body {
+    margin-left: 1rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 2px solid var(--border);
+    font-size: 11px;
+    color: var(--muted-foreground);
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-words;
+  }
+</style>

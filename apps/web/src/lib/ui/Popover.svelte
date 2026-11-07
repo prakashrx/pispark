@@ -82,7 +82,8 @@
       data-popover
       {role}
       aria-label={label}
-      class="absolute right-0 top-full z-50 mt-1 w-max max-w-[min(20rem,85vw)] rounded-lg border border-neutral-200 bg-white p-1 shadow-lg"
+      style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:0 4px 20px rgba(0,0,0,0.1),0 1px 4px rgba(0,0,0,0.06)"
+      class="absolute right-0 top-full z-50 mt-1 w-max max-w-[min(20rem,85vw)] p-1"
     >
       {@render children(() => close())}
     </div>{/if}

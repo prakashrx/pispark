@@ -48,8 +48,9 @@
         type="button"
         role="menuitem"
         disabled={item.disabled}
-        class="block w-full rounded px-3 py-2 text-left text-xs text-neutral-700 hover:bg-neutral-100 focus:bg-neutral-100 disabled:opacity-50"
-        class:!text-red-700={item.destructive}
+        style="color: var(--foreground); border-radius: var(--radius-sm);"
+        class="block w-full px-3 py-2 text-left text-xs hover:bg-accent focus:bg-accent disabled:opacity-50"
+        class:!text-red-600={item.destructive}
         onclick={() => {
           close();
           item.onselect();

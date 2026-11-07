@@ -84,7 +84,10 @@
                     title={`${persona.ref.root}/${persona.ref.path}`}
                     >{persona.valid
                       ? persona.name
-                      : `Needs attention · ${persona.ref.path}`}</a
+                      : persona.ref.path}{#if !persona.valid}<span
+                        style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--warning);margin-left:0.375rem;vertical-align:middle;flex-shrink:0"
+                        title="Needs attention"
+                      ></span>{/if}</a
                   >{/each}
               </div>
             {/if}

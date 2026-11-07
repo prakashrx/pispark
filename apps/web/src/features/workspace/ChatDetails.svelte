@@ -29,7 +29,9 @@
         onselect: () => void client.stop(),
       },
     ]}
-  />
+  >
+    {#snippet trigger()}<span style="font-size:1.1rem;letter-spacing:0.05em;color:var(--muted-foreground)" aria-hidden="true">···</span>{/snippet}
+  </Menu>
 {/if}
 {#if open && chat}
   <Modal label="Chat info" title="Chat info" onclose={() => (open = false)}>

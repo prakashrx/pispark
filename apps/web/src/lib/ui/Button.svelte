@@ -48,50 +48,60 @@
     align-items: center;
     justify-content: center;
     gap: 0.375rem;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    background: white;
-    color: #404040;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.4rem 0.75rem;
+    background: var(--background);
+    color: var(--foreground);
     font: inherit;
     font-size: 0.75rem;
     font-weight: 500;
     line-height: 1.25rem;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
   }
   :global(.ui-button:where(:hover:not(:disabled):not([aria-disabled="true"]))) {
-    background: #f5f5f5;
+    background: var(--muted);
   }
   :global(.ui-button:where([data-variant="primary"])) {
-    background: #171717;
-    border-color: #171717;
-    color: white;
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--primary-foreground);
   }
   :global(.ui-button:where([data-variant="primary"]:hover:not(:disabled))) {
-    background: #404040;
+    opacity: 0.88;
   }
   :global(.ui-button:where([data-variant="ghost"])) {
     background: transparent;
     border-color: transparent;
   }
+  :global(.ui-button:where([data-variant="ghost"]:hover:not(:disabled):not([aria-disabled="true"]))) {
+    background: var(--accent);
+    border-color: transparent;
+  }
   :global(.ui-button:where([data-variant="destructive"])) {
-    color: #b91c1c;
-    border-color: #fecaca;
+    color: var(--destructive);
+    border-color: color-mix(in srgb, var(--destructive) 25%, transparent);
   }
   :global(.ui-button:where([data-size="compact"])) {
-    padding: 0.25rem 0.5rem;
+    padding: 0.2rem 0.5rem;
   }
   :global(.ui-button:where([data-size="icon"])) {
     width: 2rem;
     height: 2rem;
     padding: 0.25rem;
+    border: none;
+    background: transparent;
+  }
+  :global(.ui-button:where([data-size="icon"]:hover:not(:disabled):not([aria-disabled="true"]))) {
+    background: var(--accent);
   }
   :global(.ui-button:where(:disabled)),
   :global(.ui-button:where([aria-disabled="true"])) {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
   }
   :global(.ui-button:where(:focus-visible)) {
-    outline: 2px solid #737373;
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
 </style>

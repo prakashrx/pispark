@@ -2,11 +2,21 @@
   let { text }: { text: string } = $props();
 </script>
 
-<div class="flex flex-col items-end space-y-1.5" data-purpose="user-turn">
-  <span class="text-[11px] font-mono font-medium text-zinc-600">You</span>
-  <div
-    class="max-w-2xl px-5 py-3 rounded-2xl bg-zinc-900 text-white text-sm font-normal shadow-elevation-md leading-relaxed tracking-wide"
-  >
+<div class="flex justify-end" data-purpose="user-turn">
+  <div class="user-bubble">
     {text}
   </div>
 </div>
+
+<style>
+  .user-bubble {
+    max-width: min(42rem, 85%);
+    padding: 0.625rem 0.875rem;
+    background: var(--muted);
+    color: var(--foreground);
+    border-radius: var(--radius-lg);
+    font-size: 0.875rem;
+    line-height: 1.6;
+    word-break: break-words;
+  }
+</style>

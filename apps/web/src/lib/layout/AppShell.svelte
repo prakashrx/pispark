@@ -52,19 +52,22 @@
 <svelte:window onkeydown={shortcut} />
 <div
   bind:this={shell}
-  class="app-shell flex w-full bg-white text-zinc-900 font-sans antialiased selection:bg-zinc-200 selection:text-zinc-900"
+  style="background:var(--background);color:var(--foreground)"
+  class="app-shell flex w-full font-sans antialiased"
 >
   {#if sidebarOpen}
     <aside
-      class="app-sidebar w-72 flex-shrink-0 border-r border-zinc-200/80 bg-[#fbfbfb] flex flex-col min-h-0 select-none"
+      style="background:var(--sidebar);border-right:1px solid var(--sidebar-border)"
+      class="app-sidebar w-72 flex-shrink-0 flex flex-col min-h-0 select-none"
       aria-label="Application sidebar"
     >
       <div
-        class="header-brand h-14 px-4 flex items-center justify-between border-b border-zinc-200/60 shrink-0"
+        style="border-bottom:1px solid var(--sidebar-border)"
+        class="header-brand h-14 px-4 flex items-center justify-between shrink-0"
       >
         <a href="#/workspace" class="flex items-center space-x-2.5">
           <span
-            class="font-semibold text-sm tracking-tight text-zinc-900 flex items-center gap-2"
+            class="font-semibold text-sm tracking-tight flex items-center gap-2"
           >
             <span
               class={[
@@ -81,7 +84,8 @@
             ></span>PiSpark
           </span>
           <span
-            class="px-1.5 py-0.5 text-[10px] font-medium bg-zinc-200/60 text-zinc-600 rounded"
+            style="background:var(--muted);color:var(--muted-foreground)"
+            class="px-1.5 py-0.5 text-[10px] font-medium rounded"
             >v0.1</span
           >
         </a>
@@ -97,10 +101,11 @@
     </aside>
   {/if}
   <div
-    class="app-content flex-1 flex flex-col h-full overflow-hidden bg-white min-w-0"
+    class="app-content flex-1 flex flex-col h-full overflow-hidden min-w-0"
   >
     <header
-      class="global-header h-14 border-b border-zinc-200/80 px-6 flex items-center justify-between flex-shrink-0 bg-white/80 backdrop-blur-sm z-20"
+      style="border-bottom:1px solid var(--border);background:color-mix(in srgb, var(--background) 85%, transparent)"
+      class="global-header h-14 px-6 flex items-center justify-between flex-shrink-0 backdrop-blur-sm z-20"
     >
       {#if !sidebarOpen}<Button
           class="mr-2 p-1.5 rounded-md text-zinc-500 hover:bg-zinc-100"
