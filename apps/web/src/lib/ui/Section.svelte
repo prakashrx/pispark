@@ -4,7 +4,7 @@
     title,
     description,
     children,
-    variant = "persona",
+    variant = "settings",
     layout = "stacked",
     class: className = "",
   }: {
@@ -19,18 +19,10 @@
 
 <section class={className} data-layout={layout}>
   <div>
-    <h2
-      class={variant === "persona"
-        ? "text-sm font-bold text-neutral-900"
-        : "text-xs font-semibold uppercase tracking-wider text-gray-500"}
-    >
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">
       {title}
     </h2>
-    <p
-      class={variant === "persona"
-        ? "text-xs text-neutral-500"
-        : "text-[11px] text-gray-400"}
-    >
+    <p class="text-[11px] text-zinc-400">
       {description}
     </p>
   </div>

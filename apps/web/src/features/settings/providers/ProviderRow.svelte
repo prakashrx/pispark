@@ -24,15 +24,15 @@
   aria-label={provider.name}
 >
   <div class="min-w-0 flex-1">
-    <h3 class="text-xs font-medium text-gray-900">{provider.name}</h3>
-    <p class="text-[11px] text-gray-500 mt-1">
+    <h3 class="text-xs font-medium text-zinc-900">{provider.name}</h3>
+    <p class="text-[11px] text-zinc-500 mt-1">
       {hasCredential
         ? "Sign-in saved"
         : provider.configured
           ? "Set up on this computer"
           : "Not set up"}
     </p>
-    <p class="text-[11px] text-gray-400 mt-1 break-words">
+    <p class="text-[11px] text-zinc-400 mt-1 break-words">
       {provider.methods
         .map(
           (method) =>
@@ -43,7 +43,7 @@
   </div>
   <div class="flex flex-wrap items-center gap-2 shrink-0">
     <Button aria-label={`Models for ${provider.name}`} onclick={onmodels}
-      >Models <span class="text-gray-400 ml-1">{provider.models.length}</span
+      >Models <span class="text-zinc-400 ml-1">{provider.models.length}</span
       ></Button
     >
     <Button

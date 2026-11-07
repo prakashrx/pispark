@@ -37,7 +37,7 @@ async function serveStatic(
   response: ServerResponse,
   head: boolean,
 ) {
-  // Only the built entry, icon, and assets are public; there is no catch-all SPA route yet.
+  // Only the built entry, icon, and assets are served directly.
   if (path !== "/" && path !== "/favicon.svg" && !path.startsWith("/assets/"))
     return false;
   const file = resolve(webRoot, path === "/" ? "index.html" : `.${path}`);
@@ -122,6 +122,15 @@ export function createAppServer({
       if (
         root &&
         (await serveStatic(path, root, response, request.method === "HEAD"))
+      )
+        return;
+      // SPA fallback for non-asset, non-API GET requests.
+      if (
+        root &&
+        request.method === "GET" &&
+        !path.startsWith("/api/") &&
+        !path.startsWith("/assets/") &&
+        (await serveStatic("/", root, response, false))
       )
         return;
       json(response, 404, { error: "Not found" });

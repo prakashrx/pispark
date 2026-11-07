@@ -80,7 +80,7 @@ test("real SDK via shared Ask/reply: streaming, native tools, cancellation, inde
   await expect(
     page.getByText(/local:.*native browser tool result/),
   ).toBeVisible();
-  await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+  await expect(page.getByText("Done", { exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("native-session.png") });
   await page
     .getByRole("link", { name: /^hold beta/ })

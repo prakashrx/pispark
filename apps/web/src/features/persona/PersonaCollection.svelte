@@ -25,11 +25,11 @@
 </script>
 
 <header
-  class="flex items-start justify-between gap-4 border-b border-gray-100 pb-6 persona-heading"
+  class="flex items-start justify-between gap-4 border-b border-zinc-100 pb-6 persona-heading"
 >
   <div class="space-y-2">
-    <h1 class="text-2xl font-bold tracking-tight text-neutral-900">Personas</h1>
-    <p class="text-xs text-neutral-500">
+    <h1 class="text-xl font-semibold tracking-tight text-zinc-900">Personas</h1>
+    <p class="text-sm text-zinc-500 mt-1">
       Reusable instructions and skills for your chats.
     </p>
   </div>
@@ -56,12 +56,12 @@
 <PersonaDetails error={client.error} />
 {#if client.loading}<p role="status" class="text-xs">Loading personas…</p>{/if}
 {#if !client.loading && !client.items.length}
-  <p class="text-sm text-neutral-500">
+  <p class="text-sm text-zinc-500">
     Create a persona to give your chats a reusable set of instructions and
     skills.
   </p>
 {:else if client.items.length}
-  <ul class="divide-y divide-neutral-100">
+  <ul class="divide-y divide-zinc-100">
     {#each visible as item}
       <li>
         <Button
@@ -73,11 +73,11 @@
           <span class="min-w-0 flex-1"
             ><span class="block font-medium break-words">{item.name}</span
             >{#if item.description}<span
-                class="block text-neutral-500 mt-1 break-words"
+                class="block text-zinc-500 mt-1 break-words"
                 >{item.description}</span
               >{/if}</span
           >
-          <span class="text-neutral-500 shrink-0"
+          <span class="text-zinc-500 shrink-0"
             >{client.hasUnsavedFilesFor(item.ref) ||
             (client.view &&
               personaKey(item.ref) === personaKey(client.view.ref) &&
@@ -93,7 +93,7 @@
           >
         </Button>
       </li>
-    {:else}<li class="py-6 text-sm text-neutral-500">
+    {:else}<li class="py-6 text-sm text-zinc-500">
         No matching personas.
       </li>{/each}
   </ul>

@@ -61,7 +61,7 @@
       disabled={busy}
     />
     {#each prompt.options.filter((option) => option.id === value && option.description) as option}<p
-        class="text-xs text-gray-500"
+        class="text-xs text-zinc-500"
       >
         {option.description}
       </p>{/each}

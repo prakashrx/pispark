@@ -2,26 +2,28 @@
   import type { Snippet } from "svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   let {
-    duration,
-    tokens,
     children,
-  }: { duration: string; tokens?: number; children: Snippet } = $props();
+  }: { children: Snippet } = $props();
+
+  let expanded = $state(false);
 </script>
 
-<div
-  class="border border-zinc-200/70 rounded-lg p-2.5 bg-zinc-50/60 text-xs font-mono text-zinc-600 space-y-1.5"
->
-  <div
-    class="flex items-center justify-between text-zinc-500 font-sans font-medium text-[11px]"
+<div class="border border-zinc-200/60 rounded-lg overflow-hidden text-xs">
+  <button
+    type="button"
+    class="w-full flex items-center justify-between px-3 py-1.5 bg-zinc-50/80 hover:bg-zinc-100 transition-colors font-sans text-[11px] text-zinc-500"
+    onclick={() => (expanded = !expanded)}
+    aria-expanded={expanded}
   >
-    <span class="flex items-center gap-1.5 text-zinc-700"
-      ><Icon name="thought" class="w-3.5 h-3.5 text-zinc-400" />Thought Process
-      ({duration})</span
-    >{#if tokens}<span class="text-[10px] text-zinc-400"
-        >{tokens} tokens generated</span
-      >{/if}
-  </div>
-  <p class="text-zinc-600 font-sans leading-relaxed text-[11px]">
-    {@render children()}
-  </p>
+    <span class="flex items-center gap-1.5 text-zinc-600 font-medium">
+      <Icon name="thought" class="w-3.5 h-3.5 text-zinc-400" />
+      Thinking
+    </span>
+    <span class="text-zinc-400">{expanded ? "▴" : "▾"}</span>
+  </button>
+  {#if expanded}
+    <div class="px-3 py-2 border-t border-zinc-200/60 text-[11px] text-zinc-500 leading-relaxed font-sans">
+      {@render children()}
+    </div>
+  {/if}
 </div>

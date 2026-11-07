@@ -84,7 +84,7 @@ test("skill reference directory editing survives an actual fixture backend proce
     await start();
     await page.goto("/#/workspace");
     await expect(
-      page.getByRole("heading", { name: "Start a chat", exact: true }),
+      page.getByRole("heading", { name: "New chat", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByText("No chats yet.", { exact: true }),

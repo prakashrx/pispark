@@ -66,18 +66,18 @@
       />
     {/if}
     <div hidden={client.mode === "collection"}>
-      <header class="space-y-4 border-b border-gray-100 pb-6 persona-heading">
+      <header class="space-y-4 border-b border-zinc-100 pb-6 persona-heading">
         <div class="flex items-start justify-between gap-4 flex-wrap">
           <div class="min-w-0 space-y-2">
-            <h1 class="text-2xl font-bold tracking-tight break-words">
+            <h1 class="text-xl font-semibold tracking-tight text-zinc-900 break-words">
               {client.draft?.name ?? client.inspectedSummary?.name ?? "Persona"}
             </h1>
             {#if client.draft?.description}<p
-                class="text-xs text-neutral-500 break-words"
+                class="text-xs text-zinc-500 break-words"
               >
                 {client.draft.description}
               </p>{/if}
-            <p role="status" class="text-xs text-neutral-500">
+            <p role="status" class="text-xs text-zinc-500">
               {client.reading
                 ? "Loading persona…"
                 : client.dirty
@@ -134,7 +134,7 @@
         context={client.editorErrorContext}
         retainedEdits={client.dirty}
       />
-      {#if client.notice}<p role="status" class="text-xs text-neutral-600">
+      {#if client.notice}<p role="status" class="text-xs text-zinc-600">
           {client.notice}
         </p>{/if}
       {#if client.inspectedSummary && !client.inspectedSummary.valid}
@@ -174,7 +174,7 @@
               title="Reuse personas"
               description="Start with their resources."
               layout="split"
-              class="border-b border-neutral-100 pb-6"
+              class="border-b border-zinc-100 pb-6"
             >
               <Inheritance
                 {readonly}
@@ -190,7 +190,7 @@
             </Section>
             <div
               aria-label="Resource resolution"
-              class="text-xs text-neutral-500 space-y-2"
+              class="text-xs text-zinc-500 space-y-2"
             >
               {#if client.resolving}<p role="status">
                   Updating resources… Last checked resources remain visible.
@@ -212,7 +212,7 @@
               title="Prompts"
               description="Tell the persona how to respond."
               layout="split"
-              class="border-b border-neutral-100 pb-6"
+              class="border-b border-zinc-100 pb-6"
             >
               <PromptList
                 reference={client.view.ref}
@@ -231,7 +231,7 @@
               title="Skills"
               description="Reusable knowledge and workflows."
               layout="split"
-              class="border-b border-neutral-100 pb-6"
+              class="border-b border-zinc-100 pb-6"
             >
               <ResourceList
                 {readonly}
@@ -248,7 +248,7 @@
               />
               {#if noReader}<p
                   role="status"
-                  class="text-xs text-neutral-600 mt-4"
+                  class="text-xs text-zinc-600 mt-4"
                 >
                   Skills need file access. No chat setup currently allows it.
                 </p>{/if}

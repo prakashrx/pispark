@@ -125,7 +125,7 @@
     {@const item = row.local}
     {@const known = row.resolved}
     {@const localIndex = item ? items.indexOf(item) : -1}
-    <article class="border-b border-neutral-100 pb-3 space-y-2">
+    <article class="border-b border-zinc-100 pb-3 space-y-2">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <h3 class="text-sm font-medium break-words">
@@ -136,10 +136,10 @@
                 .at(-1) ??
               "Skill"}
           </h3>
-          {#if known?.description}<p class="text-xs text-neutral-500">
+          {#if known?.description}<p class="text-xs text-zinc-500">
               {known.description}
             </p>{/if}
-          {#if !item && known}<p class="text-xs text-neutral-500">
+          {#if !item && known}<p class="text-xs text-zinc-500">
               From {personaName(known.origin, options)}
             </p>{/if}
         </div>
@@ -213,7 +213,7 @@
         </p></Disclosure
       >
     </article>
-  {:else}<p class="text-xs text-neutral-500">No skills to show.</p>{/each}
+  {:else}<p class="text-xs text-zinc-500">No skills to show.</p>{/each}
   <Button disabled={readonly || items.length >= 32} onclick={() => open()}
     >Add skill</Button
   >

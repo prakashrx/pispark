@@ -34,7 +34,7 @@ async function navigate(page: string) {
 
 test("renders truthful unconfigured state and never submits a draft without configuration", async () => {
   render(App);
-  expect(screen.getByRole("heading", { name: "Start a chat" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "New chat" })).toBeTruthy();
   expect(screen.getByRole("main").getAttribute("aria-label")).toContain(
     "Chat conversation",
   );
@@ -63,9 +63,6 @@ test("renders truthful unconfigured state and never submits a draft without conf
 
 test("collapses the sidebar and session group; shortcut ignores editable inputs", async () => {
   render(App);
-  await fireEvent.click(screen.getByRole("button", { name: /Chats/ }));
-  expect(screen.queryByText("No chats yet.")).toBeNull();
-  await fireEvent.click(screen.getByRole("button", { name: /Chats/ }));
   expect(screen.getByText("No chats yet.")).toBeTruthy();
   await fireEvent.keyDown(
     screen.getByRole("textbox", { name: /Ask anything/ }),

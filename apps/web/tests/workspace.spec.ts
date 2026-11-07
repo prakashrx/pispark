@@ -44,7 +44,7 @@ test("four source pages render locally without errors or external requests", asy
       external.push(request.url());
   });
   for (const [route, heading] of [
-    ["workspace", "Start a chat|Test-only deterministic"],
+    ["workspace", "New chat|Test-only deterministic"],
     ["settings", "General"],
     ["persona", "Personas"],
     ["sources", "Sources"],
@@ -107,7 +107,6 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
       name: "Persona: No persona",
     }),
   ).toBeFocused();
-  await page.getByRole("button", { name: /^Chats/ }).click();
   await page.getByRole("textbox", { name: /Ask anything/ }).focus();
   await page.keyboard.press("Control+b");
   await expect(page.getByRole("complementary")).toBeVisible();
