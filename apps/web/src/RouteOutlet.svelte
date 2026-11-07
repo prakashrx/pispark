@@ -12,11 +12,11 @@
 <div
   class={page === "workspace"
     ? "route-content workspace flex-1 flex flex-col min-h-0"
-    : "route-content flex-1 flex flex-col min-h-0 text-[#111827] selection:bg-neutral-100"}
+    : "route-content flex-1 flex flex-col min-h-0 text-zinc-900 selection:bg-zinc-100"}
 >
   {#if page === "workspace"}
     <Conversation />
-    <footer class="p-6 pt-0 bg-transparent flex justify-center w-full z-10">
+    <footer class="px-6 pb-6 pt-3 bg-white/95 backdrop-blur-sm border-t border-zinc-100 flex justify-center w-full z-10">
       <div class="w-full max-w-4xl relative">
         <Composer mode="reply" />
       </div>
