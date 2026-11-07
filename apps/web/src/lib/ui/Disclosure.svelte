@@ -13,9 +13,9 @@
   } = $props();
 </script>
 
-<details bind:open class="rounded-lg border border-neutral-200 p-3 text-xs">
-  <summary class="cursor-pointer font-medium text-neutral-700">{title}</summary>
+<details bind:open class="rounded-xl border border-[var(--border)] px-4 py-3 text-sm">
+  <summary class="cursor-pointer font-medium text-foreground">{title}</summary>
   <div class="mt-3 space-y-3">
-    {#if help}<p class="text-neutral-500">{help}</p>{/if}{@render children()}
+    {#if help}<p class="text-muted-foreground">{help}</p>{/if}{@render children()}
   </div>
 </details>

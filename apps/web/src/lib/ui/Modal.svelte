@@ -86,14 +86,14 @@
     event.preventDefault();
     if (!busy) onclose();
   }}
-  class="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-auto rounded-2xl bg-white p-0 text-gray-900 shadow-xl backdrop:bg-black/30 backdrop:backdrop-blur-sm"
+  class="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-auto rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-0 text-foreground shadow-elevation-lg backdrop:bg-black/40 backdrop:backdrop-blur-sm"
 >
   {#if title}<header
       class="flex items-start justify-between gap-4 border-b border-neutral-100 p-5"
     >
       <div>
-        <h2 id={`${id}-title`} class="text-sm font-semibold">{title}</h2>
-        {#if help}<p id={`${id}-help`} class="mt-1 text-xs text-neutral-500">
+        <h2 id={`${id}-title`} class="text-base font-semibold">{title}</h2>
+        {#if help}<p id={`${id}-help`} class="mt-1 text-sm text-muted-foreground">
             {help}
           </p>{/if}
       </div>

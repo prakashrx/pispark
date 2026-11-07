@@ -2,7 +2,7 @@
   import Button from "../../lib/ui/Button.svelte";
   import NativeTurn from "./NativeTurn.svelte";
   import ChatDetails from "./ChatDetails.svelte";
-  import { chatName, chatStatus, chatStarted } from "./chat-presentation";
+  import { chatName, chatStatus, chatStarted, visibleTurns } from "./chat-presentation";
   import { useSessions } from "./session-client.svelte";
   const client = useSessions();
   const snapshot = $derived(client.snapshot);
@@ -17,35 +17,46 @@
   const queued = $derived(
     (snapshot?.queue.steering ?? 0) + (snapshot?.queue.followUp ?? 0),
   );
+  const turns = $derived(
+    snapshot
+      ? visibleTurns(
+          snapshot.partial
+            ? [...snapshot.messages, snapshot.partial]
+            : snapshot.messages,
+        )
+      : [],
+  );
+  const olderTurns = $derived(
+    client.older ? visibleTurns(client.older.messages) : [],
+  );
   const modelName = $derived(
     client.providers.catalog.providers
       .find((p) => p.id === snapshot?.model?.provider)
       ?.models.find((m) => m.id === snapshot?.model?.id)?.name,
   );
-  const button =
-    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-zinc-700 bg-white hover:bg-zinc-50 border border-zinc-200 shadow-elevation-sm";
+  const button = "conversation-action";
 </script>
 
 <main
   id="workspace"
   aria-label="Chat conversation"
-  class="flex-1 overflow-y-auto px-6 py-8 flex flex-col items-center"
+  class="flex-1 overflow-y-auto px-6 pt-8 pb-6 flex flex-col items-center"
 >
-  <div class="w-full max-w-4xl flex flex-col space-y-8">
-    <header class="pb-4 border-b border-zinc-100 space-y-3">
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
+  <div class="w-full max-w-3xl flex flex-col gap-8">
+    <header class="pb-5 border-b border-[var(--border)]">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0 flex-1">
           <div class="flex items-center gap-3 flex-wrap">
             <h1
-              class="text-xl font-bold tracking-tight text-zinc-900 break-words"
+              class="text-2xl font-semibold tracking-tight text-foreground break-words"
             >
               {chat ? chatName(chat) : "New chat"}
             </h1>
-            {#if status}<span role="status" class="text-xs text-zinc-500"
+            {#if status}<span role="status" class="chat-status"
                 >{status}</span
               >{/if}
           </div>
-          {#if chat}<p class="text-xs text-zinc-400 mt-1">
+          {#if chat}<p class="text-sm text-muted-foreground mt-1.5">
               {[
                 chat.persona?.name,
                 client.catalog.workspaces.find(
@@ -56,8 +67,8 @@
               ]
                 .filter(Boolean)
                 .join(" · ")}
-            </p>{:else}<p class="text-xs text-zinc-400 mt-1">
-              Type a message below to get started.
+            </p>{:else}<p class="text-sm text-muted-foreground mt-1.5">
+              Ask anything in the bar above to start a chat.
             </p>{/if}
         </div>
         {#if snapshot && ["running", "cancelling"].includes(snapshot.status)}<Button
@@ -65,12 +76,12 @@
             aria-label="Stop response"
             onclick={() => client.cancel()}>Stop</Button
           >{/if}
+        <ChatDetails />
       </div>
-      <ChatDetails />
     </header>
     {#if chat && client.connection === "Disconnected"}<p
         role="alert"
-        class="text-sm text-zinc-700"
+        class="conversation-notice"
       >
         Connection lost. Your chat may still be running. <Button
           class={button}
@@ -79,15 +90,15 @@
       </p>
     {:else if chat && client.connection === "Reconnecting"}<p
         role="status"
-        class="text-sm text-zinc-500"
+        class="conversation-notice"
       >
         Reconnecting…
       </p>{/if}
     {#if !client.catalog.configurations.length}<div
-        class="text-sm text-zinc-500"
+        class="conversation-notice"
       >
         <p>This workspace isn’t ready for chats yet.</p>
-        <details class="text-xs mt-2">
+        <details class="text-sm mt-2 text-muted-foreground">
           <summary>Details</summary>
           <p>
             A working folder and chat setup must be configured on the backend
@@ -95,14 +106,14 @@
           </p>
         </details>
       </div>{/if}
-    {#if snapshot?.interrupted}<p role="status" class="text-sm text-zinc-700">
+    {#if snapshot?.interrupted}<p role="status" class="conversation-notice">
         This chat was interrupted. Your saved messages are still here.
       </p>{/if}
-    {#if snapshot?.error}<p role="alert" class="text-sm text-zinc-700">
+    {#if snapshot?.error}<p role="alert" class="conversation-notice">
         Something went wrong. Reopen this chat to try again.
       </p>{/if}
     {#if snapshot}
-      {#if queued > 0}<p class="text-xs text-zinc-500">
+      {#if queued > 0}<p class="text-sm text-muted-foreground">
           {queued} messages queued
         </p>{/if}
       {#if (client.older?.before ?? snapshot.before) > 0}<Button
@@ -111,27 +122,62 @@
         >{/if}
       {#if client.older}<section
           aria-label="Earlier message window"
-          class="space-y-7"
+          class="flex flex-col gap-8"
         >
           <Button class={button} onclick={() => (client.older = undefined)}
             >Back to latest</Button
-          >{#each client.older.messages as message}<NativeTurn
-              {message}
+          >{#each olderTurns as turn}<NativeTurn
+              message={turn.message}
+              hidden={turn.hidden}
             />{/each}
         </section>{/if}
       {#if snapshot.truncated || client.older?.truncated}<p
-          class="text-xs text-zinc-500"
+          class="text-sm text-muted-foreground"
         >
           Some content isn’t shown in this view.
         </p>{/if}
-      <div class="space-y-7">
-        {#each snapshot.messages as message}<NativeTurn
-            {message}
-          />{/each}{#if snapshot.partial}<NativeTurn
-            message={snapshot.partial}
-          />{/if}
+      <div class="flex flex-col gap-8">
+        {#each turns as turn}<NativeTurn
+            message={turn.message}
+            hidden={turn.hidden}
+          />{/each}
       </div>
     {/if}
     <div class="h-10"></div>
   </div>
 </main>
+
+<style>
+  .chat-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.15rem 0.625rem;
+    border-radius: var(--radius-full);
+    background: var(--interactive-muted);
+    color: var(--interactive-text);
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+  .chat-status::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .conversation-notice {
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    background: var(--muted);
+    color: var(--foreground);
+    font-size: 0.9375rem;
+  }
+  :global(.ui-button.conversation-action) {
+    align-self: flex-start;
+    border-radius: var(--radius-full);
+    padding: 0.4rem 0.9rem;
+    font-size: 0.875rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+</style>

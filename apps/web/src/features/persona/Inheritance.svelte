@@ -9,7 +9,7 @@
 
   import Disclosure from "../../lib/ui/Disclosure.svelte";
 
-  import Modal from "../../lib/ui/Modal.svelte";
+  import InlinePanel from "../../lib/ui/InlinePanel.svelte";
 
   import Selector from "../../lib/ui/Selector.svelte";
 
@@ -214,7 +214,7 @@
   {#each parents as parent, index (parent)}
     {@const read = reads[referenceKey(parent)]}
 
-    <article class="border-b border-zinc-100 pb-3 space-y-2">
+    <article class="border-b border-[var(--border)] pb-3 space-y-2">
       <div class="flex items-center justify-between gap-3">
         <h3 class="text-sm font-medium break-words">
           {personaName(parent, options)}
@@ -236,7 +236,7 @@
       <Disclosure title="Choose what to use">
         {#if !read || (!read.document && !read.error)}<p
             role="status"
-            class="text-xs"
+            class="text-sm"
           >
             Loading resources…
           </p>{/if}
@@ -268,7 +268,7 @@
                       resource.id,
                       event.currentTarget.checked,
                     )}
-                />{:else}<p class="text-xs">No {type} available.</p>{/each}
+                />{:else}<p class="text-sm">No {type} available.</p>{/each}
 
               {#each parent.include?.[key]?.filter((id) => !resources.some((r) => r.id === id)) ?? [] as id}<Checkbox
                   label={`Reference ${id} · unavailable`}
@@ -283,7 +283,7 @@
       </Disclosure>
 
       <Disclosure title="Details"
-        ><p class="text-xs break-all">
+        ><p class="text-sm break-all">
           {parent.root}/{parent.path} · {parent.id}
         </p></Disclosure
       >
@@ -304,7 +304,7 @@
 </div>
 
 {#if adding && active}
-  <Modal
+  <InlinePanel
     label="Use persona"
     title="Use persona"
     size="small"
@@ -338,11 +338,11 @@
           }
         }}>Use persona</Button
       >{/snippet}
-  </Modal>
+  </InlinePanel>
 {/if}
 
 {#if advanced && active}
-  <Modal
+  <InlinePanel
     label="Advanced settings"
     title="Advanced settings"
     onclose={() => {
@@ -401,5 +401,5 @@
           onchange?.();
         }}>Done</Button
       >{/snippet}
-  </Modal>
+  </InlinePanel>
 {/if}

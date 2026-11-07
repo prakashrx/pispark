@@ -121,7 +121,7 @@ test("skill reference directory editing survives an actual fixture backend proce
     await page
       .getByRole("button", { name: "Customize review", exact: true })
       .click();
-    let skillDialog = page.getByRole("dialog", {
+    let skillDialog = page.getByRole("region", {
       name: "Customize skill",
       exact: true,
     });
@@ -142,7 +142,7 @@ test("skill reference directory editing survives an actual fixture backend proce
     await page
       .getByRole("button", { name: "Customize review", exact: true })
       .click();
-    skillDialog = page.getByRole("dialog", {
+    skillDialog = page.getByRole("region", {
       name: "Customize skill",
       exact: true,
     });
@@ -168,7 +168,7 @@ test("skill reference directory editing survives an actual fixture backend proce
     await resourceAction(page, "Skill", 1, "Edit skill");
     await expect(
       page
-        .getByRole("dialog", { name: "Edit skill", exact: true })
+        .getByRole("region", { name: "Edit skill", exact: true })
         .getByRole("textbox", { name: "Skill folder", exact: true }),
     ).toHaveValue("skills/first");
     await page.keyboard.press("Escape");
@@ -178,7 +178,7 @@ test("skill reference directory editing survives an actual fixture backend proce
       .click();
     await expect(
       page
-        .getByRole("dialog")
+        .locator(".inline-panel")
         .getByText("Restart supporting fixture", { exact: true }),
     ).toBeVisible();
     await page.keyboard.press("Escape");

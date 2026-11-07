@@ -19,12 +19,12 @@
 
 <section class={className} data-layout={layout}>
   <div>
-    <h2 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+    <h2 class="text-base font-semibold tracking-tight text-foreground">
       {title}
     </h2>
-    <p class="text-[11px] text-zinc-400">
-      {description}
-    </p>
+    {#if description}<p class="text-sm text-muted-foreground mt-0.5">
+        {description}
+      </p>{/if}
   </div>
   {#if layout === "split"}
     <div class="section-content">{@render children()}</div>

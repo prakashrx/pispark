@@ -30,10 +30,27 @@ for (const width of [1920, 3840]) {
     await expect(
       page.getByRole("button", { name: "Folder: workspace" }),
     ).toBeVisible();
+    // Ask recedes once a chat is open; measure after the initial selection settles.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            !!localStorage.getItem("pispark-session") ||
+            document.body.innerText.includes("No chats yet."),
+        ),
+      )
+      .toBe(true);
     const measurements = [];
     for (const route of routes) {
       if (route !== "workspace") await navigate(page, route);
       await page.evaluate(() => document.fonts.ready);
+      // Settle CSS transitions (e.g. Ask receding) so computed styles are final.
+      await page.evaluate(() =>
+        document
+          .getAnimations()
+          .filter((animation) => animation instanceof CSSTransition)
+          .forEach((animation) => animation.finish()),
+      );
       const metrics = await page.evaluate(() => {
         const measure = (element: Element) => {
           const box = element.getBoundingClientRect();
@@ -83,21 +100,21 @@ for (const width of [1920, 3840]) {
       });
       measurements.push(metrics);
       expect(metrics.header).toMatchObject({
-        x: 288,
+        x: 272,
         y: 0,
-        width: width - 288,
-        height: 56,
+        width: width - 272,
+        height: 64,
       });
       expect(metrics.sidebar).toMatchObject({
         x: 0,
         y: 0,
-        width: 288,
+        width: 272,
         height: 1200,
       });
-      expect(metrics.brand.height).toBe(56);
-      expect(metrics.composer.x).toBe(312);
-      expect(metrics.composer.width).toBe(width - 288 - 48);
-      expect(width - metrics.composer.x - metrics.composer.width).toBe(24);
+      expect(metrics.brand.height).toBe(64);
+      expect(metrics.composer.x).toBe(292);
+      expect(metrics.composer.width).toBe(width - 272 - 40);
+      expect(width - metrics.composer.x - metrics.composer.width).toBe(20);
       expect(metrics.composer.presentation["max-width"]).toBe("none");
       expect(metrics.overflow).toBe(false);
       const { route: _route, ...chrome } = metrics;
@@ -120,13 +137,16 @@ test("one global Ask retains draft and all selectors through routes, history and
 }) => {
   await page.goto("/#/workspace");
   await expect(
-    page.getByRole("button", { name: "Send message", exact: true }),
-  ).toHaveAttribute("aria-disabled", "true");
-  await expect(
     page.getByRole("button", { name: "Start chat", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");
   const ask = page.getByRole("textbox", { name: "Ask anything" });
   const mountedAsk = await ask.elementHandle();
+  await ask.fill("Open a chat to reply to");
+  await page.getByRole("button", { name: "Start chat", exact: true }).click();
+  await expect(
+    page.getByRole("textbox", { name: /Reply to chat/ }),
+  ).toBeVisible();
+  await expect(ask).toHaveValue("");
   await ask.fill("Persistent global question");
   await page
     .getByRole("textbox", { name: /Reply to chat/ })

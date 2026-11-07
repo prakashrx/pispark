@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Modal from "../../lib/ui/Modal.svelte";
+  import InlinePanel from "../../lib/ui/InlinePanel.svelte";
   import Input from "../../lib/ui/Input.svelte";
   import FormField from "../../lib/ui/FormField.svelte";
   import Checkbox from "../../lib/ui/Checkbox.svelte";
@@ -17,7 +17,7 @@
   } = $props();
 </script>
 
-<Modal
+<InlinePanel
   label="Advanced settings"
   title="Advanced settings"
   {onclose}
@@ -52,4 +52,4 @@
     }}
   />
   {#snippet footer()}<Button onclick={onclose}>Done</Button>{/snippet}
-</Modal>
+</InlinePanel>

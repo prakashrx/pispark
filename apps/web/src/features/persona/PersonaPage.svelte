@@ -1,13 +1,12 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import Button from "../../lib/ui/Button.svelte";
-  import Modal from "../../lib/ui/Modal.svelte";
   import Menu from "../../lib/ui/Menu.svelte";
   import Section from "../../lib/ui/Section.svelte";
   import { personaKey } from "./persona-client.svelte";
   import Disclosure from "../../lib/ui/Disclosure.svelte";
   import PersonaCollection from "./PersonaCollection.svelte";
-  import PersonaMetadataDialog from "./PersonaMetadataDialog.svelte";
+  import PersonaMetadataForm from "./PersonaMetadataForm.svelte";
   import PersonaDetails from "./PersonaDetails.svelte";
   import PersonaPreview from "./PersonaPreview.svelte";
   import PromptList from "./PromptList.svelte";
@@ -18,7 +17,7 @@
   const sessions = useSessions(),
     client = sessions.personas;
   let promptToCustomize = $state<EffectiveResource>();
-  let dialog = $state<"create" | "metadata" | "preview" | "advanced">();
+  let dialog = $state<"create" | "metadata" | "preview">();
   let skillToCustomize = $state<string>();
   let parentResources = $state<EffectiveResource[]>([]);
   const readonly = $derived(!client.view?.writable || client.reading);
@@ -63,21 +62,23 @@
         onopen={(ref) => {
           void client.open(ref);
         }}
-      />
+      >
+        {#if dialog === "create"}{@render metadataForm(true)}{/if}
+      </PersonaCollection>
     {/if}
     <div hidden={client.mode === "collection"}>
-      <header class="space-y-4 border-b border-zinc-100 pb-6 persona-heading">
+      <header class="space-y-4 border-b border-[var(--border)] pb-6 persona-heading">
         <div class="flex items-start justify-between gap-4 flex-wrap">
           <div class="min-w-0 space-y-2">
-            <h1 class="text-xl font-semibold tracking-tight text-zinc-900 break-words">
+            <h1 class="text-[1.75rem] leading-tight font-semibold tracking-tight text-zinc-900 break-words">
               {client.draft?.name ?? client.inspectedSummary?.name ?? "Persona"}
             </h1>
             {#if client.draft?.description}<p
-                class="text-xs text-zinc-500 break-words"
+                class="text-sm text-zinc-500 break-words"
               >
                 {client.draft.description}
               </p>{/if}
-            <p role="status" class="text-xs text-zinc-500">
+            <p role="status" class="text-sm text-zinc-500">
               {client.reading
                 ? "Loading persona…"
                 : client.dirty
@@ -86,7 +87,7 @@
                     ? "Unapplied prompt changes"
                     : client.status}
             </p>
-            {#if !client.view?.writable && client.view}<p class="text-xs">
+            {#if !client.view?.writable && client.view}<p class="text-sm">
                 This persona is read-only.
               </p>{/if}
           </div>
@@ -113,12 +114,6 @@
                   onselect: () => (dialog = "preview"),
                 },
                 {
-                  id: "advanced",
-                  label: "Advanced settings",
-                  disabled: !client.view,
-                  onselect: () => (dialog = "advanced"),
-                },
-                {
                   id: "reload",
                   label: "Reload saved version",
                   disabled: client.busy || !client.view,
@@ -129,18 +124,32 @@
           </div>
         </div>
       </header>
+      {#if dialog === "metadata" && client.mode === "editor"}<div class="my-6">
+          {@render metadataForm(false)}
+        </div>{/if}
+      {#if dialog === "preview" && client.mode === "editor"}<div class="my-6">
+          <PersonaPreview
+            {client}
+            {readonly}
+            options={client.items}
+            {parentResources}
+            oncustomize={customize}
+            onexclude={exclude}
+            onclose={() => (dialog = undefined)}
+          />
+        </div>{/if}
       <PersonaDetails
         error={client.editorError}
         context={client.editorErrorContext}
         retainedEdits={client.dirty}
       />
-      {#if client.notice}<p role="status" class="text-xs text-zinc-600">
+      {#if client.notice}<p role="status" class="text-sm text-zinc-600">
           {client.notice}
         </p>{/if}
       {#if client.inspectedSummary && !client.inspectedSummary.valid}
         <section
           aria-label="Catalog diagnostics"
-          class="space-y-2 text-xs break-words"
+          class="space-y-2 text-sm break-words"
         >
           <p>
             {client.inspectedSummary.ref.root}/{client.inspectedSummary.ref
@@ -174,7 +183,7 @@
               title="Reuse personas"
               description="Start with their resources."
               layout="split"
-              class="border-b border-zinc-100 pb-6"
+              class="border-b border-[var(--border)] pb-6"
             >
               <Inheritance
                 {readonly}
@@ -190,7 +199,7 @@
             </Section>
             <div
               aria-label="Resource resolution"
-              class="text-xs text-zinc-500 space-y-2"
+              class="text-sm text-zinc-500 space-y-2"
             >
               {#if client.resolving}<p role="status">
                   Updating resources… Last checked resources remain visible.
@@ -212,7 +221,7 @@
               title="Prompts"
               description="Tell the persona how to respond."
               layout="split"
-              class="border-b border-zinc-100 pb-6"
+              class="border-b border-[var(--border)] pb-6"
             >
               <PromptList
                 reference={client.view.ref}
@@ -231,7 +240,7 @@
               title="Skills"
               description="Reusable knowledge and workflows."
               layout="split"
-              class="border-b border-zinc-100 pb-6"
+              class="border-b border-[var(--border)] pb-6"
             >
               <ResourceList
                 {readonly}
@@ -248,51 +257,25 @@
               />
               {#if noReader}<p
                   role="status"
-                  class="text-xs text-zinc-600 mt-4"
+                  class="text-sm text-zinc-600 mt-4"
                 >
                   Skills need file access. No chat setup currently allows it.
                 </p>{/if}
             </Section>
-          </div>
-        {/key}
-      {/if}
-    </div>
-  </div>
-</main>
-
-{#if dialog === "create" || (dialog === "metadata" && client.mode === "editor")}
-  <PersonaMetadataDialog
-    {client}
-    creating={dialog === "create"}
-    onclose={() => {
-      dialog = undefined;
-      if (client.mode === "editor") void client.validate();
-    }}
-    oncreated={() => {}}
-  />
-{:else if dialog === "preview" && client.mode === "editor"}
-  <PersonaPreview
-    {client}
-    {readonly}
-    options={client.items}
-    {parentResources}
-    oncustomize={customize}
-    onexclude={exclude}
-    onclose={() => (dialog = undefined)}
-  />
-{:else if dialog === "advanced" && client.view && client.mode === "editor"}
-  <Modal
-    label="Advanced settings"
-    title="Advanced settings"
-    onclose={() => (dialog = undefined)}
-  >
-    <p class="text-xs break-all">
-      {client.view.ref.root}/{client.view.ref.path} · {client.view.writable
-        ? "Managed writable folder"
-        : "Read-only source"}
-    </p>
-    <Disclosure title="Definition details"
-      ><dl class="text-xs space-y-2 break-all">
+            {#if client.view}<Section
+                title="Advanced"
+                description="Where this persona lives and its raw definition."
+                layout="split"
+              >
+                <div class="space-y-3">
+                  <p class="text-sm text-muted-foreground break-all">
+                    {client.view.ref.root}/{client.view.ref.path} · {client.view
+                      .writable
+                      ? "Managed writable folder"
+                      : "Read-only source"}
+                  </p>
+                  <Disclosure title="Definition details"
+      ><dl class="text-sm space-y-2 break-all">
         <dt>Persona ID</dt>
         <dd>{client.view.ref.id}</dd>
         <dt>Definition revision</dt>
@@ -308,13 +291,31 @@
     >
     <Disclosure title="View JSON"
       ><section aria-label="Persona JSON">
-        <h3 class="text-xs">Actual draft definition</h3>
-        <pre class="text-xs overflow-auto max-h-96">{JSON.stringify(
+        <h3 class="text-sm">Actual draft definition</h3>
+        <pre class="text-sm overflow-auto max-h-96">{JSON.stringify(
             client.draft,
             null,
             2,
           )}</pre>
       </section></Disclosure
     >
-  </Modal>
-{/if}
+                </div>
+              </Section>{/if}
+          </div>
+        {/key}
+      {/if}
+    </div>
+  </div>
+</main>
+
+{#snippet metadataForm(creating: boolean)}
+  <PersonaMetadataForm
+    {client}
+    {creating}
+    onclose={() => {
+      dialog = undefined;
+      if (client.mode === "editor") void client.validate();
+    }}
+    oncreated={() => {}}
+  />
+{/snippet}

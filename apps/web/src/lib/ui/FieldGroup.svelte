@@ -17,10 +17,10 @@
 
 <fieldset
   {disabled}
-  class="min-w-0 rounded-lg border border-neutral-200 p-4 space-y-3"
+  class="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 space-y-3"
 >
-  <legend class="px-1 text-xs font-medium text-neutral-900">{title}</legend>
-  {#if help}<p class="text-xs text-neutral-500">{help}</p>{/if}
+  <legend class="px-1 text-sm font-medium text-foreground">{title}</legend>
+  {#if help}<p class="text-sm text-muted-foreground">{help}</p>{/if}
   {#if actions}<div class="flex justify-end gap-2">
       {@render actions()}
     </div>{/if}

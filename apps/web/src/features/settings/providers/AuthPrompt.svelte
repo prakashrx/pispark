@@ -44,7 +44,7 @@
   }}
   class="space-y-3"
 >
-  <p class="text-xs font-medium">{prompt.message}</p>
+  <p class="text-sm font-medium">{prompt.message}</p>
   {#if prompt.type === "select"}
     <Selector
       native
@@ -61,7 +61,7 @@
       disabled={busy}
     />
     {#each prompt.options.filter((option) => option.id === value && option.description) as option}<p
-        class="text-xs text-zinc-500"
+        class="text-sm text-zinc-500"
       >
         {option.description}
       </p>{/each}

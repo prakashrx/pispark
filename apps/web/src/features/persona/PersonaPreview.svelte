@@ -1,7 +1,7 @@
 <script lang="ts">
-  import Modal from "../../lib/ui/Modal.svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Disclosure from "../../lib/ui/Disclosure.svelte";
+  import InlinePanel from "../../lib/ui/InlinePanel.svelte";
   import PersonaDetails from "./PersonaDetails.svelte";
   import {
     samePersona,
@@ -42,15 +42,8 @@
   );
 </script>
 
-<Modal label="Persona preview" title="Persona preview" size="wide" {onclose}>
-  <div class="flex justify-between items-center gap-3">
-    <p role="status" class="text-xs">{state}</p>
-    <Button
-      loading={client.resolving}
-      disabled={readonly}
-      onclick={() => client.validate()}>Check changes</Button
-    >
-  </div>
+<InlinePanel label="Persona preview" title="Persona preview" {onclose}>
+  <p role="status" class="text-sm text-muted-foreground -mt-1">{state}</p>
   <PersonaDetails
     error={client.resolutionError || client.editorError}
     context="draft"
@@ -59,12 +52,12 @@
   />
   {#each ["instructions", "skills"] as type}
     <section class="space-y-3">
-      <h3 class="text-xs font-semibold capitalize">{type}</h3>
+      <h3 class="text-sm font-semibold capitalize">{type}</h3>
       {#each (type === "instructions" ? client.effective?.instructions : client.effective?.skills) ?? [] as resource, index}
         {@const local =
           !!client.view && samePersona(resource.origin, client.view.ref)}
         {@const label = resourceLabel(resource)}
-        <div class="border border-zinc-200 rounded-xl p-4 space-y-2 text-xs">
+        <div class="border border-[var(--border)] rounded-xl p-4 space-y-2 text-sm">
           <p class="font-medium break-words">{index + 1}. {label}</p>
           <p class="text-zinc-500">
             {local
@@ -104,7 +97,7 @@
               >
             </div>{/if}
         </div>
-      {:else}<p class="text-xs text-zinc-500">
+      {:else}<p class="text-sm text-zinc-500">
           No {type} in this preview.
         </p>{/each}
     </section>
@@ -115,8 +108,14 @@
         r.id === resource.id &&
         resource.origins.some((ref) => samePersona(ref, r.origin)),
     )}
-    <p class="text-xs">
+    <p class="text-sm">
       Not used · {known ? resourceLabel(known) : `Reference ${resource.id}`}
     </p>
   {/each}
-</Modal>
+  {#snippet footer()}<Button variant="ghost" onclick={onclose}>Close preview</Button
+    ><Button
+      loading={client.resolving}
+      disabled={readonly}
+      onclick={() => client.validate()}>Check changes</Button
+    >{/snippet}
+</InlinePanel>

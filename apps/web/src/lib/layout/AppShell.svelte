@@ -58,43 +58,35 @@
   {#if sidebarOpen}
     <aside
       style="background:var(--sidebar);border-right:1px solid var(--sidebar-border)"
-      class="app-sidebar w-72 flex-shrink-0 flex flex-col min-h-0 select-none"
+      class="app-sidebar w-[272px] flex-shrink-0 flex flex-col min-h-0 select-none"
       aria-label="Application sidebar"
     >
       <div
-        style="border-bottom:1px solid var(--sidebar-border)"
-        class="header-brand h-14 px-4 flex items-center justify-between shrink-0"
+        class="header-brand h-16 px-4 flex items-center justify-between shrink-0"
       >
-        <a href="#/workspace" class="flex items-center space-x-2.5">
+        <a href="#/workspace" class="flex items-center gap-2.5 rounded-lg">
+          <span class="brand-mark" aria-hidden="true">π</span>
+          <span class="text-[17px] font-semibold tracking-tight">PiSpark</span>
           <span
-            class="font-semibold text-sm tracking-tight flex items-center gap-2"
-          >
-            <span
-              class={[
-                "inline-flex h-2 w-2 rounded-full",
-                sessions.connection === "Connected" || sessions.connection === "Reconnecting"
-                  ? "bg-emerald-500 animate-pulse"
-                  : sessions.connection === "Disconnected"
-                    ? "bg-red-400"
-                    : "bg-amber-400"
-              ].join(" ")}
-              role="img"
-              aria-label={`Backend: ${sessions.connection}`}
-              title={`Backend: ${sessions.connection}`}
-            ></span>PiSpark
-          </span>
-          <span
-            style="background:var(--muted);color:var(--muted-foreground)"
-            class="px-1.5 py-0.5 text-[10px] font-medium rounded"
-            >v0.1</span
-          >
+            class={[
+              "inline-flex h-2 w-2 rounded-full",
+              sessions.connection === "Connected" || sessions.connection === "Reconnecting"
+                ? "bg-emerald-500"
+                : sessions.connection === "Disconnected"
+                  ? "bg-red-500"
+                  : "bg-amber-400 animate-pulse"
+            ].join(" ")}
+            role="img"
+            aria-label={`Backend: ${sessions.connection}`}
+            title={`Backend: ${sessions.connection}`}
+          ></span>
         </a>
         <Button
-          class="p-1.5 rounded-md hover:bg-zinc-200/60 text-zinc-500 hover:text-zinc-800 transition-colors"
+          class="p-2 rounded-lg border-0 bg-transparent hover:bg-[var(--sidebar-accent)] text-muted-foreground hover:text-foreground transition-colors"
           aria-label="Collapse sidebar"
           aria-expanded="true"
           onclick={toggleSidebar}
-          ><Icon name="collapse" class="w-4 h-4" /></Button
+          ><Icon name="collapse" class="w-[18px] h-[18px]" /></Button
         >
       </div>
       {@render sidebar()}
@@ -105,26 +97,26 @@
   >
     <header
       style="border-bottom:1px solid var(--border);background:color-mix(in srgb, var(--background) 85%, transparent)"
-      class="global-header h-14 px-6 flex items-center justify-between flex-shrink-0 backdrop-blur-sm z-20"
+      class="global-header h-16 px-5 flex items-center justify-between flex-shrink-0 backdrop-blur-sm z-20"
     >
       {#if !sidebarOpen}<Button
-          class="mr-2 p-1.5 rounded-md text-zinc-500 hover:bg-zinc-100"
+          class="mr-2 p-2 rounded-lg border-0 bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted"
           aria-label="Expand sidebar"
           aria-expanded="false"
           onclick={toggleSidebar}
-          ><Icon name="collapse" class="w-4 h-4 rotate-180" /></Button
+          ><Icon name="collapse" class="w-[18px] h-[18px] rotate-180" /></Button
         >{/if}
-      <div class="w-full flex items-center gap-2 min-w-0"><Composer /></div>
+      <div class="w-full flex items-center gap-2 min-w-0"><Composer quiet={!!sessions.selected} /></div>
     </header>
     {#if sessions.listNotice}<p
         role="status"
-        class="px-6 py-2 text-xs text-zinc-700"
+        class="notice" data-tone="info"
       >
         {sessions.listNotice}
       </p>{/if}
     {#if sessions.error}<div
         role="alert"
-        class="px-6 py-2 text-xs text-zinc-700 break-words"
+        class="notice break-words" data-tone="danger"
       >
         <p>
           {commandUncertainty(sessions.errorKind, false) ||
@@ -143,7 +135,7 @@
       </div>{/if}
     {#if sessions.sessionErrors[sessions.selected]}<div
         role="alert"
-        class="px-6 py-2 text-xs text-zinc-700 break-words"
+        class="notice break-words" data-tone="danger"
       >
         <p>
           {chatName(sessions.sessions.find((s) => s.id === sessions.selected))}:
@@ -162,3 +154,39 @@
     {@render children()}
   </div>
 </div>
+
+<style>
+  .brand-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.5rem;
+    background: var(--brand-gradient);
+    color: white;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  }
+  .notice {
+    margin: 0.75rem 1.25rem 0;
+    padding: 0.625rem 0.875rem;
+    border-radius: var(--radius);
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  .notice[data-tone="info"] {
+    background: var(--interactive-muted);
+    color: var(--foreground);
+  }
+  .notice[data-tone="danger"] {
+    background: var(--danger-muted);
+    color: var(--danger-foreground);
+  }
+  .notice :global(summary) {
+    cursor: pointer;
+    font-size: 0.8125rem;
+    margin-top: 0.25rem;
+  }
+</style>

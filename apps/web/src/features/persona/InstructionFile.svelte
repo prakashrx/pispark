@@ -78,12 +78,12 @@
   }
 </script>
 
-{#if file.dirty}<p class="text-xs">This file has unsaved changes.</p>{/if}
+{#if file.dirty}<p class="text-sm">This file has unsaved changes.</p>{/if}
 <Disclosure
   title={`${readonly ? "View file" : "Edit file"}${file.dirty ? " · Unsaved changes" : ""}`}
 >
-  <p class="text-xs text-neutral-500">File contents are saved separately.</p>
-  {#if !declared}<p class="text-xs text-neutral-500">
+  <p class="text-sm text-neutral-500">File contents are saved separately.</p>
+  {#if !declared}<p class="text-sm text-neutral-500">
       Save file contents here, then save the persona to add this file.
     </p>{/if}
   {#if declared}<Button disabled={file.busy || file.blocked} onclick={load}

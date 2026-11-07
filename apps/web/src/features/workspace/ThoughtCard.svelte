@@ -6,9 +6,13 @@
 
 <div class="thought">
   <button type="button" class="thought-toggle" onclick={() => (expanded = !expanded)} aria-expanded={expanded}>
-    <span class="thought-icon">◆</span>
+    <svg class="thought-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.9V16h5v-.2c0-.8.4-1.5 1-1.9A6 6 0 0 0 12 3Z" />
+    </svg>
     <span>Thinking</span>
-    <span class="thought-chevron">{expanded ? "▴" : "▾"}</span>
+    <svg class="thought-chevron" class:open={expanded} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
+    </svg>
   </button>
   {#if expanded}
     <div class="thought-body">
@@ -21,41 +25,50 @@
   .thought {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    align-items: flex-start;
+    gap: 0.5rem;
   }
   .thought-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 0.375rem;
-    padding: 0.25rem 0;
-    background: none;
+    gap: 0.4rem;
+    padding: 0.3rem 0.7rem 0.3rem 0.55rem;
     border: none;
+    border-radius: var(--radius-full);
+    background: var(--muted);
     font: inherit;
-    font-size: 11px;
+    font-size: 0.8125rem;
+    font-weight: 500;
     color: var(--muted-foreground);
     cursor: pointer;
-    transition: color 0.1s;
+    transition: color 0.12s, background 0.12s;
   }
   .thought-toggle:hover {
     color: var(--foreground);
+    background: var(--sidebar-accent);
   }
   .thought-icon {
-    font-size: 8px;
-    color: var(--warning);
-    opacity: 0.8;
+    width: 0.95rem;
+    height: 0.95rem;
+    color: var(--interactive-text);
   }
   .thought-chevron {
-    font-size: 10px;
-    opacity: 0.6;
+    width: 0.85rem;
+    height: 0.85rem;
+    opacity: 0.7;
+    transition: transform 0.15s;
+  }
+  .thought-chevron.open {
+    transform: rotate(180deg);
   }
   .thought-body {
-    margin-left: 1rem;
-    padding: 0.5rem 0.75rem;
-    border-left: 2px solid var(--border);
-    font-size: 11px;
+    align-self: stretch;
+    padding: 0.25rem 0 0.25rem 1rem;
+    border-left: 2px solid color-mix(in srgb, var(--interactive) 35%, var(--border));
+    font-size: 0.9375rem;
     color: var(--muted-foreground);
-    line-height: 1.65;
+    line-height: 1.7;
     white-space: pre-wrap;
-    word-break: break-words;
+    overflow-wrap: anywhere;
   }
 </style>

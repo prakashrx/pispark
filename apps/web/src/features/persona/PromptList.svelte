@@ -2,7 +2,7 @@
   import { tick, untrack } from "svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Menu from "../../lib/ui/Menu.svelte";
-  import Modal from "../../lib/ui/Modal.svelte";
+  import InlinePanel from "../../lib/ui/InlinePanel.svelte";
   import ContentDialog from "../../lib/ui/ContentDialog.svelte";
   import ReferenceSettings from "./ReferenceSettings.svelte";
   import InstructionFile from "./InstructionFile.svelte";
@@ -212,7 +212,7 @@
         : (local?.text ?? source?.text)}
     {@const inherited = !local && source}
     {@const localIndex = local ? items.indexOf(local) : -1}
-    <article class="prompt-row border-b border-zinc-100 pb-3 space-y-2">
+    <article class="prompt-row border-b border-[var(--border)] pb-3 space-y-2">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0 flex-1">
           {#if text !== undefined}<p
@@ -221,14 +221,14 @@
             >
               {text}
             </p>
-          {:else}<p class="text-xs text-zinc-500">
+          {:else}<p class="text-sm text-zinc-500">
               Prompt text unavailable. Load the existing file to read it.
             </p>{/if}
-          {#if inherited}<p class="text-xs text-zinc-500 mt-1">
+          {#if inherited}<p class="text-sm text-zinc-500 mt-1">
               From {personaName(inherited.origin, client.items)}
             </p>{/if}
           {#if !client.resourcesCurrent && local}<p
-              class="text-xs text-zinc-500"
+              class="text-sm text-zinc-500"
             >
               Local draft
             </p>{/if}
@@ -319,7 +319,7 @@
             : "Read prompt"}</Button
         >{/if}
     </article>
-  {:else}<p class="text-xs text-zinc-500">No prompts to show.</p>{/each}
+  {:else}<p class="text-sm text-zinc-500">No prompts to show.</p>{/each}
   <Button
     disabled={readonly || items.length >= 32}
     onclick={() => open(undefined, undefined, "add")}>Add prompt</Button
@@ -357,7 +357,7 @@
   />
 {/if}
 {#if fileTarget?.file !== undefined && active}
-  <Modal
+  <InlinePanel
     label="Edit file"
     title="Edit file"
     onclose={() => (fileTarget = undefined)}
@@ -369,7 +369,7 @@
         {readonly}
         declared={declared.includes(fileTarget.file)}
       />{/key}
-  </Modal>
+  </InlinePanel>
 {/if}
 {#if advanced && active}<ReferenceSettings
     item={advanced}

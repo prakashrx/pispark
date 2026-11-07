@@ -76,9 +76,9 @@ test("Section defaults retain direct children/class; split is opt-in 1:4 and sta
   expect(sectionSource).toContain("minmax(0, 1fr) minmax(0, 4fr)");
   expect(sectionSource).toContain("max-width: 640px");
 });
-test("read uses literal non-form text, edit is private, cancel restores scroll and apply returns read in same dialog", async () => {
+test("read uses literal non-form text, edit is private, cancel restores scroll and apply returns read in same panel", async () => {
   const { onapply } = setup();
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("region");
   const doc = screen.getByRole("document");
   expect(doc.textContent).toBe("Original\n  <b>literal</b>");
   expect(doc.querySelector("b")).toBeNull();
@@ -104,7 +104,7 @@ test("read uses literal non-form text, edit is private, cancel restores scroll a
   });
   await fireEvent.click(button("Apply changes"));
   expect(onapply).toHaveBeenCalledExactlyOnceWith("Confirmed");
-  expect(screen.getByRole("dialog")).toBe(dialog);
+  expect(screen.getByRole("region")).toBe(dialog);
   expect(screen.getByRole("document").textContent).toBe("Confirmed");
 });
 test("add and customize only submit valid confirmed text; feature guard can reject", async () => {
@@ -139,14 +139,11 @@ test("dirty Escape/X asks inline; Cancel edit returns read; read-only still clos
   await fireEvent.input(screen.getByRole("textbox"), {
     target: { value: "Private" },
   });
-  await fireEvent(
-    screen.getByRole("dialog"),
-    new Event("cancel", { cancelable: true }),
-  );
+  await fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
   expect(onclose).not.toHaveBeenCalled();
   expect(screen.getByRole("alert").textContent).toContain("Discard unapplied");
   await fireEvent.click(button("Keep editing"));
-  await fireEvent.click(button("Close dialog"));
+  await fireEvent.click(screen.getByRole("button", { name: /^Close [A-Z]/ }));
   await fireEvent.click(button("Discard changes"));
   expect(onclose).toHaveBeenCalledOnce();
   cleanup();
@@ -224,7 +221,7 @@ test.each([
       target: { value: "Newer" },
     });
   if (reason === "cancel") await fireEvent.click(button("Cancel"));
-  if (reason === "close") await fireEvent.click(button("Close dialog"));
+  if (reason === "close") await fireEvent.click(screen.getByRole("button", { name: /^Close [A-Z]/ }));
   if (reason === "value") await view.rerender({ value: "New context" });
   if (reason === "owner")
     await view.rerender({ ownerKey: "b", value: "Other owner" });

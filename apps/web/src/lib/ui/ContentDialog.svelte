@@ -10,7 +10,7 @@
 
 <script lang="ts">
   import { onDestroy, tick, untrack } from "svelte";
-  import Modal from "./Modal.svelte";
+  import InlinePanel from "./InlinePanel.svelte";
   import Button from "./Button.svelte";
   import Textarea from "./Textarea.svelte";
   import FormField from "./FormField.svelte";
@@ -276,7 +276,7 @@
 </script>
 
 {#if active}
-  <Modal
+  <InlinePanel
     label={dialogTitle}
     title={dialogTitle}
     size="wide"
@@ -317,7 +317,7 @@
                 readonly={!writable}
                 bind:value={editor}
                 oninput={changed}
-                rows={16}
+                rows={10}
               />
               {#if hovering}<span class="drag-hint"
                   >Drop one text file to import</span
@@ -341,16 +341,16 @@
     {#if editing && message}<p
         id={`${id}-error`}
         role="alert"
-        class="text-xs text-red-700"
+        class="text-sm text-[var(--danger-foreground)]"
       >
         {message}
       </p>{/if}
-    {#if importing}<p role="status" class="text-xs text-neutral-500">
+    {#if importing}<p role="status" class="text-sm text-muted-foreground">
         Reading text…
       </p>{/if}
     {#if replacement !== undefined}
       <div role="alert" class="space-y-2">
-        <p class="text-xs">
+        <p class="text-sm">
           Replace the current editor text with the imported text?
         </p>
         <Button onclick={replaceText}>Replace text</Button>
@@ -364,7 +364,7 @@
     {/if}
     {#if discarding}
       <div role="alert" class="space-y-2">
-        <p class="text-xs">Discard unapplied changes and close?</p>
+        <p class="text-sm">Discard unapplied changes and close?</p>
         <Button
           variant="destructive"
           onclick={() => {
@@ -419,13 +419,12 @@
         <Button onclick={requestClose}>Close</Button>
       {/if}
     {/snippet}
-  </Modal>
+  </InlinePanel>
 {/if}
 
 <style>
   .content-viewport {
-    height: min(55dvh, 32rem);
-    min-height: 10rem;
+    max-height: min(55dvh, 32rem);
     overflow: auto;
     overflow-wrap: anywhere;
   }
@@ -441,17 +440,17 @@
   .editor-surface :global(textarea) {
     resize: none;
     overflow: hidden;
-    min-height: 16rem;
+    min-height: 12rem;
   }
   .dragging {
-    outline: 2px dashed #737373;
+    outline: 2px dashed var(--subtle-foreground);
     outline-offset: -2px;
   }
   .drag-hint {
     position: absolute;
     top: 0.5rem;
     right: 0.5rem;
-    background: white;
+    background: var(--surface-raised);
     padding: 0.5rem;
     font-size: 0.75rem;
     pointer-events: none;

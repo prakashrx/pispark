@@ -1,75 +1,115 @@
 <script lang="ts">
+  import SettingsPage from "../../lib/ui/SettingsPage.svelte";
   import Section from "../../lib/ui/Section.svelte";
   import FieldRow from "../../lib/ui/FieldRow.svelte";
+  import Segmented from "../../lib/ui/Segmented.svelte";
+  import Icon from "../../lib/ui/Icon.svelte";
+  import ThemePicker from "../../lib/theme/ThemePicker.svelte";
+  import { appearance } from "../../lib/theme/appearance.svelte";
+  import { fonts, textSizes } from "../../lib/theme/themes";
   import { useSessions } from "../workspace/session-client.svelte";
   const client = useSessions();
+  const fontOptions = fonts.map((font) => ({
+    value: font.id,
+    label: font.name,
+    style: `font-family:${font.stack}`,
+  }));
 </script>
 
-<main
-  id="workspace"
-  aria-label="General settings"
-  class="flex-1 overflow-y-auto px-8 py-8 bg-[#ffffff]"
+<SettingsPage
+  title="General"
+  description="Appearance and your workspace at a glance."
+  label="General settings"
 >
-  <div class="max-w-3xl mx-auto space-y-8 pb-20">
-    <div class="border-b border-zinc-100 pb-5" data-purpose="settings-header">
-      <h1 class="text-xl font-semibold tracking-tight text-zinc-900">
-        General
-      </h1>
-      <p class="text-sm text-zinc-500 mt-1">Your workspace at a glance.</p>
+  <Section title="Theme" description="Saved in this browser. Changes apply instantly.">
+    <div class="mt-4">
+      <ThemePicker
+        value={appearance.current.theme}
+        onchange={(theme) => appearance.set({ theme })}
+      />
     </div>
-    <Section
-      variant="settings"
-      class="space-y-4"
-      title="Appearance"
-      description=""
-    >
-      <div
-        class="border border-zinc-200/80 rounded-xl divide-y divide-zinc-100 overflow-hidden bg-white shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
-      >
-        <FieldRow label="Theme" description="Only the light theme is available."
-          ><span class="text-xs text-zinc-700">Light</span></FieldRow
-        >
+  </Section>
+
+  <Section title="Typography" description="Fonts use what’s installed on this device.">
+    <div class="settings-card mt-4">
+      <FieldRow label="Interface font" description="Sidebar, controls and settings.">
+        <Segmented
+          label="Interface font"
+          options={fontOptions}
+          value={appearance.current.interfaceFont}
+          onchange={(interfaceFont) => appearance.set({ interfaceFont })}
+        />
+      </FieldRow>
+      <FieldRow label="Message font" description="Chat replies and your messages.">
+        <Segmented
+          label="Message font"
+          options={fontOptions}
+          value={appearance.current.messageFont}
+          onchange={(messageFont) => appearance.set({ messageFont })}
+        />
+      </FieldRow>
+      <FieldRow label="Text size" description="Scales text and spacing everywhere.">
+        <Segmented
+          label="Text size"
+          options={textSizes.map((size) => ({ value: size.id, label: size.name }))}
+          value={appearance.current.textSize}
+          onchange={(textSize) => appearance.set({ textSize })}
+        />
+      </FieldRow>
+      <div class="type-sample" aria-hidden="true">
+        <p class="sample-title">The quick brown fox</p>
+        <p class="sample-body">
+          Replies render in your message font, sized for comfortable reading
+          across long answers.
+        </p>
       </div>
-    </Section>
-    <Section
-      variant="settings"
-      class="space-y-4"
-      title="Workspace"
-      description=""
-    >
-      <div
-        class="border border-zinc-200/80 rounded-xl divide-y divide-zinc-100 overflow-hidden bg-white shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
-      >
-        <FieldRow label="Working folders" description="">
-          <div class="text-xs text-zinc-700 space-y-1">
-            {#if client.catalogLoading}<p role="status">
-                Loading working folders…
-              </p>
-            {:else if client.catalogError}<p role="alert">
-                Couldn’t load working folders. Try reconnecting.
-              </p>
-            {:else}{#each client.catalog.workspaces as workspace}<p>
-                  {workspace.label}
-                </p>{:else}<p>No working folders are configured.</p>{/each}{/if}
-          </div>
-        </FieldRow>
-        <FieldRow
-          label="Personas"
-          description="Manage instructions and skills for your chats."
-          ><a
-            class="text-xs underline underline-offset-2"
-            href="#/persona"
-            onclick={() => client.personas.collection()}>Manage personas</a
-          ></FieldRow
+    </div>
+  </Section>
+
+  <Section title="Workspace" description="Configured on the backend host.">
+    <div class="settings-card mt-4">
+      <FieldRow label="Working folders" description="Where chats can run.">
+        <div class="text-sm text-right space-y-1">
+          {#if client.catalogLoading}<p role="status" class="text-muted-foreground">
+              Loading working folders…
+            </p>
+          {:else if client.catalogError}<p role="alert" class="text-[var(--danger-foreground)]">
+              Couldn’t load working folders. Try reconnecting.
+            </p>
+          {:else}{#each client.catalog.workspaces as workspace}<p class="inline-flex items-center gap-1.5 rounded-full bg-[var(--muted)] px-3 py-1 font-medium">
+                <Icon name="folder" class="w-3.5 h-3.5" />{workspace.label}
+              </p>{:else}<p class="text-muted-foreground">No working folders are configured.</p>{/each}{/if}
+        </div>
+      </FieldRow>
+      <FieldRow label="Personas" description="Instructions and skills for your chats.">
+        <a
+          class="settings-link"
+          href="#/persona"
+          onclick={() => client.personas.collection()}>Manage personas</a
         >
-        <FieldRow
-          label="Providers &amp; models"
-          description="Connect an account and choose a model."
-          ><a class="text-xs underline underline-offset-2" href="#/providers"
-            >Providers &amp; models</a
-          ></FieldRow
-        >
-      </div>
-    </Section>
-  </div>
-</main>
+      </FieldRow>
+      <FieldRow label="Providers &amp; models" description="Connect an account and choose a model.">
+        <a class="settings-link" href="#/providers">Providers &amp; models</a>
+      </FieldRow>
+    </div>
+  </Section>
+</SettingsPage>
+
+<style>
+  .type-sample {
+    padding: 1rem 1.25rem 1.25rem;
+    background: var(--code-surface);
+  }
+  .sample-title {
+    font-family: var(--font-sans);
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+  .sample-body {
+    margin-top: 0.25rem;
+    font-family: var(--font-reading);
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--muted-foreground);
+  }
+</style>

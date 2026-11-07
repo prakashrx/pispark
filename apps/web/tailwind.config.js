@@ -1,32 +1,28 @@
 import forms from "@tailwindcss/forms";
 
+const ramp = Object.fromEntries(
+  [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950].map((step) => [
+    step,
+    `rgb(var(--n-${step}) / <alpha-value>)`,
+  ]),
+);
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{svelte,ts}"],
   theme: {
     extend: {
       fontFamily: {
-        sans: [
-          "Inter",
-          "-apple-system",
-          "BlinkMacSystemFont",
-          "Segoe UI",
-          "Roboto",
-          "sans-serif",
-        ],
-        mono: [
-          "JetBrains Mono",
-          "ui-monospace",
-          "SFMono-Regular",
-          "Menlo",
-          "monospace",
-        ],
+        sans: ["var(--font-sans)"],
+        mono: ["var(--font-mono)"],
       },
       colors: {
         /* Semantic design tokens — reference var(--token) so themes just override :root */
         background: "var(--background)",
         foreground: "var(--foreground)",
         muted: { DEFAULT: "var(--muted)", foreground: "var(--muted-foreground)" },
+        subtle: "var(--subtle-foreground)",
+        bubble: "var(--bubble)",
         card: { DEFAULT: "var(--card)", foreground: "var(--card-foreground)" },
         border: "var(--border)",
         input: "var(--input)",
@@ -35,21 +31,23 @@ export default {
         secondary: { DEFAULT: "var(--secondary)", foreground: "var(--secondary-foreground)" },
         accent: { DEFAULT: "var(--accent)", foreground: "var(--accent-foreground)" },
         destructive: { DEFAULT: "var(--destructive)", foreground: "var(--destructive-foreground)" },
-        interactive: { DEFAULT: "var(--interactive)", foreground: "var(--interactive-foreground)", muted: "var(--interactive-muted)" },
+        interactive: { DEFAULT: "var(--interactive)", foreground: "var(--interactive-foreground)", muted: "var(--interactive-muted)", text: "var(--interactive-text)" },
         sidebar: { DEFAULT: "var(--sidebar)", foreground: "var(--sidebar-foreground)", border: "var(--sidebar-border)", accent: "var(--sidebar-accent)" },
         success: "var(--success)",
         warning: "var(--warning)",
         danger: "var(--danger)",
-        /* Keep zinc for existing code */
-        brand: { 50: "#f4f6f8", 100: "#e5e7eb", 500: "#10b981", 900: "#111827" },
+        /* Legacy neutral utilities follow the active theme's ramp. */
+        white: "rgb(var(--n-0) / <alpha-value>)",
+        zinc: ramp,
+        gray: ramp,
+        neutral: ramp,
+        slate: ramp,
+        stone: ramp,
       },
       boxShadow: {
-        "elevation-sm":
-          "0 1px 2px 0 rgba(0,0,0,0.03), 0 1px 3px 0 rgba(0,0,0,0.05)",
-        "elevation-md":
-          "0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.04)",
-        "elevation-lg":
-          "0 10px 25px -5px rgba(0,0,0,0.07), 0 8px 10px -6px rgba(0,0,0,0.05)",
+        "elevation-sm": "var(--shadow-sm)",
+        "elevation-md": "var(--shadow-composer)",
+        "elevation-lg": "var(--shadow-popover)",
       },
     },
   },

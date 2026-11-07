@@ -50,11 +50,11 @@
     gap: 0.375rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 0.4rem 0.75rem;
+    padding: 0.4rem 0.8rem;
     background: var(--background);
     color: var(--foreground);
     font: inherit;
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     font-weight: 500;
     line-height: 1.25rem;
     transition: background 0.1s, color 0.1s, border-color 0.1s;

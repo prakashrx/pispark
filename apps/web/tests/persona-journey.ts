@@ -9,7 +9,7 @@ export async function collection(page: Page) {
   await expect(
     page.getByRole("main", { name: "Persona management" }),
   ).toBeVisible();
-  const fileDialog = page.getByRole("dialog", {
+  const fileDialog = page.getByRole("region", {
     name: "Edit file",
     exact: true,
   });
@@ -45,7 +45,7 @@ export async function openPersona(page: Page, name: string) {
 export async function createPersona(page: Page, name: string) {
   await collection(page);
   await page.getByRole("button", { name: "New persona", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "New persona", exact: true });
+  const dialog = page.getByRole("region", { name: "New persona", exact: true });
   await expect(
     dialog.getByRole("textbox", { name: "Name", exact: true }),
   ).toBeFocused();
@@ -63,7 +63,7 @@ export async function action(page: Page, name: string) {
 }
 export async function metadata(page: Page, description: string) {
   await action(page, "Edit name and description");
-  const dialog = page.getByRole("dialog", {
+  const dialog = page.getByRole("region", {
     name: "Edit name and description",
     exact: true,
   });
@@ -76,7 +76,7 @@ export async function metadata(page: Page, description: string) {
 }
 export async function save(page: Page) {
   if (
-    await page.getByRole("dialog", { name: "Edit file", exact: true }).count()
+    await page.getByRole("region", { name: "Edit file", exact: true }).count()
   )
     await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
@@ -133,7 +133,7 @@ export async function addFile(page: Page, name = "rules.md") {
 }
 export async function addPrompt(page: Page, text: string) {
   await page.getByRole("button", { name: "Add prompt", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Add prompt", exact: true });
+  const dialog = page.getByRole("region", { name: "Add prompt", exact: true });
   await dialog
     .getByRole("textbox", { name: "Instructions", exact: true })
     .fill(text);
@@ -141,7 +141,7 @@ export async function addPrompt(page: Page, text: string) {
 }
 export async function editFile(page: Page, n = 1) {
   await resourceAction(page, "Instruction", n, "Edit file");
-  const dialog = page.getByRole("dialog", { name: "Edit file", exact: true });
+  const dialog = page.getByRole("region", { name: "Edit file", exact: true });
   await dialog
     .locator("summary")
     .filter({ hasText: /^Edit file/ })
@@ -174,7 +174,7 @@ export async function reference(
   kind: "Instruction" | "Skill" = "Instruction",
 ) {
   await resourceAction(page, kind, n, "Advanced settings");
-  const dialog = page.getByRole("dialog", {
+  const dialog = page.getByRole("region", {
     name: "Advanced settings",
     exact: true,
   });
@@ -185,7 +185,7 @@ export async function reference(
 }
 export async function addParent(page: Page, name: string) {
   await page.getByRole("button", { name: "Use persona", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Use persona", exact: true });
+  const dialog = page.getByRole("region", { name: "Use persona", exact: true });
   await dialog.getByRole("button", { name: /^Choose a persona:/ }).click();
   await dialog
     .getByRole("combobox", {

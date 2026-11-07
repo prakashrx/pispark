@@ -5,10 +5,10 @@
   import ThoughtCard from "./ThoughtCard.svelte";
   import { renderMarkdown } from "../../lib/markdown";
 
-  let { message }: { message: NativeMessage } = $props();
-
-  // Group consecutive thinking parts for the ThoughtCard
-  // Non-thinking, non-toolCall parts get rendered as markdown
+  let {
+    message,
+    hidden = new Set<number>(),
+  }: { message: NativeMessage; hidden?: Set<number> } = $props();
 </script>
 
 {#if message.role === "user"}
@@ -20,9 +20,9 @@
     content={message.parts.map((p) => p.text).join("\n")}
   />
 {:else}
-  <div class="space-y-3" data-purpose="assistant-turn-stream">
-    {#each message.parts as part}
-      {#if part.type === "toolCall"}
+  <div class="flex flex-col gap-3" data-purpose="assistant-turn-stream">
+    {#each message.parts as part, index}
+      {#if hidden.has(index)}{:else if part.type === "toolCall"}
         <ToolCard name={part.name ?? "Tool"} result="running" />
       {:else if part.type === "thinking"}
         <ThoughtCard>{part.text}</ThoughtCard>
@@ -31,10 +31,10 @@
       {/if}
     {/each}
     {#if message.stopReason === "aborted"}
-      <p class="text-xs text-zinc-400 italic">Cancelled</p>
+      <p class="text-sm text-subtle italic">Cancelled</p>
     {/if}
     {#if message.stopReason === "error"}
-      <p role="alert" class="text-xs text-zinc-500">
+      <p role="alert" class="text-sm px-4 py-3 rounded-xl bg-[var(--danger-muted)] text-[var(--danger-foreground)]">
         Model execution failed. Check account and model access, or choose another model for a new session.
       </p>
     {/if}

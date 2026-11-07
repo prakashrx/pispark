@@ -122,7 +122,6 @@ test("real persona editor persists ordered text/files, inheritance/overrides and
     .click();
   await page.keyboard.press("Escape");
   await save(page);
-  await action(page, "Advanced settings");
   await page.getByText("View JSON", { exact: true }).click();
   await expect(
     page.getByRole("region", { name: "Persona JSON", exact: true }),
@@ -175,7 +174,7 @@ test("real persona editor persists ordered text/files, inheritance/overrides and
   await page.getByRole("button", { name: "Chat actions", exact: true }).click();
   await page.getByRole("menuitem", { name: "Chat info", exact: true }).click();
   await expect(
-    page.getByRole("dialog", { name: "Chat info", exact: true }),
+    page.getByRole("region", { name: "Chat info", exact: true }),
   ).toContainText(child);
   await capture(page, info, "inherited-chat-info");
   await page.keyboard.press("Escape");
@@ -451,7 +450,7 @@ test("ordinary collection/continuous/dialog journey uses checked preview, real s
   await page.keyboard.press("Escape");
   await page.goto("/#/settings");
   await expect(
-    page.getByRole("main").getByText("Light", { exact: true }),
+    page.getByRole("main").getByRole("radiogroup", { name: "Theme" }),
   ).toBeVisible();
   const catalog = await (await request.get("/api/catalog")).json();
   for (const folder of catalog.workspaces)
@@ -494,7 +493,7 @@ test("ordinary collection/continuous/dialog journey uses checked preview, real s
   await capture(page, info, "named-chat");
   await page.getByRole("button", { name: "Chat actions", exact: true }).click();
   await page.getByRole("menuitem", { name: "Chat info", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Chat info", exact: true });
+  const dialog = page.getByRole("region", { name: "Chat info", exact: true });
   for (const field of ["Persona", "Model", "Working folder", "Started"])
     await expect(dialog.getByText(field, { exact: true })).toBeVisible();
   expect(await dialog.innerText()).not.toMatch(
@@ -612,12 +611,12 @@ test("busy creation protects inputs and explicit collection navigation supersede
     .getByRole("button", { name: "Create persona", exact: true })
     .click();
   await entering;
-  await expect(page.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator(".inline-panel")).toHaveAttribute("aria-busy", "true");
   await expect(
     page.getByRole("button", { name: /Create persona$/ }),
   ).toBeDisabled();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.locator(".inline-panel")).toBeVisible();
   // Deliberate route navigation can supersede in-flight work even though the modal prevents accidental underlying edits.
   await page.evaluate(() => (window.location.hash = "/sources"));
   await expect(
@@ -768,7 +767,7 @@ test("creation error retains dialog fields, no fake saved row, and empty/search 
   ).toBeVisible();
   await capture(page, info, "empty-collection");
   await page.getByRole("button", { name: "New persona", exact: true }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator(".inline-panel");
   await dialog
     .getByRole("textbox", { name: "Name", exact: true })
     .fill("Keep creation draft");
@@ -811,7 +810,7 @@ test("preview failure keeps draft and saved identity; collection refresh/search 
   await page
     .getByRole("button", { name: "Check changes", exact: true })
     .click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator(".inline-panel");
   await expect(dialog.getByRole("alert")).toHaveText(
     "Check this persona’s name, instructions, and skills.",
   );
@@ -826,10 +825,7 @@ test("preview failure keeps draft and saved identity; collection refresh/search 
   await expect(
     page.getByText("No matching personas.", { exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Persona collection actions", exact: true })
-    .click();
-  await page.getByRole("menuitem", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Personas", exact: true }),
   ).toBeVisible();
@@ -914,7 +910,7 @@ test("Based on expert tokens preserve unknown draft references, validate custom 
   await page
     .getByRole("menuitem", { name: "Advanced settings", exact: true })
     .click();
-  let dialog = page.getByRole("dialog");
+  let dialog = page.locator(".inline-panel");
   const custom = dialog.getByRole("textbox", {
     name: "Custom Reference names",
     exact: true,
@@ -939,7 +935,7 @@ test("Based on expert tokens preserve unknown draft references, validate custom 
   await page
     .getByRole("button", { name: "Check changes", exact: true })
     .click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toBeVisible();
+  await expect(page.locator(".inline-panel").getByRole("alert")).toBeVisible();
   await page.keyboard.press("Escape");
   await page
     .getByRole("button", { name: "reused persona 1 actions", exact: true })
@@ -947,7 +943,7 @@ test("Based on expert tokens preserve unknown draft references, validate custom 
   await page
     .getByRole("menuitem", { name: "Advanced settings", exact: true })
     .click();
-  dialog = page.getByRole("dialog");
+  dialog = page.locator(".inline-panel");
   await expect(dialog).toContainText("unknown");
   await capture(page, info, "reference-tokens", [390, 1920]);
   await dialog
@@ -1014,7 +1010,7 @@ test("file save marks last preview stale; explicit check refreshes text and inde
     0,
   );
   await action(page, "Preview");
-  await expect(page.getByRole("dialog").getByRole("status")).toHaveText(
+  await expect(page.locator(".inline-panel").getByRole("status")).toHaveText(
     "Saved version",
   );
   await page.keyboard.press("Escape");
@@ -1030,7 +1026,7 @@ test("file save marks last preview stale; explicit check refreshes text and inde
   ).json();
   await page.keyboard.press("Escape");
   await action(page, "Preview");
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator(".inline-panel");
   await expect(dialog.getByRole("status")).toHaveText("Changes not checked");
   await expect(dialog).toContainText("Old saved file preview");
   await dialog
@@ -1048,7 +1044,7 @@ test("file save marks last preview stale; explicit check refreshes text and inde
   ).toBeDisabled();
   await action(page, "Reload saved version");
   await action(page, "Preview");
-  await expect(page.getByRole("dialog").getByRole("status")).toHaveText(
+  await expect(page.locator(".inline-panel").getByRole("status")).toHaveText(
     "Saved version",
   );
 });
@@ -1065,22 +1061,15 @@ test("actual Advanced and local Preview disclosures support native keyboard trav
     name: "Persona actions",
     exact: true,
   });
-  await action(page, "Advanced settings");
-  const advanced = page.getByRole("dialog", {
-    name: "Advanced settings",
-    exact: true,
-  });
-  const close = advanced.getByRole("button", {
-    name: "Close dialog",
-    exact: true,
-  });
+  // Advanced is an in-page section: its disclosures use native keyboard behavior.
+  const advanced = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Advanced", exact: true }) });
   const definition = advanced
     .locator("summary")
     .filter({ hasText: /^Definition details$/ });
   const json = advanced.locator("summary").filter({ hasText: /^View JSON$/ });
-  await expect(close).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(definition).toBeFocused();
+  await definition.focus();
   await page.keyboard.press("Enter");
   await expect(advanced.getByText("Persona ID", { exact: true })).toBeVisible();
   await page.keyboard.press("Space");
@@ -1095,25 +1084,19 @@ test("actual Advanced and local Preview disclosures support native keyboard trav
   await expect(
     advanced.getByRole("region", { name: "Persona JSON" }),
   ).toBeHidden();
-  await page.keyboard.press("Tab");
-  await expect(close).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
-  await expect(json).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(definition).toBeFocused();
   await page.keyboard.press("Enter");
   await capture(page, info, "keyboard-advanced");
-  await page.keyboard.press("Escape");
-  await expect(advanced).toHaveCount(0);
-  await expect(trigger).toBeFocused();
+  await page.keyboard.press("Enter");
 
   await action(page, "Preview");
-  const preview = page.getByRole("dialog", {
+  const preview = page.getByRole("region", {
     name: "Persona preview",
     exact: true,
   });
   const previewClose = preview.getByRole("button", {
-    name: "Close dialog",
+    name: "Close Persona preview",
     exact: true,
   });
   const check = preview.getByRole("button", {
@@ -1124,9 +1107,8 @@ test("actual Advanced and local Preview disclosures support native keyboard trav
     .locator("summary")
     .filter({ hasText: /^Instruction text$/ });
   const details = preview.locator("summary").filter({ hasText: /^Details$/ });
+  // The panel takes focus on its close control; Tab moves through it in page order.
   await expect(previewClose).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(check).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(text).toBeFocused();
   await page.keyboard.press("Space");
@@ -1148,7 +1130,12 @@ test("actual Advanced and local Preview disclosures support native keyboard trav
     preview.getByText("Reference name", { exact: true }),
   ).toBeHidden();
   await page.keyboard.press("Tab");
-  await expect(previewClose).toBeFocused();
+  await expect(
+    preview.getByRole("button", { name: "Close preview", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(check).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
   await page.keyboard.press("Shift+Tab");
   await expect(details).toBeFocused();
   await page.keyboard.press("Shift+Tab");
@@ -1209,10 +1196,7 @@ test("retained file changes stay attributed to their persona while a clean diffe
   await collection(page);
   await expect(row(aRef)).toContainText("Unsaved changes");
   await expect(row(bRef)).not.toContainText("Unsaved changes");
-  await page
-    .getByRole("button", { name: "Persona collection actions", exact: true })
-    .click();
-  await page.getByRole("menuitem", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(
     page.getByText("Loading personas…", { exact: true }),
   ).toHaveCount(0);

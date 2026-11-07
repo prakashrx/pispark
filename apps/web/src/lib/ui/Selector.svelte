@@ -2,6 +2,7 @@
   import { tick, type Snippet } from "svelte";
   import Button from "./Button.svelte";
   import Input from "./Input.svelte";
+  import Icon from "./Icon.svelte";
   export interface Option {
     value: string;
     label: string;
@@ -223,18 +224,18 @@
     >
       {#if children}{@render children(selected)}{:else}<span class="truncate"
           >{loading ? "Loading…" : selected}</span
-        ><span aria-hidden="true">⌄</span>{/if}
+        ><Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60 shrink-0" />{/if}
     </Button>
     {#if open}
       <div
         data-selector-popup
-        class={"absolute top-full z-50 mt-1 min-w-48 max-w-[85vw] rounded-lg border border-gray-200 bg-white p-1 text-xs text-gray-700 shadow-lg " +
+        class={"selector-popup absolute top-full z-50 mt-2 min-w-56 max-w-[85vw] rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-1.5 text-sm text-foreground " +
           (alignLeft ? "left-0" : "right-0")}
       >
         {#if searchable}
           <Input
             label={`Search ${label}`}
-            class="w-full rounded border-gray-200 px-2 py-1 text-xs"
+            class="mb-1 w-full"
             bind:value={query}
             role="combobox"
             aria-expanded="true"
@@ -268,11 +269,11 @@
               aria-selected={value === option.value}
               tabindex="-1"
               disabled={option.disabled}
-              class="block w-full rounded px-2 py-1.5 text-left hover:bg-gray-100"
-              class:bg-gray-100={index === active}
+              class="block w-full rounded-lg px-2.5 py-2 text-left hover:bg-[var(--muted)] aria-selected:font-medium aria-selected:text-[var(--interactive-text)] disabled:opacity-50"
+              class:bg-[var(--muted)]={index === active}
               onclick={() => choose(option)}>{option.label}</button
             >
-          {:else}<p class="px-2 py-2" role="status">
+          {:else}<p class="px-2.5 py-2 text-muted-foreground" role="status">
               {loading
                 ? "Loading…"
                 : error
@@ -280,7 +281,7 @@
                   : "No matching options"}
             </p>{/each}
         </div>
-        {#if footer}<div class="border-t border-gray-100 mt-1 p-2">
+        {#if footer}<div class="border-t border-[var(--border)] mt-1.5 p-2.5">
             {@render footer()}
           </div>{/if}
       </div>
@@ -299,14 +300,17 @@
   :global(.ui-selector[data-display="field"]) {
     width: 100%;
     justify-content: space-between;
-    border: 1px solid #d4d4d4;
-    border-radius: 0.5rem;
+    border: 1px solid var(--input);
+    border-radius: var(--radius);
     padding: 0.5rem 0.75rem;
-    background: white;
-    font-size: 0.75rem;
-    color: #171717;
+    background: var(--background);
+    font-size: 0.875rem;
+    color: var(--foreground);
+  }
+  :global(.selector-popup) {
+    box-shadow: var(--shadow-popover);
   }
   :global(.ui-selector[aria-invalid="true"]) {
-    border-color: #b91c1c;
+    border-color: var(--danger);
   }
 </style>

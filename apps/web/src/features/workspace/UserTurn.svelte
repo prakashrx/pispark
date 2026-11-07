@@ -10,13 +10,15 @@
 
 <style>
   .user-bubble {
-    max-width: min(42rem, 85%);
-    padding: 0.625rem 0.875rem;
-    background: var(--muted);
+    max-width: min(36rem, 80%);
+    padding: 0.625rem 1.125rem;
+    background: var(--bubble);
     color: var(--foreground);
-    border-radius: var(--radius-lg);
-    font-size: 0.875rem;
+    border-radius: var(--radius-xl);
+    font-family: var(--font-reading);
+    font-size: 1rem;
     line-height: 1.6;
-    word-break: break-words;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 </style>

@@ -36,12 +36,12 @@
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
-    border: 1px solid #d4d4d4;
-    border-radius: 0.5rem;
+    border: 1px solid var(--input);
+    border-radius: var(--radius);
     padding: 0.5rem 0.75rem;
-    background: white;
-    color: #171717;
-    font-size: 0.75rem;
+    background: var(--background);
+    color: var(--foreground);
+    font-size: 0.875rem;
     line-height: 1.5;
   }
   :global(.ui-input:where([data-density="compact"])) {
@@ -50,13 +50,13 @@
   :global(.ui-input:focus),
   :global([type].ui-input:focus) {
     box-shadow: none;
-    border-color: #737373;
-    outline: 2px solid #737373;
-    outline-offset: 2px;
+    border-color: var(--interactive);
+    outline: 2px solid color-mix(in srgb, var(--interactive) 35%, transparent);
+    outline-offset: 1px;
   }
   :global(.ui-input[aria-invalid="true"]),
   :global([type].ui-input[aria-invalid="true"]:focus) {
-    border-color: #b91c1c;
+    border-color: var(--danger);
   }
   :global(.ui-input[data-appearance="composer"]),
   :global([type].ui-input[data-appearance="composer"]) {
@@ -72,6 +72,6 @@
     cursor: not-allowed;
   }
   :global(.ui-input:where(:read-only)) {
-    background: #fafafa;
+    background: var(--code-surface);
   }
 </style>

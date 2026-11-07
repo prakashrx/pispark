@@ -89,7 +89,7 @@ test("continuous authoritative resources, private prompt dialogs and text-only i
   await page
     .getByRole("button", { name: "Read full prompt", exact: true })
     .click();
-  let dialog = page.locator("dialog[open]");
+  let dialog = page.locator(".inline-panel");
   await expect(dialog.getByRole("document")).toHaveText(long);
   expect(await dialog.locator("b").count()).toBe(0);
   await capture(page, info, "long-read");
@@ -137,7 +137,7 @@ test("continuous authoritative resources, private prompt dialogs and text-only i
     page.locator("[data-instructions] .prompt-text").last(),
   ).toHaveText("instructions.md");
   await resourceAction(page, "Instruction", 3, "Edit");
-  dialog = page.locator("dialog[open]");
+  dialog = page.locator(".inline-panel");
   await editor.fill("Private retained text");
   await capture(page, info, "edit-private");
   // Route navigation pauses private state, never applies it or restores an old import handle.
@@ -150,7 +150,7 @@ test("continuous authoritative resources, private prompt dialogs and text-only i
     .last()
     .click();
   await openPersona(page, name);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".inline-panel")).toHaveCount(0);
   await resourceAction(page, "Instruction", 3, "Edit");
   await expect(editor).toHaveValue("Private retained text");
   await editor.fill("instructions.md");
@@ -300,7 +300,7 @@ test("actual picker/drop errors, replacement consent and slow file completion st
       operations.push(request.url());
   });
   await page.getByRole("button", { name: "Add prompt", exact: true }).click();
-  const dialog = page.locator("dialog[open]"),
+  const dialog = page.locator(".inline-panel"),
     editor = dialog.getByRole("textbox", { name: "Instructions", exact: true }),
     picker = dialog.locator('input[type="file"]');
   await expect(editor).toBeFocused();
@@ -424,7 +424,7 @@ test("actual picker/drop errors, replacement consent and slow file completion st
     .getByRole("button", { name: "Keep editing", exact: true })
     .click();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".inline-panel")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Add prompt", exact: true }),
   ).toBeFocused();
@@ -476,7 +476,7 @@ test("unchanged child source failure marks retained resources stale and explicit
   await expect(rows).toHaveText([oldText]);
   await expect(saveButton).toBeDisabled();
   await action(page, "Preview");
-  const preview = page.getByRole("dialog", {
+  const preview = page.getByRole("region", {
     name: "Persona preview",
     exact: true,
   });
@@ -517,7 +517,7 @@ test("unchanged child source failure marks retained resources stale and explicit
   await expect(saveButton).toBeDisabled();
   await capture(page, info, "source-failure-page");
   await page.getByRole("button", { name: "Read prompt", exact: true }).click();
-  const reader = page.getByRole("dialog", { name: "Prompt", exact: true });
+  const reader = page.getByRole("region", { name: "Prompt", exact: true });
   await expect(reader.getByRole("document")).toHaveText(oldText);
   await reader.getByRole("button", { name: "Close", exact: true }).click();
   const repairedResponse = await request.post("/api/personas/save", {
@@ -599,7 +599,7 @@ test("confirmed customization becomes one local override and retains later priva
     "Original source text",
   );
   await resourceAction(page, "Instruction", 1, "Customize");
-  const dialog = page.locator("dialog[open]"),
+  const dialog = page.locator(".inline-panel"),
     editor = dialog.getByRole("textbox", { name: "Instructions", exact: true });
   await editor.fill("Confirmed local replacement");
   await dialog

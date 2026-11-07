@@ -79,9 +79,10 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
   await page
     .getByRole("textbox", { name: "Ask anything" })
     .fill("An unsent question");
-  await page
-    .getByRole("textbox", { name: /Reply to chat/ })
-    .fill("An unsent follow-up");
+  // No chat is open yet, so there is no reply composer to type into.
+  await expect(
+    page.getByRole("textbox", { name: /Reply to chat/ }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Style", exact: true }),
   ).toHaveCount(0);

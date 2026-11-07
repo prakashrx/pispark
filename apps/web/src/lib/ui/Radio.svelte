@@ -17,7 +17,7 @@
 
 <label
   for={id}
-  class="ui-radio flex items-start gap-3 p-3 text-xs cursor-pointer"
+  class="ui-radio flex items-start gap-3 p-3 text-sm cursor-pointer"
 >
   <input
     {...attributes}
@@ -45,11 +45,12 @@
     flex-shrink: 0;
     width: 1rem;
     height: 1rem;
-    border: 1px solid #a3a3a3;
-    color: #171717;
+    border: 1px solid var(--input);
+    background-color: var(--background);
+    color: var(--interactive);
   }
   .ui-radio input:focus-visible {
-    outline: 2px solid #737373;
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
     box-shadow: none;
   }

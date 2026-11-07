@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { chatName, chatStatus, commandUncertainty } from "./chat-presentation";
+import { chatName, chatStatus, commandUncertainty, visibleTurns } from "./chat-presentation";
 import type { SessionInfo } from "../../../../server/src/protocol";
 const chat: SessionInfo = {
   id: "private-uuid",
@@ -50,4 +50,17 @@ test("uncertainty primary copy distinguishes acceptance, settlement and known-ch
     "That action may still be running. Check your chats before trying again.",
   );
   expect(commandUncertainty(undefined, true)).toBe("");
+});
+
+test("visible turns drop empty messages and settle tool calls by their later result", () => {
+  const turns = visibleTurns([
+    { role: "assistant", parts: [{ type: "text", text: "  " }] },
+    { role: "user", parts: [{ type: "text", text: "Hi" }] },
+    { role: "assistant", parts: [{ type: "toolCall", text: "", name: "a" }, { type: "toolCall", text: "", name: "b" }] },
+    { role: "toolResult", toolName: "b", parts: [{ type: "text", text: "ok" }] },
+    { role: "assistant", parts: [{ type: "text", text: "" }], stopReason: "aborted" },
+  ]);
+  expect(turns.map((t) => t.message.role)).toEqual(["user", "assistant", "toolResult", "assistant"]);
+  // "a" has no result yet so it stays visible as running; "b" is settled.
+  expect([...(turns[1]?.hidden ?? [])]).toEqual([1]);
 });

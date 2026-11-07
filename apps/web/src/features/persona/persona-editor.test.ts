@@ -106,7 +106,7 @@ test("editor orders supported instruction cards, saves only on response and remo
     [...document.querySelectorAll("section[data-layout=split] h2")].map(
       (e) => e.textContent,
     ),
-  ).toEqual(["Reuse personas", "Prompts", "Skills"]);
+  ).toEqual(["Reuse personas", "Prompts", "Skills", "Advanced"]);
   expect(screen.queryByRole("textbox", { name: "Instructions" })).toBeNull();
   await fireEvent.click(
     screen.getByRole("button", { name: "Prompt 2 actions" }),
@@ -289,7 +289,7 @@ test("private Add/Edit/Cancel never mutate a definition or save early; same targ
   await fireEvent.click(
     await screen.findByRole("button", { name: /^Actual writer/ }),
   );
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.querySelector(".inline-panel")).toBeNull();
   await fireEvent.click(
     await screen.findByRole("button", { name: "Prompt 1 actions" }),
   );
@@ -329,7 +329,7 @@ test("private Add/Edit/Cancel never mutate a definition or save early; same targ
     2,
   );
   await fireEvent.click(
-    screen.getByRole("dialog").querySelector('button[data-variant="primary"]')!,
+    screen.getByRole("region", { name: "Add prompt" }).querySelector('button[data-variant="primary"]')!,
   );
   expect(document.querySelectorAll("[data-instructions] article")).toHaveLength(
     3,

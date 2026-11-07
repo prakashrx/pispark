@@ -11,9 +11,12 @@
   let {
     mode = "ask",
     draft = $bindable(""),
+    quiet = false,
   }: {
     mode?: "ask" | "reply";
     draft?: string;
+    // A chat is open: the reply is the primary input, so Ask recedes until used.
+    quiet?: boolean;
   } = $props();
   let draftRevision = 0;
   let folder = $state("");
@@ -137,8 +140,9 @@
 </script>
 
 <form
-  class="composer w-full rounded-[var(--radius-lg)] px-3 py-1.5 flex items-center gap-2 transition-all"
+  class="composer w-full flex items-center gap-2 transition-all"
   class:composer-reply={mode === "reply"}
+  class:composer-quiet={quiet && !draft}
   aria-label={mode === "ask" ? "New chat" : "Reply to chat"}
   onsubmit={(event) => {
     event.preventDefault();
@@ -147,7 +151,7 @@
 >
   <div
     class={"composer-input flex items-center flex-1 min-w-0 gap-2" +
-      (mode === "ask" ? " pl-1" : "")}
+      (mode === "ask" ? " pl-2" : " pl-2")}
   >
     <Input
       label={mode === "ask" ? "Ask anything" : "Reply to chat"}
@@ -163,7 +167,7 @@
         } else sessions.setDraft(text);
       }}
       appearance="composer"
-      placeholder={mode === "ask" ? "Ask anything…" : "Message…"}
+      placeholder={mode === "reply" ? "Message…" : quiet ? "Start a new chat…" : "Ask anything…"}
     />
   </div>
   <div
@@ -179,9 +183,9 @@
         searchable
       >
         {#snippet children(value)}
-          <Icon name="folder" class="w-3.5 h-3.5 text-zinc-500" />
+          <Icon name="folder" class="w-4 h-4" />
           <span>{value}</span>
-          <Icon name="chevronDown" class="w-3 h-3 text-zinc-400" />
+          <Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60" />
         {/snippet}
       </Selector>
       <Selector
@@ -191,17 +195,17 @@
       >
         {#snippet children(value)}<Icon
             name="person"
-            class="w-3.5 h-3.5 text-zinc-600"
+            class="w-4 h-4"
           /><span class="max-w-28 truncate"
             >{value === "No persona" ? "Persona" : value || "Persona"}</span
-          ><Icon name="chevronDown" class="w-3 h-3 text-zinc-400" />{/snippet}
+          ><Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60" />{/snippet}
         {#snippet footer()}
           <a
-            class="text-xs underline"
+            class="text-sm font-medium text-[var(--interactive-text)] hover:underline"
             href="#/persona"
             onclick={() => sessions.personas.collection()}>Manage personas</a
           >
-          {#if noReader}<p role="status" class="text-[11px] max-w-64 mt-2">
+          {#if noReader}<p role="status" class="text-xs text-muted-foreground max-w-64 mt-2">
               Skills need file access, which this chat setup doesn’t allow.
             </p>{/if}
           <PersonaDetails error={sessions.personas.error} />
@@ -227,14 +231,14 @@
           bind:value={model}
         >
           {#snippet children(value)}
-            <Icon name="model" class="w-3.5 h-3.5 text-zinc-500" />
+            <Icon name="model" class="w-4 h-4" />
             <span>{value}</span>
-            <Icon name="chevronDown" class="w-3 h-3 text-zinc-400" />
+            <Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60" />
           {/snippet}
         </Selector>{:else}<Button
           aria-label="Preset model"
           unavailable="This chat setup chooses the model."
-          ><Icon name="model" class="w-3.5 h-3.5 text-zinc-500" />Preset model</Button
+          ><Icon name="model" class="w-4 h-4" />Preset model</Button
         >{/if}
     {/if}
     <Button
@@ -242,22 +246,77 @@
       type="submit"
       {unavailable}
       class="send-btn flex-shrink-0"
-      ><Icon name="arrowUp" class="w-3.5 h-3.5" /></Button
+      ><Icon name="arrowUp" class="w-[18px] h-[18px]" /></Button
     >
   </div>
 </form>
 
 <style>
   :global(.composer) {
-    background: var(--background);
+    background: var(--surface-raised);
     border: 1px solid var(--border);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-composer);
+    padding: 0.3125rem 0.3125rem 0.3125rem 0.75rem;
+    min-height: 2.75rem;
   }
   :global(.composer:focus-within) {
-    border-color: var(--ring);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 12%, transparent);
+    border-color: color-mix(in srgb, var(--interactive) 55%, var(--border));
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--interactive) 14%, transparent),
+      var(--shadow-composer);
   }
-  :global(.send-btn) {
+  :global(.composer.composer-quiet:not(:focus-within)) {
+    background: var(--muted);
+    border-color: transparent;
+    box-shadow: none;
+  }
+  :global(.composer.composer-quiet:not(:focus-within) .composer-pickers .ui-button:not(.send-btn)) {
+    background: transparent;
+  }
+  :global(.composer.composer-quiet:not(:focus-within) .ui-button.send-btn) {
+    background: transparent;
+  }
+  :global(.composer.composer-reply) {
+    min-height: 3.5rem;
+    padding: 0.5rem 0.5rem 0.5rem 1rem;
+  }
+  :global(.composer .ui-input[data-appearance="composer"]),
+  :global(.composer .ui-input[data-appearance="composer"]:focus) {
+    font-size: 0.9375rem;
+    color: var(--foreground);
+    outline: none;
+    box-shadow: none;
+  }
+  :global(.composer.composer-reply .ui-input[data-appearance="composer"]) {
+    font-size: 1rem;
+  }
+  :global(.composer .ui-input::placeholder) {
+    color: var(--subtle-foreground);
+    opacity: 1;
+  }
+  /* Context pickers read as quiet pills until hovered. */
+  :global(.composer .composer-pickers .ui-button:not(.send-btn)) {
+    gap: 0.375rem;
+    height: 2rem;
+    padding: 0 0.75rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-full);
+    background: var(--chip);
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  :global(.composer .composer-pickers .ui-button:not(.send-btn):hover:not([aria-disabled="true"])) {
+    background: color-mix(in srgb, var(--foreground) 10%, var(--chip));
+    color: var(--foreground);
+  }
+  :global(.composer .composer-pickers .ui-button:not(.send-btn)[aria-expanded="true"]) {
+    background: var(--interactive-muted);
+    color: var(--interactive-text);
+  }
+  :global(.composer .ui-button.send-btn) {
     width: 2rem;
     height: 2rem;
     padding: 0;
@@ -265,15 +324,22 @@
     border: none;
     background: var(--interactive);
     color: var(--interactive-foreground);
-    transition: opacity 0.1s;
+    opacity: 1;
+    transition: background 0.12s, transform 0.12s;
   }
-  :global(.send-btn:hover:not(:disabled):not([aria-disabled="true"])) {
-    opacity: 0.88;
-    background: var(--interactive);
+  :global(.composer.composer-reply .ui-button.send-btn) {
+    width: 2.375rem;
+    height: 2.375rem;
   }
-  :global(.send-btn[aria-disabled="true"]) {
-    background: var(--muted);
-    color: var(--muted-foreground);
+  :global(.composer .ui-button.send-btn:hover:not(:disabled):not([aria-disabled="true"])) {
+    background: var(--interactive-hover);
+  }
+  :global(.composer .ui-button.send-btn:active:not([aria-disabled="true"])) {
+    transform: scale(0.94);
+  }
+  :global(.composer .ui-button.send-btn[aria-disabled="true"]) {
+    background: var(--sidebar-accent);
+    color: var(--subtle-foreground);
     opacity: 1;
   }
 </style>

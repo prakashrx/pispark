@@ -1,6 +1,5 @@
 <script lang="ts">
-  import Button from "../../lib/ui/Button.svelte";
-  import Icon from "../../lib/ui/Icon.svelte";
+    import Icon from "../../lib/ui/Icon.svelte";
   import { useSessions } from "./session-client.svelte";
   import { chatName, chatStatus } from "./chat-presentation";
   const client = useSessions();
@@ -39,63 +38,77 @@
 
 <div class="workspace flex-1 min-h-0 flex flex-col justify-between">
   <div class="flex flex-col h-full overflow-hidden">
-
-    <!-- New Chat button -->
-    <div class="p-2 pt-3 pb-2 border-b border-zinc-100">
-      <Button
-        class="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-zinc-700 hover:text-zinc-900 rounded-lg hover:bg-zinc-200/50 transition-colors"
-        onclick={() => client.select("")}
-      >
-        <Icon name="plus" class="w-3.5 h-3.5 text-zinc-500" />
-        <span>New chat</span>
-      </Button>
-    </div>
-
-    <!-- Session list with date groups -->
-    <div class="flex-1 overflow-y-auto px-2 py-2 space-y-3 text-xs">
+    <nav aria-label="Chats" class="flex-1 overflow-y-auto px-3 pt-1 pb-3 space-y-3">
       {#if client.sessions.length === 0}
-        <p class="px-2.5 py-3 text-zinc-400 text-xs">No chats yet.</p>
+        <p class="px-3 py-3 text-sm text-muted-foreground">No chats yet.</p>
       {:else}
         {#each groups as group}
           <div>
-            <p class="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{group.label}</p>
-            <div class="space-y-0.5">
+            <p class="px-3 pt-2 pb-1.5 text-xs font-medium text-subtle">{group.label}</p>
+            <div class="space-y-px">
               {#each group.items as session (session.id)}
+                {@const status = chatStatus(session.status, session.interrupted)}
                 <a
                   href="#/workspace"
                   onclick={() => client.select(session.id)}
                   aria-current={session.id === client.selected ? "page" : undefined}
-                  class={session.id === client.selected
-                    ? "group flex items-start justify-between px-2.5 py-2 rounded-lg bg-zinc-200/70 text-zinc-900 font-medium transition-colors border border-zinc-300/40"
-                    : "group flex items-start justify-between px-2.5 py-2 rounded-lg hover:bg-zinc-200/40 text-zinc-700 transition-colors"}
+                  class="nav-item"
                 >
-                  <div class="min-w-0 pr-2">
-                    <div class="truncate text-xs font-semibold">
-                      {chatName(session)}
-                    </div>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate">{chatName(session)}</span>
                     {#if session.persona?.name}
-                      <div class="text-[11px] text-zinc-500 truncate">{session.persona.name}</div>
+                      <span class="block truncate text-xs text-subtle mt-0.5">{session.persona.name}</span>
                     {/if}
-                  </div>
-                  <span class="text-[10px] text-zinc-500 font-mono flex-shrink-0 mt-0.5"
-                    >{chatStatus(session.status, session.interrupted)}</span
-                  >
+                  </span>
+                  {#if status}
+                    <span
+                      class="status-pill"
+                      data-tone={status === "Needs attention" ? "warning" : "active"}
+                      >{status}</span
+                    >
+                  {/if}
                 </a>
               {/each}
             </div>
           </div>
         {/each}
       {/if}
-    </div>
+    </nav>
   </div>
 
-  <div class="p-2 border-t border-zinc-200/70 space-y-0.5 bg-[#fbfbfb]">
-    <a
-      href="#/settings"
-      class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-600 hover:text-zinc-900 rounded-lg hover:bg-zinc-200/50 transition-colors"
-      ><Icon name="settings" class="w-4 h-4 text-zinc-500" /><span
-        >Settings</span
-      ></a
-    >
+  <div class="px-3 py-2.5" style="border-top:1px solid var(--sidebar-border)">
+    <a href="#/settings" class="nav-item">
+      <Icon name="settings" class="w-[18px] h-[18px] text-muted-foreground" />
+      <span>Settings</span>
+    </a>
   </div>
 </div>
+
+<style>
+  .status-pill {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: var(--radius-full);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .status-pill::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .status-pill[data-tone="warning"] {
+    background: var(--warning-muted);
+    color: var(--warning-foreground);
+  }
+  .status-pill[data-tone="active"] {
+    background: var(--interactive-muted);
+    color: var(--interactive-text);
+  }
+</style>

@@ -24,14 +24,14 @@
 </script>
 
 <div class="space-y-1.5 min-w-0">
-  <label for={id} class="block text-xs font-medium text-neutral-900"
+  <label for={id} class="block text-sm font-medium text-neutral-900"
     >{label}{#if required}<span aria-hidden="true"> *</span>{/if}</label
   >
   {@render children(id, describedby)}
-  {#if help}<p id={`${id}-help`} class="text-xs text-neutral-500">
+  {#if help}<p id={`${id}-help`} class="text-sm text-neutral-500">
       {help}
     </p>{/if}
-  {#if error}<p id={`${id}-error`} role="alert" class="text-xs text-red-700">
+  {#if error}<p id={`${id}-error`} role="alert" class="text-sm text-red-700">
       {error}
     </p>{/if}
 </div>

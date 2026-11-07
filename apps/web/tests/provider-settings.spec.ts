@@ -7,10 +7,10 @@ test.beforeEach(async ({ request }) => {
   await request.post("/api/providers/default", { data: { model: null } });
 });
 test.afterEach(async ({ request, page }) => {
-  if (await page.getByRole("dialog").count()) {
-    await page.keyboard.press("Escape");
-    await page.waitForTimeout(150);
-  }
+  for (const open of await page
+    .locator('.provider-summary[aria-expanded="true"]')
+    .all())
+    await open.click();
   const { sessions } = await (await request.get("/api/sessions")).json();
   for (const s of sessions.filter(
     (s: { status: string }) => s.status !== "unloaded",
@@ -28,6 +28,21 @@ test.afterEach(async ({ request, page }) => {
     }
   }
 });
+type Page = import("@playwright/test").Page;
+/** The provider row's expand/collapse control. */
+const summary = (page: Page, name = provider) =>
+  page.getByRole("listitem", { name, exact: true }).locator(".provider-summary");
+/** Expand a provider row if it is collapsed. */
+async function expand(page: Page, name = provider) {
+  const button = summary(page, name);
+  if ((await button.getAttribute("aria-expanded")) !== "true")
+    await button.click();
+  await expect(button).toHaveAttribute("aria-expanded", "true");
+}
+const signIn = (page: Page, name = provider) =>
+  page.getByRole("region", { name: `Sign in to ${name}`, exact: true });
+const modelsOf = (page: Page, name = provider) =>
+  page.getByRole("region", { name: `Models for ${name}`, exact: true });
 async function openLocal(page: import("@playwright/test").Page) {
   await page.goto("/#/providers");
   await expect(
@@ -36,15 +51,11 @@ async function openLocal(page: import("@playwright/test").Page) {
   await page
     .getByRole("textbox", { name: "Search providers" })
     .fill("Local auth");
-  await expect(
-    page.getByRole("button", { name: `Connect ${provider}`, exact: true }),
-  ).toBeVisible();
+  await expect(summary(page)).toBeVisible();
 }
 async function login(page: import("@playwright/test").Page) {
-  await page
-    .getByRole("button", { name: `Connect ${provider}`, exact: true })
-    .click();
-  const dialog = page.getByRole("dialog", { name: `Connect ${provider}` });
+  await expand(page);
+  const dialog = signIn(page);
   await dialog.getByRole("button", { name: /Local test key/ }).click();
   const secret = dialog.getByLabel("Test key", { exact: true });
   await expect(secret).toBeEditable();
@@ -53,7 +64,8 @@ async function login(page: import("@playwright/test").Page) {
   await secret.press("Enter");
   await expect(dialog.getByRole("status")).toContainText("Sign-in saved");
   await expect(dialog).not.toContainText("TEST-ONLY-NOT-REAL");
-  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(summary(page)).toHaveAttribute("aria-expanded", "false");
 }
 
 test("ProvidersPage: real native key persistence, shared Ask model, durable default and unchanged existing session", async ({
@@ -70,10 +82,8 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await ask.fill("Keep shared Ask draft");
   await login(page);
-  await expect(
-    page.getByRole("button", { name: `Manage ${provider}` }),
-  ).toBeFocused();
-  await expect(page.getByText("Sign-in saved", { exact: true })).toBeVisible();
+  await expect(summary(page)).toBeFocused();
+  await expect(summary(page)).toContainText("Connected");
   for (const width of [390, 1920, 3840]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
     await page.screenshot({
@@ -83,14 +93,13 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
     });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.getByRole("button", { name: `Models for ${provider}` }).click();
-  const models = page.getByRole("dialog", { name: `Models for ${provider}` });
-  await models
-    .getByRole("textbox", { name: "Search models" })
-    .fill("deterministic");
-  await models.getByRole("radio").check();
-  await expect(models.getByRole("radio")).toBeChecked();
-  await models.getByRole("button", { name: "Done" }).click();
+  await expand(page);
+  const models = modelsOf(page);
+  // Search appears only for long model lists; the fixture has two models.
+  const deterministic = models.getByRole("radio", { name: /deterministic/i });
+  await deterministic.check();
+  await expect(deterministic).toBeChecked();
+  await summary(page).click();
   await expect(ask).toHaveValue("Keep shared Ask draft");
   await page
     .getByRole("button", {
@@ -121,13 +130,13 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   await page
     .getByRole("textbox", { name: "Search providers" })
     .fill("Local auth");
-  await page.getByRole("button", { name: `Models for ${provider}` }).click();
-  await page
-    .getByRole("dialog")
-    .getByRole("textbox", { name: "Search models" })
-    .fill("second");
-  await page.getByRole("radio").check();
-  await page.getByRole("button", { name: "Done" }).click();
+  await expand(page);
+  await modelsOf(page)
+    .getByRole("radio", { name: /second/i })
+    .check();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Default saved" }),
+  ).toBeVisible();
   expect(
     (await (await request.get(`/api/sessions/${a}/window`)).json()).model.id,
   ).toBe("deterministic");
@@ -138,12 +147,15 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   await page
     .getByRole("textbox", { name: "Search providers" })
     .fill("Local auth");
+  await expand(page);
   await page
     .getByRole("button", { name: `Disconnect ${provider}`, exact: true })
     .click();
   await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Disconnect", exact: true })
+    .getByRole("button", {
+      name: `Confirm disconnect ${provider}`,
+      exact: true,
+    })
     .click();
   await expect(
     page.getByText(/Second local model.*unavailable, saved choice retained/),
@@ -157,16 +169,13 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   expect(external).toEqual([]);
 });
 
-test("ConnectionDialog: native OAuth variants, safe links, Tab summary regression, Escape/cancel and return focus", async ({
+test("ProviderConnection: native OAuth variants, safe links, Tab summary regression, Escape/cancel and return focus", async ({
   page,
 }) => {
   await openLocal(page);
-  const trigger = page.getByRole("button", {
-    name: `Connect ${provider}`,
-    exact: true,
-  });
-  await trigger.click();
-  const dialog = page.getByRole("dialog");
+  const trigger = summary(page);
+  await expand(page);
+  const dialog = signIn(page);
   await dialog.getByRole("button", { name: /Local test OAuth/ }).click();
   await expect(
     dialog.getByLabel("Local project", { exact: true }),
@@ -204,15 +213,13 @@ test("ConnectionDialog: native OAuth variants, safe links, Tab summary regressio
   await page.keyboard.press("Tab");
   expect(
     await page.evaluate(
-      () => document.activeElement?.closest("dialog") !== null,
+      () => document.activeElement?.closest(".provider-panel") !== null,
     ),
   ).toBe(true);
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
-  await expect(
-    page.getByRole("button", { name: `Connect ${provider}`, exact: true }),
-  ).toBeVisible();
+  await expect(trigger).toContainText("Not set up");
 });
 
 for (const width of [1920, 3840, 390])
@@ -227,9 +234,7 @@ for (const width of [1920, 3840, 390])
         external.push(r.url());
     });
     await page.goto("/#/providers");
-    await expect(
-      page.getByRole("button", { name: "Models for Anthropic" }),
-    ).toBeVisible();
+    await expect(summary(page, "Anthropic")).toBeVisible();
     await expect(page.getByRole("form", { name: "New chat" })).toHaveCount(1);
     await expect(
       page.getByText(/Design preview|simulator|simulated|Verified ·/),
@@ -243,24 +248,19 @@ for (const width of [1920, 3840, 390])
       path: info.outputPath(`providers-${width}.png`),
       fullPage: width === 390,
     });
-    await page
-      .getByRole("button", { name: "Connect Anthropic", exact: true })
-      .click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await page
-      .getByRole("dialog")
+    await expand(page, "Anthropic");
+    await expect(signIn(page, "Anthropic")).toBeVisible();
+    await signIn(page, "Anthropic")
       .getByRole("button", { name: /API key/ })
       .click();
-    await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+    await expect(signIn(page, "Anthropic").getByRole("alert")).toContainText(
       "security-patched Node",
     );
     await page.screenshot({
       path: info.outputPath(`gate-dialog-${width}.png`),
     });
     await page.keyboard.press("Escape");
-    await expect(
-      page.getByRole("button", { name: "Connect Anthropic", exact: true }),
-    ).toBeFocused();
+    await expect(summary(page, "Anthropic")).toBeFocused();
     await page
       .getByRole("textbox", { name: "Search providers" })
       .fill("no-such-provider");
@@ -293,11 +293,8 @@ test("ProvidersPage: unavailable catalog retry and delayed dialog start cannot l
     await delayed;
     await route.fulfill({ response });
   });
-  await page
-    .getByRole("button", { name: `Connect ${provider}`, exact: true })
-    .click();
-  await page
-    .getByRole("dialog")
+  await expand(page);
+  await signIn(page)
     .getByRole("button", { name: /Local test key/ })
     .click();
   const cancelled = page.waitForResponse((response) =>
@@ -315,10 +312,8 @@ test("AuthPrompt: blank secret/text/manual responses preserve native validation 
 }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openLocal(page);
-  await page
-    .getByRole("button", { name: `Connect ${provider}`, exact: true })
-    .click();
-  let dialog = page.getByRole("dialog");
+  await expand(page);
+  let dialog = signIn(page);
   await dialog.getByRole("button", { name: /Local test key/ }).click();
   await expect(dialog.getByLabel("Test key", { exact: true })).toBeFocused();
   await expect(dialog.getByRole("button", { name: "Continue" })).toBeEnabled();
@@ -326,10 +321,8 @@ test("AuthPrompt: blank secret/text/manual responses preserve native validation 
   await page.keyboard.press("Enter");
   await expect(dialog.getByRole("status")).toContainText("Sign-in saved");
   await page.keyboard.press("Escape");
-  await page
-    .getByRole("button", { name: `Manage ${provider}`, exact: true })
-    .click();
-  dialog = page.getByRole("dialog");
+  await expand(page);
+  dialog = signIn(page);
   await dialog.getByRole("button", { name: /Local test OAuth/ }).click();
   await expect(
     dialog.getByLabel("Local project", { exact: true }),
@@ -347,9 +340,7 @@ test("AuthPrompt: blank secret/text/manual responses preserve native validation 
   await page.keyboard.press("Enter");
   await expect(dialog.getByRole("status")).toContainText("Sign-in saved");
   await page.keyboard.press("Escape");
-  await expect(
-    page.getByRole("button", { name: `Manage ${provider}`, exact: true }),
-  ).toBeFocused();
+  await expect(summary(page)).toBeFocused();
 });
 
 test("shared model radios preserve native keyboard grouping, disabled options, default save errors and focus return", async ({
@@ -374,12 +365,9 @@ test("shared model radios preserve native keyboard grouping, disabled options, d
   await page
     .getByRole("button", { name: "Reload status", exact: true })
     .click();
-  const trigger = page.getByRole("button", {
-    name: `Models for ${provider}`,
-    exact: true,
-  });
-  await trigger.click();
-  const dialog = page.getByRole("dialog");
+  const trigger = summary(page);
+  await expand(page);
+  const dialog = modelsOf(page);
   const radios = dialog.getByRole("radio");
   await expect(radios).toHaveCount(3);
   await expect(radios.nth(1)).toBeDisabled();

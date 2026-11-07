@@ -49,13 +49,8 @@ test("renders truthful unconfigured state and never submits a draft without conf
   await fireEvent.input(ask, { target: { value: "Keep this draft local" } });
   await fireEvent.submit(screen.getByRole("form", { name: "New chat" }));
   expect((ask as HTMLInputElement).value).toBe("Keep this draft local");
-  expect(
-    (
-      screen.getByRole("textbox", {
-        name: /Reply to chat/,
-      }) as HTMLInputElement
-    ).value,
-  ).toBe("");
+  // With no chat open there is nothing to reply to, so Ask is the only input.
+  expect(screen.queryByRole("textbox", { name: /Reply to chat/ })).toBeNull();
   expect(
     vi.mocked(fetch).mock.calls.every((call) => call[1]?.method !== "POST"),
   ).toBe(true);
@@ -99,13 +94,30 @@ test("navigates among only the supplied settings pages and filters navigation", 
   ).toBeTruthy();
 });
 
-test("General shows actual read-only appearance and no fictional preferences, saves or environment", async () => {
+test("General applies real browser-local themes without fictional preferences, saves or environment", async () => {
   window.location.hash = "/settings";
   render(App);
   expect(
     await screen.findByText("No working folders are configured."),
   ).toBeTruthy();
-  expect(screen.getByText("Light", { exact: true })).toBeTruthy();
+  const themes = screen.getByRole("radiogroup", { name: "Theme" });
+  expect(
+    [...themes.querySelectorAll("input")].map((input) => input.value),
+  ).toEqual(["system", "daylight", "paper", "mist", "midnight", "ocean", "ember"]);
+  await fireEvent.click(
+    themes.querySelector<HTMLInputElement>('input[value="midnight"]')!,
+  );
+  expect(document.documentElement.dataset.theme).toBe("midnight");
+  expect(JSON.parse(localStorage.getItem("pispark.appearance")!).theme).toBe(
+    "midnight",
+  );
+  await fireEvent.click(
+    screen
+      .getByRole("radiogroup", { name: "Text size" })
+      .querySelector<HTMLInputElement>('input[value="large"]')!,
+  );
+  expect(document.documentElement.style.fontSize).toBe("17px");
+  localStorage.removeItem("pispark.appearance");
   expect(
     screen
       .getAllByRole("link", { name: "Providers & models" })
@@ -120,7 +132,7 @@ test("General shows actual read-only appearance and no fictional preferences, sa
   ).toBe("#/persona");
   for (const name of ["Default persona", "Workspace font family"])
     expect(screen.queryByRole("combobox", { name })).toBeNull();
-  for (const name of ["Save changes", "Reset to defaults", "System", "Dark"])
+  for (const name of ["Save changes", "Reset to defaults"])
     expect(screen.queryByRole("button", { name })).toBeNull();
   expect(
     screen.queryByText(/Git Repository|Detected runtime|Developer|Architect/),
@@ -139,11 +151,33 @@ test("persona empty state is real and offers creation without fixture capabiliti
 });
 
 test("keeps the mounted Ask and independent reply drafts across every route", async () => {
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url, init) =>
+    url === "/api/sessions"
+      ? new Response(
+          JSON.stringify({
+            sessions: [
+              {
+                id: "open-chat",
+                createdAt: "2026-01-02T03:04:00Z",
+                workspace: "local",
+                configuration: "setup",
+                status: "idle",
+                interrupted: false,
+              },
+            ],
+            truncated: false,
+          }),
+        )
+      : url === "/api/sessions/open-chat/events"
+        ? new Promise<Response>(() => {})
+        : base(url, init),
+  );
   render(App);
   const ask = screen.getByRole("textbox", { name: /Ask anything/ });
   await fireEvent.input(ask, { target: { value: "Global unsent question" } });
   await fireEvent.input(
-    screen.getByRole("textbox", { name: /Reply to chat/ }),
+    await screen.findByRole("textbox", { name: /Reply to chat/ }),
     {
       target: { value: "Session-only follow-up" },
     },

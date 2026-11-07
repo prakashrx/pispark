@@ -19,7 +19,7 @@
 </script>
 
 <label
-  class="flex items-start gap-2 text-xs text-neutral-700 has-[:disabled]:opacity-50"
+  class="flex items-start gap-2 text-sm text-neutral-700 has-[:disabled]:opacity-50"
 >
   <input
     {...attributes}

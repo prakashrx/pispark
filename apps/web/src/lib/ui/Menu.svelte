@@ -41,7 +41,7 @@
   }
 </script>
 
-<Popover {label} {trigger} {disabled} role="menu" onkeydown={navigate}>
+<Popover {label} trigger={trigger ?? dots} {disabled} role="menu" onkeydown={navigate}>
   {#snippet children(close)}
     {#each items as item (item.id)}
       <button
@@ -49,7 +49,7 @@
         role="menuitem"
         disabled={item.disabled}
         style="color: var(--foreground); border-radius: var(--radius-sm);"
-        class="block w-full px-3 py-2 text-left text-xs hover:bg-accent focus:bg-accent disabled:opacity-50"
+        class="block w-full px-3 py-2 text-left text-sm hover:bg-accent focus:bg-accent disabled:opacity-50"
         class:!text-red-600={item.destructive}
         onclick={() => {
           close();
@@ -59,3 +59,15 @@
     {/each}
   {/snippet}
 </Popover>
+
+{#snippet dots()}<svg
+    class="w-[18px] h-[18px] text-muted-foreground"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+    ><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle
+      cx="19"
+      cy="12"
+      r="1.6"
+    /></svg
+  >{/snippet}

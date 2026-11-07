@@ -1,8 +1,7 @@
 <script lang="ts">
-  import Modal from "../../lib/ui/Modal.svelte";
+  import InlinePanel from "../../lib/ui/InlinePanel.svelte";
   import Menu from "../../lib/ui/Menu.svelte";
-  import FieldGroup from "../../lib/ui/FieldGroup.svelte";
-  import { useSessions } from "./session-client.svelte";
+    import { useSessions } from "./session-client.svelte";
   const client = useSessions();
   let open = $state(false);
   const snapshot = $derived(client.snapshot);
@@ -29,42 +28,38 @@
         onselect: () => void client.stop(),
       },
     ]}
-  >
-    {#snippet trigger()}<span style="font-size:1.1rem;letter-spacing:0.05em;color:var(--muted-foreground)" aria-hidden="true">···</span>{/snippet}
-  </Menu>
+  />
 {/if}
-{#if open && chat}
-  <Modal label="Chat info" title="Chat info" onclose={() => (open = false)}>
-    <FieldGroup title="Context"
-      ><dl class="space-y-3 text-xs">
-        <div>
-          <dt class="text-neutral-500">Persona</dt>
-          <dd class="mt-1 break-words">{chat.persona?.name ?? "No persona"}</dd>
+{#if open && chat}<div class="basis-full">
+  <InlinePanel label="Chat info" title="Chat info" onclose={() => (open = false)}>
+    <dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2.5 text-sm">
+        <div class="contents">
+          <dt class="text-muted-foreground">Persona</dt>
+          <dd class="break-words">{chat.persona?.name ?? "No persona"}</dd>
         </div>
-        <div>
-          <dt class="text-neutral-500">Model</dt>
-          <dd class="mt-1 break-words">{modelName ?? "Not available"}</dd>
+        <div class="contents">
+          <dt class="text-muted-foreground">Model</dt>
+          <dd class="break-words">{modelName ?? "Not available"}</dd>
         </div>
-        <div>
-          <dt class="text-neutral-500">Working folder</dt>
-          <dd class="mt-1 break-words">
+        <div class="contents">
+          <dt class="text-muted-foreground">Working folder</dt>
+          <dd class="break-words">
             {client.catalog.workspaces.find((w) => w.value === chat.workspace)
               ?.label ?? chat.workspace}
           </dd>
         </div>
-        <div>
-          <dt class="text-neutral-500">Started</dt>
-          <dd class="mt-1">
+        <div class="contents">
+          <dt class="text-muted-foreground">Started</dt>
+          <dd>
             {new Date(chat.createdAt).toLocaleString(undefined, {
               dateStyle: "medium",
               timeStyle: "short",
             })}
           </dd>
         </div>
-      </dl></FieldGroup
-    >
-    <p class="text-xs text-neutral-500">
+    </dl>
+    <p class="text-sm text-muted-foreground">
       Stop agent ends the active agent. Your chat stays saved.
     </p>
-  </Modal>
-{/if}
+  </InlinePanel>
+</div>{/if}

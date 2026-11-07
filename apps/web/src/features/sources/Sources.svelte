@@ -1,29 +1,43 @@
-<main
-  id="workspace"
-  class="flex-1 overflow-y-auto px-8 py-8 bg-[#ffffff]"
-  aria-label="Sources"
+<script lang="ts">
+  import SettingsPage from "../../lib/ui/SettingsPage.svelte";
+  import Icon from "../../lib/ui/Icon.svelte";
+</script>
+
+<SettingsPage
+  title="Sources"
+  description="Places to find personas and skills."
+  label="Sources"
 >
-  <div class="flex flex-col w-full max-w-5xl mx-auto space-y-8">
-    <div
-      class="mt-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2"
+  <div class="settings-card empty">
+    <span class="empty-icon" aria-hidden="true"
+      ><Icon name="settingsFolder" class="w-6 h-6" /></span
     >
-      <div>
-        <h1 class="text-xl font-semibold tracking-tight text-zinc-900">
-          Sources
-        </h1>
-        <p class="text-sm text-zinc-500 mt-1 max-w-xl">
-          Places to find personas and skills.
-        </p>
-      </div>
-    </div>
-    <div class="text-xs text-zinc-500 space-y-3">
-      <p>
+    <div>
+      <p class="text-[0.9375rem] font-medium">Not available yet</p>
+      <p class="text-sm text-muted-foreground mt-1 max-w-md">
         Source connections aren’t available yet. You can use local personas and
         skills in Personas.
       </p>
-      <a href="#/persona" class="text-zinc-700 underline underline-offset-2"
-        >Manage personas</a
-      >
+      <a href="#/persona" class="settings-link mt-3">Manage personas<span aria-hidden="true">→</span></a>
     </div>
   </div>
-</main>
+</SettingsPage>
+
+<style>
+  .empty {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    padding: 1.5rem;
+  }
+  .empty-icon {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    flex-shrink: 0;
+    border-radius: var(--radius-md);
+    background: var(--interactive-muted);
+    color: var(--interactive-text);
+  }
+</style>

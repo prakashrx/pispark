@@ -24,7 +24,7 @@
   ]);
 </script>
 
-{#if reasons.length}<div class="text-xs space-y-2 break-words">
+{#if reasons.length}<div class="text-sm space-y-2 break-words">
     {#each reasons as reason}<p role="alert">{reason}</p>{/each}
     <Disclosure title="Details">
       {#if error}<p class="mt-2">{error}</p>{/if}

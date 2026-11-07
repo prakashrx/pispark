@@ -1,10 +1,10 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import Modal from "../../lib/ui/Modal.svelte";
   import FormField from "../../lib/ui/FormField.svelte";
   import Input from "../../lib/ui/Input.svelte";
   import Textarea from "../../lib/ui/Textarea.svelte";
   import Button from "../../lib/ui/Button.svelte";
+  import InlinePanel from "../../lib/ui/InlinePanel.svelte";
   import PersonaDetails from "./PersonaDetails.svelte";
   import type { PersonaClient } from "./persona-client.svelte";
   let {
@@ -40,13 +40,12 @@
   }
 </script>
 
-<Modal
+<InlinePanel
   label={creating ? "New persona" : "Edit name and description"}
   title={creating ? "New persona" : "Edit name and description"}
-  {onclose}
-  busy={client.busy}
-  initialFocus="input"
   size="small"
+  busy={client.busy}
+  {onclose}
 >
   <form
     id={formId}
@@ -79,18 +78,18 @@
     {#if creating}<PersonaDetails
         error={client.editorError}
         context="draft"
-      />{:else}<p class="text-xs text-zinc-500">
+      />{:else}<p class="text-sm text-muted-foreground">
         Save changes in the editor to keep these edits.
       </p>{/if}
   </form>
-  {#snippet footer()}<Button disabled={client.busy} onclick={onclose}
-      >Cancel</Button
-    ><Button
+  {#snippet footer()}
+    <Button disabled={client.busy} onclick={onclose}>Cancel</Button><Button
       variant="primary"
       type="submit"
       form={formId}
       loading={client.busy}
       disabled={!name.trim()}
       >{creating ? "Create persona" : "Apply changes"}</Button
-    >{/snippet}
-</Modal>
+    >
+  {/snippet}
+</InlinePanel>
