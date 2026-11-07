@@ -107,7 +107,6 @@ test("keyboard selectors, independent draft composers and sidebar navigation", a
       name: "Persona: No persona",
     }),
   ).toBeFocused();
-  await page.getByRole("button", { name: /^Chats/ }).click();
   await page.getByRole("textbox", { name: /Ask anything/ }).focus();
   await page.keyboard.press("Control+b");
   await expect(page.getByRole("complementary")).toBeVisible();
