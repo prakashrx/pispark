@@ -12,6 +12,7 @@
     "format": "prettier --plugin=prettier-plugin-svelte --write src"
   },
   "dependencies": {
+    "marked": "^18.1.3",
     "svelte": "^5.57.3"
   },
   "devDependencies": {
