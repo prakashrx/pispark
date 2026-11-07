@@ -54,7 +54,7 @@
     <!-- Session list with date groups -->
     <div class="flex-1 overflow-y-auto px-2 py-2 space-y-3 text-xs">
       {#if client.sessions.length === 0}
-        <p class="px-2.5 py-3 text-zinc-400 text-xs">No chats yet. Start one above.</p>
+        <p class="px-2.5 py-3 text-zinc-400 text-xs">No chats yet.</p>
       {:else}
         {#each groups as group}
           <div>
