@@ -1,4 +1,5 @@
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import { hostedTest } from "./isolated-host";
 import { addPrompt, createPersona, openPersona } from "./persona-journey";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -15,7 +16,7 @@ async function capture(page: Page, info: TestInfo, name: string) {
   });
 }
 
-test("four source pages render locally without errors or external requests", async ({
+hostedTest("four source pages render locally without errors or external requests", async ({
   page,
   baseURL,
 }, info) => {
@@ -72,7 +73,7 @@ test("four source pages render locally without errors or external requests", asy
   expect(external).toEqual([]);
 });
 
-test("keyboard selectors, independent draft composers and sidebar navigation", async ({
+hostedTest("keyboard selectors, independent draft composers and sidebar navigation", async ({
   page,
 }, info) => {
   await page.goto("/");
