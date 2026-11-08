@@ -8,6 +8,7 @@ import {
   writeFile,
   readFile,
   readdir,
+  realpath,
   rm,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -179,7 +180,7 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
       assert.equal(start.data.trusted, false);
       assert.equal(
         start.data.cwd,
-        f.configuration.workspaces[id === a.id ? "a" : "b"],
+        await realpath(f.configuration.workspaces[id === a.id ? "a" : "b"]!),
       );
       assert.equal(
         entries.find((entry) => entry.customType === "fixture-run").data
