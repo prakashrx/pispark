@@ -212,7 +212,8 @@ button[aria-disabled="true"] {
   .inline-note[data-tone="success"] { background: var(--success-muted); color: var(--success-foreground); }
   .inline-note[data-tone="warning"] { background: var(--warning-muted); color: var(--warning-foreground); }
   .inline-note[data-tone="danger"] { background: var(--danger-muted); color: var(--danger-foreground); }
-  /* A bordered group of settings rows. */
+  /* A bordered group of settings rows. Each direct child is one row and gets a
+     divider above it, so put a row's own layout on a child, not on the card. */
   .settings-card {
     border: 1px solid var(--border);
     border-radius: var(--radius-md);

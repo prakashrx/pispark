@@ -33,11 +33,13 @@
   <section aria-label="Full message text" class="space-y-2">
     <pre bind:this={text} tabindex="-1" class="whitespace-pre-wrap break-words">{page.text}</pre>
     {#if page.next}<Button
+        class="conversation-action"
         disabled={busy}
         onclick={() => read(page!.next!.part, page!.next!.offset)}
         >Next page</Button
       >{/if}
     <Button
+      class="conversation-action"
       disabled={busy}
       onclick={async () => {
         page = undefined;
@@ -48,6 +50,6 @@
     >
   </section>
 {:else}
-  <Button id={triggerId} disabled={busy} onclick={() => read()}>Read full message</Button>
+  <Button id={triggerId} class="conversation-action" disabled={busy} onclick={() => read()}>Read full message</Button>
 {/if}
 {#if error}<p role="alert">{error}</p>{/if}
