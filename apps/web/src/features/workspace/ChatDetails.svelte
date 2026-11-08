@@ -7,6 +7,7 @@
    * Facts about the open chat, anchored to an info button in the chat header so the
    * conversation never moves. Stopping the agent lives here, next to its explanation.
    */
+  let { oneditpersona }: { oneditpersona?: () => void } = $props();
   const client = useSessions();
   const snapshot = $derived(client.snapshot);
   const chat = $derived(
@@ -33,14 +34,13 @@
         <h2 class="text-sm font-semibold">Chat info</h2>
         <dl class="grid grid-cols-[max-content_1fr] gap-x-5 gap-y-2 text-sm">
           <dt class="text-muted-foreground">Persona</dt>
-          <dd class="break-words">{chat.persona?.name ?? "No persona"}</dd>
+          <dd class="break-words">
+            {chat.persona.name}{#if chat.persona.layered}<span class="text-muted-foreground"> · edited for this chat</span>{/if}
+          </dd>
           <dt class="text-muted-foreground">Model</dt>
           <dd class="break-words">{modelName ?? "Not available"}</dd>
           <dt class="text-muted-foreground">Working folder</dt>
-          <dd class="break-words">
-            {client.catalog.workspaces.find((w) => w.value === chat.workspace)
-              ?.label ?? chat.workspace}
-          </dd>
+          <dd class="break-all">{chat.folder}</dd>
           <dt class="text-muted-foreground">Started</dt>
           <dd>
             {new Date(chat.createdAt).toLocaleString(undefined, {
@@ -49,6 +49,21 @@
             })}
           </dd>
         </dl>
+        {#if snapshot && oneditpersona}<div
+            class="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3"
+          >
+            <p class="text-xs text-muted-foreground">
+              Add or turn off skills, tools and instructions for this chat only.
+            </p>
+            <Button
+              size="compact"
+              class="shrink-0 whitespace-nowrap"
+              onclick={() => {
+                close();
+                oneditpersona();
+              }}>Edit persona</Button
+            >
+          </div>{/if}
         {#if snapshot}<div
             class="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3"
           >

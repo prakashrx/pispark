@@ -2,17 +2,15 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Run the real compiled entry with empty, private temporary configuration; never discover operator credentials.
+// Run the real compiled entry on an empty, private temporary data folder; never discover operator credentials.
 const root = await mkdtemp(join(tmpdir(), "pispark-smoke-"));
-const configuration = join(root, "configuration.mjs");
-await writeFile(configuration, `export default { storageDir: ${JSON.stringify(join(root, "state"))}, workspaces: {}, configurations: {}, resolveSecret: async () => undefined };`);
 const child = spawn(process.execPath, ["apps/server/dist/index.js"], {
   cwd: fileURLToPath(new URL("../", import.meta.url)),
-  env: { ...process.env, PISPARK_CONFIG: configuration, PISPARK_DEV_ORIGIN: "", HOST: "127.0.0.1", PORT: "0" },
+  env: { ...process.env, PISPARK_HOME: root, PISPARK_DEV_ORIGIN: "", HOST: "127.0.0.1", PORT: "0" },
   stdio: ["ignore", "pipe", "pipe"],
 });
 let output = "";
@@ -49,6 +47,11 @@ try {
   assert(catalog.providers.length > 0);
   assert.equal(catalog.defaultModel, null);
   assert(catalog.providers.every(provider => !provider.stored));
+  // First start creates the data folder with a Default persona that has Pi's built-in tools.
+  const personas = await (await fetch(`${base}/api/personas`)).json();
+  assert.deepEqual(personas.personas.map((p) => p.id), ["default"]);
+  const saved = JSON.parse(await readFile(join(root, "personas", "default", "persona.json"), "utf8"));
+  assert(saved.on.includes("tool:bash"));
   const page = await fetch(`${base}/`);
   assert.equal(page.status, 200);
   assert.match(page.headers.get("content-type") ?? "", /text\/html/);
@@ -71,7 +74,7 @@ try {
     assert((await response.arrayBuffer()).byteLength > 0, asset);
   }
   console.log(
-    `Production HTTP smoke passed: health, private native provider catalog, API 404, HTML, ${assets.length} built assets, favicon.`,
+    `Production HTTP smoke passed: health, first-start Default persona, private native provider catalog, API 404, HTML, ${assets.length} built assets, favicon.`,
   );
 } finally {
   clearTimeout(deadline);

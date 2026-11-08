@@ -64,11 +64,10 @@
               {#each sessions.personas.items.slice(0, 16) as persona}<a
                   href="#/persona"
                   class="nav-item !min-h-0 !py-1.5 text-[0.8125rem] text-muted-foreground"
-                  onclick={() =>
-                    void sessions.personas.open(persona.ref, page !== "persona")}
-                  title={`${persona.ref.root}/${persona.ref.path}`}
+                  onclick={() => void sessions.personas.open({ persona: persona.id })}
+                  title={`personas/${persona.id}`}
                   ><span class="truncate flex-1"
-                    >{persona.valid ? persona.name : persona.ref.path}</span
+                    >{persona.name}</span
                   >{#if !persona.valid}<span class="needs-attention" title="Needs attention"
                       ><Icon name="alert" class="h-4 w-4" /><span class="sr-only">Needs attention</span></span
                     >{/if}</a

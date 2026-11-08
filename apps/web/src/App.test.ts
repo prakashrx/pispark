@@ -10,7 +10,7 @@ beforeEach(() => {
         new Response(
           JSON.stringify(
             url === "/api/catalog"
-              ? { workspaces: [], configurations: [] }
+              ? { home: "/home/me", recentFolders: [] }
               : url.startsWith("/api/personas")
                 ? { personas: [] }
                 : url === "/api/providers"
@@ -98,7 +98,7 @@ test("General applies real browser-local themes without fictional preferences, s
   window.location.hash = "/settings";
   render(App);
   expect(
-    await screen.findByText("No working folders are configured."),
+    await screen.findByText("None yet. New chats start in your home folder."),
   ).toBeTruthy();
   const themes = screen.getByRole("radiogroup", { name: "Theme" });
   expect(
@@ -130,8 +130,10 @@ test("General applies real browser-local themes without fictional preferences, s
       .at(-1)!
       .getAttribute("href"),
   ).toBe("#/persona");
-  for (const name of ["Default persona", "Workspace font family"])
-    expect(screen.queryByRole("combobox", { name })).toBeNull();
+  expect(
+    screen.getByRole("link", { name: "Edit Default" }).getAttribute("href"),
+  ).toBe("#/persona");
+  expect(screen.queryByRole("combobox", { name: "Workspace font family" })).toBeNull();
   for (const name of ["Save changes", "Reset to defaults"])
     expect(screen.queryByRole("button", { name })).toBeNull();
   expect(
@@ -143,7 +145,7 @@ test("persona empty state is real and offers creation without fixture capabiliti
   window.location.hash = "/persona";
   render(App);
   expect(
-    await screen.findByText(/Create a persona to give your chats/),
+    await screen.findByText(/Each builds on Default/),
   ).toBeTruthy();
   expect(screen.getByRole("button", { name: "New persona" })).toBeTruthy();
   expect(screen.queryByText("v1.4.2")).toBeNull();
@@ -160,8 +162,8 @@ test("keeps the mounted Ask and independent reply drafts across every route", as
               {
                 id: "open-chat",
                 createdAt: "2026-01-02T03:04:00Z",
-                workspace: "local",
-                configuration: "setup",
+                folder: "/home/me/project",
+                persona: { id: "default", name: "Default", layered: false },
                 status: "idle",
                 interrupted: false,
               },

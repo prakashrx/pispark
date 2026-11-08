@@ -16,6 +16,11 @@ export function commandUncertainty(
   return "";
 }
 
+/** Last segment of a host path, for compact labels: "D:\\dev\\pispark" → "pispark". */
+export function folderName(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  return parts.at(-1) ?? path;
+}
 export function chatName(chat?: SessionInfo): string {
   if (!chat) return "This chat";
   if (validChatTitle(chat.title)) return chat.title;

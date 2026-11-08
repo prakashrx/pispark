@@ -1,11 +1,11 @@
 import { expect, test } from "vitest";
-import { chatName, chatStatus, commandUncertainty, visibleTurns } from "./chat-presentation";
+import { chatName, chatStatus, commandUncertainty, folderName, visibleTurns } from "./chat-presentation";
 import type { SessionInfo } from "../../../../server/src/protocol";
 const chat: SessionInfo = {
   id: "private-uuid",
   createdAt: "2026-01-02T03:04:00Z",
-  workspace: "local",
-  configuration: "revision-setup",
+  folder: "/home/me/project",
+  persona: { id: "default", name: "Default", layered: false },
   status: "idle",
   interrupted: false,
 };
@@ -73,4 +73,10 @@ test("visible turns drop empty messages and settle tool calls by their later res
   expect(turns.map((t) => t.message.role)).toEqual(["user", "assistant", "toolResult", "assistant"]);
   // "a" has no result yet so its request stays visible; "b" is settled.
   expect([...(turns[1]?.hidden ?? [])]).toEqual([1]);
+});
+
+test("folder labels use the last path segment on any platform", () => {
+  expect(folderName("D:\\dev\\pispark")).toBe("pispark");
+  expect(folderName("/home/me/project/")).toBe("project");
+  expect(folderName("C:\\")).toBe("C:");
 });

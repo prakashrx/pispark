@@ -21,7 +21,6 @@ class CommandUncertainty extends Error {
 }
 import { ProviderClient } from "../settings/provider-client.svelte";
 import type { ModelChoice } from "../../../../server/src/provider-protocol";
-import type { PersonaSelection } from "../../../../server/src/persona-protocol";
 import { PersonaClient } from "../persona/persona-client.svelte";
 const context = Symbol("session-client");
 type InputCommand = Command extends infer C
@@ -34,7 +33,7 @@ type InputCommand = Command extends infer C
 export class SessionClient {
   readonly providers = new ProviderClient();
   readonly personas = new PersonaClient();
-  catalog = $state<Catalog>({ workspaces: [], configurations: [] });
+  catalog = $state<Catalog>({ home: "", recentFolders: [] });
   catalogLoading = $state(true);
   catalogError = $state(false);
   sessions = $state<SessionInfo[]>([]);
@@ -77,11 +76,7 @@ export class SessionClient {
   };
   private online = () => this.reconnect();
   private beforeUnload = (event: BeforeUnloadEvent) => {
-    if (
-      this.personas.dirty ||
-      this.personas.hasUnsavedFiles ||
-      this.personas.hasUnappliedContent
-    ) {
+    if (this.personas.unsaved) {
       event.preventDefault();
       event.returnValue = "";
     }
@@ -284,6 +279,8 @@ export class SessionClient {
                     hasHistory: value.snapshot.hasHistory,
                     status: value.snapshot.status,
                     interrupted: value.snapshot.interrupted,
+                    persona: value.snapshot.persona,
+                    personaChanged: value.snapshot.personaChanged,
                   }
                 : s,
             );
@@ -348,14 +345,30 @@ export class SessionClient {
         this.errorKind = undefined;
       });
   }
+  /** Restart the open chat's Pi session so persona changes apply. The transcript is kept. */
+  async reload() {
+    const id = this.selected;
+    if (!id) return;
+    delete this.sessionErrors[id];
+    delete this.sessionErrorKinds[id];
+    try {
+      this.source?.abort();
+      this.connection = "Connecting";
+      await this.settled(await this.submit({ type: "reload", sessionId: id }));
+      await this.refresh();
+      if (this.selected === id && !this.disposed) this.observe(id);
+    } catch (error) {
+      this.recordError(error, id);
+      if (this.selected === id) this.observe(id);
+    }
+  }
   async ask(
     text: string,
-    workspace: string,
-    configuration: string,
+    folder: string,
     model?: ModelChoice,
-    persona?: PersonaSelection,
+    persona?: string,
   ): Promise<boolean> {
-    if (this.busy || !text.trim() || !workspace || !configuration) return false;
+    if (this.busy || !text.trim() || !folder.trim()) return false;
     this.busy = true;
     this.error = "";
     this.errorKind = undefined;
@@ -364,14 +377,17 @@ export class SessionClient {
       const created = await this.settled(
         await this.submit({
           type: "create",
-          workspace,
-          configuration,
+          folder: folder.trim(),
           ...(model ? { model } : {}),
           ...(persona ? { persona } : {}),
         }),
       );
       id = created.sessionId!;
       await this.refresh();
+      // New recent folders for the picker.
+      void this.json<Catalog>("/api/catalog")
+        .then((catalog) => (this.catalog = catalog))
+        .catch(() => {});
       await this.select(id);
       const receipt = await this.submit({
         type: "start",

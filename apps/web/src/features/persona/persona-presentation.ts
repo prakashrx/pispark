@@ -1,107 +1,58 @@
 import type {
-  EffectiveResource,
-  PersonaRef,
-  PersonaSummary,
+  ItemType,
+  LayerRef,
+  ResolvedItem,
 } from "../../../../server/src/persona-protocol";
 
-export function samePersona(a: PersonaRef, b: PersonaRef): boolean {
-  return a.root === b.root && a.path === b.path && a.id === b.id;
-}
-export function resourceLabel(resource: EffectiveResource): string {
-  const text =
-    resource.nativeName ||
-    resource.text?.split(/\r?\n/u).find((line) => line.trim()) ||
-    (resource.file || resource.directory)
-      ?.split(/[/]/)
-      .filter(Boolean)
-      .at(-1) ||
-    `Reference ${resource.id}`;
-  return Array.from(text.replace(/[\p{Cc}\p{Cf}\s]+/gu, " ").trim())
-    .slice(0, 80)
-    .join("");
-}
-export function personaName(
-  ref: PersonaRef,
-  options: PersonaSummary[],
-): string {
-  return (
-    options.find((p) => samePersona(p.ref, ref))?.name ?? "Unavailable persona"
-  );
-}
-export type PersonaErrorContext = "document" | "draft" | "file";
-export function personaError(
-  error: string,
-  context: PersonaErrorContext = "document",
-  retainedEdits = false,
-): string {
-  if (error.startsWith("The file was saved,")) return error;
-  // Match the leading safe code, not a reference name or path in diagnostic details.
-  const code = error.match(/^[a-z]+(?:-[a-z]+)*/u)?.[0] ?? "";
-  if (/^(revision-conflict|resource-changed)$/.test(code))
-    return `This persona changed elsewhere. ${retainedEdits ? "Your edits are safe. " : ""}Reload the saved version to review the changes.`;
-  if (code === "invalid-definition" && context !== "file")
-    return context === "draft"
-      ? "Check this persona’s name, instructions, and skills."
-      : "This persona’s file isn’t valid. Fix the original file to continue.";
-  if (/^(missing-resource|missing-parent)$/.test(code))
-    return "An instruction file or skill folder couldn’t be found.";
-  if (code === "file-draft-limit")
-    return "Too many files have unsaved changes. Save one, then reopen this file.";
-  if (code === "duplicate-identity")
-    return "These persona files share the same identity. Fix the duplicate files to continue.";
-  if (code === "cycle")
-    return "These personas depend on each other. Remove one connection to continue.";
-  if (
-    /^(resource-conflict|duplicate-resource|skill-name-conflict|invalid-replacement)$/.test(
-      code,
-    )
-  )
-    return "Some instructions or skills have the same reference name. Choose which one to use.";
-  if (code === "unsupported-version")
-    return "This persona uses a format this version can’t edit.";
-  if (code === "read-only") return "This persona is read-only.";
-  if (/^(path-outside-root|symlink|ownership|identity-mismatch)$/.test(code))
-    return "This file isn’t available to this persona.";
-  if (code === "storage")
-    return `Couldn’t save the changes.${retainedEdits ? " Your edits are still here." : ""}`;
-  if (/^(limit|too-large)$/.test(code))
-    return "This persona is too large or has too many linked resources.";
-  if (/^(busy|shutdown|closed)$/.test(code))
-    return "The workspace is busy. Try again shortly.";
-  return `Couldn’t complete that action.${retainedEdits ? " Your edits are still here." : ""}`;
+const messages: Record<string, string> = {
+  "invalid-input": "That request wasn’t valid.",
+  "invalid-path": "That file name isn’t allowed.",
+  "invalid-definition": "That persona setting isn’t valid.",
+  "revision-conflict": "This changed somewhere else. The latest version is shown; try again.",
+  "missing-parent": "A persona this one builds on is missing",
+  cycle: "Personas can’t build on each other in a loop",
+  "in-use": "Another persona builds on this one",
+  "built-in": "Default can’t be deleted.",
+  "not-found": "Not found.",
+  limit: "That’s too large.",
+  storage: "Couldn’t read or save on the server.",
+};
+
+/** Plain-language persona errors; details are persona IDs, never file contents. */
+export function personaError(code: string, detail?: string): string {
+  const message = messages[code] ?? "Something went wrong.";
+  return detail && ["missing-parent", "cycle", "in-use"].includes(code)
+    ? `${message}: ${detail}.`
+    : message;
 }
 
-// Present authoritative order, substituting current local draft entries without resolving inheritance.
-// While stale, retained inherited rows are explicitly labelled as the last checked result by the page.
-export function resourceRows<
-  T extends { id: string; file?: string; directory?: string },
->(
-  local: T[],
-  effective: EffectiveResource[],
-  owner: PersonaRef,
-): { local?: T; resolved?: EffectiveResource }[] {
-  const shown = new Set<T>();
-  const rows = effective.flatMap<{ local?: T; resolved?: EffectiveResource }>(
-    (resolved) => {
-      if (!samePersona(resolved.origin, owner)) return [{ resolved }];
-      const item = local.find((entry) => entry.id === resolved.id);
-      if (!item) return [];
-      shown.add(item);
-      return [
-        {
-          local: item,
-          resolved:
-            item.file === resolved.file && item.directory === resolved.directory
-              ? resolved
-              : undefined,
-        },
-      ];
-    },
-  );
-  return [
-    ...rows,
-    ...local
-      .filter((item) => !shown.has(item))
-      .map((item) => ({ local: item })),
-  ];
+export const ITEM_LABELS: Record<ItemType, { title: string; one: string }> = {
+  instructions: { title: "Instructions", one: "instruction" },
+  skills: { title: "Skills", one: "skill" },
+  prompts: { title: "Commands", one: "command" },
+  extensions: { title: "Extensions", one: "extension" },
+  mcp: { title: "MCP servers", one: "MCP server" },
+};
+
+/** Where an item comes from, relative to the layer being edited. */
+export function originLabel(origin: LayerRef, viewing: string): string {
+  if (origin.id === viewing) return "Added here";
+  if (origin.id === "chat") return "From this chat";
+  return `From ${origin.name}`;
+}
+
+/** Why an item is in its current state, when a layer switched it. */
+export function switchLabel(item: ResolvedItem, viewing: string): string {
+  if (!item.switchedBy) return item.replaced.length ? "Replaces an inherited one" : "";
+  const who = item.switchedBy.id === viewing ? "here" : `by ${item.switchedBy.name}`;
+  return item.on ? `Turned back on ${who}` : `Turned off ${who}`;
+}
+
+/** Starting text for a new item file. */
+export function template(type: ItemType, name: string): string {
+  if (type === "skills")
+    return `---\nname: ${name}\ndescription: What this skill does and when to use it.\n---\n\n# ${name}\n\n`;
+  if (type === "prompts")
+    return `---\ndescription: What this command does\nargument-hint: "[topic]"\n---\n\nWrite the prompt here. Use $1 for the first argument.\n`;
+  return "";
 }

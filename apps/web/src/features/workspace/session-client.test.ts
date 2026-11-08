@@ -163,7 +163,7 @@ test("unknown initial create acceptance and settlement are explicit without an i
       }),
     );
     const client = new SessionClient();
-    expect(await client.ask("initial draft", "folder", "setup")).toBe(false);
+    expect(await client.ask("initial draft", "/folder")).toBe(false);
     expect(client.errorKind).toBe(
       accepted ? "settlement-unknown" : "acceptance-unknown",
     );

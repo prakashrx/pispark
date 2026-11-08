@@ -4,11 +4,13 @@
     checked = $bindable(false),
     disabled = false,
     help,
+    onchange,
   }: {
     label: string;
     checked?: boolean;
     disabled?: boolean;
     help?: string;
+    onchange?: (event: Event) => void;
   } = $props();
   const id = $props.id();
 </script>
@@ -25,6 +27,7 @@
     class="toggle-input absolute inset-0 z-10 m-0 h-full w-full cursor-pointer opacity-0"
     aria-label={label}
     bind:checked
+    {onchange}
   />
   <span class="toggle-track" aria-hidden="true"></span>
   {#if help}<span id={`${id}-help`} class="ml-2 text-xs text-neutral-500"

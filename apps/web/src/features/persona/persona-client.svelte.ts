@@ -1,24 +1,21 @@
-import type ContentDialog from "../../lib/ui/ContentDialog.svelte";
-import type { ComponentProps } from "svelte";
-type ContentSnapshot = NonNullable<
-  ComponentProps<typeof ContentDialog>["retained"]
->;
-import type { PersonaErrorContext } from "./persona-presentation";
-import type {
-  PersonaDefinition,
-  PersonaDiagnostic,
-  PersonaDocument,
-  PersonaRef,
-  PersonaSelection,
-  PersonaSummary,
-  PersonaView,
+import {
+  switchName,
+  type ItemFile,
+  type ItemType,
+  type PersonaDefinition,
+  type PersonaSummary,
+  type PersonaTarget,
+  type PersonaView,
+  type ResolvedItem,
 } from "../../../../server/src/persona-protocol";
+import { personaError } from "./persona-presentation";
+
 export async function personaRequest<T>(
   operation: string,
   input?: unknown,
 ): Promise<T> {
   const response = await fetch(
-    `/api/personas${operation ? `${operation.startsWith("?") ? "" : "/"}${operation}` : ""}`,
+    `/api/personas${operation ? `/${operation}` : ""}`,
     input === undefined
       ? { signal: AbortSignal.timeout(12_000) }
       : {
@@ -28,506 +25,210 @@ export async function personaRequest<T>(
           signal: AbortSignal.timeout(12_000),
         },
   );
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("No server response");
-  const decoder = new TextDecoder();
-  let text = "",
-    size = 0;
-  try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > 512 * 1024) throw new Error("Response limit");
-      text += decoder.decode(value, { stream: true });
-    }
-  } finally {
-    await reader.cancel();
-  }
-  const result = JSON.parse(text + decoder.decode());
-  if (!response.ok) {
-    const diagnostics = (
-      Array.isArray(result.diagnostics) ? result.diagnostics : []
-    ) as PersonaDiagnostic[];
-    const detail = diagnostics
-      .slice(0, 16)
-      .map((d) =>
-        [
-          d.resourceType,
-          d.resourceId,
-          d.field,
-          d.refs?.map((r) => `${r.root}/${r.path}`).join(", "),
-        ]
-          .filter(Boolean)
-          .join(" "),
-      )
-      .filter(Boolean)
-      .join("; ")
-      .slice(0, 2048);
-    throw new Error(
-      `${result.error ?? "Request failed"}${detail ? `: ${detail}` : ""}${result.requestId ? ` (${result.requestId})` : ""}`,
-    );
-  }
+  const text = await response.text();
+  if (text.length > 512 * 1024) throw new Error("Response limit");
+  const result = JSON.parse(text || "{}");
+  if (!response.ok)
+    throw new Error(personaError(result.error ?? "storage", result.detail));
   return result as T;
 }
-export const personaKey = (ref: PersonaRef) => JSON.stringify(ref);
-type PersonaDraft = PersonaDefinition &
-  Required<
-    Pick<PersonaDefinition, "instructions" | "skills" | "parents" | "exclude">
-  >;
-function editable(value: PersonaDefinition): PersonaDraft {
-  return {
-    ...value,
-    instructions: value.instructions ?? [],
-    skills: value.skills ?? [],
-    parents: value.parents ?? [],
-    exclude: value.exclude ?? {},
-  };
-}
-export class InstructionDraft {
-  blocked = false;
-  content = $state("");
-  baseline = $state("");
-  revision = $state<string | null>(null);
-  loaded = $state(false);
-  busy = $state(false);
-  error = $state("");
-  status = $state("");
-  get dirty() {
-    return this.content !== this.baseline;
-  }
-}
+
+export const sameTarget = (a?: PersonaTarget, b?: PersonaTarget) =>
+  !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+const layerId = (target: PersonaTarget) =>
+  "persona" in target ? target.persona : "chat";
+
+/**
+ * Persona list, the Ask selection and the open editor. Every change is saved as it is made;
+ * the server resolves the layers and returns the new view.
+ */
 export class PersonaClient {
-  private files = new Map<string, InstructionDraft>();
-  file(reference: PersonaRef, path: string): InstructionDraft {
-    const key = `${personaKey(reference)}/${path}`;
-    let file = this.files.get(key);
-    if (!file) {
-      if (this.files.size >= 32) {
-        const clean = [...this.files].find(([, f]) => !f.dirty && !f.busy);
-        if (clean) this.files.delete(clean[0]);
-        else {
-          const blocked = new InstructionDraft();
-          blocked.blocked = true;
-          blocked.error = "file-draft-limit";
-          return blocked;
-        }
-      }
-      file = new InstructionDraft();
-      this.files.set(key, file);
-    }
-    return file;
-  }
-  promptMemory = $state<{
-    key: string;
-    value: string;
-    customizedId?: string;
-    state?: ContentSnapshot;
-  }>();
-  get hasUnappliedContent() {
-    const state = this.promptMemory?.state;
-    return !!state && state.stage !== "read" && state.editor !== state.readText;
-  }
-  hasUnappliedContentFor(reference: PersonaRef) {
-    return (
-      this.hasUnappliedContent &&
-      this.promptMemory?.key.startsWith(`${personaKey(reference)}/`) === true
-    );
-  }
-  private discardPrompt() {
-    if (
-      this.hasUnappliedContent &&
-      !window.confirm("Discard unapplied prompt changes?")
-    )
-      return false;
-    this.promptMemory = undefined;
-    return true;
-  }
-  loadedFileText(reference: PersonaRef, path: string): string | undefined {
-    const file = this.files.get(`${personaKey(reference)}/${path}`);
-    return file?.loaded ? file.baseline : undefined;
-  }
-  get hasUnsavedFiles() {
-    return [...this.files.values()].some((f) => f.dirty || f.busy);
-  }
-  hasUnsavedFilesFor(reference: PersonaRef) {
-    const prefix = `${personaKey(reference)}/`;
-    return [...this.files].some(
-      ([key, file]) => key.startsWith(prefix) && (file.dirty || file.busy),
-    );
-  }
   items = $state<PersonaSummary[]>([]);
-  selected = $state("");
   loading = $state(false);
   error = $state("");
-  inspectedSummary = $state<PersonaSummary>();
-  view = $state<PersonaDocument>();
-  draft = $state<PersonaDraft>();
-  effective = $state<PersonaDocument>();
-  savedJSON = $state("");
-  checkedJSON = $state("");
-  status = $state("");
-  notice = $state("");
-  editorError = $state("");
-  editorErrorContext = $state<PersonaErrorContext>("document");
-  busy = $state(false);
-  reading = $state(false);
-  resolving = $state(false);
-  resolutionError = $state("");
-  contentContext = $state(0);
-  private resolutionEpoch = 0;
-  private pendingResolution?: {
-    ref: PersonaRef;
-    json: string;
-    generation: number;
-    navigation: number;
-    epoch: number;
-  };
-  private resolutionTask?: Promise<void>;
-  private invalidateResolution() {
-    this.resolutionEpoch++;
-    this.pendingResolution = undefined;
-    this.checkedJSON = "";
-    this.resolutionError = "";
-  }
-  get resourcesCurrent() {
-    return !!this.draft && this.checkedJSON === JSON.stringify(this.draft);
-  }
-  dirty = $derived(
-    !!this.draft && JSON.stringify(this.draft) !== this.savedJSON,
-  );
+  /** Persona chosen in Ask; Default when empty. */
+  selected = $state("default");
   mode = $state<"collection" | "editor">("collection");
-  private routeIntent = false;
+  target = $state<PersonaTarget>();
+  view = $state<PersonaView>();
+  busy = $state(false);
+  editorError = $state("");
+  status = $state("");
+  /** Item editors with unsaved text, by key; the page warns before leaving. */
+  drafts = $state<Record<string, boolean>>({});
+  get unsaved() {
+    return Object.values(this.drafts).some(Boolean);
+  }
+  async refresh() {
+    this.loading = true;
+    try {
+      this.items = (
+        await personaRequest<{ personas: PersonaSummary[] }>("")
+      ).personas;
+      this.error = "";
+      if (
+        this.selected &&
+        this.items.length &&
+        !this.items.some((p) => p.id === this.selected)
+      )
+        this.selected = "default";
+    } catch (error) {
+      this.error = (error as Error).message;
+    } finally {
+      this.loading = false;
+    }
+  }
   collection() {
-    this.invalidateResolution();
-    ++this.navigationGeneration;
-    this.reading = false;
     this.mode = "collection";
   }
   enterRoute() {
-    if (!this.routeIntent) this.collection();
-    this.routeIntent = false;
+    void this.refresh();
   }
-  async open(reference: PersonaRef, fromSidebar = false) {
-    this.routeIntent = fromSidebar;
-    if (this.view && personaKey(this.view.ref) === personaKey(reference)) {
-      ++this.navigationGeneration;
-      this.reading = false;
-      this.mode = "editor";
-      return;
-    }
-    await this.select(reference);
-  }
-  private generation = 0;
-  private navigationGeneration = 0;
-  private refreshGeneration = 0;
-  async refresh() {
-    const generation = ++this.refreshGeneration;
-    this.loading = true;
-    try {
-      const items: PersonaSummary[] = [];
-      let cursor: string | undefined;
-      do {
-        const result = await personaRequest<{
-          personas: PersonaSummary[];
-          nextCursor?: string;
-        }>(cursor ? `?cursor=${cursor}` : "");
-        items.push(...result.personas);
-        cursor = result.nextCursor;
-        if (items.length > 256) throw new Error("Persona collection limit");
-      } while (cursor);
-      if (generation === this.refreshGeneration) {
-        this.items = items;
-        this.error = "";
-      }
-    } catch (error) {
-      if (generation === this.refreshGeneration)
-        this.error = (error as Error).message;
-    } finally {
-      if (generation === this.refreshGeneration) this.loading = false;
-    }
-  }
-  get selection(): PersonaSelection | undefined {
-    const item = this.items.find((p) => personaKey(p.ref) === this.selected);
-    return item?.valid && item.revision
-      ? { ...item.ref, revision: item.revision }
-      : undefined;
-  }
-  async select(reference: PersonaRef, discard = false) {
-    if (
-      this.dirty &&
-      !discard &&
-      !window.confirm("Discard unsaved persona changes?")
-    )
-      return;
-    if (
-      this.hasUnsavedFiles &&
-      !discard &&
-      !window.confirm(
-        "Leave unsaved instruction file text? Your file drafts will stay here.",
-      )
-    )
-      return;
-    if (!this.discardPrompt()) return;
-    this.contentContext++;
-    this.invalidateResolution();
+  async open(target: PersonaTarget) {
+    this.target = target;
     this.mode = "editor";
-    const generation = ++this.generation,
-      navigation = ++this.navigationGeneration;
-    this.reading = true;
     this.editorError = "";
-    this.notice = "";
-    this.editorErrorContext = "document";
-    const summary = this.items.find(
-      (p) => personaKey(p.ref) === personaKey(reference),
-    );
-    if (
-      summary?.diagnostics.some((d) =>
-        ["invalid-definition", "unsupported-version"].includes(d.code),
-      ) ||
-      !reference.id
-    ) {
-      this.inspectedSummary = summary;
-      this.view = undefined;
-      this.draft = undefined;
-      this.effective = undefined;
-      this.savedJSON = "";
-      this.status =
-        "Invalid document — repair on the backend host; editing unavailable";
-      this.reading = false;
-      return;
-    }
-    const previousDraft = JSON.stringify(this.draft);
+    this.status = "";
+    await this.load(target);
+  }
+  async load(target = this.target) {
+    if (!target) return;
     try {
-      const view = await personaRequest<PersonaDocument>("read", {
-        ref: reference,
-      });
-      if (
-        generation !== this.generation ||
-        navigation !== this.navigationGeneration
-      )
-        return;
-      if (JSON.stringify(this.draft) !== previousDraft) {
-        this.editorError =
-          "Draft changed while loading; selection cancelled. Draft retained.";
-        return;
-      }
-      this.inspectedSummary = summary;
-      this.view = view;
-      this.draft = editable(structuredClone(view.definition));
-      this.savedJSON = JSON.stringify(this.draft);
-      this.effective = view;
-      this.checkedJSON = this.savedJSON;
-      this.status = view.diagnostics.length
-        ? "Saved definition has resource errors"
-        : view.writable
-          ? "Saved"
-          : "Read-only";
+      const view = await personaRequest<PersonaView>("read", { target });
+      if (sameTarget(target, this.target)) this.view = view;
+      return view;
     } catch (error) {
-      if (
-        generation === this.generation &&
-        navigation === this.navigationGeneration
-      )
+      if (sameTarget(target, this.target))
         this.editorError = (error as Error).message;
-    } finally {
-      if (
-        generation === this.generation &&
-        navigation === this.navigationGeneration
-      )
-        this.reading = false;
-      void this.drainResolution();
     }
   }
-  async create(name: string, description = "") {
-    if (
-      !name.trim() ||
-      this.busy ||
-      (this.dirty && !window.confirm("Discard unsaved persona changes?")) ||
-      (this.hasUnsavedFiles &&
-        !window.confirm(
-          "Leave unsaved instruction file text? Your file drafts will stay here.",
-        ))
-    )
-      return;
-    if (!this.discardPrompt()) return;
+  /** Run a change, then refresh the view and list; report errors in the editor. */
+  private async change(action: () => Promise<unknown>, done = "Saved") {
+    if (this.busy) return false;
     this.busy = true;
     this.editorError = "";
-    this.notice = "";
-    this.editorErrorContext = "draft";
-    const previousDraft = JSON.stringify(this.draft),
-      generation = this.generation,
-      navigation = this.navigationGeneration;
+    this.status = "";
     try {
-      const view = await personaRequest<PersonaView>("create", {
-        definition: {
-          schemaVersion: 1,
-          name: name.trim(),
-          ...(description.trim() ? { description: description.trim() } : {}),
-        },
-      });
-      await this.refresh();
-      if (
-        generation === this.generation &&
-        navigation === this.navigationGeneration &&
-        JSON.stringify(this.draft) === previousDraft
-      )
-        await this.select(view.ref, true);
-      else if (
-        generation === this.generation &&
-        navigation === this.navigationGeneration
-      )
-        this.notice =
-          "Persona created. Your current edits are still here. Choose the new persona from the list when you’re ready.";
+      await action();
+      await this.load();
+      void this.refresh();
+      this.status = done;
       return true;
     } catch (error) {
-      if (generation === this.generation)
-        this.editorError = (error as Error).message;
+      this.editorError = (error as Error).message;
+      await this.load();
       return false;
     } finally {
       this.busy = false;
-      void this.drainResolution();
     }
   }
-  validate() {
-    if (!this.view || !this.draft || this.mode !== "editor")
-      return Promise.resolve();
-    this.pendingResolution = {
-      ref: this.view.ref,
-      json: JSON.stringify(this.draft),
-      generation: this.generation,
-      navigation: this.navigationGeneration,
-      epoch: ++this.resolutionEpoch,
-    };
-    this.resolutionError = "";
-    this.notice = "";
-    return this.drainResolution();
-  }
-  private drainResolution(): Promise<void> {
-    if (this.resolutionTask) return this.resolutionTask;
-    if (this.busy || this.reading || !this.pendingResolution)
-      return Promise.resolve();
-    this.resolving = true;
-    this.resolutionTask = (async () => {
-      while (this.pendingResolution && !this.busy && !this.reading) {
-        const request = this.pendingResolution;
-        this.pendingResolution = undefined;
-        const current = () =>
-          request.epoch === this.resolutionEpoch &&
-          request.generation === this.generation &&
-          request.navigation === this.navigationGeneration &&
-          this.mode === "editor" &&
-          !!this.view &&
-          personaKey(this.view.ref) === personaKey(request.ref) &&
-          JSON.stringify(this.draft) === request.json;
-        if (!current()) continue;
-        try {
-          const effective = await personaRequest<PersonaView>("validate", {
-            ref: request.ref,
-            definition: JSON.parse(request.json),
-          });
-          if (current()) {
-            this.effective = effective;
-            this.checkedJSON = request.json;
-            this.resolutionError = "";
-          }
-        } catch (error) {
-          if (current()) {
-            this.checkedJSON = "";
-            this.resolutionError = (error as Error).message;
-          }
-        }
-      }
-    })().finally(() => {
-      this.resolutionTask = undefined;
-      this.resolving = false;
-      if (this.pendingResolution && !this.busy && !this.reading)
-        void this.drainResolution();
+  private save(definition: PersonaDefinition) {
+    return personaRequest<{ revision: string }>("save", {
+      target: this.target,
+      expectedRevision: this.view?.revision ?? "",
+      definition,
     });
-    return this.resolutionTask;
   }
-  async save() {
-    if (
-      !this.view?.writable ||
-      !this.draft ||
-      this.busy ||
-      this.reading ||
-      !this.view.revision
-    )
-      return;
-    if (!this.discardPrompt()) return;
-    this.contentContext++;
-    this.invalidateResolution();
-    const epoch = this.resolutionEpoch;
-    const generation = this.generation,
-      submitted = JSON.stringify(this.draft),
-      reference = this.view.ref;
+  async create(name: string, description: string, base: string[]) {
+    let id = "";
     this.busy = true;
     this.editorError = "";
-    this.notice = "";
-    this.editorErrorContext = "draft";
-    this.status = "Saving";
     try {
-      const view = await personaRequest<PersonaView>("save", {
-        ref: reference,
-        expectedRevision: this.view.revision,
-        definition: JSON.parse(submitted),
-      });
-      if (generation === this.generation) {
-        this.view = view;
-        this.savedJSON = submitted;
-        if (epoch === this.resolutionEpoch) {
-          this.effective = view;
-          this.checkedJSON = submitted;
-        }
-        this.status = "Saved";
-      }
-      await this.refresh();
+      id = (
+        await personaRequest<{ id: string }>("create", {
+          name,
+          ...(description.trim() ? { description: description.trim() } : {}),
+          ...(base.length ? { base } : {}),
+        })
+      ).id;
     } catch (error) {
-      if (generation === this.generation) {
-        this.editorError = `${(error as Error).message}. Draft retained. Reload deliberately to discard it.`;
-        this.status = "Not saved";
-      }
+      this.editorError = (error as Error).message;
+      return undefined;
     } finally {
       this.busy = false;
-      if (
-        generation === this.generation &&
-        this.mode === "editor" &&
-        JSON.stringify(this.draft) !== submitted
-      )
-        void this.validate();
-      else void this.drainResolution();
-    }
-  }
-  async fileSaved(
-    reference: PersonaRef,
-    revision?: string,
-    expectedManagementRevision?: string,
-    beforeRevision?: string,
-  ) {
-    this.notice = "";
-    if (
-      this.view &&
-      personaKey(this.view.ref) === personaKey(reference) &&
-      this.view.revision === expectedManagementRevision
-    ) {
-      this.invalidateResolution();
-      this.contentContext++;
-      if (
-        expectedManagementRevision &&
-        beforeRevision === expectedManagementRevision &&
-        revision
-      ) {
-        this.view = { ...this.view, revision };
-        this.status = this.dirty
-          ? "File saved. Persona changes are not saved yet."
-          : "Saved";
-      } else {
-        this.view = { ...this.view, revision: undefined };
-        this.editorError =
-          "The file was saved, but this persona changed elsewhere. Your other edits are safe. Reload the saved version before saving the persona.";
-        this.status = "Review saved changes";
-      }
     }
     await this.refresh();
+    await this.open({ persona: id });
+    return id;
+  }
+  updateDefinition(update: (definition: PersonaDefinition) => PersonaDefinition) {
+    const view = this.view;
+    if (!view) return Promise.resolve(false);
+    return this.change(() => this.save(update(structuredClone(view.definition))));
+  }
+  /**
+   * Switch an item or tool on or off in this layer. The least change is tried first
+   * (dropping this layer's own switch); an explicit switch is added only if still needed.
+   */
+  async toggle(type: ItemType | "tool", name: string, on: boolean) {
+    const key = switchName(type, name);
+    const strip = (d: PersonaDefinition) => {
+      const next: PersonaDefinition = {
+        ...d,
+        on: (d.on ?? []).filter((s) => s !== key),
+        off: (d.off ?? []).filter((s) => s !== key),
+      };
+      if (!next.on?.length) delete next.on;
+      if (!next.off?.length) delete next.off;
+      return next;
+    };
+    const ok = await this.updateDefinition(strip);
+    if (!ok || !this.view) return;
+    const state =
+      type === "tool"
+        ? this.view.tools.find((t) => t.name === name)?.on
+        : this.view.items.find((i) => i.type === type && i.name === name)?.on;
+    if (state === on) return;
+    await this.updateDefinition((d) => ({
+      ...d,
+      [on ? "on" : "off"]: [...((on ? d.on : d.off) ?? []), key],
+    }));
+  }
+  readFile(path: string, target = this.target) {
+    return personaRequest<ItemFile>("file/read", { target, path });
+  }
+  /** Create or replace an item file in this layer. */
+  writeFile(path: string, text: string, revision: string | null) {
+    return this.change(() =>
+      personaRequest<ItemFile>("file/write", {
+        target: this.target,
+        path,
+        expectedRevision: revision,
+        text,
+      }),
+    );
+  }
+  async deleteFile(path: string) {
+    return this.change(async () => {
+      const current = await this.readFile(path);
+      await personaRequest("file/delete", {
+        target: this.target,
+        path,
+        expectedRevision: current.revision,
+      });
+    }, "Removed");
+  }
+  /** Copy an inherited item into this layer, where it replaces the original by name. */
+  async customize(item: ResolvedItem) {
+    if (!item.path || !this.view) return false;
+    const origin: PersonaTarget =
+      item.origin.id === "chat" && this.target && "chat" in this.target
+        ? this.target
+        : { persona: item.origin.id };
+    const source = await this.readFile(item.path, origin);
+    return this.writeFile(item.path, source.text, null);
+  }
+  async remove(id: string) {
+    const ok = await this.change(() => personaRequest("delete", { id }), "Deleted");
+    if (ok) {
+      this.mode = "collection";
+      this.view = undefined;
+      this.target = undefined;
+    }
+    return ok;
+  }
+  /** Whether an item comes from the layer being edited. */
+  local(item: { origin: { id: string } }) {
+    return !!this.target && item.origin.id === layerId(this.target);
   }
 }

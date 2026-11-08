@@ -2,11 +2,9 @@
   import Button from "../../lib/ui/Button.svelte";
   import Input from "../../lib/ui/Input.svelte";
   import Selector from "../../lib/ui/Selector.svelte";
-  import Disclosure from "../../lib/ui/Disclosure.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   import { useSessions } from "./session-client.svelte";
-  import { personaKey } from "../persona/persona-client.svelte";
-  import PersonaDetails from "../persona/PersonaDetails.svelte";
+  import { folderName } from "./chat-presentation";
   const sessions = useSessions();
   let {
     mode = "ask",
@@ -20,14 +18,21 @@
   } = $props();
   let draftRevision = 0;
   let folder = $state("");
-  let configuration = $state("");
+  let otherFolder = $state("");
   let model = $state("");
+  // Any existing folder on the backend host: recent ones, home, or one typed in.
+  const folderOptions = $derived(
+    [
+      ...new Set(
+        [folder, ...sessions.catalog.recentFolders, sessions.catalog.home].filter(
+          Boolean,
+        ),
+      ),
+    ].map((value) => ({ value, label: value })),
+  );
   const personaOptions = $derived([
-    { value: "", label: "No persona" },
     ...(sessions.personas.selected &&
-    !sessions.personas.items.some(
-      (p) => personaKey(p.ref) === sessions.personas.selected,
-    )
+    !sessions.personas.items.some((p) => p.id === sessions.personas.selected)
       ? [
           {
             value: sessions.personas.selected,
@@ -37,23 +42,9 @@
         ]
       : []),
     ...sessions.personas.items
-      .filter((p) => p.valid && p.revision)
-      .map((p) => ({ value: personaKey(p.ref), label: p.name })),
+      .filter((p) => p.valid)
+      .map((p) => ({ value: p.id, label: p.name })),
   ]);
-  const selectedPersona = $derived(
-    sessions.personas.items.find(
-      (p) => personaKey(p.ref) === sessions.personas.selected,
-    ),
-  );
-  const noReader = $derived(
-    !!selectedPersona?.skillCount &&
-      !sessions.catalog.configurations.find((c) => c.value === configuration)
-        ?.skillReader,
-  );
-  const managed = $derived(
-    sessions.catalog.configurations.find((c) => c.value === configuration)
-      ?.modelSelection === "catalog",
-  );
   const models = $derived(
     sessions.providers.catalog.providers.flatMap((provider) =>
       provider.models
@@ -85,22 +76,24 @@
     ...models,
   ]);
   $effect(() => {
-    if (!folder) folder = sessions.catalog.workspaces[0]?.value ?? "";
-    if (!configuration)
-      configuration = sessions.catalog.configurations[0]?.value ?? "";
+    if (!folder)
+      folder = sessions.catalog.recentFolders[0] ?? sessions.catalog.home;
   });
   const unavailable = $derived(
     sessions.busy
       ? "Please wait…"
       : mode === "ask"
-        ? !folder || !configuration
-          ? "Choose a working folder and chat setup."
-          : sessions.personas.selected && !sessions.personas.selection
-            ? "This persona isn’t available. Choose another or refresh the list."
-            : managed &&
-                (!selected ||
-                  sessions.providers.loading ||
-                  sessions.providers.error)
+        ? !folder
+          ? "Choose a working folder."
+          : sessions.personas.selected &&
+              !sessions.personas.items.some(
+                (p) => p.id === sessions.personas.selected && p.valid,
+              ) &&
+              sessions.personas.items.length
+            ? "This persona isn’t available. Choose another."
+            : !model &&
+                !defaultChoice &&
+                !sessions.providers.loading
               ? "Choose a model in Providers & models."
               : undefined
         : !sessions.selected || sessions.snapshot?.status !== "idle"
@@ -113,28 +106,16 @@
     if (unavailable) return;
     if (mode === "ask") {
       const revision = draftRevision;
-      const context = JSON.stringify([
-        folder,
-        configuration,
-        model,
-        sessions.personas.selected,
-      ]);
+      const context = JSON.stringify([folder, model, sessions.personas.selected]);
       if (
         (await sessions.ask(
           draft,
           folder,
-          configuration,
-          managed && selected ? JSON.parse(selected.value) : undefined,
-          sessions.personas.selection,
+          model && selected ? JSON.parse(selected.value) : undefined,
+          sessions.personas.selected || undefined,
         )) &&
         revision === draftRevision &&
-        context ===
-          JSON.stringify([
-            folder,
-            configuration,
-            model,
-            sessions.personas.selected,
-          ])
+        context === JSON.stringify([folder, model, sessions.personas.selected])
       )
         draft = "";
     } else await sessions.reply();
@@ -179,15 +160,35 @@
   >
     {#if mode === "ask"}
       <Selector
-        label="Folder"
-        options={sessions.catalog.workspaces}
+        label="Working folder"
+        options={folderOptions}
         bind:value={folder}
         searchable
       >
         {#snippet children(value)}
           <Icon name="folder" class="w-4 h-4" />
-          <span>{value}</span>
+          <span class="max-w-36 truncate" title={value}>{folderName(value)}</span>
           <Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60" />
+        {/snippet}
+        {#snippet footer()}
+          <form
+            class="flex items-end gap-2 w-[min(22rem,80vw)]"
+            onsubmit={(event) => {
+              event.preventDefault();
+              if (otherFolder.trim()) folder = otherFolder.trim();
+              otherFolder = "";
+            }}
+          >
+            <div class="flex-1 min-w-0">
+              <Input
+                label="Another folder"
+                placeholder="Full path on this computer"
+                density="compact"
+                bind:value={otherFolder}
+              />
+            </div>
+            <Button size="compact" type="submit">Use</Button>
+          </form>
         {/snippet}
       </Selector>
       <Selector
@@ -198,8 +199,7 @@
         {#snippet children(value)}<Icon
             name="person"
             class="w-4 h-4"
-          /><span class="max-w-28 truncate"
-            >{value === "No persona" ? "Persona" : value || "Persona"}</span
+          /><span class="max-w-28 truncate">{value || "Default"}</span
           ><Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60" />{/snippet}
         {#snippet footer()}
           <a
@@ -207,41 +207,23 @@
             href="#/persona"
             onclick={() => sessions.personas.collection()}>Manage personas</a
           >
-          {#if noReader}<p role="status" class="text-xs text-muted-foreground max-w-64 mt-2">
-              Skills need file access, which this chat setup doesn’t allow.
+          {#if sessions.personas.error}<p role="alert" class="text-xs text-[var(--danger-foreground)] mt-2">
+              {sessions.personas.error}
             </p>{/if}
-          <PersonaDetails error={sessions.personas.error} />
-          <Button class="mt-2" onclick={() => sessions.personas.refresh()}
-            >Refresh personas</Button
-          >
-          {#if sessions.catalog.configurations.length > 1}<Disclosure
-              title="Advanced"
-            >
-              <Selector
-                label="Chat setup"
-                display="field"
-                options={sessions.catalog.configurations}
-                bind:value={configuration}
-              />
-            </Disclosure>{/if}
         {/snippet}
       </Selector>
-      {#if managed}<Selector
-          label="Model"
-          options={modelOptions}
-          searchable
-          bind:value={model}
-        >
-          {#snippet children(value)}
-            <Icon name="model" class="w-4 h-4" />
-            <span>{value}</span>
-            <Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60" />
-          {/snippet}
-        </Selector>{:else}<Button
-          aria-label="Preset model"
-          unavailable="This chat setup chooses the model."
-          ><Icon name="model" class="w-4 h-4" />Preset model</Button
-        >{/if}
+      <Selector
+        label="Model"
+        options={modelOptions}
+        searchable
+        bind:value={model}
+      >
+        {#snippet children(value)}
+          <Icon name="model" class="w-4 h-4" />
+          <span>{value}</span>
+          <Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60" />
+        {/snippet}
+      </Selector>
     {/if}
     <Button
       aria-label={mode === "reply" ? "Send message" : "Start chat"}

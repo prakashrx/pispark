@@ -2,9 +2,24 @@
   import Button from "../../lib/ui/Button.svelte";
   import NativeTurn from "./NativeTurn.svelte";
   import ChatDetails from "./ChatDetails.svelte";
-  import { chatName, chatStatus, chatStarted, visibleTurns } from "./chat-presentation";
+  import InlinePanel from "../../lib/ui/InlinePanel.svelte";
+  import PersonaEditor from "../persona/PersonaEditor.svelte";
+  import {
+    chatName,
+    chatStatus,
+    chatStarted,
+    folderName,
+    visibleTurns,
+  } from "./chat-presentation";
   import { useSessions } from "./session-client.svelte";
   const client = useSessions();
+  // Editing the persona inside a chat edits this chat's own layer; closing applies it.
+  let editingPersona = $state(false);
+  async function closePersona() {
+    editingPersona = false;
+    if (client.snapshot?.personaChanged && client.snapshot.status === "idle")
+      await client.reload();
+  }
   const snapshot = $derived(client.snapshot);
   const chat = $derived(
     snapshot ?? client.sessions.find((s) => s.id === client.selected),
@@ -58,10 +73,12 @@
           </div>
           {#if chat}<p class="text-sm text-muted-foreground mt-1.5">
               {[
-                chat.persona?.name,
-                client.catalog.workspaces.find(
-                  (w) => w.value === chat.workspace,
-                )?.label ?? chat.workspace,
+                chat.persona
+                  ? chat.persona.layered
+                    ? `${chat.persona.name} (edited here)`
+                    : chat.persona.name
+                  : undefined,
+                folderName(chat.folder),
                 modelName,
                 chatStarted(chat),
               ]
@@ -76,9 +93,29 @@
             aria-label="Stop response"
             onclick={() => client.cancel()}>Stop</Button
           >{/if}
-        <ChatDetails />
+        <ChatDetails oneditpersona={() => (editingPersona = true)} />
       </div>
     </header>
+    {#if editingPersona && chat}<InlinePanel
+        label="Persona for this chat"
+        title="Persona for this chat"
+        help="Changes apply to this chat only. Closing reloads the chat with them; your messages stay."
+        size="wide"
+        onclose={() => void closePersona()}
+      >
+        <PersonaEditor target={{ chat: chat.id }} embedded />
+      </InlinePanel>{/if}
+    {#if snapshot?.personaChanged && !editingPersona}<p
+        role="status"
+        class="conversation-notice flex flex-wrap items-center gap-3"
+      >
+        <span class="flex-1">The persona changed. Reload to apply it; your messages stay.</span>
+        <Button
+          class={button}
+          unavailable={snapshot.status === "idle" ? undefined : "Wait for the reply to finish"}
+          onclick={() => client.reload()}>Reload chat</Button
+        >
+      </p>{/if}
     {#if chat && client.connection === "Disconnected"}<p
         role="alert"
         class="conversation-notice"
@@ -97,18 +134,6 @@
       >
         Reconnecting…
       </p>{/if}
-    {#if !client.catalog.configurations.length}<div
-        class="conversation-notice"
-      >
-        <p>This workspace isn’t ready for chats yet.</p>
-        <details class="text-sm mt-2 text-muted-foreground">
-          <summary>Details</summary>
-          <p>
-            A working folder and chat setup must be configured on the backend
-            host.
-          </p>
-        </details>
-      </div>{/if}
     {#if snapshot?.interrupted}<p role="status" class="conversation-notice">
         This chat was interrupted. Your saved messages are still here.
       </p>{/if}

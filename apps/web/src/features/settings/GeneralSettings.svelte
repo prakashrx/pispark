@@ -66,22 +66,29 @@
     </div>
   </Section>
 
-  <Section title="Workspace" description="Configured on the backend host.">
+  <Section title="Workspace" description="Chats can work in any folder on this computer.">
     <div class="settings-card mt-4">
-      <FieldRow label="Working folders" description="Where chats can run.">
+      <FieldRow label="Recent folders" description="Choose a folder when you start a chat.">
         <div class="text-sm text-right space-y-1">
           {#if client.catalogLoading}<p role="status" class="text-muted-foreground">
-              Loading working folders…
+              Loading…
             </p>
           {:else if client.catalogError}<p role="alert" class="text-[var(--danger-foreground)]">
-              Couldn’t load working folders. Try reconnecting.
+              Couldn’t load folders. Try reconnecting.
             </p>
-          {:else}{#each client.catalog.workspaces as workspace}<p class="inline-flex items-center gap-1.5 rounded-full bg-[var(--muted)] px-3 py-1 font-medium">
-                <Icon name="folder" class="w-3.5 h-3.5" />{workspace.label}
-              </p>{:else}<p class="text-muted-foreground">No working folders are configured.</p>{/each}{/if}
+          {:else}{#each client.catalog.recentFolders as folder}<p class="inline-flex items-center gap-1.5 rounded-full bg-[var(--muted)] px-3 py-1 font-medium" title={folder}>
+                <Icon name="folder" class="w-3.5 h-3.5" />{folder}
+              </p>{:else}<p class="text-muted-foreground">None yet. New chats start in your home folder.</p>{/each}{/if}
         </div>
       </FieldRow>
-      <FieldRow label="Personas" description="Instructions and skills for your chats.">
+      <FieldRow label="Default persona" description="Skills, tools and instructions every chat starts with.">
+        <a
+          class="settings-link"
+          href="#/persona"
+          onclick={() => void client.personas.open({ persona: "default" })}>Edit Default</a
+        >
+      </FieldRow>
+      <FieldRow label="Personas" description="Reusable setups built on Default.">
         <a
           class="settings-link"
           href="#/persona"
