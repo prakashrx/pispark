@@ -202,7 +202,7 @@ test("selector field default states, unknown value, loading, disabled and typeah
   expect(screen.queryByRole("listbox")).toBeNull();
 });
 
-test("MultiSelect preserves unknown values, searches real labels, removes by keyboard and validates custom references", async () => {
+test("MultiSelect is one field: preserves unknown values, filters suggestions, removes by keyboard and validates typed references", async () => {
   render(MultiSelect, {
     label: "References",
     value: ["unknown"],
@@ -212,29 +212,33 @@ test("MultiSelect preserves unknown values, searches real labels, removes by key
       /^[a-z-]+$/.test(value) ? undefined : "Use a reference name",
   });
   expect(screen.getByText("(Unavailable)")).toBeTruthy();
-  await fireEvent.click(
-    screen.getByRole("button", { name: "Add References: Choose an option" }),
-  );
-  const search = await screen.findByRole("combobox");
-  await fireEvent.input(search, { target: { value: "Readable" } });
-  await fireEvent.keyDown(search, { key: "Enter" });
+  // A single combobox: no separate picker button or "custom" textbox.
+  expect(screen.getAllByRole("combobox")).toHaveLength(1);
+  const field = screen.getByRole("combobox", { name: "References" });
+  await fireEvent.focus(field);
+  await fireEvent.input(field, { target: { value: "Readable" } });
+  expect(screen.getByRole("option", { name: "Readable name" })).toBeTruthy();
+  await fireEvent.keyDown(field, { key: "Enter" });
   expect(
     screen.getByRole("button", { name: "Remove Readable name" }),
   ).toBeTruthy();
   expect(screen.getByRole("button", { name: "Remove unknown" })).toBeTruthy();
-  const custom = screen.getByRole("textbox", { name: "Custom References" });
-  await fireEvent.input(custom, { target: { value: "Bad ref" } });
-  await fireEvent.keyDown(custom, { key: "Enter" });
-  expect(screen.getByRole("alert").textContent).toBe("Use a reference name");
-  await fireEvent.input(custom, { target: { value: "repair" } });
-  await fireEvent.keyDown(custom, { key: "Enter" });
+  await fireEvent.input(field, { target: { value: "Bad ref" } });
+  await fireEvent.keyDown(field, { key: "Enter" });
+  expect(screen.getByRole("alert").textContent).toContain("Use a reference name");
+  await fireEvent.input(field, { target: { value: "repair" } });
+  expect(screen.getByRole("option", { name: "Add “repair”" })).toBeTruthy();
+  await fireEvent.keyDown(field, { key: "Enter" });
+  expect(screen.queryByRole("alert")).toBeNull();
   const chip = screen.getByRole("button", { name: "Remove repair" });
   await fireEvent.keyDown(chip, { key: "Delete" });
   expect(screen.queryByRole("button", { name: "Remove repair" })).toBeNull();
-  expect(screen.getByRole("button", { name: "Remove unknown" })).toBeTruthy();
   expect(document.activeElement).toBe(
     screen.getByRole("button", { name: "Remove Readable name" }),
   );
+  await fireEvent.keyDown(field, { key: "Backspace" });
+  expect(screen.queryByRole("button", { name: "Remove Readable name" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Remove unknown" })).toBeTruthy();
 });
 
 test("dialog wraps native summary and opened read-only content while excluding ineligible targets", async () => {

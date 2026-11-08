@@ -81,10 +81,11 @@ test("Based on uses resource checkboxes for all, none, subset and preserves unkn
   expect((second as HTMLInputElement).checked).toBe(false);
   await fireEvent.click(second);
   expect(parent.include?.instructions).toEqual(["one", "unknown", "two"]);
-  const unknown = screen.getByRole("checkbox", {
-    name: "Reference unknown · unavailable",
-  });
-  await fireEvent.click(unknown);
+  expect(
+    screen.getAllByRole("group", { name: "More prompts by reference name" })[0]!
+      .textContent,
+  ).toContain("Unavailable");
+  await fireEvent.click(screen.getByRole("button", { name: "Remove unknown" }));
   expect(parent.include?.instructions).toBeUndefined();
   await fireEvent.click(first);
   await fireEvent.click(second);
@@ -141,18 +142,11 @@ test("late parent reads cannot replace new reference state; unavailable parent p
     screen.queryByRole("checkbox", { name: "1 · instructions · First rule" }),
   ).toBeNull();
   expect(parent.include.instructions).toEqual(["retain-me"]);
-  await fireEvent.click(
-    screen.getByRole("button", { name: "reused persona 1 actions" }),
-  );
-  await fireEvent.click(
-    screen.getByRole("menuitem", { name: "Advanced settings" }),
-  );
-  expect(
-    screen.getAllByRole("group", { name: "Reference names" })[0]!.textContent,
-  ).toContain("retain-me");
-  expect(
-    screen.getAllByRole("group", { name: "Reference names" })[0]!.textContent,
-  ).toContain("Unavailable");
+  const retained = screen.getAllByRole("group", {
+    name: "More prompts by reference name",
+  })[0]!;
+  expect(retained.textContent).toContain("retain-me");
+  expect(retained.textContent).toContain("Unavailable");
 });
 
 test("same-reference successful reload refreshes choices; unchecking old preserves newly inherited resources and does not refetch on edits", async () => {

@@ -303,9 +303,12 @@ test("SessionHttp: bounded native windows, long stream/coalescing and blocked wr
   for (let i = 0; i < 15; i++)
     await f.runtime.start(id, "x".repeat(60_000)).completion;
   const window = f.runtime.window(id);
-  assert.equal(window.messages.length, 20);
-  assert.equal(window.before, window.total - 20);
+  // The text budget runs out before 20 messages: the window stops there instead of
+  // sending older messages with empty text, and "Load older" picks them up.
+  assert(window.messages.length > 0 && window.messages.length < 20);
+  assert.equal(window.before, window.total - window.messages.length);
   assert(window.truncated);
+  assert(window.messages.every((m) => m.parts.some((p) => p.text)));
   const newest = window.messages.at(-1)!;
   assert.equal(newest.role, "assistant");
   assert.match(newest.parts[0]!.text, /^local:/);
@@ -327,8 +330,8 @@ test("SessionHttp: bounded native windows, long stream/coalescing and blocked wr
   const older = (await (
     await fetch(`${f.base}/api/sessions/${id}/window?before=${window.before}`)
   ).json()) as { messages: unknown[]; before: number };
-  assert.equal(older.before, 0);
-  assert.equal(older.messages.length, window.before);
+  assert(older.messages.length > 0);
+  assert.equal(older.before, window.before - older.messages.length);
   // Deliberately non-draining socket boundary. Real SDK continues independently while one bounded frame waits.
   class Blocked extends EventEmitter {
     headersSent = false;

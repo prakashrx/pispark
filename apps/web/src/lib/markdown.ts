@@ -6,6 +6,14 @@ marked.setOptions({
   breaks: false,
 });
 
+// Links in replies open outside the app instead of replacing it.
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  if (node.tagName === "A" && node.hasAttribute("href")) {
+    node.setAttribute("target", "_blank");
+    node.setAttribute("rel", "noopener noreferrer");
+  }
+});
+
 export function renderMarkdown(text: string): string {
   if (!text?.trim()) return "";
   return DOMPurify.sanitize(marked.parse(text, { async: false }), {

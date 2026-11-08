@@ -73,7 +73,6 @@ export class SessionClient {
   private mounting = false;
   private offline = () => {
     this.source?.abort();
-    this.snapshot = undefined;
     this.connection = "Reconnecting";
   };
   private online = () => this.reconnect();
@@ -253,8 +252,6 @@ export class SessionClient {
           });
           if (response.status === 410) {
             if (source !== this.source || source.signal.aborted) return;
-            this.snapshot = undefined;
-            this.older = undefined;
             this.connection = "Unloaded";
             const summary = this.sessions.find((session) => session.id === id);
             if (summary) summary.status = "unloaded";
@@ -295,7 +292,7 @@ export class SessionClient {
           /* Lost connection or bounded decoder rejection: reconnect from fresh snapshot, never resend commands. */
         }
         if (source.signal.aborted || this.disposed) return;
-        this.snapshot = undefined;
+        // Keep showing the last snapshot; the reply composer stays disabled until Live.
         this.connection = "Reconnecting";
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }

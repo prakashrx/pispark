@@ -185,6 +185,20 @@ export const icons = {
       },
     },
   ],
+  alert: [
+    {
+      tag: "circle",
+      attrs: { cx: "12", cy: "12", r: "9", "stroke-width": "1.8" },
+    },
+    {
+      tag: "path",
+      attrs: {
+        d: "M12 7.5v5.25M12 16.25v.25",
+        "stroke-linecap": "round",
+        "stroke-width": "2",
+      },
+    },
+  ],
   plus: [
     {
       tag: "path",

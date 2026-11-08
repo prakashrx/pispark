@@ -237,7 +237,7 @@ export class SessionRuntime {
         : Math.min(before, messages.length);
     if (!Number.isSafeInteger(end) || end < 0)
       throw new RuntimeError("invalid-input");
-    const start = Math.max(0, end - 20);
+    let start = Math.max(0, end - 20);
     const budget = { remaining: 24_000, truncated: false };
     const partial =
       before === undefined && session.state.streamingMessage
@@ -245,6 +245,12 @@ export class SessionRuntime {
         : undefined;
     const projected = [];
     for (let index = end - 1; index >= start; index--) {
+      // Once the text budget is spent, older messages stay for "Load older" instead of arriving empty.
+      if (budget.remaining <= 0 && projected.length) {
+        start = index + 1;
+        budget.truncated = true;
+        break;
+      }
       const message = messages[index]!;
       const preview = messageWindow(message, hosted.secret, budget, () => {
         const key = this.messageKeys.get(message) ?? randomUUID();

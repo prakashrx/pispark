@@ -69,8 +69,8 @@
                   title={`${persona.ref.root}/${persona.ref.path}`}
                   ><span class="truncate flex-1"
                     >{persona.valid ? persona.name : persona.ref.path}</span
-                  >{#if !persona.valid}<span class="needs-attention"
-                      >Needs attention</span
+                  >{#if !persona.valid}<span class="needs-attention" title="Needs attention"
+                      ><Icon name="alert" class="h-4 w-4" /><span class="sr-only">Needs attention</span></span
                     >{/if}</a
                 >{/each}
             </div>
@@ -104,11 +104,8 @@
   }
   .needs-attention {
     flex-shrink: 0;
-    font-size: 0.6875rem;
-    font-weight: 500;
-    padding: 0.05rem 0.45rem;
-    border-radius: var(--radius-full);
-    background: var(--warning-muted);
+    display: inline-grid;
+    place-items: center;
     color: var(--warning-foreground);
   }
 </style>

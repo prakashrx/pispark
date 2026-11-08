@@ -21,4 +21,7 @@ test("assistant Markdown preserves code and formatting while stripping active co
   expect(
     root.querySelector("script, svg, img, [onload], [onerror]"),
   ).toBeNull();
+  const link = root.querySelector("a[href]");
+  expect(link?.getAttribute("target")).toBe("_blank");
+  expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
 });

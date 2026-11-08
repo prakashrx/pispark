@@ -49,7 +49,9 @@ test("continuous authoritative resources, private prompt dialogs and text-only i
   await createPersona(page, name);
   const ref = await refFor(request, name);
   await capture(page, info, "continuous-empty");
-  await page.getByRole("button", { name: "Use persona", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Reuse a persona", exact: true })
+    .click();
   await capture(page, info, "reuse-chooser");
   await page.keyboard.press("Escape");
   await addParent(page, middleName);

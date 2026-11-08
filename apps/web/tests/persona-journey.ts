@@ -184,19 +184,17 @@ export async function reference(
   await dialog.getByRole("button", { name: "Done", exact: true }).click();
 }
 export async function addParent(page: Page, name: string) {
-  await page.getByRole("button", { name: "Use persona", exact: true }).click();
-  const dialog = page.getByRole("region", { name: "Use persona", exact: true });
-  await dialog.getByRole("button", { name: /^Choose a persona:/ }).click();
-  await dialog
-    .getByRole("combobox", {
-      name: "Search Choose a persona",
-      exact: true,
-    })
-    .fill(name);
-  await dialog.getByRole("option", { name, exact: true }).click();
-  await dialog
-    .getByRole("button", { name: "Use persona", exact: true })
+  // Picking a persona adds it immediately; there is no confirm step.
+  await page
+    .getByRole("button", { name: "Reuse a persona", exact: true })
     .click();
+  await page
+    .getByRole("combobox", { name: "Search Reuse a persona", exact: true })
+    .fill(name);
+  await page.getByRole("option", { name, exact: true }).click();
+  await expect(
+    page.getByRole("article", { name, exact: true }),
+  ).toBeVisible();
 }
 export async function refFor(request: APIRequestContext, name: string) {
   const catalog = await (await request.get("/api/personas")).json();

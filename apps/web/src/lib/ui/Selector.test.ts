@@ -36,7 +36,7 @@ test("filters searchable values, exposes empty state and dismisses outside", asy
   const input = await screen.findByRole("combobox", { name: "Search Folder" });
   await fireEvent.input(input, { target: { value: "missing" } });
   expect(screen.getByRole("status").textContent).toContain(
-    "No matching options",
+    "No matches",
   );
   await fireEvent.input(input, { target: { value: "Second" } });
   await fireEvent.keyDown(input, { key: "Enter" });

@@ -148,7 +148,8 @@ export class SessionStorage {
         // Local writes update the cache immediately. Reconcile external edits once per host.
         this.rescanAt = Date.now() + 30_000;
       }
-      return Array.from(this.catalog.values());
+      // Copies: callers must never be able to edit the cache.
+      return Array.from(this.catalog.values(), (entry) => structuredClone(entry));
     } catch (error) {
       if (error instanceof RuntimeError) throw error;
       throw new RuntimeError("storage");

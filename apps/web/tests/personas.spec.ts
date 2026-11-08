@@ -590,15 +590,10 @@ test("two real tabs reload Based on choices and unchecking an old instruction pr
       name: "1 · instructions · Newly inherited instruction",
       exact: true,
     });
-    await expect(
-      page.getByRole("checkbox", {
-        name: "1 · instructions · Newly inherited instruction",
-        exact: true,
-        includeHidden: true,
-      }),
-    ).toHaveCount(1);
-    const choices = page.getByText("Choose what to use", { exact: true });
-    if (!(await added.isVisible())) await choices.click();
+    // Reload replaces the draft, so the card may come back collapsed.
+    const choices = page.getByRole("button", { name: "Choose what to use", exact: true });
+    await expect(choices).toBeVisible();
+    if ((await choices.getAttribute("aria-expanded")) !== "true") await choices.click();
     await expect(added).toBeChecked();
     await page
       .getByRole("checkbox", {
@@ -938,56 +933,34 @@ test("Based on expert tokens preserve unknown draft references, validate custom 
       exact: true,
     }),
   ).not.toBeChecked();
-  await page
-    .getByRole("button", { name: "reused persona 1 actions", exact: true })
-    .click();
-  await page
-    .getByRole("menuitem", { name: "Advanced settings", exact: true })
-    .click();
-  let dialog = page.locator(".inline-panel");
-  const custom = dialog.getByRole("textbox", {
-    name: "Custom Reference names",
+  // Extra references are typed straight into the expanded card: no separate panel.
+  const tokens = page.getByRole("group", {
+    name: "More prompts by reference name",
     exact: true,
   });
+  const custom = tokens.getByRole("combobox");
   await custom.fill("NOT valid");
   await custom.press("Enter");
-  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(tokens.getByRole("alert")).toBeVisible();
   await custom.fill("unknown");
   await custom.press("Enter");
   await expect(
-    dialog.getByRole("button", { name: "Remove unknown", exact: true }),
+    tokens.getByRole("button", { name: "Remove unknown", exact: true }),
   ).toBeVisible();
-  await expect(dialog).toContainText("Unavailable");
-  await dialog.getByRole("button", { name: "Done", exact: true }).click();
-  await expect(
-    page.getByRole("checkbox", {
-      name: "Reference unknown · unavailable",
-      exact: true,
-    }),
-  ).toBeChecked();
+  await expect(tokens).toContainText("Unavailable");
   await action(page, "Preview");
   await page
     .getByRole("button", { name: "Check changes", exact: true })
     .click();
   await expect(page.locator(".inline-panel").getByRole("alert")).toBeVisible();
   await page.keyboard.press("Escape");
-  await page
-    .getByRole("button", { name: "reused persona 1 actions", exact: true })
-    .click();
-  await page
-    .getByRole("menuitem", { name: "Advanced settings", exact: true })
-    .click();
-  dialog = page.locator(".inline-panel");
-  await expect(dialog).toContainText("unknown");
+  await expect(tokens).toContainText("unknown");
   await capture(page, info, "reference-tokens", [390, 1920]);
-  await dialog
+  await tokens
     .getByRole("button", { name: "Remove unknown", exact: true })
     .focus();
   await page.keyboard.press("Delete");
-  await expect(
-    dialog.getByRole("button", { name: "Remove Known rule", exact: true }),
-  ).toBeFocused();
-  await dialog.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(custom).toBeFocused();
   await page
     .getByRole("checkbox", {
       name: "1 · instructions · Known rule",

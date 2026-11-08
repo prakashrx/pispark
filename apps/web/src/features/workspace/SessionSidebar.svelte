@@ -61,11 +61,11 @@
                     {/if}
                   </span>
                   {#if status}
-                    <span
-                      class="status-pill"
-                      data-tone={status === "Needs attention" ? "warning" : "active"}
-                      >{status}</span
-                    >
+                    <!-- Shape carries the meaning (spinner vs alert) and the text is announced; color only reinforces it. -->
+                    <span class="chat-status" data-tone={status === "Needs attention" ? "warning" : "active"} title={status}>
+                      {#if status === "Needs attention"}<Icon name="alert" class="h-4 w-4" />{:else}<span class="chat-spinner" aria-hidden="true"></span>{/if}
+                      <span class="sr-only">{status}</span>
+                    </span>
                   {/if}
                 </a>
               {/each}
@@ -85,30 +85,38 @@
 </div>
 
 <style>
-  .status-pill {
+  .chat-status {
     flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.1rem 0.5rem;
-    border-radius: var(--radius-full);
-    font-size: 0.6875rem;
-    font-weight: 500;
-    white-space: nowrap;
+    display: inline-grid;
+    place-items: center;
+    width: 1.25rem;
+    height: 1.25rem;
   }
-  .status-pill::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-  .status-pill[data-tone="warning"] {
-    background: var(--warning-muted);
+  .chat-status[data-tone="warning"] {
     color: var(--warning-foreground);
   }
-  .status-pill[data-tone="active"] {
-    background: var(--interactive-muted);
+  .chat-status[data-tone="active"] {
     color: var(--interactive-text);
+  }
+  .chat-spinner {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+    border-top-color: currentColor;
+    animation: chat-spin 0.9s linear infinite;
+  }
+  @keyframes chat-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chat-spinner {
+      animation: none;
+      border-color: currentColor;
+      width: 0.5rem;
+      height: 0.5rem;
+    }
   }
 </style>

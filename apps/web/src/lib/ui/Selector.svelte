@@ -25,6 +25,8 @@
     help,
     error,
     placeholder = "Choose an option",
+    emptyText = "Nothing to choose yet",
+    action = false,
     id: fieldId,
     "aria-describedby": describedby,
   }: {
@@ -44,6 +46,10 @@
     help?: string;
     error?: string;
     placeholder?: string;
+    /** Shown in the popup when there are no options at all (not just no matches). */
+    emptyText?: string;
+    /** An action trigger ("Add …"): its name is the label alone and it never shows a chosen value. */
+    action?: boolean;
     id?: string;
     "aria-describedby"?: string;
   } = $props();
@@ -93,9 +99,10 @@
     open = true;
     await tick();
     const popup = root?.querySelector<HTMLElement>("[data-selector-popup]");
-    alignLeft = (popup?.getBoundingClientRect().left ?? 0) < 8;
+    // Open toward the side with room: action triggers usually sit at the start of a row.
+    alignLeft = action || (popup?.getBoundingClientRect().left ?? 0) < 8;
     search = root?.querySelector("input") ?? null;
-    if (searchable) search?.focus();
+    if (search) search.focus();
     else root?.querySelector<HTMLElement>('[role="listbox"]')?.focus();
   }
   function choose(option: Option) {
@@ -210,7 +217,7 @@
       aria-busy={loading || undefined}
       aria-invalid={invalid || !!error || undefined}
       aria-describedby={description}
-      aria-label={`${label}: ${selected}`}
+      aria-label={action ? label : `${label}: ${selected}`}
       aria-haspopup="listbox"
       aria-expanded={open}
       aria-controls={`${id}-list`}
@@ -232,9 +239,10 @@
         class={"selector-popup absolute top-full z-50 mt-2 min-w-56 max-w-[85vw] rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-1.5 text-sm text-foreground " +
           (alignLeft ? "left-0" : "right-0")}
       >
-        {#if searchable}
+        {#if searchable && options.length}
           <Input
             label={`Search ${label}`}
+            placeholder="Search…"
             class="mb-1 w-full"
             bind:value={query}
             role="combobox"
@@ -254,7 +262,7 @@
           id={`${id}-list`}
           role="listbox"
           aria-label={label}
-          tabindex={searchable ? -1 : 0}
+          tabindex={searchable && options.length ? -1 : 0}
           aria-activedescendant={filtered.length
             ? optionId(filtered[active])
             : undefined}
@@ -278,7 +286,9 @@
                 ? "Loading…"
                 : error
                   ? "Options unavailable"
-                  : "No matching options"}
+                  : options.length
+                    ? "No matches"
+                    : emptyText}
             </p>{/each}
         </div>
         {#if footer}<div class="border-t border-[var(--border)] mt-1.5 p-2.5">

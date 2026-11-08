@@ -105,7 +105,9 @@
               : undefined
         : !sessions.selected || sessions.snapshot?.status !== "idle"
           ? "Open a chat that is ready for a message."
-          : undefined,
+          : sessions.connection !== "Live"
+            ? "Waiting for the chat to reconnect."
+            : undefined,
   );
   async function send() {
     if (unavailable) return;
