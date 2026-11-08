@@ -7,7 +7,6 @@ import {
   writeFile,
   readFile,
   readdir,
-  realpath,
   rm,
 } from "node:fs/promises";
 import { realpathSync } from "node:fs";
@@ -44,7 +43,7 @@ async function fixture(logger?: SafeLogger) {
   // Default grants nothing here; personas "a" and "b" each add read, an instruction and the controlled extension.
   await h.persona("default", { name: "Default" });
   for (const key of ["a", "b"] as const) {
-    folders[key] = realpathSync(
+    folders[key] = realpathSync.native(
       await h.folder(key, { ...ambient(h.root), "value.txt": `workspace-${key}` }),
     );
     await h.persona(
