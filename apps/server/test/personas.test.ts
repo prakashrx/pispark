@@ -219,3 +219,17 @@ test("chat layers: a chat reads its persona until edited, then layers on top wit
   assert.deepEqual(resolveSetup(s, { persona: "dev" }).instructions.map((i) => i.text), ["persona"]);
   assert.ok(changes.length >= 1);
 });
+
+test("a chat on Default gets a layer with no listed parents", async (t) => {
+  const h = await testHome("pispark-personas-");
+  t.after(h.remove);
+  const s = new PersonaStore(join(h.home, "personas"), join(h.home, "chats"), () => "default");
+  const chat = { chat: CHAT };
+  assert.deepEqual(s.read(chat), { definition: {}, revision: "" });
+  assert.equal(resolveSetup(s, chat).fingerprint, resolveSetup(s, { persona: "default" }).fingerprint);
+  s.save(chat, "", { off: ["tool:bash"] });
+  const setup = resolveSetup(s, chat);
+  assert.deepEqual(setup.layers.map((l) => l.id), ["default", "chat"]);
+  assert.ok(!setup.toolsOn.includes("bash"));
+  assert.ok(resolveSetup(s, { persona: "default" }).toolsOn.includes("bash"));
+});

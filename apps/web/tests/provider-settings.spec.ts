@@ -126,22 +126,6 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   await expect(deterministic).toBeChecked();
   await summary(page).click();
   await expect(ask).toHaveValue("Keep shared Ask draft");
-  await page
-    .getByRole("button", {
-      name: "Persona: No persona",
-    })
-    .click();
-  await page.locator("[data-selector-popup] summary").click();
-  await page.getByRole("button", { name: /^Chat setup:/ }).click();
-  await page
-    .getByRole("option", { name: "Catalog resources", exact: true })
-    .click();
-  await page
-    .getByRole("button", {
-      name: "Persona: No persona",
-      exact: true,
-    })
-    .click();
   await expect(
     page.getByRole("button", { name: /Model: Default:/ }),
   ).toContainText("Deterministic");

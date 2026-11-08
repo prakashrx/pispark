@@ -17,6 +17,8 @@
   let editingPersona = $state(false);
   async function closePersona() {
     editingPersona = false;
+    // The Personas page shares the editor; give it back its list, not this chat's layer.
+    client.personas.collection();
     if (client.snapshot?.personaChanged && client.snapshot.status === "idle")
       await client.reload();
   }

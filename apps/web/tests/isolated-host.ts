@@ -24,7 +24,6 @@ export async function isolatedHost(info: TestInfo) {
       USERPROFILE: home,
       APPDATA: join(home, "AppData", "Roaming"),
       PORT: String(port),
-      PISPARK_CONFIG: "",
       PISPARK_DEV_ORIGIN: "",
     };
     for (const key of [

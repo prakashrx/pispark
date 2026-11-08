@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { folderButton, otherFolderLabel, useFolder } from "./ask";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -28,7 +29,7 @@ for (const width of [1920, 3840]) {
     await mkdir(evidence, { recursive: true });
     await page.goto("/#/workspace");
     await expect(
-      page.getByRole("button", { name: "Folder: workspace" }),
+      folderButton(page),
     ).toBeVisible();
     // Ask recedes once a chat is open; measure after the initial selection settles.
     await expect
@@ -151,16 +152,10 @@ test("one global Ask retains draft and all selectors through routes, history and
   await page
     .getByRole("textbox", { name: /Reply to chat/ })
     .fill("Independent session follow-up");
-  await page.getByRole("button", { name: "Folder: workspace" }).click();
-  await page.getByRole("combobox", { name: "Search Folder" }).fill("notes");
-  await page.keyboard.press("Enter");
-  for (const label of ["Preset model"])
-    await expect(
-      page.getByRole("button", { name: label, exact: true }),
-    ).toHaveAttribute("aria-disabled", "true");
+  await useFolder(page);
   await page
     .getByRole("button", {
-      name: "Persona: No persona",
+      name: "Persona: Default",
     })
     .click();
   await page.keyboard.press("Escape");
@@ -171,11 +166,7 @@ test("one global Ask retains draft and all selectors through routes, history and
         (el) => el === document.querySelector('[aria-label="Ask anything"]'),
       ),
     ).toBe(true);
-    for (const label of [
-      "Folder: notes",
-      "Preset model",
-      "Persona: No persona",
-    ]) {
+    for (const label of [otherFolderLabel, "Persona: Default"]) {
       await expect(
         page.getByRole("button", { name: label, exact: true }),
       ).toBeVisible();
@@ -215,7 +206,7 @@ test("one global Ask retains draft and all selectors through routes, history and
   await retained();
   await navigate(page, "settings");
   await expect(
-    page.getByRole("button", { name: "Folder: notes" }),
+    page.getByRole("button", { name: otherFolderLabel, exact: true }),
   ).toBeVisible();
 });
 
@@ -239,13 +230,13 @@ test("narrow shell preserves Ask across routes and keyboard sidebar toggles", as
     await expect(
       page.getByRole("button", { name: "Collapse sidebar" }),
     ).toBeFocused();
-    await page.getByRole("button", { name: "Folder: workspace" }).click();
+    await folderButton(page).click();
     await expect(
-      page.getByRole("combobox", { name: "Search Folder" }),
+      page.getByRole("combobox", { name: "Search Working folder" }),
     ).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(
-      page.getByRole("button", { name: "Folder: workspace" }),
+      folderButton(page),
     ).toBeFocused();
     expect(
       await page.evaluate(

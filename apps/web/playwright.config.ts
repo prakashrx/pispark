@@ -32,7 +32,6 @@ export default defineConfig({
       env: {
         HOME: home,
         USERPROFILE: home,
-        PISPARK_CONFIG: "",
         PORT: production ? port : apiPort,
         PISPARK_DEV_ORIGIN: production ? "" : baseURL,
       },

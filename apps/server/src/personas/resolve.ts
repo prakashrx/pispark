@@ -188,7 +188,7 @@ export function resolveSetup(
   // A chat with no layer of its own simply uses its persona.
   const effective =
     "chat" in target && !store.exists(target)
-      ? { persona: store.read(target).definition.base![0]! }
+      ? { persona: store.read(target).definition.base?.[0] ?? DEFAULT_PERSONA }
       : target;
   const layers = resolveLayers(store, effective);
   const { entries, tools, settings } = fold(store, layers);

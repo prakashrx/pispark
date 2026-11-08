@@ -1,37 +1,25 @@
-# Local sessions: configuration and protocol
+# Local sessions: setup and protocol
 
 [VISION.md](../VISION.md) is authoritative. Pi owns execution/tools/context/extensions/history. PiSpark hosts the local runtime, commands and observation; the browser is not its owner. See [runtime details and limitations](session-runtime.md).
 
-## Operator setup
+## Setup
 
-Without configuration, `npm start` serves the real UI, health and an empty configuration catalog. Run is unavailable: no fixture model is selected and no terminal Pi installation/store is read. Native provider discovery/status can use normal server-process environment or cloud configuration; this does not enable sessions without an admitted workspace/resource configuration. `HOST` accepts only `127.0.0.1` or `::1`. This is a **trusted single-user local service**, not an authenticated remote deployment. Do not forward its port, put it behind a public proxy, or share it with untrusted local users.
+There is no configuration file. Start the server (`npm run dev` or `npm start`) and PiSpark uses its data folder: `PISPARK_HOME`, or `~/.pispark` when that isn't set. A leading `~` is expanded. On first start it creates the folder layout and a **Default** persona with Pi's built-in tools (`read, bash, edit, write, grep, find, ls`), so a new chat can work with files right away. Sign in to a provider under **Providers & models** and choose a model.
 
-Set `PISPARK_CONFIG` to an **absolute path to a trusted operator-owned ESM module**, exporting a `RuntimeConfiguration` as default. The module executes with full Node/OS privileges, like an admitted extension. Never obtain its path or source from a browser. Put private configuration outside version control; secrets belong in the native store or an explicit server secret resolver, never this repository, browser storage, model picker or host metadata. Native sign-in accepts transient secret responses. Node does not automatically load `.env` here.
-
-Example (replace paths, inspect the native provider's available IDs, and explicitly select the model you intend to pay for):
-
-```js
-// operator-config.mjs, in a private directory with access to the pinned npm dependencies
-import { openaiProvider } from '@earendil-works/pi-ai/providers/openai';
-export default {
-  storageDir: '/absolute/private/pispark-history',
-  workspaces: { project: '/absolute/project' },
-  configurations: {
-    'My explicit model': {
-      provider: () => openaiProvider(),
-      modelId: 'REPLACE_WITH_AN_ID_FROM_openaiProvider().getModels()',
-      credential: { secretRef: 'project-model' },
-      systemPrompt: 'Help with the explicitly selected workspace.',
-      tools: ['read'],
-      extensions: [], instructions: [], skills: [],
-    },
-  },
-  resolveSecret: async reference => reference === 'project-model'
-    ? process.env.PISPARK_MODEL_API_KEY : undefined,
-};
+```text
+<data folder>/
+├── pispark.lock         one server per data folder
+├── personas/<id>/       persona.json + instructions/, skills/, prompts/, extensions/
+├── chats/<id>/          chat.json, Pi's transcript, an optional persona/ layer
+├── providers/           Pi's auth.json, settings.json and model files
+└── logs/
 ```
 
-This is an illustrative operator configuration, not a test provider or automatically enabled account. Use an absolute Windows path where applicable. The module's npm imports must resolve to the pinned installation (for example an operator-managed directory beneath the checkout with its own ignore rule, or explicit file-URL imports to the installed dependency). Do not put secrets in the module. The runtime validates the selected model, exact admitted resource files and backend workspace before execution. Native tools are cwd-bound, **not filesystem-confined**. Configuration/workspace keys (up to64 each,128 characters/key) are the browser's choices, not arbitrary browser-supplied host paths. [Local persona instruction/skill composition](personas.md) is implemented. Styles, remote/multi-user hosting, marketplace and extension Svelte hosting are deferred. Native provider OAuth is implemented through the browser bridge.
+For development, point `PISPARK_HOME` at a separate folder in the repository's ignored `.env` (for example `PISPARK_HOME=~/.pispark-dev`) so your everyday data is never touched. A second server on the same data folder refuses to start; a lock left by a process that is gone is replaced.
+
+Ask chooses the **working folder** (any existing folder on the backend host; defaults to the user's home, with recent folders offered), the **persona** (Default when not chosen) and the **model**. Folder paths are backend-host paths. Native tools run with the server's OS permissions and are cwd-bound, **not filesystem-confined**. Personas can enable tools, extensions and commands; see [personas](personas.md).
+
+`HOST` accepts only `127.0.0.1` or `::1`. This is a **trusted single-user local service**, not an authenticated remote deployment. Do not forward its port, put it behind a public proxy, or share it with untrusted local users. PiSpark depends on nothing installed on the machine beyond Node: the Pi SDK is an npm dependency, and terminal Pi and `~/.pi` are never read. Styles, remote/multi-user hosting, marketplace and extension Svelte hosting are deferred.
 
 ### Required runtime security gate
 
@@ -47,14 +35,14 @@ Types: `apps/server/src/protocol.ts`, `provider-protocol.ts` and `persona-protoc
 
 | Endpoint | Meaning |
 | --- | --- |
-| `GET /api/catalog` | Admitted workspace/resource-configuration keys; no credential references or secrets |
+| `GET /api/catalog` | `{home, recentFolders}`: starting points for Ask's folder picker |
 | `GET /api/sessions` | At most256 stored summaries; `truncated` explicitly signals more |
 | `POST /api/commands` | Exact typed JSON command, UUID `commandId`; HTTP202 correlated receipt |
 | `GET /api/receipts/:commandId` | Current accepted/settled receipt;404 `unknown-receipt` after expiry/restart or unknown ID |
 | `GET /api/sessions/:uuid/events` | SSE `snapshot` events: initial boundary followed by replacement windows |
 | `GET /api/sessions/:uuid/window?before=N` | Bounded older window in current native context, not a durable history cursor |
 
-Commands: `create {workspace,configuration,model?,persona?}`, `open/cancel/stop {sessionId}`, `start/steer/follow-up {sessionId,text}`. All require `commandId`; unknown fields are rejected. Optional persona selection is `{root,path,id,revision}` for saved resources only; it is independent of model and host policy. Session summaries expose admitted persona identity/name/revisions, not full resources. Optional `title` is bounded chat content (one line, at most80 Unicode code points). The first accepted start input of an empty, never-started chat supplies a normalized fallback before dispatch; later inputs do not overwrite a present title. The native PiSpark integration tool can update it during ordinary agent execution; see [the session-bound capability](session-runtime.md#built-in-pispark-session-integration). There is no background naming model request or history backfill, and titles are not operational log fields. Optional `hasHistory` projects the existing host metadata fact without reading transcripts; an absent field is not evidence of an empty chat. Older v1 metadata without titles remains valid. Untitled saved chats show **Untitled chat**, truly empty chats **New chat**, with dates as secondary context. Shared sidebar/header presentation observes title changes immediately. Chat info shows only Persona, Model, Working folder and Started, not UUIDs, revisions, queues or projection constants. Example:
+Commands: `create {folder,model?,persona?}`, `open/reload/cancel/stop {sessionId}`, `start/steer/follow-up {sessionId,text}`. All require `commandId`; unknown fields are rejected. `folder` is an absolute path of an existing folder on the backend host; `persona` is a persona ID (Default when omitted). `reload` restarts an idle chat's Pi session from its transcript so persona changes apply. Session summaries expose `folder`, `persona {id,name,layered}` and, for open chats, `personaChanged` when the resolved persona no longer matches the one the session started with. Start input may be a persona `/command`; Pi expands prompt templates as in terminal Pi. Optional `title` is bounded chat content (one line, at most80 Unicode code points). The first accepted start input of an empty, never-started chat supplies a normalized fallback before dispatch; later inputs do not overwrite a present title. The native PiSpark integration tool can update it during ordinary agent execution; see [the session-bound capability](session-runtime.md#built-in-pispark-session-integration). There is no background naming model request or history backfill, and titles are not operational log fields. Optional `hasHistory` projects the existing host metadata fact without reading transcripts; an absent field is not evidence of an empty chat. Older v1 metadata without titles remains valid. Untitled saved chats show **Untitled chat**, truly empty chats **New chat**, with dates as secondary context. Shared sidebar/header presentation observes title changes immediately. Chat info shows only Persona, Model, Working folder and Started, not UUIDs, revisions, queues or projection constants. Example:
 
 ```json
 {"commandId":"e4e803d2-72f3-4b3b-855b-a64814f18e43","type":"start","sessionId":"4f964eb2-43fa-4122-8b48-c81ea576c978","text":"Read the project overview."}
@@ -74,31 +62,13 @@ Limits:72KiB request body (64KiB prompt),5s body read,32 in-flight HTTP operatio
 
 ## Verification and remaining limits
 
-`session-http.test.ts` exercises real SDK concurrency, cancel/queues, snapshot race/reconnect, Host/Origin/JSON/identity, safe failures, retained IDs, expired receipts, history reopen, observer admission, large histories,10000 token events and deliberately blocked writes. Existing runtime tests cover process-kill interruption/no tool replay, auth/model/resource/storage failures and native extension cleanup. Browser tests start a **test-only executable** under `apps/server/test/fixtures/` with the actual SDK and deterministic provider. It is not imported by production source or switched on by a production flag. Browser tests exercise development proxy and production assets using shared chrome, actual start/stream/tool/reply/cancel/reconnect, independent drafts and extension errors. No external or paid provider calls were made. External auth/network streaming/cancellation compatibility, independent review and user visual acceptance remain separate gates. Native deterministic store tests do not certify real login or model entitlement.
+`session-http.test.ts` exercises real SDK concurrency, cancel/queues, snapshot race/reconnect, Host/Origin/JSON/identity, safe failures, retained IDs, expired receipts, history reopen, observer admission, large histories,10000 token events and deliberately blocked writes. Existing runtime tests cover process-kill interruption/no tool replay, auth/model/resource/storage failures and native extension cleanup. Browser tests start a **test-only executable** under `apps/server/test/fixtures/` with a temporary data folder, the actual SDK and a deterministic signed-in provider. It is not imported by production source or switched on by a production flag. Browser tests exercise development proxy and production assets using shared chrome, actual start/stream/tool/reply/cancel/reconnect, independent drafts and extension errors. No external or paid provider calls were made. External auth/network streaming/cancellation compatibility, independent review and user visual acceptance remain separate gates. Native deterministic store tests do not certify real login or model entitlement.
 
 ## Providers & models: native store and browser bridge
 
-A catalog-enabled resource configuration is independent of model choice:
+Model choice is independent of the persona: a new chat uses Ask's model, else the persona's preferred model (if signed in), else the default. A chat keeps its model when reopened.
 
-```js
-export default {
-  storageDir: '/absolute/private/pispark/sessions',
-  providerSettings: {
-    directory: '/absolute/private/pispark/providers',
-    modelsPath: null, // or an explicit readable absolute models.json file
-  },
-  workspaces: { project: '/absolute/project' },
-  configurations: {
-    'Project resources': {
-      credential: { stored: true }, systemPrompt: 'Help with this workspace.',
-      tools: ['read'], extensions: [], instructions: [], skills: [],
-    },
-  },
-  resolveSecret: async () => undefined,
-};
-```
-
-Replace paths for the backend OS. No terminal Pi setup is required. Default storage is `~/.pispark/sessions`; omitted `providerSettings.directory` is `<storageDir>/provider-settings`. The settings directory contains native `auth.json`, host `installation.json` (device identity), host `settings.json` (default model), and its ownership directory/lock. With an explicit models file, native `models-store.json` is explicitly located in that settings directory. With `modelsPath:null` (or omitted), model configuration is disabled and Pi1.4 uses an in-memory model cache: `modelsStorePath` is ignored by that native branch. Per-session model runtimes use no models file and an in-memory catalog with the resolved selection. Resources/settings and native JSONL history remain explicit session-owned paths, not terminal defaults.
+`<data folder>/providers/` contains native `auth.json`, host `installation.json` (device identity), host `settings.json` (default model) and native model files. Model configuration from a `models.json` file is off by default; Pi 1.4 then uses an in-memory model cache. Per-session model runtimes use no models file and an in-memory catalog with the resolved selection. No terminal Pi setup is required or read.
 
 `ModelRuntime.create({authPath: explicitPath, modelsPath: explicitOrNull, modelsStorePath: explicitPath})` lets Pi construct and own native locked authentication/catalog persistence. The SDK root does not export AuthStorage; PiSpark supplies a path, not a private store adapter. Separate session runtimes deliberately share the auth path, not model/session/extension state. Native OAuth refresh and errors remain Pi-owned. New runtime instances observe persisted credentials; removing credentials does not revoke already-dispatched requests or upstream grants. Native environment/cloud configuration can still make a provider available after logout. `$ENV` interpolation and credential commands are trusted operator semantics; the browser cannot upload models.json, choose config paths, or request arbitrary credential resolution.
 

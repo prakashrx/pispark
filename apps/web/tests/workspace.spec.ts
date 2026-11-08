@@ -1,6 +1,7 @@
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import { folderButton, otherFolder, otherFolderLabel } from "./ask";
 import { hostedTest } from "./isolated-host";
-import { addPrompt, createPersona, openPersona } from "./persona-journey";
+import { addInstruction, createPersona, openPersona } from "./persona-journey";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -45,7 +46,7 @@ hostedTest("four source pages render locally without errors or external requests
       external.push(request.url());
   });
   for (const [route, heading] of [
-    ["workspace", "New chat|Test-only deterministic"],
+    ["workspace", "New chat"],
     ["settings", "General"],
     ["persona", "Personas"],
     ["sources", "Sources"],
@@ -90,23 +91,22 @@ hostedTest("keyboard selectors, independent draft composers and sidebar navigati
   await expect(
     page.getByRole("button", { name: "Add context", exact: true }),
   ).toHaveCount(0);
-  const folder = page.getByRole("button", { name: "Folder: workspace" });
-  await folder.click();
-  await page.getByRole("combobox", { name: "Search Folder" }).fill("notes");
+  await folderButton(page).click();
+  await page.getByRole("textbox", { name: "Another folder" }).fill(otherFolder);
   await capture(page, info, "folder-popup");
   await page.keyboard.press("Enter");
   await expect(
-    page.getByRole("button", { name: "Folder: notes" }),
+    page.getByRole("button", { name: otherFolderLabel, exact: true }),
   ).toBeFocused();
   await page
     .getByRole("button", {
-      name: "Persona: No persona",
+      name: "Persona: Default",
     })
     .click();
   await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", {
-      name: "Persona: No persona",
+      name: "Persona: Default",
     }),
   ).toBeFocused();
   await page.getByRole("textbox", { name: /Ask anything/ }).focus();
@@ -126,12 +126,13 @@ hostedTest("keyboard selectors, independent draft composers and sidebar navigati
     .click();
   await expect(page.getByRole("heading", { name: "Personas" })).toBeVisible();
   await createPersona(page, "Keyboard writer");
-  await addPrompt(page, "Local instructions");
+  await addInstruction(page, "Local instructions");
   await page.getByRole("link", { name: "Sources", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
+  // Back returns to where you were: the persona's editor.
   await page.goBack();
   await expect(
-    page.getByRole("heading", { name: "Personas", exact: true }),
+    page.getByRole("heading", { name: "Keyboard writer", level: 1 }),
   ).toBeVisible();
   await openPersona(page, "Keyboard writer");
   await expect(
@@ -190,9 +191,9 @@ test("narrow pages reflow without clipping and popup/modal remain keyboard usabl
     ).toBe(true);
     await capture(page, info, `mobile-${route}`);
   }
-  await page.getByRole("button", { name: "Folder: workspace" }).click();
+  await folderButton(page).click();
   await expect(
-    page.getByRole("combobox", { name: "Search Folder" }),
+    page.getByRole("combobox", { name: "Search Working folder" }),
   ).toBeFocused();
   expect(
     await page.evaluate(

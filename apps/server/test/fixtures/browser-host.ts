@@ -1,6 +1,7 @@
 /** Test-only executable for Playwright. Never imported by production source or enabled by a production flag. */
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SessionRuntime } from "../../src/runtime/session-runtime.js";
@@ -19,8 +20,14 @@ await mkdir(home, { recursive: true });
 const workspace = join(root, "workspace");
 await mkdir(workspace, { recursive: true });
 await writeFile(join(workspace, "sample.txt"), "native browser tool result");
-// First run only: a Default with read and the controlled extension, and a Review persona with a skill.
-if (!persistentRoot) {
+// Ask starts chats in the host's home folder. The harness points HOME at a temporary folder;
+// only then is the sample file placed there too.
+const testHome = homedir();
+if (testHome.startsWith(tmpdir()) && existsSync(testHome))
+  await writeFile(join(testHome, "sample.txt"), "native browser tool result");
+// First start of this data folder: a Default with read and the controlled extension,
+// and a Review persona with a skill and a command.
+if (!existsSync(join(home, "personas", "default", "persona.json"))) {
   await writePersona(
     home,
     "default",

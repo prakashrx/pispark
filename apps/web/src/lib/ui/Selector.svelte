@@ -37,7 +37,8 @@
     searchable?: boolean;
     class?: string;
     children?: Snippet<[string]>;
-    footer?: Snippet;
+    /** Extra content under the options; receives `close` (returns focus to the trigger). */
+    footer?: Snippet<[() => void]>;
     display?: "field" | "compact";
     disabled?: boolean;
     readonly?: boolean;
@@ -292,7 +293,7 @@
             </p>{/each}
         </div>
         {#if footer}<div class="border-t border-[var(--border)] mt-1.5 p-2.5">
-            {@render footer()}
+            {@render footer(() => close(true))}
           </div>{/if}
       </div>
     {/if}

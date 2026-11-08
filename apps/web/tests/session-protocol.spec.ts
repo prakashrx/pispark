@@ -35,7 +35,7 @@ test("real SDK via shared Ask/reply: streaming, native tools, cancellation, inde
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await expect(
     page.getByRole("button", {
-      name: "Persona: No persona",
+      name: "Persona: Default",
     }),
   ).toBeVisible();
   await ask.fill("hold alpha");
@@ -113,7 +113,7 @@ test("native extension failure is visible and browser never receives arbitrary R
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await expect(
     page.getByRole("button", {
-      name: "Persona: No persona",
+      name: "Persona: Default",
     }),
   ).toBeVisible();
   await ask.fill("ui-confirm");
@@ -148,7 +148,7 @@ for (const mode of ["ask", "reply"] as const) {
     });
     await expect(
       page.getByRole("button", {
-        name: "Persona: No persona",
+        name: "Persona: Default",
       }),
     ).toBeVisible();
     if (mode === "reply") {
@@ -208,7 +208,7 @@ test("background receipt failure stays with its originating session across selec
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await expect(
     page.getByRole("button", {
-      name: "Persona: No persona",
+      name: "Persona: Default",
     }),
   ).toBeVisible();
   await ask.fill("session B");
@@ -277,7 +277,7 @@ for (const fail of [false, true]) {
     const reply = page.getByRole("textbox", { name: "Reply to chat" });
     await expect(
       page.getByRole("button", {
-        name: "Persona: No persona",
+        name: "Persona: Default",
       }),
     ).toBeVisible();
     await ask.fill("switch B");
@@ -374,7 +374,7 @@ for (const fail of [false, true]) {
     });
     await expect(
       page.getByRole("button", {
-        name: "Persona: No persona",
+        name: "Persona: Default",
       }),
     ).toBeVisible();
     let release!: () => void;

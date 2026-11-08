@@ -170,13 +170,16 @@
           <span class="max-w-36 truncate" title={value}>{folderName(value)}</span>
           <Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60" />
         {/snippet}
-        {#snippet footer()}
+        {#snippet footer(close)}
           <form
             class="flex items-end gap-2 w-[min(22rem,80vw)]"
+            aria-label="Use another folder"
             onsubmit={(event) => {
               event.preventDefault();
-              if (otherFolder.trim()) folder = otherFolder.trim();
+              if (!otherFolder.trim()) return;
+              folder = otherFolder.trim();
               otherFolder = "";
+              close();
             }}
           >
             <div class="flex-1 min-w-0">
@@ -220,7 +223,7 @@
       >
         {#snippet children(value)}
           <Icon name="model" class="w-4 h-4" />
-          <span>{value}</span>
+          <span class="max-w-44 truncate" title={value}>{value}</span>
           <Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60" />
         {/snippet}
       </Selector>

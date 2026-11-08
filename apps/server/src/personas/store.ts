@@ -134,11 +134,14 @@ export class PersonaStore {
   } {
     const path = join(this.dir(target), "persona.json");
     if (!existsSync(path)) {
-      if ("chat" in target)
+      if ("chat" in target) {
+        // A chat's layer builds on its persona; Default is always first and never listed.
+        const persona = this.chatPersona(target.chat);
         return {
-          definition: { base: [this.chatPersona(target.chat)] },
+          definition: persona === DEFAULT_PERSONA ? {} : { base: [persona] },
           revision: "",
         };
+      }
       fail("not-found", 404);
     }
     const source = readText(path);

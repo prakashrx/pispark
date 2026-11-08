@@ -619,7 +619,6 @@ test("nativeModelRuntime: native host env and stored env reference resolve in ex
     {
       env: {
         ...process.env,
-        PISPARK_CONFIG: "",
         PISPARK_TEST_NATIVE_KEY: "test-child-only-key",
       },
       encoding: "utf8",
