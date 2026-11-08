@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  let { children }: { children: Snippet } = $props();
+  /** `label`: an extension's name for collapsed thinking (Pi's setHiddenThinkingLabel). */
+  let { children, label = "Thinking" }: { children: Snippet; label?: string } = $props();
   let expanded = $state(false);
 </script>
 
@@ -9,7 +10,7 @@
     <svg class="thought-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
       <path stroke-linecap="round" stroke-linejoin="round" d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.9V16h5v-.2c0-.8.4-1.5 1-1.9A6 6 0 0 0 12 3Z" />
     </svg>
-    <span>Thinking</span>
+    <span>{label}</span>
     <svg class="thought-chevron" class:open={expanded} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
       <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
     </svg>

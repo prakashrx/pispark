@@ -568,6 +568,13 @@ export class SessionRuntime {
           hosted.identity.admissionClosed = false;
         if (event.type === "agent_settled" && hosted.identity)
           hosted.identity.settled = true;
+        // Pi's session name is the chat title: an extension's pi.setSessionName renames the chat.
+        if (event.type === "session_info_changed" && event.name)
+          try {
+            this.setTitle(hosted, event.name, new AbortController().signal);
+          } catch {
+            /* A closing chat or an invalid name keeps the current title. */
+          }
         if (
           event.type === "message_end" &&
           event.message.role === "assistant" &&
@@ -580,6 +587,7 @@ export class SessionRuntime {
       hosted.ui = new ExtensionUI({
         changed: () => this.changed(hosted),
         position: () => session.messages.length,
+        cwd,
       });
       hosted.rendering = new ExtensionRendering(session, () => this.changed(hosted));
       // Pi's mode for clients that are not a terminal: dialogs and notices work, terminal components don't.

@@ -373,6 +373,23 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
       ["error", "The controlled extension failed in before_agent_start: fixture failure"],
     ]);
     assert.equal(f.runtime.snapshot(a.id).error, undefined);
+    // Working indicator, thinking label, window title, one header and footer; Pi's session name is the chat title.
+    assert.equal((await f.runtime.start(a.id, "ui-chrome").completion).outcome, "completed");
+    const chrome = f.runtime.window(a.id);
+    assert.deepEqual(chrome.extensions.working, {
+      message: "Fixture working",
+      frames: [[{ text: "*", fg: "accent" }], [{ text: "+" }]],
+      intervalMs: 100,
+    });
+    assert.equal(chrome.extensions.thinkingLabel, "Pondering");
+    assert.equal(chrome.extensions.title, "Fixture window");
+    assert.deepEqual(chrome.extensions.header, [[{ text: "Fixture header", bold: true }]]);
+    assert.match(chrome.extensions.footer![0]![0]!.text, /^branch:\S+ statuses:fixture$/);
+    assert.equal(chrome.title, "Named by extension");
+    assert.equal((await f.runtime.start(a.id, "ui-quiet").completion).outcome, "completed");
+    const quiet = f.runtime.window(a.id).extensions;
+    assert.equal(quiet.working?.hidden, true);
+    assert.equal(quiet.header, undefined);
     await f.runtime.stop(a.id);
     f.provider.automatic = false;
     await stopAbortsBeforeShutdown(f);

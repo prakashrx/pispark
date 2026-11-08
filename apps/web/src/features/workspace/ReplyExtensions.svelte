@@ -5,7 +5,7 @@
 
   /**
    * What extensions show around the reply box, where terminal Pi shows it: widgets above and
-   * below the editor, questions above it, statuses in the footer.
+   * below the editor, questions above it, statuses (or an extension's footer) underneath.
    */
   let { placement }: { placement: "above" | "below" } = $props();
   const client = useSessions();
@@ -27,6 +27,9 @@
         {/each}
       </div>
     {/if}
+  {:else if view.footer}
+    <!-- An extension footer replaces the status line, as it replaces terminal Pi's footer. -->
+    <div class="extension-statuses" aria-label="Extension status"><StyledText class="extension-status" lines={view.footer} /></div>
   {:else if view.statuses.length}
     <div class="extension-statuses" aria-label="Extension status">
       {#each view.statuses as status (status.key)}<StyledText class="extension-status" lines={[status.line]} />{/each}

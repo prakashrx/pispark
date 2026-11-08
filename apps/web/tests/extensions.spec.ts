@@ -39,4 +39,12 @@ test("an extension's notice, status, widget and question appear around the chat 
   await page.keyboard.press("Escape");
   await expect(page.getByRole("group", { name: "Proceed?" })).toHaveCount(0);
   await expect(page.getByText("local:ui-confirm", { exact: true })).toBeVisible();
+
+  // One header and footer slot, the browser tab title, and Pi's session name as the chat title.
+  await reply.fill("ui-chrome");
+  await reply.press("Enter");
+  await expect(page.getByRole("heading", { level: 1, name: "Named by extension" })).toBeVisible();
+  await expect(page.getByText("Fixture header", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Extension status")).toHaveText(/^branch:\S+ statuses:fixture$/);
+  await expect(page).toHaveTitle("Fixture window");
 });

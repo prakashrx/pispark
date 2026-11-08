@@ -38,6 +38,22 @@ export default function (pi) {
       ctx.ui.setEditorText("drafted by fixture");
     }
     if (event.prompt === "ui-fail") throw new Error("fixture failure");
+    if (event.prompt === "ui-chrome") {
+      const theme = ctx.ui.theme;
+      const component = (text) => ({ render: () => [text], invalidate() {} });
+      ctx.ui.setWorkingMessage("Fixture working");
+      ctx.ui.setWorkingIndicator({ frames: [theme.fg("accent", "*"), "+"], intervalMs: 100 });
+      ctx.ui.setHiddenThinkingLabel("Pondering");
+      ctx.ui.setTitle("Fixture window");
+      ctx.ui.setHeader(() => component(theme.bold("Fixture header")));
+      ctx.ui.setFooter((_tui, _theme, data) =>
+        component(`branch:${data.getGitBranch() ?? "none"} statuses:${[...data.getExtensionStatuses().keys()].join(",")}`));
+      pi.setSessionName("Named by extension");
+    }
+    if (event.prompt === "ui-quiet") {
+      ctx.ui.setWorkingVisible(false);
+      ctx.ui.setHeader(undefined);
+    }
   });
   pi.on("input", async (event) => {
     if (event.text === "slow-input")

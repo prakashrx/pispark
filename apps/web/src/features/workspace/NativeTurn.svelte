@@ -10,7 +10,8 @@
   let {
     message,
     hidden = new Set<number>(),
-  }: { message: NativeMessage; hidden?: Set<number> } = $props();
+    thinkingLabel,
+  }: { message: NativeMessage; hidden?: Set<number>; thinkingLabel?: string } = $props();
   // A clipped reply ends where the text budget ran out, often mid-word; mark the cut.
   const lastText = $derived(
     message.detail
@@ -48,7 +49,7 @@
       {#if hidden.has(index)}{:else if part.type === "toolCall"}
         <ToolCard name={part.name ?? "Tool"} result="requested" />
       {:else if part.type === "thinking"}
-        <ThoughtCard>{part.text}</ThoughtCard>
+        <ThoughtCard label={thinkingLabel}>{part.text}</ThoughtCard>
       {:else}
         <div class="prose max-w-none">{@html renderMarkdown(ellipsis(part.text, index === lastText))}</div>
       {/if}

@@ -39,7 +39,7 @@ services.eventBus.emit('probe', {});
 assert.equal(busEvents, 1);
 const { session } = await createAgentSession({ cwd: join(root, 'cwd'), agentDir: join(root, 'agent'), modelRuntime: services.modelRuntime, model: services.model, settingsManager: services.settingsManager, resourceLoader: services.resourceLoader, sessionManager: SessionManager.inMemory(join(root, 'cwd')), tools: [] });
 let errors = 0;
-const ui = new ExtensionUI({ changed: () => {}, position: () => 0 });
+const ui = new ExtensionUI({ changed: () => {}, position: () => 0, cwd: join(root, 'cwd') });
 await session.bindExtensions({ mode: 'rpc', uiContext: ui.context, onError: () => { errors++; }, commandContextActions: { waitForIdle: () => session.waitForIdle(), reload: unsupported, newSession: unsupported, fork: unsupported, switchSession: unsupported, navigateTree: unsupported } });
 for (const command of ['reload','newSession','fork','switchSession','navigateTree']) await session.prompt(`/${command}`);
 assert.equal(errors, 5);

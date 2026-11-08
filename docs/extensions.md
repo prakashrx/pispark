@@ -8,7 +8,7 @@ Each chat is one Pi `AgentSession`. PiSpark binds Pi's **`rpc` mode** with its o
 
 Extensions style text with Pi's theme. PiSpark gives them a theme whose colors stand for a few PiSpark roles (accent, success, warning, danger, muted, subtle, border, selected), turns the terminal output into styled spans on the server, and the browser draws the spans with the current PiSpark theme's tokens (`extensions/styled-text.ts`, `StyledText.svelte`). Raw terminal colors an extension picks itself pass through as colors.
 
-Pi's terminal components are just `render(width)` → lines, so PiSpark calls an extension's own renderers on the server, with no terminal, at 80 columns (`extensions/extension-render.ts`). The browser wraps narrower views.
+Pi's terminal components are just `render(width)` → lines, so PiSpark calls an extension's own renderers on the server, with no terminal, at 80 columns (`extensions/extension-render.ts`). The browser wraps narrower views. Components get the parts of a TUI that render-only components use (its size and `requestRender`). Extension UI updates reach the browser at most every 100 ms, so animated titles and spinners stay cheap.
 
 ## Supported
 
@@ -19,7 +19,12 @@ Pi's terminal components are just `render(width)` → lines, so PiSpark calls an
 | `ctx.ui.setStatus` | A quiet status line under the reply box. |
 | `ctx.ui.setWidget` (lines or a component) | Above or below the reply box, as `placement` says. |
 | `ctx.ui.setEditorText`, `pasteToEditor` | Fills the reply box. |
-| `ctx.ui.setWorkingMessage` | Replaces "Working…" while the chat runs. |
+| `ctx.ui.setWorkingMessage`, `setWorkingIndicator`, `setWorkingVisible` | The "Working…" pill while the chat runs: the extension's message, its animation frames (none hides the dot; reduced motion shows the first frame), or no pill. |
+| `ctx.ui.setHiddenThinkingLabel` | The label on collapsed thinking. |
+| `ctx.ui.setTitle` | The browser tab title while the chat is open (Pi's terminal window title). |
+| `pi.setSessionName` | The chat title (Pi's session name), in the sidebar and header. |
+| `ctx.ui.setHeader` | One extension header at the top of the conversation, under PiSpark's chat header. Last call wins; `undefined` removes it. |
+| `ctx.ui.setFooter` | Replaces the status line under the reply box, as it replaces terminal Pi's footer. Footers get Pi's footer data: extension statuses, the git branch of the chat's folder and the provider count. Last call wins; `undefined` restores the status line. |
 | `ctx.ui.theme` | PiSpark's role theme (above). |
 | Tool `renderCall` / `renderResult`, `registerToolRenderer` | Shown inside the tool's card, collapsed view (`expanded: false`). Pi's built-in tools keep PiSpark's own cards. |
 | `registerMessageRenderer` | Custom messages render in the conversation; `display: false` messages stay hidden. |
@@ -29,7 +34,8 @@ Pi's terminal components are just `render(width)` → lines, so PiSpark calls an
 
 ## Not yet
 
-- `ctx.ui.custom()` returns `undefined` and terminal-only calls (`onTerminalInput`, `setEditorComponent`, autocomplete providers, header/footer factories, working indicator frames, theme switching, `setTitle`) are quiet no-ops, exactly as in Pi's own RPC mode. Extensions that need `custom()` check `ctx.mode === "tui"` and fall back.
+- `ctx.ui.custom()` returns `undefined`, and `onTerminalInput`, `setEditorComponent` and theme switching are quiet no-ops, exactly as in Pi's own RPC mode. Extensions that need `custom()` check `ctx.mode === "tui"` and fall back (Pi's `custom-header` example only sets its header in `tui` mode, so it shows nothing here).
+- `getEditorText` returns `""`, and autocomplete providers are not used yet.
 - Session actions from commands (`newSession`, `fork`, `navigateTree`, `switchSession`, `reload`) fail visibly.
 - Shortcuts and flags, expanded tool output, a `/` command menu.
 

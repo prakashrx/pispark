@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import type {
   ExtensionUIContext,
   ExtensionUIDialogOptions,
   ExtensionWidgetOptions,
+  ReadonlyFooterDataProvider,
 } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
@@ -11,11 +14,12 @@ import { RuntimeError } from "../runtime/errors.js";
 import { renderComponent, styledLines, webTheme, webTui } from "./styled-text.js";
 
 type Answer = string | boolean | undefined;
-type WidgetFactory = (tui: TUI, theme: Theme) => Component & { dispose?(): void };
+type Owned = Component & { dispose?(): void };
+type WidgetFactory = (tui: TUI, theme: Theme) => Owned;
 interface Widget {
   placement: "above" | "below";
   lines?: StyledLine[];
-  component?: Component & { dispose?(): void };
+  component?: Owned;
 }
 type Notice = ExtensionView["notices"][number];
 type Question = ExtensionDialog extends infer D
@@ -31,6 +35,41 @@ const plain = (text: string, limit = 2000) =>
     .map((line) => line.map((span) => span.text).join(""))
     .join("\n")
     .slice(0, limit);
+const firstLine = (text: string) => styledLines(String(text).split("\n")[0]!)[0]!;
+
+/** Run now, then at most once per `ms` while calls keep coming (animated titles, spinners). */
+function coalesce(run: () => void, ms: number): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let pending = false;
+  const tick = () => {
+    if (!pending) return void (timer = undefined);
+    pending = false;
+    run();
+    timer = setTimeout(tick, ms);
+  };
+  return () => {
+    if (timer) return void (pending = true);
+    run();
+    timer = setTimeout(tick, ms);
+  };
+}
+
+/** The checked-out branch of the repository containing `cwd`, as Pi's footer data reports it. */
+function gitBranch(cwd: string): string | null {
+  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
+    try {
+      const git = join(dir, ".git");
+      // A worktree or submodule has a ".git" file pointing at its git directory.
+      const gitDir = statSync(git).isDirectory()
+        ? git
+        : resolve(dir, readFileSync(git, "utf8").replace(/^gitdir:\s*/, "").trim());
+      const head = readFileSync(join(gitDir, "HEAD"), "utf8").trim();
+      return head.startsWith("ref: refs/heads/") ? head.slice(16) : "detached";
+    } catch {
+      if (dirname(dir) === dir) return null;
+    }
+  }
+}
 
 /**
  * One chat's answer to Pi's `ctx.ui`: what Pi's own non-terminal mode supports, kept as
@@ -41,11 +80,15 @@ export class ExtensionUI {
     string,
     { dialog: ExtensionDialog; settle: (answer: Answer) => void }
   >();
-  private readonly statuses = new Map<string, StyledLine>();
+  private readonly statuses = new Map<string, string>();
   private readonly widgets = new Map<string, Widget>();
   private notices: Notice[] = [];
   private counter = 0;
-  private working?: string;
+  private working: { message?: string; frames?: string[]; intervalMs?: number; hidden?: true } = {};
+  private thinkingLabel?: string;
+  private title?: string;
+  private header?: Owned;
+  private footer?: Owned;
   private draft?: { id: string; text: string; at: number };
   private closed = false;
 
@@ -55,8 +98,28 @@ export class ExtensionUI {
       changed: () => void;
       /** Messages so far, so notices stay where they happened. */
       position: () => number;
+      /** The chat's working folder, for the footer's git branch. */
+      cwd: string;
     },
   ) {}
+
+  private readonly changed = coalesce(() => this.host.changed(), 100);
+
+  /** What Pi gives footer factories: statuses, the git branch and how many providers are usable. */
+  private readonly footerData: ReadonlyFooterDataProvider = {
+    getGitBranch: () => gitBranch(this.host.cwd),
+    getExtensionStatuses: () => new Map(this.statuses),
+    getAvailableProviderCount: () => 1,
+    // Footers re-render with every update, so they always read the current branch.
+    onBranchChange: () => () => {},
+  };
+
+  /** Replace one of the single header/footer slots, as terminal Pi does. */
+  private replace(slot: "header" | "footer", create: (() => Owned) | undefined) {
+    this[slot]?.dispose?.();
+    this[slot] = create && !this.closed ? create() : undefined;
+    this.changed();
+  }
 
   private ask<T>(
     dialog: Question,
@@ -73,7 +136,7 @@ export class ExtensionUI {
         clearTimeout(timer);
         options?.signal?.removeEventListener("abort", dismiss);
         resolve(answer === undefined ? fallback : accept(answer));
-        this.host.changed();
+        this.changed();
       };
       const dismiss = () => settle(undefined);
       options?.signal?.addEventListener("abort", dismiss, { once: true });
@@ -87,7 +150,7 @@ export class ExtensionUI {
         } as ExtensionDialog,
         settle,
       });
-      this.host.changed();
+      this.changed();
     });
   }
 
@@ -104,9 +167,9 @@ export class ExtensionUI {
     else if (typeof content === "function" && !this.closed)
       this.widgets.set(key, {
         placement,
-        component: content(webTui(this.host.changed), webTheme),
+        component: content(webTui(this.changed), webTheme),
       });
-    this.host.changed();
+    this.changed();
   }
 
   private notice(message: string, kind: Notice["kind"]) {
@@ -120,7 +183,7 @@ export class ExtensionUI {
         at: Date.now(),
       },
     ].slice(-MAX_NOTICES);
-    this.host.changed();
+    this.changed();
   }
 
   /** Pi's extension UI for this chat's session. */
@@ -157,30 +220,51 @@ export class ExtensionUI {
     notify: (message, type) => this.notice(message, type ?? "info"),
     setStatus: (key, text) => {
       if (text === undefined) this.statuses.delete(key);
-      else this.statuses.set(key, styledLines(String(text).split("\n")[0]!)[0]!);
-      this.host.changed();
+      else this.statuses.set(key, String(text).slice(0, 2000));
+      this.changed();
     },
     setWidget: (key: string, content: string[] | WidgetFactory | undefined, options?: ExtensionWidgetOptions) =>
       this.setWidget(key, content, options),
     setWorkingMessage: (message) => {
-      this.working = message ? plain(message, 200) : undefined;
-      this.host.changed();
+      this.working = { ...this.working, message: message ? plain(message, 200) : undefined };
+      this.changed();
     },
+    setWorkingVisible: (visible) => {
+      this.working = { ...this.working, hidden: visible ? undefined : true };
+      this.changed();
+    },
+    setWorkingIndicator: (options) => {
+      this.working = {
+        ...this.working,
+        frames: options?.frames?.slice(0, 64).map((frame) => String(frame).slice(0, 200)),
+        intervalMs: options?.intervalMs,
+      };
+      this.changed();
+    },
+    setHiddenThinkingLabel: (label) => {
+      this.thinkingLabel = label ? plain(label, 200) : undefined;
+      this.changed();
+    },
+    setTitle: (title) => {
+      this.title = plain(title, 200) || undefined;
+      this.changed();
+    },
+    setHeader: (factory) =>
+      this.replace("header", factory && (() => factory(webTui(this.changed), webTheme))),
+    setFooter: (factory) =>
+      this.replace(
+        "footer",
+        factory && (() => factory(webTui(this.changed), webTheme, this.footerData)),
+      ),
     setEditorText: (text) => {
       // Unique across session instances, so a reopened chat never reuses an applied id.
       this.draft = { id: randomUUID(), text: String(text).slice(0, MAX_TEXT), at: Date.now() };
-      this.host.changed();
+      this.changed();
     },
     pasteToEditor: (text) => this.context.setEditorText(text),
     getEditorText: () => "",
     // Terminal-only, as in Pi's RPC mode.
     onTerminalInput: () => () => {},
-    setWorkingVisible: () => {},
-    setWorkingIndicator: () => {},
-    setHiddenThinkingLabel: () => {},
-    setFooter: () => {},
-    setHeader: () => {},
-    setTitle: () => {},
     custom: async () => undefined as never,
     addAutocompleteProvider: () => {},
     setEditorComponent: () => {},
@@ -224,18 +308,42 @@ export class ExtensionUI {
     this.dismissAll();
     for (const widget of this.widgets.values()) widget.component?.dispose?.();
     this.widgets.clear();
+    this.header?.dispose?.();
+    this.footer?.dispose?.();
+    this.header = this.footer = undefined;
+  }
+
+  private workingView(): Pick<ExtensionView, "working"> {
+    const { message, frames, intervalMs, hidden } = this.working;
+    if (!message && !frames && !hidden) return {};
+    return {
+      working: {
+        ...(message ? { message } : {}),
+        ...(frames ? { frames: frames.map(firstLine) } : {}),
+        ...(frames && intervalMs ? { intervalMs } : {}),
+        ...(hidden ? { hidden } : {}),
+      },
+    };
+  }
+  private rendered(slot: "header" | "footer") {
+    const lines = this[slot] ? renderComponent(() => this[slot]) : undefined;
+    return lines ? { [slot]: lines } : {};
   }
 
   view(): ExtensionView {
     return {
       dialogs: [...this.dialogs.values()].map(({ dialog }) => dialog),
-      statuses: [...this.statuses].map(([key, line]) => ({ key, line })),
+      statuses: [...this.statuses].map(([key, text]) => ({ key, line: firstLine(text) })),
       widgets: [...this.widgets].flatMap(([key, widget]) => {
         const lines = widget.component ? renderComponent(() => widget.component) : widget.lines;
         return lines?.length ? [{ key, placement: widget.placement, lines }] : [];
       }),
       notices: this.notices,
-      ...(this.working ? { working: this.working } : {}),
+      ...this.workingView(),
+      ...(this.thinkingLabel ? { thinkingLabel: this.thinkingLabel } : {}),
+      ...(this.title ? { title: this.title } : {}),
+      ...this.rendered("header"),
+      ...this.rendered("footer"),
       ...(this.draft ? { draft: this.draft } : {}),
     };
   }

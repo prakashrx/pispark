@@ -2,6 +2,8 @@
   import Button from "../../lib/ui/Button.svelte";
   import NativeTurn from "./NativeTurn.svelte";
   import ExtensionBlock from "./ExtensionBlock.svelte";
+  import StyledText from "./StyledText.svelte";
+  import WorkingFrames from "./WorkingFrames.svelte";
   import ChatDetails from "./ChatDetails.svelte";
   import InlinePanel from "../../lib/ui/InlinePanel.svelte";
   import PersonaEditor from "../persona/PersonaEditor.svelte";
@@ -28,13 +30,25 @@
   const chat = $derived(
     snapshot ?? client.sessions.find((s) => s.id === client.selected),
   );
+  // While running, an extension may relabel, re-animate or hide the working indicator.
+  const working = $derived(chat?.status === "running" ? snapshot?.extensions.working : undefined);
   const status = $derived(
     client.connection === "Connecting" || client.connection === "Loading"
       ? "Opening…"
-      : chat?.status === "running" && snapshot?.extensions.working
-        ? snapshot.extensions.working
-        : chatStatus(chat?.status, chat?.interrupted),
+      : working?.hidden
+        ? ""
+        : (working?.message ?? chatStatus(chat?.status, chat?.interrupted)),
   );
+  // An extension's window title names the browser tab while this chat is open.
+  $effect(() => {
+    const title = snapshot?.extensions.title;
+    if (!title) return;
+    const previous = document.title;
+    document.title = title;
+    return () => {
+      document.title = previous;
+    };
+  });
   const queued = $derived(
     (snapshot?.queue.steering ?? 0) + (snapshot?.queue.followUp ?? 0),
   );
@@ -80,8 +94,8 @@
             >
               {chat ? chatName(chat) : "New chat"}
             </h1>
-            {#if status}<span role="status" class="chat-status"
-                >{status}</span
+            {#if status}<span role="status" class="chat-status" class:custom-indicator={!!working?.frames}
+                >{#if working?.frames}<WorkingFrames frames={working.frames} intervalMs={working.intervalMs} />{/if}{status}</span
               >{/if}
           </div>
           {#if chat}<p class="text-sm text-muted-foreground mt-1.5">
@@ -109,6 +123,7 @@
         <ChatDetails oneditpersona={() => (editingPersona = true)} />
       </div>
     </header>
+    {#if snapshot?.extensions.header}<StyledText class="extension-header" lines={snapshot.extensions.header} />{/if}
     {#if editingPersona && chat}<InlinePanel
         label="Persona for this chat"
         title="Persona for this chat"
@@ -180,7 +195,7 @@
       <div class="flex flex-col gap-8">
         {#each turns as turn, index}
           {#each placed.before[index] ?? [] as item}<ExtensionBlock lines={item.lines} kind={item.kind} />{/each}
-          <NativeTurn message={turn.message} hidden={turn.hidden} />
+          <NativeTurn message={turn.message} hidden={turn.hidden} thinkingLabel={snapshot?.extensions.thinkingLabel} />
         {/each}
         {#each placed.end as item}<ExtensionBlock lines={item.lines} kind={item.kind} />{/each}
       </div>
@@ -200,6 +215,12 @@
     color: var(--interactive-text);
     font-size: 0.8125rem;
     font-weight: 500;
+  }
+  .chat-status.custom-indicator::before {
+    display: none;
+  }
+  :global(.styled-text.extension-header) {
+    color: var(--muted-foreground);
   }
   .chat-status::before {
     content: "";

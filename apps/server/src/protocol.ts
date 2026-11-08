@@ -80,7 +80,15 @@ export interface ExtensionView {
     after: number;
     at: number;
   }[];
-  working?: string;
+  /** The running indicator: a message, animation frames (none hides the dot), or hidden. */
+  working?: { message?: string; frames?: StyledLine[]; intervalMs?: number; hidden?: true };
+  /** Label for collapsed thinking. */
+  thinkingLabel?: string;
+  /** The window (browser tab) title; the chat title is Pi's session name. */
+  title?: string;
+  /** One extension header (top of the conversation) and footer (replaces the status line). */
+  header?: StyledLine[];
+  footer?: StyledLine[];
   /** Text an extension put into the reply box; apply once per id. */
   draft?: { id: string; text: string; at: number };
 }
