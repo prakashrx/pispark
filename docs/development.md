@@ -57,7 +57,7 @@ See [session configuration/protocol](session-protocol.md) for `PISPARK_CONFIG`, 
 - `apps/server/test/pispark-integration.test.ts`: actual native title-tool calls, every-session loading, restrictive tool policy, session scope, durable observer updates/reopen, cancellation/stale ownership, collision/storage failures and log privacy; deterministic local execution only.
 - `apps/server/test/server.test.ts`: health, method rules, API 404, static types/HEAD, missing build, raw and encoded traversal, hidden files, invalid encodings, and symlink/junction escape protection. Tests bind ephemeral loopback ports and clean up fixtures.
 - `apps/web/src/App.test.ts`, `routes.test.ts`, and `lib/ui/Selector.test.ts`: truthful unconfigured state, local deferred edits, persistent/independent composers, route handling, sidebar and selector keyboard/focus behavior. These are jsdom tests, **not** browser layout or assistive-technology certification.
-- `apps/web/tests/`: real-browser checks for all four routes, equal shared-shell geometry, draft/selection persistence, history, keyboard focus, mobile/tablet reflow, collection/create/editor tabs, separate file drafts, stale preview and revision reconciliation, unknown tokens, native model radio groups/inline panel focus, local fonts, and no external requests. They use only checked-in UI/fixtures, not private design originals.
+- `apps/web/tests/`: real-browser checks for all four routes, equal shared-shell geometry, draft/selection persistence, history, keyboard focus, mobile/tablet reflow, persona collection/create/editor views without a tab strip, separate file drafts, stale preview and revision reconciliation, unknown tokens, native model radio groups/inline panel focus, local fonts, and no external requests. They use only checked-in UI/fixtures, not private design originals.
 - `scripts/smoke.mjs`: spawns the compiled server on an ephemeral port and checks real production HTTP responses. Run after building; it stops its own child process.
 
 ### Optional browser checks
@@ -86,7 +86,7 @@ npm run test:browser -w @pispark/web
 Remove-Item Env:PISPARK_TEST_PRODUCTION
 ```
 
-CI installs Chromium and runs the production browser suite after the core checks and HTTP smoke. For a manual UI pass, test narrow layouts, Tab/Shift+Tab focus, Enter/Space activation, Escape dismissal/focus return, the skip link, sidebar toggle, independent Ask/reply drafts, real persona collection/create/editor and file-save/compose/validate/save/conflict states, session streaming/cancel/reconnect, concise Chat info and actual native title changes. Sources remains truthfully unavailable. The status dot reports client connectivity, not model-provider health. Drafts intentionally disappear on reload.
+CI installs Chromium and runs the production browser suite after the core checks and HTTP smoke. For a manual UI pass, test narrow layouts, Tab/Shift+Tab focus, Enter/Space activation, Escape dismissal/focus return, the skip link, sidebar toggle, independent Ask/reply drafts, real persona collection/create/editor and file-save/compose/validate/save/conflict states, session streaming/cancel/reconnect, concise Chat info and actual native title changes. Sources remains truthfully unavailable. The status dot reports client connectivity, not model-provider health, and adds "Offline" or "Connecting…" text when not connected. Drafts intentionally disappear on reload.
 
 ## Dependency findings
 

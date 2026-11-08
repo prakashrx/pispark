@@ -90,7 +90,9 @@
   --n-900: 236 236 236;
   --n-950: 245 245 245;
   --sidebar-rgb: 23 23 23;
-  --accent-fill: #6366f1;
+  --accent-fill: #5f62f0;
+  /* The focus ring needs more lift than the fill on raised dark surfaces. */
+  --accent-ring: #818cf8;
   --accent-on-fill: #ffffff;
   --accent-text: #a5b4fc;
   --mix-strong: #ffffff;
@@ -170,7 +172,8 @@
   --muted-foreground: rgb(var(--n-600));
   --subtle-foreground: rgb(var(--n-500));
   --border: rgb(var(--n-200));
-  --input: rgb(var(--n-300));
+  /* Field borders: at least 3:1 against the page and raised surfaces. */
+  --input: color-mix(in srgb, rgb(var(--n-400)) 60%, rgb(var(--n-500)));
   --code-surface: rgb(var(--n-50));
   --bubble: rgb(var(--n-100));
 
@@ -192,7 +195,7 @@
   --interactive-foreground: var(--accent-on-fill);
   --interactive-text: var(--accent-text);
   --interactive-muted: color-mix(in srgb, var(--accent-fill) 13%, var(--background));
-  --ring: var(--accent-fill);
+  --ring: var(--accent-ring, var(--accent-fill));
 
   --success: #16a34a;
   --warning: #d97706;

@@ -13,6 +13,13 @@
     sessions.snapshot ??
       sessions.sessions.find((s) => s.id === sessions.selected),
   );
+  const backend = $derived(
+    ["Connected", "Live", "Unloaded"].includes(sessions.connection)
+      ? "ok"
+      : sessions.connection === "Disconnected"
+        ? "offline"
+        : "connecting",
+  );
   const reconnectWorkspace = $derived(
     sessions.connection === "Disconnected" && !displayedChat,
   );
@@ -68,18 +75,16 @@
           <span class="brand-mark" aria-hidden="true">π</span>
           <span class="text-[17px] font-semibold tracking-tight">PiSpark</span>
           <span
-            class={[
-              "inline-flex h-2 w-2 rounded-full",
-              ["Connected", "Live", "Unloaded"].includes(sessions.connection)
-                ? "bg-emerald-500"
-                : sessions.connection === "Disconnected"
-                  ? "bg-red-500"
-                  : "bg-amber-400 animate-pulse"
-            ].join(" ")}
+            class="backend-dot"
+            data-state={backend}
             role="img"
             aria-label={`Backend: ${sessions.connection}`}
             title={`Backend: ${sessions.connection}`}
           ></span>
+          <!-- Quiet when healthy; otherwise say so in words, not only color. -->
+          {#if backend !== "ok"}<span class="backend-label" aria-hidden="true"
+              >{backend === "offline" ? "Offline" : "Connecting…"}</span
+            >{/if}
         </a>
         <Button
           class="p-2 rounded-lg border-0 bg-transparent hover:bg-[var(--sidebar-accent)] text-muted-foreground hover:text-foreground transition-colors"
@@ -168,6 +173,33 @@
     font-weight: 700;
     line-height: 1;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  }
+  .backend-dot {
+    display: inline-flex;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: var(--success);
+  }
+  .backend-dot[data-state="offline"] {
+    background: var(--danger);
+  }
+  .backend-dot[data-state="connecting"] {
+    background: var(--warning);
+    animation: backend-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  @keyframes backend-pulse {
+    50% {
+      opacity: 0.5;
+    }
+  }
+  .backend-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+  .backend-dot[data-state="offline"] + .backend-label {
+    color: var(--danger-foreground);
   }
   .notice {
     margin: 0.75rem 1.25rem 0;

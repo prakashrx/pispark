@@ -40,7 +40,7 @@ export const themes: Theme[] = [
     name: "Midnight",
     mode: "dark",
     description: "Soft charcoal, indigo accent",
-    swatch: ["#212121", "#171717", "#f5f5f5", "#6366f1"],
+    swatch: ["#212121", "#171717", "#f5f5f5", "#5f62f0"],
   },
   {
     id: "ocean",
