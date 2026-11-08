@@ -100,7 +100,7 @@ test("real SDK via shared Ask/reply: streaming, native tools, cancellation, inde
   ).not.toHaveAttribute("aria-disabled", "true");
 });
 
-test("native extension failure is visible and browser never receives arbitrary RPC or credentials", async ({
+test("a failing extension handler is a visible notice and the chat keeps working", async ({
   page,
 }) => {
   await page.goto("/");
@@ -111,24 +111,16 @@ test("native extension failure is visible and browser never receives arbitrary R
     page.getByRole("button", { name: "Start chat", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
-  await expect(
-    page.getByRole("button", {
-      name: "Persona: Default",
-    }),
-  ).toBeVisible();
-  await ask.fill("ui-confirm");
+  await ask.fill("ui-fail");
   await ask.press("Enter");
-  await expect(
-    page
-      .getByRole("alert")
-      .filter({
-        hasText: "Something went wrong. Reopen this chat to try again.",
-      })
-      .first(),
-  ).toBeVisible();
+  const notice = page
+    .getByRole("alert")
+    .filter({ hasText: "The controlled extension failed in before_agent_start: fixture failure" });
+  await expect(notice).toContainText("Error");
+  await expect(page.getByText("local:ui-fail", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Send message", exact: true }),
-  ).toHaveAttribute("aria-disabled", "true");
+  ).not.toHaveAttribute("aria-disabled", "true");
 });
 
 for (const mode of ["ask", "reply"] as const) {

@@ -28,7 +28,7 @@ export function bundledTransportPatched(version: string | undefined): boolean {
 export function hostConfiguration(): RuntimeConfiguration {
   if (!bundledTransportPatched(process.versions.undici)) {
     throw new Error(
-      `Native providers disabled: Node ${process.versions.node} bundles undici ${process.versions.undici ?? "unknown"}. Use a supported security-patched Node bundling undici >=6.29.1 <7, >=7.30.1 <8, >=8.12.2 (stable). The npm override does not patch Node. No waiver flag is available.`,
+      `Native providers disabled: Node ${process.versions.node} bundles undici ${process.versions.undici ?? "unknown"}. Use a supported security-patched Node bundling undici >=6.29.1 <7, >=7.30.1 <8, >=8.12.2 (stable). No waiver flag is available.`,
     );
   }
   return { home: resolveHome() };

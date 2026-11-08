@@ -28,6 +28,8 @@ export interface MessagePart {
   name?: string;
 }
 export interface NativeMessage {
+  /** Position in Pi's context; notices and entries are placed by it. */
+  index?: number;
   callId?: string;
   detail?: MessageRef;
   role: string;
@@ -35,6 +37,60 @@ export interface NativeMessage {
   toolName?: string;
   isError?: boolean;
   stopReason?: string;
+  /** An extension's own rendering of this tool result or custom message. */
+  rendered?: { call?: StyledLine[]; body?: StyledLine[] };
+}
+/**
+ * Text written for a terminal, as styled spans. Colors are PiSpark roles
+ * (accent, success, warning, danger, muted, subtle, border, selected) or #rrggbb.
+ */
+export interface StyledSpan {
+  text: string;
+  fg?: string;
+  bg?: string;
+  bold?: true;
+  dim?: true;
+  italic?: true;
+  underline?: true;
+  strike?: true;
+  link?: string;
+}
+export type StyledLine = StyledSpan[];
+export type ExtensionDialog = {
+  id: string;
+  title: string;
+  /** Epoch milliseconds when the extension stops waiting. */
+  expiresAt?: number;
+} & (
+  | { kind: "select"; options: string[] }
+  | { kind: "confirm"; message: string }
+  | { kind: "input"; placeholder?: string }
+  | { kind: "editor"; prefill?: string }
+);
+/** What extensions currently show through Pi's `ctx.ui`. */
+export interface ExtensionView {
+  dialogs: ExtensionDialog[];
+  statuses: { key: string; line: StyledLine }[];
+  widgets: { key: string; placement: "above" | "below"; lines: StyledLine[] }[];
+  /** `after`: the number of messages that preceded the notice; `at`: epoch milliseconds. */
+  notices: {
+    id: number;
+    kind: "info" | "warning" | "error";
+    lines: StyledLine[];
+    after: number;
+    at: number;
+  }[];
+  working?: string;
+  /** Text an extension put into the reply box; apply once per id. */
+  draft?: { id: string; text: string; at: number };
+}
+/** A custom session entry an extension renders, placed after `after` messages. */
+export interface RenderedEntry {
+  key: string;
+  after: number;
+  /** Epoch milliseconds, ordering it among notices at the same place. */
+  at: number;
+  lines: StyledLine[];
 }
 export interface SessionWindow extends SessionInfo {
   sequence: number;
@@ -47,6 +103,8 @@ export interface SessionWindow extends SessionInfo {
   truncated: boolean;
   queue: { steering: number; followUp: number };
   error?: string;
+  extensions: ExtensionView;
+  entries: RenderedEntry[];
 }
 /** Starting points for Ask's folder picker. Any existing folder on the host is allowed. */
 export interface Catalog {
@@ -64,6 +122,13 @@ export type Command = { commandId: string } & (
     }
   | { type: "open" | "reload" | "cancel" | "stop"; sessionId: string }
   | { type: "start" | "steer" | "follow-up"; sessionId: string; text: string }
+  /** Answer an extension's question; null dismisses it. */
+  | {
+      type: "answer";
+      sessionId: string;
+      dialogId: string;
+      value: string | boolean | null;
+    }
 );
 export interface Receipt {
   commandId: string;

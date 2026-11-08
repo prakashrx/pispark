@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { chatName, chatStatus, commandUncertainty, folderName, visibleTurns } from "./chat-presentation";
+import { chatName, chatStatus, commandUncertainty, folderName, placeAnchored, visibleTurns } from "./chat-presentation";
 import type { SessionInfo } from "../../../../server/src/protocol";
 const chat: SessionInfo = {
   id: "private-uuid",
@@ -79,4 +79,16 @@ test("folder labels use the last path segment on any platform", () => {
   expect(folderName("D:\\dev\\pispark")).toBe("pispark");
   expect(folderName("/home/me/project/")).toBe("project");
   expect(folderName("C:\\")).toBe("C:");
+});
+
+test("extension notices and entries go before the first turn at or after their position", () => {
+  const turns = visibleTurns([
+    { index: 1, role: "user", parts: [{ type: "text", text: "Hi" }] },
+    { index: 2, role: "assistant", parts: [{ type: "text", text: "" }] },
+    { index: 3, role: "assistant", parts: [{ type: "text", text: "Hello" }] },
+  ]);
+  const placed = placeAnchored(turns, [{ after: 9 }, { after: 2 }, { after: 0 }]);
+  // Index 2 was empty and dropped, so its entry waits for the next visible turn.
+  expect(placed.before.map((items) => items.map((i) => i.after))).toEqual([[0], [2]]);
+  expect(placed.end.map((i) => i.after)).toEqual([9]);
 });

@@ -1,12 +1,21 @@
 <script lang="ts">
+  import type { NativeMessage } from "../../../../server/src/protocol";
+  import StyledText from "./StyledText.svelte";
   let {
     name,
     result,
     content = "",
-  }: { name: string; result: "requested" | "done" | "error"; content?: string } = $props();
+    rendered,
+  }: {
+    name: string;
+    result: "requested" | "done" | "error";
+    content?: string;
+    /** The tool's own extension rendering; shown in place of the raw output. */
+    rendered?: NativeMessage["rendered"];
+  } = $props();
 
   let expanded = $state(false);
-  const hasContent = $derived(!!content?.trim());
+  const hasContent = $derived(!rendered && !!content?.trim());
   const label = $derived(
     result === "requested" ? "Requested" : result === "error" ? "Failed" : "Done",
   );
@@ -33,6 +42,12 @@
   </button>
   {#if expanded && hasContent}
     <div class="tool-output">{content}</div>
+  {/if}
+  {#if rendered}
+    <div class="tool-rendered">
+      {#if rendered.call}<StyledText lines={rendered.call} />{/if}
+      {#if rendered.body}<StyledText lines={rendered.body} />{/if}
+    </div>
   {/if}
 </div>
 
@@ -109,6 +124,18 @@
   }
   .tool-chevron.open {
     transform: rotate(180deg);
+  }
+  .tool-rendered {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--code-surface);
+    max-height: 24rem;
+    overflow-y: auto;
   }
   .tool-output {
     align-self: stretch;

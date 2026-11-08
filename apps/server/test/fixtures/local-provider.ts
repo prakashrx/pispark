@@ -173,6 +173,14 @@ export class LocalProviderControl {
           ];
           message.stopReason = "toolUse";
           events.push({ type: "done", reason: "toolUse", message });
+        } else if (text.startsWith("tool:") && last?.role !== "toolResult") {
+          // "tool:<name>:<json arguments>" calls any tool once.
+          const [, name = "", args = "{}"] = /^tool:([^:]+):(.*)$/s.exec(text) ?? [];
+          message.content = [
+            { type: "toolCall", id: "local-tool", name, arguments: JSON.parse(args) },
+          ];
+          message.stopReason = "toolUse";
+          events.push({ type: "done", reason: "toolUse", message });
         } else if (text.startsWith("read:") && last?.role !== "toolResult") {
           message.content = [
             {

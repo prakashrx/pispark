@@ -1,4 +1,4 @@
-// Ordinary Pi extension. No PiSpark framework, manifest, UI or provider network.
+// Ordinary Pi extension. No PiSpark framework, manifest or provider network.
 export default function (pi) {
   let starts = 0;
   let busEvents = 0;
@@ -16,15 +16,28 @@ export default function (pi) {
   pi.on("before_agent_start", async (event, ctx) => {
     pi.events.emit("fixture-probe", {});
     pi.appendEntry("fixture-run", { busEvents, cwd: ctx.cwd });
+    // Pi's ctx.ui, as a browser answers it through PiSpark.
+    const answer = (value) => pi.appendEntry("fixture-answer", { value: value ?? null });
     if (event.prompt === "ui-confirm")
-      await ctx.ui.confirm("Unsupported", "Must fail");
+      answer(await ctx.ui.confirm("Proceed?", "Fixture question"));
     if (event.prompt === "ui-select")
-      await ctx.ui.select("Unsupported", ["no"]);
-    if (event.prompt === "ui-input") await ctx.ui.input("Unsupported");
+      answer(await ctx.ui.select("Pick one", ["one", "two"]));
+    if (event.prompt === "ui-input") answer(await ctx.ui.input("Name", "type here"));
+    if (event.prompt === "ui-timeout")
+      answer(await ctx.ui.confirm("Quick?", "Times out", { timeout: 50 }));
     if (event.prompt === "ui-custom")
-      await ctx.ui.custom(() => {
-        throw Error("Must never mount");
-      });
+      answer(
+        await ctx.ui.custom(() => {
+          throw Error("Must never mount");
+        }),
+      );
+    if (event.prompt === "ui-show") {
+      ctx.ui.notify("Heads up", "warning");
+      ctx.ui.setStatus("fixture", ctx.ui.theme.fg("accent", "ready"));
+      ctx.ui.setWidget("fixture", ["widget line"], { placement: "belowEditor" });
+      ctx.ui.setEditorText("drafted by fixture");
+    }
+    if (event.prompt === "ui-fail") throw new Error("fixture failure");
   });
   pi.on("input", async (event) => {
     if (event.text === "slow-input")

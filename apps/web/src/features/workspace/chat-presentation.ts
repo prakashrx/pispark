@@ -84,3 +84,27 @@ export function visibleTurns(messages: NativeMessage[]): VisibleTurn[] {
       hidden.size < message.parts.length,
   );
 }
+
+/** Something placed between messages: it follows the first `after` messages of Pi's context. */
+export interface Anchored {
+  after: number;
+  /** Order among items at the same place. */
+  at?: number;
+}
+/**
+ * Places notices and custom entries among visible turns: each goes before the first turn whose
+ * message came at or after its position; the rest go at the end.
+ */
+export function placeAnchored<T extends Anchored>(
+  turns: VisibleTurn[],
+  items: T[],
+): { before: T[][]; end: T[] } {
+  const before: T[][] = turns.map(() => []);
+  const end: T[] = [];
+  for (const item of [...items].sort((a, b) => a.after - b.after || (a.at ?? 0) - (b.at ?? 0))) {
+    const turn = turns.findIndex((t) => (t.message.index ?? Infinity) >= item.after);
+    if (turn < 0) end.push(item);
+    else before[turn]!.push(item);
+  }
+  return { before, end };
+}

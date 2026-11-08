@@ -4,6 +4,7 @@
   import UserTurn from "./UserTurn.svelte";
   import ToolCard from "./ToolCard.svelte";
   import ThoughtCard from "./ThoughtCard.svelte";
+  import ExtensionBlock from "./ExtensionBlock.svelte";
   import { renderMarkdown } from "../../lib/markdown";
 
   let {
@@ -37,7 +38,10 @@
     name={message.toolName ?? "Tool"}
     result={message.isError ? "error" : "done"}
     content={message.parts.map((p) => p.text).join("\n")}
+    rendered={message.rendered}
   />
+{:else if message.role === "custom" && message.rendered?.body}
+  <ExtensionBlock lines={message.rendered.body} />
 {:else}
   <div class="flex flex-col gap-3" data-purpose="assistant-turn-stream">
     {#each message.parts as part, index}

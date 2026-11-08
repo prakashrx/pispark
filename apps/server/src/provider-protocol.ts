@@ -55,7 +55,7 @@ export interface AuthView {
 }
 export const providerErrorMessages: Record<string, string> = {
   "network-blocked":
-    "Provider operations are disabled on this host: install an owner-approved security-patched Node runtime bundling undici >=6.29.1 <7, >=7.30.1 <8, or >=8.12.2. The npm override does not patch Node. No credentials were requested.",
+    "Provider operations are disabled on this host: install an owner-approved security-patched Node runtime bundling undici >=6.29.1 <7, >=7.30.1 <8, or >=8.12.2. No credentials were requested.",
   "provider-configuration":
     "Native model configuration or catalog restoration failed. Ask the host owner to check its configuration and cache, then refresh or restart. Model selection is disabled; private error details are not returned.",
   "provider-storage":

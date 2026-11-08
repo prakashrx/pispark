@@ -46,6 +46,7 @@ function validate(value: unknown): Command {
     !uuid.test(c.commandId)
   )
     throw new RuntimeError("invalid-input");
+  if (c.type === "answer") return validAnswer(c);
   const keys =
     c.type === "create"
       ? [
@@ -78,6 +79,23 @@ function validate(value: unknown): Command {
   if ("text" in c && Buffer.byteLength(String(c.text)) > 64 * 1024)
     throw new RuntimeError("invalid-input");
   // SAFETY: discriminant, exact keys and every required field validated above.
+  return c as unknown as Command;
+}
+/** An answer to an extension question: a string, a yes/no, or null to dismiss. */
+function validAnswer(c: Record<string, unknown>): Command {
+  if (
+    Object.keys(c).length !== 5 ||
+    !["commandId", "type", "sessionId", "dialogId", "value"].every((key) => key in c) ||
+    !uuid.test(String(c.sessionId)) ||
+    !uuid.test(String(c.dialogId)) ||
+    !(
+      c.value === null ||
+      typeof c.value === "boolean" ||
+      (typeof c.value === "string" && Buffer.byteLength(c.value) <= 64 * 1024)
+    )
+  )
+    throw new RuntimeError("invalid-input");
+  // SAFETY: exact keys and every field validated above.
   return c as unknown as Command;
 }
 export async function body(
@@ -236,6 +254,9 @@ export class SessionHttp {
           break;
         case "stop":
           await this.runtime.stop(command.sessionId);
+          break;
+        case "answer":
+          this.runtime.answer(command.sessionId, command.dialogId, command.value);
           break;
       }
       receipt.outcome ??= "completed";

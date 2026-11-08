@@ -61,6 +61,8 @@ export class SessionClient {
     }
   }
   private draftRevisions = new Map<string, number>();
+  /** The last extension draft each chat applied, so each one fills the reply box once. */
+  private extensionDrafts = new Map<string, string>();
   private nextDraftRevision = 0;
   busy = $state(false);
   private source?: AbortController;
@@ -270,6 +272,7 @@ export class SessionClient {
             if (value.sequence <= sequence) continue;
             sequence = value.sequence;
             this.snapshot = value.snapshot;
+            this.applyExtensionDraft(id, value.snapshot, value.boundary === "initial");
             this.connection = "Live";
             this.sessions = this.sessions.map((s) =>
               s.id === id
@@ -294,6 +297,26 @@ export class SessionClient {
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     })();
+  }
+  /** An extension called Pi's `setEditorText`: put its text in this chat's reply box. */
+  private applyExtensionDraft(id: string, snapshot: SessionWindow, initial: boolean) {
+    const draft = snapshot.extensions?.draft;
+    if (!draft || this.extensionDrafts.get(id) === draft.id) return;
+    this.extensionDrafts.set(id, draft.id);
+    // When a chat is opened, only a fresh draft counts (a new chat's first run may set one);
+    // an older one was meant for an earlier view, and a typed reply always wins.
+    if (initial && (Date.now() - draft.at > 30_000 || this.drafts[id])) return;
+    this.draftRevisions.set(id, ++this.nextDraftRevision);
+    this.drafts[id] = draft.text;
+  }
+  /** Answer a question an extension is waiting on; null dismisses it. */
+  async answer(dialogId: string, value: string | boolean | null) {
+    const id = this.selected;
+    try {
+      await this.settled(await this.submit({ type: "answer", sessionId: id, dialogId, value }));
+    } catch (error) {
+      this.recordError(error, id);
+    }
   }
   setDraft(text: string) {
     if (

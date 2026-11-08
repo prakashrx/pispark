@@ -15,9 +15,6 @@
     "start": "npm run start -w @pispark/server",
     "smoke": "node scripts/smoke.mjs"
   },
-  "overrides": {
-    "undici@8.10.2": "8.12.2"
-  },
   "devDependencies": {
     "concurrently": "^9.2.1",
     "typescript": "~5.9.3"

@@ -4,7 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { SessionWindow } from "../protocol.js";
 import { messagePage, messageWindow } from "./message-window.js";
-import { isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import {
   createAgentSession,
   SessionManager,
@@ -17,7 +17,8 @@ import { createSessionServices, resolveFolder } from "./configuration.js";
 import type { RuntimeConfiguration } from "./configuration.js";
 import { deadline, RuntimeError, runtimeError, unsupported } from "./errors.js";
 import type { RuntimeErrorCode } from "./errors.js";
-import { bindHeadlessCapabilities } from "./pi-boundary.js";
+import { ExtensionUI } from "../extensions/extension-ui.js";
+import { ExtensionRendering } from "../extensions/extension-render.js";
 import { SessionChanges } from "./observation.js";
 import type { SessionChange } from "./observation.js";
 import { ChatStorage, validateId } from "./storage.js";
@@ -97,6 +98,15 @@ interface HostedSession {
   loading?: Promise<SessionSnapshot>;
   extensionErrors: number;
   setupChanged?: boolean;
+  /** What extensions show through Pi's `ctx.ui`, and their own renderers. */
+  ui?: ExtensionUI;
+  rendering?: ExtensionRendering;
+}
+
+/** "extensions/notes.ts" and "extensions/notes/index.ts" are both "notes". */
+function extensionName(path: string): string {
+  const name = basename(path).replace(/\.[^.]+$/, "");
+  return name === "index" ? basename(dirname(path)) : name;
 }
 
 /** Client-independent local owner. No HTTP, browser lifetime, terminal configuration or replay of interrupted tools. */
@@ -292,12 +302,16 @@ export class SessionRuntime {
         break;
       }
       const message = messages[index]!;
+      // Pi's system prompt and custom messages marked not for display stay out, as in terminal Pi.
+      const { role, display } = message as { role?: string; display?: boolean };
+      if (role === "system" || display === false) continue;
       const preview = messageWindow(message, undefined, budget, () => {
         const key = this.messageKeys.get(message) ?? randomUUID();
         this.messageKeys.set(message, key);
         return { index, key };
       });
-      projected.push(preview);
+      const rendered = hosted.rendering?.message(message);
+      projected.push({ index, ...preview, ...(rendered ? { rendered } : {}) });
     }
     projected.reverse();
     return {
@@ -316,7 +330,15 @@ export class SessionRuntime {
         followUp: session.getFollowUpMessages().length,
       },
       error: hosted.error,
+      extensions: hosted.ui?.view() ?? { dialogs: [], statuses: [], widgets: [], notices: [] },
+      entries: hosted.rendering?.entries(start, end) ?? [],
     };
+  }
+  /** Answer a question an extension asked through Pi's `ctx.ui`. */
+  answer(id: string, dialogId: string, answer: string | boolean | null): void {
+    const ui = this.get(id).ui;
+    if (!ui) throw new RuntimeError("not-found");
+    ui.answer(dialogId, answer);
   }
   messagePage(id: string, index: number, key: string, part: number, offset: number) {
     const hosted = this.get(id);
@@ -555,9 +577,15 @@ export class SessionRuntime {
           hosted.error ??= "execution";
         this.changed(hosted);
       });
+      hosted.ui = new ExtensionUI({
+        changed: () => this.changed(hosted),
+        position: () => session.messages.length,
+      });
+      hosted.rendering = new ExtensionRendering(session, () => this.changed(hosted));
+      // Pi's mode for clients that are not a terminal: dialogs and notices work, terminal components don't.
       await session.bindExtensions({
-        mode: "json",
-        uiContext: bindHeadlessCapabilities(session),
+        mode: "rpc",
+        uiContext: hosted.ui.context,
         commandContextActions: {
           waitForIdle: () => session.waitForIdle(),
           newSession: unsupported,
@@ -574,9 +602,16 @@ export class SessionRuntime {
             void this.stop(metadata.id).catch(() => {});
           });
         },
-        onError: () => {
+        onError: (failure) => {
           hosted.extensionErrors++;
-          hosted.error = "extension";
+          // Once the chat is open, a failing handler is reported and the chat keeps working, as in Pi.
+          if (hosted.published)
+            hosted.ui?.extensionFailed(
+              extensionName(failure.extensionPath),
+              failure.event,
+              failure.error,
+            );
+          else hosted.error = "extension";
           this.changed(hosted);
         },
       });
@@ -694,7 +729,7 @@ export class SessionRuntime {
           // The persona's prompts work as /commands, as in terminal Pi.
           expandPromptTemplates: true,
           source: "rpc",
-          // Pinned Pi1.4.0 INTERNAL typed callback: after native preflight resets
+          // Pinned Pi 1.5.0 INTERNAL typed callback: after native preflight resets
           // its abort flag, before agent_start (awaited before provider dispatch).
           preflightResult: (result) => {
             if (result === "started" && identity.cancelled) {
@@ -804,6 +839,8 @@ export class SessionRuntime {
         outcome: "completed",
       });
       if (hosted.identity) hosted.identity.cancelled = true;
+      // Questions an extension is waiting on would hold the run open.
+      hosted.ui?.dismissAll();
       if (hosted.status !== "stopping") hosted.status = "cancelling";
       this.changed(hosted);
       const session = hosted.session!;
@@ -852,6 +889,7 @@ export class SessionRuntime {
     hosted.hostClosed = true;
     hosted.disposeHost?.();
     hosted.disposeHost = undefined;
+    hosted.ui?.close();
     let cleanupError: RuntimeErrorCode | undefined;
     const session = hosted.session;
     if (session) {

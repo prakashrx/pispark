@@ -185,7 +185,7 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
         (entry) => entry.customType === "fixture-start",
       );
       assert.equal(start.data.starts, 1);
-      assert.equal(start.data.hasUI, false);
+      assert.equal(start.data.hasUI, true);
       assert.equal(start.data.trusted, false);
       assert.equal(
         start.data.cwd,
@@ -289,7 +289,7 @@ test("SessionRuntime: errors are safe, missing model/auth/resources rejected, in
       hasCode("sdk-version"),
     );
     assert.throws(
-      () => assertPiBoundary("1.4.0", undefined),
+      () => assertPiBoundary("1.5.0", undefined),
       hasCode("sdk-version"),
     );
     const wrongModel = new SessionRuntime({
@@ -327,19 +327,62 @@ test("SessionRuntime: errors are safe, missing model/auth/resources rejected, in
   }
 });
 
-test("SessionRuntime: headless dialogs fail visibly and stop aborts before native shutdown; another session unaffected", async () => {
+test("SessionRuntime: extension questions wait for an answer, cancel dismisses them, and ctx.ui state is shown", async () => {
   const f = await fixture();
   try {
     f.provider.automatic = true;
-    for (const text of ["ui-confirm", "ui-select", "ui-input", "ui-custom"]) {
-      const a = await f.create("a");
-      assert.deepEqual(await f.runtime.start(a.id, text).completion, {
-        outcome: "failed",
-        error: "extension",
-      });
-      await f.runtime.stop(a.id);
-    }
+    const a = await f.create("a");
+    const answers = async () =>
+      (await f.history(a.id)).filter((e: { customType?: string }) => e.customType === "fixture-answer").map((e: { data: { value: unknown } }) => e.data.value);
+    const ask = async (text: string, answer: string | boolean | null) => {
+      const run = f.runtime.start(a.id, text);
+      await eventually(() => f.runtime.window(a.id).extensions.dialogs.length === 1);
+      const dialog = f.runtime.window(a.id).extensions.dialogs[0]!;
+      f.runtime.answer(a.id, dialog.id, answer);
+      assert.equal((await run.completion).outcome, "completed");
+      assert.equal(f.runtime.window(a.id).extensions.dialogs.length, 0);
+      return dialog;
+    };
+    const confirm = await ask("ui-confirm", true);
+    assert.deepEqual({ kind: confirm.kind, title: confirm.title }, { kind: "confirm", title: "Proceed?" });
+    const select = await ask("ui-select", "two");
+    assert.deepEqual(select.kind === "select" && select.options, ["one", "two"]);
+    await ask("ui-input", "Ada");
+    await ask("ui-select", null);
+    // Only a listed option, a yes/no for confirm, or text for input is accepted.
+    const pending = f.runtime.start(a.id, "ui-select");
+    await eventually(() => f.runtime.window(a.id).extensions.dialogs.length === 1);
+    const open = f.runtime.window(a.id).extensions.dialogs[0]!;
+    assert.throws(() => f.runtime.answer(a.id, open.id, "three"), hasCode("invalid-input"));
+    assert.throws(() => f.runtime.answer(a.id, "00000000-0000-4000-8000-000000000000", "one"), hasCode("not-found"));
+    await f.runtime.cancel(a.id);
+    assert.equal((await pending.completion).outcome, "cancelled");
+    assert.equal(f.runtime.window(a.id).extensions.dialogs.length, 0);
+    assert.equal((await f.runtime.start(a.id, "ui-timeout").completion).outcome, "completed");
+    assert.equal((await f.runtime.start(a.id, "ui-custom").completion).outcome, "completed");
+    assert.deepEqual(await answers(), [true, "two", "Ada", null, null, false, null]);
+    // Notices, status, widgets and drafts are session state; a failing handler is a notice, not a failed chat.
+    assert.equal((await f.runtime.start(a.id, "ui-show").completion).outcome, "completed");
+    assert.equal((await f.runtime.start(a.id, "ui-fail").completion).outcome, "completed");
+    const view = f.runtime.window(a.id).extensions;
+    assert.deepEqual(view.statuses, [{ key: "fixture", line: [{ text: "ready", fg: "accent" }] }]);
+    assert.deepEqual(view.widgets, [{ key: "fixture", placement: "below", lines: [[{ text: "widget line" }]] }]);
+    assert.equal(view.draft?.text, "drafted by fixture");
+    assert.deepEqual(view.notices.map((n) => [n.kind, n.lines[0]![0]!.text]), [
+      ["warning", "Heads up"],
+      ["error", "The controlled extension failed in before_agent_start: fixture failure"],
+    ]);
+    assert.equal(f.runtime.snapshot(a.id).error, undefined);
+    await f.runtime.stop(a.id);
     f.provider.automatic = false;
+    await stopAbortsBeforeShutdown(f);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+async function stopAbortsBeforeShutdown(f: Awaited<ReturnType<typeof fixture>>) {
+  {
     const a = await f.create("a");
     const b = await f.create("b");
     const runA = f.runtime.start(a.id, "stop-me");
@@ -353,10 +396,8 @@ test("SessionRuntime: headless dialogs fail visibly and stop aborts before nativ
     const entries = await f.history(a.id);
     assert.equal(entries.at(-1).customType, "fixture-stop");
     assert.equal(entries.at(-1).data.idle, true);
-  } finally {
-    await f.cleanup();
   }
-});
+}
 
 test("SessionRuntime: interrupted marker retains native history without replay, missing/corrupt history fails closed", async () => {
   const f = await fixture();

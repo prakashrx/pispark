@@ -1,6 +1,7 @@
 <script lang="ts">
   import Button from "../../lib/ui/Button.svelte";
   import NativeTurn from "./NativeTurn.svelte";
+  import ExtensionBlock from "./ExtensionBlock.svelte";
   import ChatDetails from "./ChatDetails.svelte";
   import InlinePanel from "../../lib/ui/InlinePanel.svelte";
   import PersonaEditor from "../persona/PersonaEditor.svelte";
@@ -9,6 +10,7 @@
     chatStatus,
     chatStarted,
     folderName,
+    placeAnchored,
     visibleTurns,
   } from "./chat-presentation";
   import { useSessions } from "./session-client.svelte";
@@ -29,7 +31,9 @@
   const status = $derived(
     client.connection === "Connecting" || client.connection === "Loading"
       ? "Opening…"
-      : chatStatus(chat?.status, chat?.interrupted),
+      : chat?.status === "running" && snapshot?.extensions.working
+        ? snapshot.extensions.working
+        : chatStatus(chat?.status, chat?.interrupted),
   );
   const queued = $derived(
     (snapshot?.queue.steering ?? 0) + (snapshot?.queue.followUp ?? 0),
@@ -42,6 +46,13 @@
             : snapshot.messages,
         )
       : [],
+  );
+  // Extension entries and notices, placed where they happened among the turns.
+  const placed = $derived(
+    placeAnchored(turns, [
+      ...(snapshot?.entries ?? []).map((entry) => ({ ...entry, kind: undefined })),
+      ...(snapshot?.extensions.notices ?? []),
+    ]),
   );
   const olderTurns = $derived(
     client.older ? visibleTurns(client.older.messages) : [],
@@ -167,10 +178,11 @@
           Some content isn’t shown in this view.
         </p>{/if}
       <div class="flex flex-col gap-8">
-        {#each turns as turn}<NativeTurn
-            message={turn.message}
-            hidden={turn.hidden}
-          />{/each}
+        {#each turns as turn, index}
+          {#each placed.before[index] ?? [] as item}<ExtensionBlock lines={item.lines} kind={item.kind} />{/each}
+          <NativeTurn message={turn.message} hidden={turn.hidden} />
+        {/each}
+        {#each placed.end as item}<ExtensionBlock lines={item.lines} kind={item.kind} />{/each}
       </div>
     {/if}
     <div class="h-10"></div>

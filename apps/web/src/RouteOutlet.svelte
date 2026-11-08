@@ -2,6 +2,7 @@
   import type { Page } from "./routes";
   import Conversation from "./features/workspace/Conversation.svelte";
   import Composer from "./features/workspace/Composer.svelte";
+  import ReplyExtensions from "./features/workspace/ReplyExtensions.svelte";
   import ProvidersPage from "./features/settings/providers/ProvidersPage.svelte";
   import GeneralSettings from "./features/settings/GeneralSettings.svelte";
   import PersonaPage from "./features/persona/PersonaPage.svelte";
@@ -20,7 +21,9 @@
     <Conversation />
     {#if sessions.selected}<footer class="reply-dock px-6 pb-5 pt-2 flex flex-col items-center w-full z-10">
       <div class="w-full max-w-3xl relative">
+        <ReplyExtensions placement="above" />
         <Composer mode="reply" />
+        <ReplyExtensions placement="below" />
       </div>
     </footer>{/if}
   {:else if page === "providers"}
