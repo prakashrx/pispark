@@ -77,6 +77,10 @@ body {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+/* Route changes move focus to <main> for screen readers; it is not a control, so no ring. */
+main[tabindex="-1"]:focus {
+  outline: none;
+}
 button:disabled,
 [aria-disabled="true"] {
   cursor: not-allowed;

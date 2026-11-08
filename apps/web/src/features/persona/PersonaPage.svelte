@@ -78,7 +78,7 @@
         {#if dialog === "create"}{@render metadataForm(true)}{/if}
       </PersonaCollection>
     {/if}
-    <div hidden={client.mode === "collection"}>
+    <div class="space-y-6" hidden={client.mode === "collection"}>
       <header class="space-y-4 border-b border-[var(--border)] pb-6 persona-heading">
         <div class="flex items-start justify-between gap-4 flex-wrap">
           <div class="min-w-0 flex-1 space-y-2">
@@ -154,7 +154,7 @@
           </div>
         </div>
       </header>
-      {#if dialog === "preview" && client.mode === "editor"}<div class="my-6">
+      {#if dialog === "preview" && client.mode === "editor"}<div>
           <PersonaPreview
             {client}
             {readonly}
