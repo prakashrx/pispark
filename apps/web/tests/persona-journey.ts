@@ -142,10 +142,6 @@ export async function addPrompt(page: Page, text: string) {
 export async function editFile(page: Page, n = 1) {
   await resourceAction(page, "Instruction", n, "Edit file");
   const dialog = page.getByRole("region", { name: "Edit file", exact: true });
-  await dialog
-    .locator("summary")
-    .filter({ hasText: /^Edit file/ })
-    .click();
   const load = dialog.getByRole("button", { name: "Load file", exact: true });
   if (
     (await load.count()) &&

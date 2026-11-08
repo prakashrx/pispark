@@ -27,6 +27,9 @@
   async function show() {
     open = true;
     await tick();
+    // Content can name its own first focus (e.g. a read-only summary before a destructive action).
+    const preferred = root.querySelector<HTMLElement>("[data-popover] [data-autofocus]");
+    if (preferred) return preferred.focus();
     root
       .querySelector<HTMLElement>(
         '[data-popover] [role="menuitem"]:not(:disabled), [data-popover] input, [data-popover] button:not(:disabled)',

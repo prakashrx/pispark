@@ -32,6 +32,7 @@
     addLabel = "Add content",
     applyLabel = "Apply changes",
     applyError,
+    variant = "panel",
     onapply,
     onclose,
     retained,
@@ -54,6 +55,7 @@
     addLabel?: string;
     applyLabel?: string;
     applyError?: string;
+    variant?: "panel" | "editor";
     // Synchronous feature guard: recheck identity, writability, target and capacity.
     // false keeps the private editor open; true accepts a draft, never a durable save.
     onapply: (text: string) => boolean;
@@ -280,6 +282,7 @@
     label={dialogTitle}
     title={dialogTitle}
     size="wide"
+    {variant}
     onclose={requestClose}
     initialFocus={editing ? `#${id}-editor` : `#${id}-read`}
   >
@@ -440,7 +443,7 @@
   .editor-surface :global(textarea) {
     resize: none;
     overflow: hidden;
-    min-height: 12rem;
+    min-height: 8rem;
   }
   .dragging {
     outline: 2px dashed var(--subtle-foreground);

@@ -1,8 +1,7 @@
 <script lang="ts">
   import PersonaDetails from "./PersonaDetails.svelte";
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import Button from "../../lib/ui/Button.svelte";
-  import Disclosure from "../../lib/ui/Disclosure.svelte";
   import FormField from "../../lib/ui/FormField.svelte";
   import Textarea from "../../lib/ui/Textarea.svelte";
   import type { PersonaRef } from "../../../../server/src/persona-protocol";
@@ -43,6 +42,11 @@
       file.busy = false;
     }
   }
+  // Opening the editor shows the file: load it unless a retained draft is already here.
+  onMount(() => {
+    if (declared && !file.loaded && !file.dirty && !file.busy && !file.blocked)
+      void load();
+  });
   async function save() {
     file.busy = true;
     file.error = "";
@@ -78,41 +82,56 @@
   }
 </script>
 
-{#if file.dirty}<p class="text-sm">This file has unsaved changes.</p>{/if}
-<Disclosure
-  title={`${readonly ? "View file" : "Edit file"}${file.dirty ? " · Unsaved changes" : ""}`}
->
-  <p class="text-sm text-neutral-500">File contents are saved separately.</p>
-  {#if !declared}<p class="text-sm text-neutral-500">
+<!-- Lives inside the "Edit file" editor of its prompt row: no extra disclosure level. -->
+<div class="space-y-3">
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <p class="text-sm">
+      <span class="font-mono">{path}</span>
+      <span class="text-muted-foreground">
+        · {readonly ? "Read-only file" : "Saved separately from the persona"}{file.dirty
+          ? " · Unsaved changes"
+          : ""}</span
+      >
+    </p>
+    {#if declared}<Button
+        variant="ghost"
+        size="compact"
+        disabled={file.busy || file.blocked}
+        onclick={load}>Load file</Button
+      >{/if}
+  </div>
+  {#if !declared}<p class="text-sm text-muted-foreground">
       Save file contents here, then save the persona to add this file.
     </p>{/if}
-  {#if declared}<Button disabled={file.busy || file.blocked} onclick={load}
-      >Load file</Button
-    >{/if}
   {#if file.loaded || !declared}
     <FormField label="Contents"
       >{#snippet children(id, describedby)}<Textarea
           {id}
           aria-describedby={describedby}
           aria-label={`File text: ${path}`}
-          rows={5}
+          rows={8}
           bind:value={file.content}
           disabled={readonly || file.busy || file.blocked}
         />{/snippet}</FormField
     >
-    <Button
-      disabled={readonly ||
-        file.busy ||
-        file.blocked ||
-        !file.content.trim() ||
-        !file.dirty}
-      onclick={save}>Save file</Button
-    >
-  {/if}
+  {:else if file.busy}<p role="status" class="text-sm text-muted-foreground">
+      Loading file…
+    </p>{/if}
   <PersonaDetails
     error={file.error}
     context="file"
     retainedEdits={file.dirty}
   />
-  <p role="status">{file.status}</p>
-</Disclosure>
+  <div class="flex flex-wrap items-center justify-end gap-3">
+    <p role="status" class="mr-auto text-sm text-muted-foreground">{file.status}</p>
+    {#if file.loaded || !declared}<Button
+        variant="primary"
+        disabled={readonly ||
+          file.busy ||
+          file.blocked ||
+          !file.content.trim() ||
+          !file.dirty}
+        onclick={save}>Save file</Button
+      >{/if}
+  </div>
+</div>

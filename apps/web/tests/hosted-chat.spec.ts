@@ -18,8 +18,8 @@ test("saved assistant Markdown stays inert and keeps normal formatting after reo
     .filter({ has: page.locator("strong", { hasText: "safe bold" }) });
   for (const reopen of [false, true]) {
     if (reopen) {
-      await page.getByRole("button", { name: "Chat actions" }).click();
-      await page.getByRole("menuitem", { name: "Stop agent" }).click();
+      await page.getByRole("button", { name: "Chat info", exact: true }).click();
+      await page.getByRole("button", { name: "Stop agent", exact: true }).click();
       await page.getByRole("button", { name: "Reopen chat" }).click();
     }
     await expect(prose).toBeVisible();

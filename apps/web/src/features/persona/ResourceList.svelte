@@ -47,6 +47,16 @@
   let openingContext = $state("");
   let root: HTMLDivElement;
   const rows = $derived(resourceRows(items, effective, reference));
+  // Editing or customizing opens inside the skill's own row; adding opens at the end.
+  const editorRow = $derived(
+    !dialog
+      ? -1
+      : editing
+        ? rows.findIndex((row) => row.local === editing)
+        : replacementId
+          ? rows.findIndex((row) => !row.local && row.resolved?.id === replacementId)
+          : -1,
+  );
   $effect(() => {
     const id = customizeId;
     if (id)
@@ -55,6 +65,20 @@
         oncustomizehandled?.();
       });
   });
+  /** Close the skill editor and return focus to its row, or to Add skill. */
+  async function closeEditor() {
+    const row = editorRow;
+    dialog = false;
+    await tick();
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const article = row >= 0 ? root.querySelectorAll("article")[row] : undefined;
+    (
+      article?.querySelector<HTMLElement>("button") ??
+      Array.from(root.querySelectorAll<HTMLElement>("button")).find(
+        (button) => button.textContent?.trim() === "Add skill",
+      )
+    )?.focus();
+  }
   function customize(id: string) {
     const local = items.find((item) => item.id === id);
     open(local);
@@ -136,10 +160,10 @@
                 .at(-1) ??
               "Skill"}
           </h3>
-          {#if known?.description}<p class="text-sm text-zinc-500">
+          {#if known?.description}<p class="text-sm text-muted-foreground">
               {known.description}
             </p>{/if}
-          {#if !item && known}<p class="text-sm text-zinc-500">
+          {#if !item && known}<p class="text-sm text-muted-foreground">
               From {personaName(known.origin, options)}
             </p>{/if}
         </div>
@@ -207,19 +231,31 @@
       {#if known?.disableModelInvocation}<p class="text-sm">
           Available only when explicitly requested.
         </p>{/if}
-      <Disclosure title="Details"
+      <Disclosure variant="plain" title="Details"
         ><p class="text-sm break-all">
           {item?.directory ?? known?.directory}
         </p></Disclosure
       >
+      {#if index === editorRow}{@render skillEditor()}{/if}
+      {#if item && advanced === item && active}<ReferenceSettings
+          item={advanced}
+          type="skill"
+          {readonly}
+          onclose={() => {
+            advanced = undefined;
+            onchange?.();
+          }}
+        />{/if}
     </article>
-  {:else}<p class="text-sm text-zinc-500">No skills to show.</p>{/each}
-  <Button disabled={readonly || items.length >= 32} onclick={() => open()}
-    >Add skill</Button
-  >
+  {:else}<p class="text-sm text-muted-foreground">No skills to show.</p>{/each}
+  {#if dialog && active && editorRow < 0}{@render skillEditor()}{:else}<Button
+      disabled={readonly || items.length >= 32}
+      onclick={() => open()}>Add skill</Button
+    >{/if}
 </div>
-{#if dialog && active}
+{#snippet skillEditor()}{#if dialog && active}
   <InlinePanel
+    variant="editor"
     label={replacementId
       ? "Customize skill"
       : editing
@@ -234,7 +270,7 @@
       ? "Choose the skill folder to use instead. No files will be copied."
       : undefined}
     size="small"
-    onclose={() => (dialog = false)}
+    onclose={closeEditor}
     initialFocus="input"
   >
     <form
@@ -257,7 +293,7 @@
           />{/snippet}
       </FormField>
     </form>
-    {#snippet footer()}<Button onclick={() => (dialog = false)}>Cancel</Button
+    {#snippet footer()}<Button onclick={closeEditor}>Cancel</Button
       ><Button
         variant="primary"
         type="submit"
@@ -273,13 +309,4 @@
             : "Add skill"}</Button
       >{/snippet}
   </InlinePanel>
-{/if}
-{#if advanced && active}<ReferenceSettings
-    item={advanced}
-    type="skill"
-    {readonly}
-    onclose={() => {
-      advanced = undefined;
-      onchange?.();
-    }}
-  />{/if}
+{/if}{/snippet}

@@ -20,6 +20,8 @@
 <InlinePanel
   label="Advanced settings"
   title="Advanced settings"
+  help={`How this ${type === "instruction" ? "prompt" : "skill"} is identified when personas reuse or replace each other’s resources.`}
+  variant="editor"
   {onclose}
   size="small"
 >
@@ -43,7 +45,7 @@
         />{/snippet}</FormField
     >{/if}
   <Checkbox
-    label={`Replace a matching ${type}`}
+    label={`Replace an inherited ${type === "instruction" ? "prompt" : "skill"} with the same reference name`}
     checked={item.replace === true}
     disabled={readonly}
     onchange={(event) => {

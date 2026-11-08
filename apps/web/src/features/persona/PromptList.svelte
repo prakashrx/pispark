@@ -51,6 +51,35 @@
   const rows = $derived(
     resourceRows(items, client.effective?.instructions ?? [], reference),
   );
+  // The prompt editor opens inside the row it belongs to; adding opens at the end of the list.
+  const contentRow = $derived(
+    !target || target.mode === "add"
+      ? -1
+      : rows.findIndex((row) => {
+          // Match by reference name too: a customized prompt becomes a local row with the same ID,
+          // and the editor must stay in that row instead of remounting elsewhere.
+          const id = target!.local?.id ?? target!.source?.id;
+          return (
+            (!!target!.local && row.local === target!.local) ||
+            (!target!.local && !!target!.source && row.resolved === target!.source) ||
+            (id !== undefined && (row.local?.id ?? row.resolved?.id) === id)
+          );
+        }),
+  );
+  /** After an editor closes, put focus back where the user was: the row, or Add prompt. */
+  async function restoreFocus(row: number) {
+    await tick();
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const list = document.querySelector("[data-instructions]");
+    const article = row >= 0 ? list?.querySelectorAll("article")[row] : undefined;
+    (
+      article?.querySelector<HTMLElement>("[data-read-prompt]") ??
+      article?.querySelector<HTMLElement>("button") ??
+      Array.from(list?.querySelectorAll<HTMLElement>("button") ?? []).find(
+        (button) => button.textContent?.trim() === "Add prompt",
+      )
+    )?.focus();
+  }
   function changed() {
     void client.validate();
   }
@@ -117,8 +146,10 @@
       });
   });
   function close() {
+    const row = contentRow;
     target = undefined;
     client.promptMemory = undefined;
+    void restoreFocus(row);
   }
   function apply(text: string) {
     const current = target;
@@ -212,23 +243,31 @@
         : (local?.text ?? source?.text)}
     {@const inherited = !local && source}
     {@const localIndex = local ? items.indexOf(local) : -1}
+    {@const editingHere = index === contentRow}
     <article class="prompt-row border-b border-[var(--border)] pb-3 space-y-2">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0 flex-1">
-          {#if text !== undefined}<p
+          {#if editingHere}<p class="text-sm font-medium">
+              {target?.mode === "read"
+                ? "Reading prompt"
+                : target?.mode === "customize"
+                  ? "Customizing inherited prompt"
+                  : "Editing prompt"}
+            </p>
+          {:else if text !== undefined}<p
               class:long={text.length > 240 || text.split("\n").length > 3}
               class="prompt-text"
             >
               {text}
             </p>
-          {:else}<p class="text-sm text-zinc-500">
+          {:else}<p class="text-sm text-muted-foreground">
               Prompt text unavailable. Load the existing file to read it.
             </p>{/if}
-          {#if inherited}<p class="text-sm text-zinc-500 mt-1">
+          {#if inherited}<p class="text-sm text-muted-foreground mt-1">
               From {personaName(inherited.origin, client.items)}
             </p>{/if}
           {#if !client.resourcesCurrent && local}<p
-              class="text-sm text-zinc-500"
+              class="text-sm text-muted-foreground"
             >
               Local draft
             </p>{/if}
@@ -310,23 +349,35 @@
             >{/snippet}</Menu
         >
       </div>
-      {#if text !== undefined}<Button
+      {#if editingHere}{@render contentEditor()}{:else if text !== undefined}<Button
           variant="ghost"
           size="compact"
+          data-read-prompt
           onclick={() => open(local, source)}
           >{text.length > 240 || text.split("\n").length > 3
             ? "Read full prompt"
             : "Read prompt"}</Button
         >{/if}
+      {#if local && fileTarget === local && local.file !== undefined && active}{@render fileEditor(local.file)}{/if}
+      {#if local && advanced === local && active}<ReferenceSettings
+          item={advanced}
+          type="instruction"
+          {readonly}
+          onclose={() => {
+            advanced = undefined;
+            changed();
+          }}
+        />{/if}
     </article>
-  {:else}<p class="text-sm text-zinc-500">No prompts to show.</p>{/each}
-  <Button
-    disabled={readonly || items.length >= 32}
-    onclick={() => open(undefined, undefined, "add")}>Add prompt</Button
-  >
+  {:else}<p class="text-sm text-muted-foreground">No prompts to show.</p>{/each}
+  {#if target && contentRow < 0}{@render contentEditor()}{:else}<Button
+      disabled={readonly || items.length >= 32}
+      onclick={() => open(undefined, undefined, "add")}>Add prompt</Button
+    >{/if}
 </div>
-{#if target}
+{#snippet contentEditor()}{#if target}
   <ContentDialog
+    variant="editor"
     ownerKey={target.key}
     value={target.value}
     mode={target.mode}
@@ -355,31 +406,23 @@
       if (memory && memory.key === target?.key) memory.state = state;
     }}
   />
-{/if}
-{#if fileTarget?.file !== undefined && active}
+{/if}{/snippet}
+{#snippet fileEditor(file: string)}
   <InlinePanel
     label="Edit file"
     title="Edit file"
+    variant="editor"
     onclose={() => (fileTarget = undefined)}
   >
-    {#key `${personaKey(reference)}/${fileTarget.file}`}<InstructionFile
+    {#key `${personaKey(reference)}/${file}`}<InstructionFile
         {reference}
-        path={fileTarget.file}
+        path={file}
         {client}
         {readonly}
-        declared={declared.includes(fileTarget.file)}
+        declared={declared.includes(file)}
       />{/key}
   </InlinePanel>
-{/if}
-{#if advanced && active}<ReferenceSettings
-    item={advanced}
-    type="instruction"
-    {readonly}
-    onclose={() => {
-      advanced = undefined;
-      changed();
-    }}
-  />{/if}
+{/snippet}
 
 <style>
   .prompt-text {

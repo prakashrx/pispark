@@ -205,8 +205,7 @@ test("real persona editor persists ordered text/files, inheritance/overrides and
     .press("Enter");
   await expect(page.getByText(/local:.*NATIVE-COPIED-SUPPORT/)).toBeVisible();
   await expect(page.getByText(/Admitted persona:/)).toHaveCount(0);
-  await page.getByRole("button", { name: "Chat actions", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Chat info", exact: true }).click();
+  await page.getByRole("button", { name: "Chat info", exact: true }).click();
   await expect(
     page.getByRole("region", { name: "Chat info", exact: true }),
   ).toContainText(child);
@@ -218,8 +217,8 @@ test("real persona editor persists ordered text/files, inheritance/overrides and
       (s: { persona?: { name: string } }) => s.persona?.name === child,
     ).persona.name,
   ).toBe(child);
-  await page.getByRole("button", { name: "Chat actions", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Stop agent", exact: true }).click();
+  await page.getByRole("button", { name: "Chat info", exact: true }).click();
+  await page.getByRole("button", { name: "Stop agent", exact: true }).click();
 });
 
 test("real stale save keeps editor draft and route navigation keeps unsaved file drafts", async ({
@@ -525,8 +524,7 @@ test("ordinary collection/continuous/dialog journey uses checked preview, real s
   expect(ordinary).not.toContain(ref.id);
   expect(ordinary).not.toContain(saved.revision);
   await capture(page, info, "named-chat");
-  await page.getByRole("button", { name: "Chat actions", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Chat info", exact: true }).click();
+  await page.getByRole("button", { name: "Chat info", exact: true }).click();
   const dialog = page.getByRole("region", { name: "Chat info", exact: true });
   for (const field of ["Persona", "Model", "Working folder", "Started"])
     await expect(dialog.getByText(field, { exact: true })).toBeVisible();
@@ -537,10 +535,10 @@ test("ordinary collection/continuous/dialog journey uses checked preview, real s
   await capture(page, info, "chat-info");
   await page.keyboard.press("Escape");
   await expect(
-    page.getByRole("button", { name: "Chat actions", exact: true }),
+    page.getByRole("button", { name: "Chat info", exact: true }),
   ).toBeFocused();
-  await page.getByRole("button", { name: "Chat actions", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Stop agent", exact: true }).click();
+  await page.getByRole("button", { name: "Chat info", exact: true }).click();
+  await page.getByRole("button", { name: "Stop agent", exact: true }).click();
   await expect(
     page.getByText("Connection lost. Your chat may still be running."),
   ).toHaveCount(0);

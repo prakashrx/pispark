@@ -199,6 +199,31 @@ export const icons = {
       },
     },
   ],
+  info: [
+    {
+      tag: "circle",
+      attrs: { cx: "12", cy: "12", r: "9", "stroke-width": "1.8" },
+    },
+    {
+      tag: "path",
+      attrs: {
+        d: "M12 11v5.5M12 7.75v.25",
+        "stroke-linecap": "round",
+        "stroke-width": "2",
+      },
+    },
+  ],
+  pencil: [
+    {
+      tag: "path",
+      attrs: {
+        d: "M15.2 5.2l3.6 3.6M4 20l1-4.6L15.9 4.5a1.4 1.4 0 012 0l1.6 1.6a1.4 1.4 0 010 2L8.6 19 4 20z",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "stroke-width": "1.8",
+      },
+    },
+  ],
   plus: [
     {
       tag: "path",

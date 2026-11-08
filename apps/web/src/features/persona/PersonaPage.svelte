@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Menu from "../../lib/ui/Menu.svelte";
+  import Icon from "../../lib/ui/Icon.svelte";
   import Section from "../../lib/ui/Section.svelte";
   import { personaKey } from "./persona-client.svelte";
   import Disclosure from "../../lib/ui/Disclosure.svelte";
@@ -22,6 +23,16 @@
   let skillToCustomize = $state<string>();
   let parentResources = $state<EffectiveResource[]>([]);
   const readonly = $derived(!client.view?.writable || client.reading);
+  const editingMetadata = $derived(
+    !!metadataOwner &&
+      metadataOwner === client.draft &&
+      !readonly &&
+      client.mode === "editor",
+  );
+  function editMetadata() {
+    dialog = undefined;
+    metadataOwner = client.draft;
+  }
   const noReader = $derived(
     !!(client.draft?.skills.length || client.effective?.skills.length) &&
       !sessions.catalog.configurations.some((c) => c.skillReader),
@@ -70,15 +81,30 @@
     <div hidden={client.mode === "collection"}>
       <header class="space-y-4 border-b border-[var(--border)] pb-6 persona-heading">
         <div class="flex items-start justify-between gap-4 flex-wrap">
-          <div class="min-w-0 space-y-2">
-            <h1 class="text-[1.75rem] leading-tight font-semibold tracking-tight text-zinc-900 break-words">
-              {client.draft?.name ?? client.inspectedSummary?.name ?? "Persona"}
-            </h1>
-            {#if client.draft?.description}<p
-                class="text-sm text-zinc-500 break-words"
-              >
-                {client.draft.description}
-              </p>{/if}
+          <div class="min-w-0 flex-1 space-y-2">
+            {#if editingMetadata}
+              <!-- Name and description are edited where they are shown. -->
+              {@render metadataForm(false)}
+            {:else}
+              <div class="flex items-start gap-1">
+                <h1 class="text-[1.75rem] leading-tight font-semibold tracking-tight text-zinc-900 break-words">
+                  {client.draft?.name ?? client.inspectedSummary?.name ?? "Persona"}
+                </h1>
+                {#if !readonly && client.draft && client.mode === "editor"}<Button
+                    variant="ghost"
+                    size="icon"
+                    class="mt-0.5 text-muted-foreground"
+                    aria-label="Edit name and description"
+                    title="Edit name and description"
+                    onclick={editMetadata}><Icon name="pencil" class="h-4 w-4" /></Button
+                  >{/if}
+              </div>
+              {#if client.draft?.description}<p
+                  class="text-sm text-zinc-500 break-words"
+                >
+                  {client.draft.description}
+                </p>{/if}
+            {/if}
             <p role="status" class="text-sm text-zinc-500">
               {client.reading
                 ? "Loading persona…"
@@ -106,10 +132,7 @@
                   id: "metadata",
                   label: "Edit name and description",
                   disabled: readonly,
-                  onselect: () => {
-                    dialog = undefined;
-                    metadataOwner = client.draft;
-                  },
+                  onselect: editMetadata,
                 },
                 {
                   id: "preview",
@@ -131,9 +154,6 @@
           </div>
         </div>
       </header>
-      {#if metadataOwner && metadataOwner === client.draft && !readonly && client.mode === "editor"}<div class="my-6">
-          {@render metadataForm(false)}
-        </div>{/if}
       {#if dialog === "preview" && client.mode === "editor"}<div class="my-6">
           <PersonaPreview
             {client}
@@ -185,7 +205,8 @@
       {/if}
       {#if client.view && client.draft}
         {#key personaKey(client.view.ref)}
-          <div class="space-y-6">
+          <!-- Preview replaces the editor sections while open; they stay mounted to keep their state. -->
+          <div class="space-y-6" hidden={dialog === "preview"}>
             <Section
               title="Reuse personas"
               description="Start with their resources."
@@ -319,10 +340,16 @@
   <PersonaMetadataForm
     {client}
     {creating}
-    onclose={() => {
+    onclose={async () => {
       dialog = undefined;
       metadataOwner = undefined;
       if (client.mode === "editor") void client.validate();
+      // The pencil that opened the editor was replaced while editing; return focus to its successor.
+      await tick();
+      if (!document.activeElement || document.activeElement === document.body)
+        document
+          .querySelector<HTMLElement>('.persona-heading button[aria-label="Edit name and description"]')
+          ?.focus();
     }}
     oncreated={() => {}}
   />

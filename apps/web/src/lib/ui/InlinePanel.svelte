@@ -2,6 +2,8 @@
   /**
    * An in-page editing panel: the page stays visible and scrollable while a
    * focused task is open. Owns initial focus, Escape dismissal and focus return.
+   * variant="editor" is for editing an item in place (inside its own row): no title
+   * bar or close button, just the fields and actions. Escape and Cancel still close it.
    */
   import { onMount, type Snippet } from "svelte";
   import Button from "./Button.svelte";
@@ -15,6 +17,7 @@
     size = "normal",
     initialFocus,
     busy = false,
+    variant = "panel",
   }: {
     label: string;
     onclose: () => void;
@@ -25,6 +28,7 @@
     size?: "small" | "normal" | "wide";
     initialFocus?: string;
     busy?: boolean;
+    variant?: "panel" | "editor";
   } = $props();
   let panel: HTMLElement;
   const id = $props.id();
@@ -70,6 +74,7 @@
   tabindex="-1"
   class="inline-panel"
   data-size={size}
+  data-variant={variant}
   aria-label={title ? undefined : label}
   aria-labelledby={title ? `${id}-title` : undefined}
   aria-describedby={help ? `${id}-help` : undefined}
@@ -84,7 +89,9 @@
     if (!busy) onclose();
   }}
 >
-  {#if title}<header class="inline-panel-header">
+  {#if title && variant === "editor"}<h3 id={`${id}-title`} class="sr-only">{title}</h3>
+    {#if help}<p id={`${id}-help`} class="inline-panel-help">{help}</p>{/if}
+  {:else if title}<header class="inline-panel-header">
       <div class="min-w-0">
         <h3 id={`${id}-title`} class="text-[0.9375rem] font-semibold">{title}</h3>
         {#if help}<p id={`${id}-help`} class="mt-0.5 text-[0.8125rem] text-muted-foreground">
@@ -134,6 +141,29 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
+  }
+  .inline-panel[data-variant="editor"] {
+    margin-top: 0.5rem;
+    border-color: var(--border);
+    background: var(--card);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+  }
+  .inline-panel[data-variant="editor"]:focus-within {
+    border-color: color-mix(in srgb, var(--interactive) 45%, var(--border));
+  }
+  .inline-panel[data-variant="editor"] .inline-panel-body {
+    padding: 0.875rem 1rem 0.25rem;
+    gap: 0.875rem;
+  }
+  .inline-panel[data-variant="editor"] .inline-panel-footer {
+    border-top: 0;
+    padding: 0.75rem 1rem 0.875rem;
+  }
+  .inline-panel-help {
+    padding: 0.875rem 1rem 0;
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
   }
   .inline-panel-footer {
     display: flex;

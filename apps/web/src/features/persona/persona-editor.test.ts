@@ -239,13 +239,12 @@ test("file draft capacity has an actionable primary alert with closed Details an
     client,
     declared: false,
   });
-  await fireEvent.click(screen.getByText("Edit file", { exact: true }));
   const reason = screen.getByText(
     "Too many files have unsaved changes. Save one, then reopen this file.",
     { exact: true },
   );
   expect(reason.getAttribute("role")).toBe("alert");
-  expect(reason.closest("details")!.open).toBe(true);
+  expect(reason.closest("details:not([open])")).toBeNull();
   const diagnostic = screen.getByText("file-draft-limit", { exact: true });
   expect(diagnostic.closest("details")!.open).toBe(false);
   expect(
@@ -275,9 +274,13 @@ test("private Add/Edit/Cancel never mutate a definition or save early; same targ
   await fireEvent.input(screen.getByRole("textbox", { name: "Instructions" }), {
     target: { value: "Private unapplied" },
   });
+  // The row being edited shows its editor; no row shows the private text.
   expect(
-    document.querySelector("[data-instructions] .prompt-text")!.textContent,
-  ).toBe("First");
+    Array.from(
+      document.querySelectorAll("[data-instructions] .prompt-text"),
+      (row) => row.textContent?.trim(),
+    ),
+  ).not.toContain("Private unapplied");
   const event = new Event("beforeunload", { cancelable: true });
   window.dispatchEvent(event);
   expect(event.defaultPrevented).toBe(true);
@@ -313,14 +316,14 @@ test("private Add/Edit/Cancel never mutate a definition or save early; same targ
   await fireEvent.click(screen.getByRole("button", { name: "Apply changes" }));
   expect(screen.getByRole("document").textContent).toContain("Confirmed draft");
   expect(
-    document.querySelector("[data-instructions] .prompt-text")!.textContent,
-  ).toBe("Confirmed draft");
-  expect(
     vi
       .mocked(fetch)
       .mock.calls.filter(([url]) => String(url).endsWith("/save")),
   ).toHaveLength(0);
   await fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(
+    document.querySelector("[data-instructions] .prompt-text")!.textContent?.trim(),
+  ).toBe("Confirmed draft");
   await fireEvent.click(screen.getByRole("button", { name: "Add prompt" }));
   await fireEvent.input(screen.getByRole("textbox", { name: "Instructions" }), {
     target: { value: "instructions.md" },

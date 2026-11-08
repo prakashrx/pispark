@@ -45,6 +45,7 @@
   label={creating ? "New persona" : "Edit name and description"}
   title={creating ? "New persona" : "Edit name and description"}
   size="small"
+  variant={creating ? "panel" : "editor"}
   busy={client.busy}
   {onclose}
 >
