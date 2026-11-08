@@ -50,7 +50,7 @@
         disabled={item.disabled}
         style="color: var(--foreground); border-radius: var(--radius-sm);"
         class="block w-full px-3 py-2 text-left text-sm hover:bg-accent focus:bg-accent disabled:opacity-50"
-        class:!text-red-600={item.destructive}
+        class:!text-[var(--danger-foreground)]={item.destructive}
         onclick={() => {
           close();
           item.onselect();

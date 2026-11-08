@@ -40,18 +40,21 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
+  /* Native control tinted with the accent: the browser keeps the dot readable
+     on every theme's accent, light or dark. */
   .ui-radio input[type="radio"] {
-    margin-top: 0.125rem;
+    appearance: auto;
+    margin: 0.125rem 0 0;
     flex-shrink: 0;
     width: 1rem;
     height: 1rem;
-    border: 1px solid var(--input);
-    background-color: var(--background);
-    color: var(--interactive);
+    accent-color: var(--interactive);
+  }
+  .ui-radio input:focus {
+    box-shadow: none;
   }
   .ui-radio input:focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
-    box-shadow: none;
   }
 </style>

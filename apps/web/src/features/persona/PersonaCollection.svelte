@@ -30,7 +30,7 @@
   class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-6 persona-heading"
 >
   <div class="space-y-2">
-    <h1 class="text-[1.75rem] leading-tight font-semibold tracking-tight text-zinc-900">Personas</h1>
+    <h1 class="text-[1.75rem] leading-[1.2] font-[650] tracking-[-0.02em] text-zinc-900">Personas</h1>
     <p class="text-sm text-zinc-500 mt-1">
       Reusable instructions and skills for your chats.
     </p>

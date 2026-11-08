@@ -31,7 +31,7 @@
 
 {#if page}
   <section aria-label="Full message text" class="space-y-2">
-    <pre bind:this={text} tabindex="-1" class="whitespace-pre-wrap break-words">{page.text}</pre>
+    <pre bind:this={text} tabindex="-1" class="full-text">{page.text}</pre>
     {#if page.next}<Button
         class="conversation-action"
         disabled={busy}
@@ -52,4 +52,20 @@
 {:else}
   <Button id={triggerId} class="conversation-action" disabled={busy} onclick={() => read()}>Read full message</Button>
 {/if}
-{#if error}<p role="alert">{error}</p>{/if}
+{#if error}<p role="alert" class="text-sm text-[var(--danger-foreground)]">{error}</p>{/if}
+
+<style>
+  /* Reads like the reply above it. Focus moves here so screen readers start on
+     the new text; it is not a control, so it shows no focus frame. */
+  .full-text {
+    font-family: var(--font-reading);
+    font-size: 1rem;
+    line-height: 1.75;
+    color: var(--foreground);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .full-text:focus {
+    outline: none;
+  }
+</style>

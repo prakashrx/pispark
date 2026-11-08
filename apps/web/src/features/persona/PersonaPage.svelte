@@ -63,10 +63,10 @@
 
 <main
   id="workspace"
-  class="flex-1 overflow-y-auto px-8 py-8 bg-white"
+  class="flex-1 overflow-y-auto px-8 pt-10 pb-4 bg-white"
   aria-label="Persona management"
 >
-  <div class="max-w-4xl mx-auto space-y-6 pb-16">
+  <div class="max-w-3xl mx-auto space-y-6 pb-16">
     {#if client.mode === "collection"}
       <PersonaCollection
         {client}
@@ -87,7 +87,7 @@
               {@render metadataForm(false)}
             {:else}
               <div class="flex items-start gap-1">
-                <h1 class="text-[1.75rem] leading-tight font-semibold tracking-tight text-zinc-900 break-words">
+                <h1 class="text-[1.75rem] leading-[1.2] font-[650] tracking-[-0.02em] text-zinc-900 break-words">
                   {client.draft?.name ?? client.inspectedSummary?.name ?? "Persona"}
                 </h1>
                 {#if !readonly && client.draft && client.mode === "editor"}<Button

@@ -31,7 +31,7 @@
   {#if help}<p id={`${id}-help`} class="text-sm text-neutral-500">
       {help}
     </p>{/if}
-  {#if error}<p id={`${id}-error`} role="alert" class="text-sm text-red-700">
+  {#if error}<p id={`${id}-error`} role="alert" class="text-sm text-[var(--danger-foreground)]">
       {error}
     </p>{/if}
 </div>

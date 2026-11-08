@@ -10,10 +10,28 @@
     message,
     hidden = new Set<number>(),
   }: { message: NativeMessage; hidden?: Set<number> } = $props();
+  // A clipped reply ends where the text budget ran out, often mid-word; mark the cut.
+  const lastText = $derived(
+    message.detail
+      ? message.parts.findLastIndex(
+          (part, index) =>
+            !hidden.has(index) &&
+            part.type !== "toolCall" &&
+            part.type !== "thinking",
+        )
+      : -1,
+  );
+  const ellipsis = (text: string, clipped: boolean) =>
+    clipped ? `${text.trimEnd()}…` : text;
 </script>
 
 {#if message.role === "user"}
-  <UserTurn text={message.parts.map((part) => part.text).join("\n")} />
+  <UserTurn
+    text={ellipsis(
+      message.parts.map((part) => part.text).join("\n"),
+      !!message.detail,
+    )}
+  />
 {:else if message.role === "toolResult"}
   <ToolCard
     name={message.toolName ?? "Tool"}
@@ -28,7 +46,7 @@
       {:else if part.type === "thinking"}
         <ThoughtCard>{part.text}</ThoughtCard>
       {:else}
-        <div class="prose max-w-none">{@html renderMarkdown(part.text)}</div>
+        <div class="prose max-w-none">{@html renderMarkdown(ellipsis(part.text, index === lastText))}</div>
       {/if}
     {/each}
     {#if message.stopReason === "aborted"}

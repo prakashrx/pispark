@@ -302,7 +302,7 @@
 {#if help}<p id={`${id}-help`} class="mt-1 text-xs text-neutral-500">
     {help}
   </p>{/if}
-{#if error}<p id={`${id}-error`} role="alert" class="mt-1 text-xs text-red-700">
+{#if error}<p id={`${id}-error`} role="alert" class="mt-1 text-xs text-[var(--danger-foreground)]">
     {error}
   </p>{/if}
 

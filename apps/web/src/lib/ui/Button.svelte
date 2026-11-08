@@ -79,7 +79,7 @@
     border-color: transparent;
   }
   :global(.ui-button:where([data-variant="destructive"])) {
-    color: var(--destructive);
+    color: var(--danger-foreground);
     border-color: color-mix(in srgb, var(--destructive) 25%, transparent);
   }
   :global(.ui-button:where([data-size="compact"])) {

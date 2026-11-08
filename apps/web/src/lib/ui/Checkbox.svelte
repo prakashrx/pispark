@@ -30,7 +30,7 @@
       if (readonly) event.preventDefault();
       else onclick?.(event);
     }}
-    class="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+    class="ui-checkbox"
     aria-invalid={!!error || undefined}
     aria-describedby={help || error
       ? `${id}-help`
@@ -42,8 +42,28 @@
     >{#if help || error}<span
         id={`${id}-help`}
         class="mt-1 block text-neutral-500"
-        class:text-red-700={!!error}
+        class:text-[var(--danger-foreground)]={!!error}
         role={error ? "alert" : undefined}>{error || help}</span
       >{/if}</span
   >
 </label>
+
+<style>
+  /* Native control tinted with the accent, like Radio: the browser keeps the
+     check readable on every theme's accent, light or dark. */
+  .ui-checkbox {
+    appearance: auto;
+    margin: 0.125rem 0 0;
+    flex-shrink: 0;
+    width: 0.875rem;
+    height: 0.875rem;
+    accent-color: var(--interactive);
+  }
+  .ui-checkbox:focus {
+    box-shadow: none;
+  }
+  .ui-checkbox:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+</style>
