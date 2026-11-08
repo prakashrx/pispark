@@ -14,12 +14,23 @@ export interface SessionInfo {
   interrupted: boolean;
   persona?: AdmittedPersonaSummary;
 }
+export interface MessageRef {
+  index: number;
+  key: string;
+}
+export interface MessagePage {
+  text: string;
+  next?: { part: number; offset: number };
+}
 export interface MessagePart {
+  callId?: string;
   type: string;
   text: string;
   name?: string;
 }
 export interface NativeMessage {
+  callId?: string;
+  detail?: MessageRef;
   role: string;
   parts: MessagePart[];
   toolName?: string;

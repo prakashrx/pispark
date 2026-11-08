@@ -12,6 +12,7 @@ import {
   readdirSync,
   lstatSync,
   statSync,
+  rmSync,
 } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { RuntimeError } from "./errors.js";
@@ -53,6 +54,9 @@ export function validateId(id: string): void {
 /** Host metadata only. Pi JSONL remains the sole transcript store. Dedicated trusted local directory. */
 export class SessionStorage {
   readonly root: string;
+  private catalog = new Map<string, SessionMetadata>();
+  private rescanAt = 0;
+  unreadable = 0;
   constructor(root: string) {
     this.root = resolve(root);
     try {
@@ -116,6 +120,7 @@ export class SessionStorage {
         mode: 0o600,
       });
       renameSync(temporary, join(dir, "host.json"));
+      this.catalog.set(metadata.id, structuredClone(metadata));
     } catch {
       try {
         unlinkSync(temporary);
@@ -127,17 +132,31 @@ export class SessionStorage {
   }
   list(): SessionMetadata[] {
     try {
-      return readdirSync(this.root)
-        .filter(
-          (name) =>
-            /^[a-f0-9-]{36}$/.test(name) &&
-            existsSync(join(this.root, name, "host.json")),
-        )
-        .map((id) => this.read(id));
+      if (Date.now() >= this.rescanAt) {
+        const entries = new Map<string, SessionMetadata>();
+        let unreadable = 0;
+        for (const id of readdirSync(this.root)) {
+          if (!/^[a-f0-9-]{36}$/.test(id)) continue;
+          try {
+            entries.set(id, this.read(id));
+          } catch (error) {
+            if (!(error instanceof RuntimeError && error.code === "not-found")) unreadable++;
+          }
+        }
+        this.catalog = entries;
+        this.unreadable = unreadable;
+        // Local writes update the cache immediately. Reconcile external edits once per host.
+        this.rescanAt = Date.now() + 30_000;
+      }
+      return Array.from(this.catalog.values());
     } catch (error) {
       if (error instanceof RuntimeError) throw error;
       throw new RuntimeError("storage");
     }
+  }
+  discardUnpublished(id: string): void {
+    const dir = this.directory(id);
+    if (!existsSync(join(dir, "host.json"))) rmSync(dir, { recursive: true, force: true });
   }
   nativePath(metadata: SessionMetadata): string {
     return join(this.directory(metadata.id), metadata.nativeFile);

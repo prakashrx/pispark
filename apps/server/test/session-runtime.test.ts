@@ -1,3 +1,4 @@
+import { SessionStorage } from "../src/runtime/storage.js";
 import { SafeLogger } from "../src/logger.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -671,13 +672,15 @@ test("SessionRuntime: timed-out setup stays owned even if shutdown is requested 
       blocked.create({ workspace: "a", configuration: "a" }),
       hasCode("timeout"),
     );
-    await eventually(() => blocked.list().length === 1);
-    const id = blocked.list()[0]!.id;
+    assert.deepEqual(blocked.list(), []);
+    const [id] = await readdir(f.storageDir);
+    assert(id);
+    assert.throws(() => new SessionStorage(f.storageDir).claim(id), hasCode("owned"));
     await assert.rejects(blocked.shutdown(), hasCode("timeout"));
-    await assert.rejects(f.runtime.open(id), hasCode("owned"));
     release();
-    await eventually(() => blocked.list()[0]?.status === "unloaded");
-    await f.runtime.open(id);
+    await blocked.shutdown();
+    assert.deepEqual(blocked.list(), []);
+    assert.deepEqual(await readdir(f.storageDir), []);
   } finally {
     release();
     await blocked.shutdown();

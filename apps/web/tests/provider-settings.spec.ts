@@ -1,3 +1,4 @@
+import { hostedTest } from "./isolated-host";
 import { test, expect } from "@playwright/test";
 
 const provider = "Local auth fixture";
@@ -67,6 +68,30 @@ async function login(page: import("@playwright/test").Page) {
   await page.keyboard.press("Escape");
   await expect(summary(page)).toHaveAttribute("aria-expanded", "false");
 }
+
+hostedTest("the default model picker accepts physical pointer clicks at narrow and wide widths", async ({ page, request }) => {
+  await openLocal(page);
+  await login(page);
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const trigger = page.getByRole("button", { name: /^Default model:/ });
+    await trigger.click();
+    const option = page.getByRole("option", { name: width === 390 ? /deterministic/i : /second/i }).first();
+    await expect(option).toBeVisible();
+    const point = await option.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const x = box.left + box.width / 2, y = box.top + box.height / 2;
+      return { x, y, hit: element.contains(document.elementFromPoint(x, y)) };
+    });
+    expect(point.hit).toBe(true);
+    const saved = page.waitForResponse((r) => r.url().endsWith("/api/providers/default") && r.request().method() === "POST");
+    await page.mouse.click(point.x, point.y);
+    expect((await saved).ok()).toBe(true);
+    await expect.poll(async () => (await (await request.get("/api/providers")).json()).defaultModel?.id)
+      .toBe(width === 390 ? "deterministic" : "second");
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  }
+});
 
 test("ProvidersPage: real native key persistence, shared Ask model, durable default and unchanged existing session", async ({
   page,

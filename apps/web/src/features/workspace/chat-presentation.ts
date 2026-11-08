@@ -46,28 +46,33 @@ export interface VisibleTurn {
   hidden: Set<number>;
 }
 /**
- * Presentation-only pass over a native message window. A tool call is shown as
- * running until a later tool result with the same name arrives; the result then
+ * Presentation-only pass over a native message window. A requested tool call is shown
+ * until a later result with the same invocation ID arrives; the result then
  * carries the outcome on its own. Turns with nothing visible are dropped.
  */
 export function visibleTurns(messages: NativeMessage[]): VisibleTurn[] {
   const turns = messages.map((message) => ({ message, hidden: new Set<number>() }));
-  const pending: { turn: VisibleTurn; index: number; name?: string }[] = [];
+  const pending = new Map<string, { turn: VisibleTurn; index: number }>();
   for (const turn of turns) {
     const { message, hidden } = turn;
     if (message.role === "toolResult") {
-      const match = pending.findIndex((call) => call.name === message.toolName);
-      const [call] = pending.splice(match >= 0 ? match : 0, 1);
-      call?.turn.hidden.add(call.index);
+      const call = message.callId && pending.get(message.callId);
+      if (call && message.callId) {
+        call.turn.hidden.add(call.index);
+        pending.delete(message.callId);
+      }
       continue;
     }
     message.parts.forEach((part, index) => {
-      if (part.type === "toolCall") pending.push({ turn, index, name: part.name });
+      if (part.type === "toolCall") {
+        if (part.callId) pending.set(part.callId, { turn, index });
+      }
       else if (!part.text?.trim()) hidden.add(index);
     });
   }
   return turns.filter(
     ({ message, hidden }) =>
+      !!message.detail ||
       message.role === "toolResult" ||
       message.stopReason === "aborted" ||
       message.stopReason === "error" ||

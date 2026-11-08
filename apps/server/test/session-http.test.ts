@@ -6,6 +6,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { request, type IncomingMessage, type ServerResponse } from "node:http";
+import { messagePage, messageWindow } from "../src/runtime/message-window.js";
 import { SessionRuntime } from "../src/runtime/session-runtime.js";
 import { SessionHttp } from "../src/session-http.js";
 import { createAppServer } from "../src/server.js";
@@ -256,6 +257,45 @@ test("SessionHttp: strict Host/Origin/JSON/identity, explicit failures, receipts
   );
 });
 
+test("message pages redact credentials across cursor boundaries and keep emoji intact", () => {
+  const secret = "private-token";
+  const content = "x".repeat(8190) + secret + "tail";
+  const first = messagePage({ content }, secret, 0, 0);
+  assert.equal(first.text, "x".repeat(8190) + "[redacted]");
+  assert(first.next);
+  assert.equal(messagePage({ content }, secret, 0, first.next.offset).text, "tail");
+  assert.equal(messagePage({ content }, secret, 0, 8194).text, "[redacted]tail");
+  const emoji = { content: "x".repeat(8191) + "🌱" };
+  const initial = messagePage(emoji, undefined, 0, 0);
+  assert.equal(initial.next?.offset, 8191);
+  assert.equal(messagePage(emoji, undefined, 0, 8191).text, "🌱");
+  const budget = { remaining: 4, truncated: false };
+  messageWindow({ content: "x" }, "x", budget);
+  assert(budget.truncated);
+});
+
+test("a bad metadata record is counted and a rejected new chat is never published", async (t) => {
+  const f = await fixture(t);
+  const rejected = new SessionRuntime({
+    ...f.configuration,
+    configurations: { missing: { ...f.configuration.configurations.local, credential: { secretRef: "missing" } } },
+  });
+  await assert.rejects(rejected.create({ workspace: "a", configuration: "missing" }));
+  await rejected.shutdown();
+  const id = await f.create("a");
+  const damaged = join(f.configuration.storageDir, randomUUID());
+  await mkdir(damaged);
+  await writeFile(join(damaged, "host.json"), "{");
+  const list = await (await fetch(f.base + "/api/sessions")).json();
+  assert.equal(list.unreadable, 1);
+  assert.deepEqual(list.sessions.map((s: { id: string }) => s.id), [id]);
+  await f.runtime.stop(id);
+  const fail = await f.post({ type: "start", sessionId: id, text: "never sent" });
+  assert.equal(fail.state, "settled");
+  assert.equal(fail.error, "not-found");
+  assert.equal(f.provider.requests.length, 0);
+});
+
 test("SessionHttp: bounded native windows, long stream/coalescing and blocked writable cleanup", async (t) => {
   const f = await fixture(t);
   const id = await f.create("a");
@@ -266,6 +306,23 @@ test("SessionHttp: bounded native windows, long stream/coalescing and blocked wr
   assert.equal(window.messages.length, 20);
   assert.equal(window.before, window.total - 20);
   assert(window.truncated);
+  const newest = window.messages.at(-1)!;
+  assert.equal(newest.role, "assistant");
+  assert.match(newest.parts[0]!.text, /^local:/);
+  assert(window.messages.every((m) => m.role && m.parts.every((p) => p.type)));
+  assert(newest.detail);
+  const path = `${f.base}/api/sessions/${id}/messages/${newest.detail.index}/${newest.detail.key}`;
+  let cursor: { part: number; offset: number } | undefined = { part: 0, offset: 0 };
+  let complete = "";
+  while (cursor) {
+    const response: Response = await fetch(`${path}/${cursor.part}/${cursor.offset}`);
+    assert.equal(response.status, 200);
+    const page: import("../src/protocol.js").MessagePage = await response.json();
+    assert(page.text.length <= 8192);
+    complete += page.text;
+    cursor = page.next;
+  }
+  assert.equal(complete, "local:" + "x".repeat(60_000));
   assert(Buffer.byteLength(JSON.stringify(window)) < 256 * 1024);
   const older = (await (
     await fetch(`${f.base}/api/sessions/${id}/window?before=${window.before}`)

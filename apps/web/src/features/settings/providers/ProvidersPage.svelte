@@ -63,7 +63,7 @@
   label="Providers and models"
 >
   <Section title="Default model" description="Used for new chats. Existing chats keep their model.">
-    <div class="settings-card mt-4 px-5 py-4 flex items-center gap-4 flex-wrap form-row">
+    <div class="settings-card !overflow-visible mt-4 px-5 py-4 flex items-center gap-4 flex-wrap form-row">
       <div class="min-w-0 flex-1">
         <p class="text-[0.9375rem] font-medium break-words">
           {defaultChoice

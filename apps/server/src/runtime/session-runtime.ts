@@ -3,7 +3,7 @@ import { chatTitle, toolChatTitle } from "./chat-title.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { SessionWindow } from "../protocol.js";
-import { messageWindow } from "./message-window.js";
+import { messagePage, messageWindow } from "./message-window.js";
 import { basename, dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import {
@@ -83,6 +83,7 @@ interface RunIdentity {
 }
 interface HostedSession {
   metadata: SessionMetadata;
+  published: boolean;
   release: () => void;
   status: SessionStatus;
   sequence: number;
@@ -106,6 +107,7 @@ interface HostedSession {
 /** Client-independent local owner. No HTTP, browser lifetime, terminal configuration or replay of interrupted tools. */
 export class SessionRuntime {
   private readonly storage: SessionStorage;
+  private readonly messageKeys = new WeakMap<object, string>();
   readonly personas: PersonaStore;
   private readonly live = new Map<string, HostedSession>();
   private accepting = true;
@@ -142,6 +144,9 @@ export class SessionRuntime {
     return this.storage
       .list()
       .map((metadata) => this.summary(metadata, this.live.get(metadata.id)));
+  }
+  get unreadableSessions(): number {
+    return this.storage.unreadable;
   }
   private summary(
     metadata: SessionMetadata,
@@ -238,9 +243,17 @@ export class SessionRuntime {
       before === undefined && session.state.streamingMessage
         ? messageWindow(session.state.streamingMessage, hosted.secret, budget)
         : undefined;
-    const projected = messages
-      .slice(start, end)
-      .map((message) => messageWindow(message, hosted.secret, budget));
+    const projected = [];
+    for (let index = end - 1; index >= start; index--) {
+      const message = messages[index]!;
+      const preview = messageWindow(message, hosted.secret, budget, () => {
+        const key = this.messageKeys.get(message) ?? randomUUID();
+        this.messageKeys.set(message, key);
+        return { index, key };
+      });
+      projected.push(preview);
+    }
+    projected.reverse();
     return {
       ...this.summary(hosted.metadata, hosted),
       sequence: hosted.sequence,
@@ -258,6 +271,13 @@ export class SessionRuntime {
       },
       error: hosted.error,
     };
+  }
+  messagePage(id: string, index: number, key: string, part: number, offset: number) {
+    const hosted = this.get(id);
+    const message = hosted.session!.messages[index];
+    // A changed native context or reopened owner must never serve a different message.
+    if (!message || this.messageKeys.get(message) !== key) throw new RuntimeError("not-found");
+    return messagePage(message, hosted.secret, part, offset);
   }
   observeWindow(id: string): {
     snapshot: SessionWindow;
@@ -354,6 +374,7 @@ export class SessionRuntime {
     const release = this.storage.claim(metadata.id);
     const hosted: HostedSession = {
       metadata,
+      published: reopening,
       release,
       status: "starting",
       sequence: 0,
@@ -415,7 +436,7 @@ export class SessionRuntime {
         );
         metadata.persona = hosted.persona.metadata;
       }
-      this.storage.write(metadata);
+      if (reopening) this.storage.write(metadata);
       const services = await createSessionServices(
         configuration,
         cwd,
@@ -535,17 +556,20 @@ export class SessionRuntime {
         },
       });
       if (hosted.error) throw new RuntimeError(hosted.error);
+      if (hosted.hostClosed) throw new RuntimeError("timeout");
       metadata.active = false;
       metadata.hasHistory = existsSync(this.storage.nativePath(metadata));
-      this.storage.write(metadata);
       hosted.status = "idle";
+      this.changed(hosted);
+      const snapshot = this.snapshot(metadata.id);
+      this.storage.write(metadata);
+      hosted.published = true;
       this.logger.event(reopening ? "session.recover" : "session.create", {
         sessionId: metadata.id,
         personaId: metadata.persona?.ref.id,
         outcome: "completed",
       });
-      this.changed(hosted);
-      return this.snapshot(metadata.id);
+      return snapshot;
     };
     const operation = initialize().catch(async (error: unknown) => {
       hosted.error = runtimeError(error, "configuration").code;
@@ -845,7 +869,7 @@ export class SessionRuntime {
       );
       hosted.metadata.active = hosted.error === "storage";
       try {
-        this.storage.write(hosted.metadata);
+        if (hosted.published) this.storage.write(hosted.metadata);
       } catch {
         cleanupError = "storage";
       }
@@ -856,6 +880,7 @@ export class SessionRuntime {
     for (const observer of hosted.observers) observer.close();
     hosted.release();
     this.live.delete(hosted.metadata.id);
+    if (!hosted.published) this.storage.discardUnpublished(hosted.metadata.id);
     if (cleanupError) throw new RuntimeError(cleanupError);
   }
   async shutdown(): Promise<void> {

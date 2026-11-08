@@ -94,8 +94,9 @@
           />{/key}
       {:else}
         <p class="inline-note" data-tone="info">
-          This provider is configured on the backend host; Pi supplies no
-          interactive sign-in for it.
+          {provider.configured
+            ? "This provider is configured on the backend host."
+            : "Set up this provider on the backend host."} Pi supplies no interactive sign-in for it.
         </p>
       {/if}
       <ProviderModels

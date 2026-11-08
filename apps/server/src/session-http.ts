@@ -218,13 +218,20 @@ export class SessionHttp {
         case "open":
           await this.runtime.open(command.sessionId);
           break;
-        case "start":
-          Object.assign(
-            receipt,
-            await this.runtime.start(command.sessionId, command.text)
-              .completion,
-          );
+        case "start": {
+          let run;
+          try {
+            run = this.runtime.start(command.sessionId, command.text);
+          } catch (error) {
+            // Admission is synchronous. Return a definite rejection before clients clear drafts.
+            receipt.state = "settled";
+            receipt.outcome = "failed";
+            receipt.error = failure(error);
+            break;
+          }
+          Object.assign(receipt, await run.completion);
           break;
+        }
         case "steer":
         case "follow-up":
           receipt.outcome = await this.runtime.queue(
@@ -313,6 +320,7 @@ export class SessionHttp {
         sendJson(response, 200, {
           sessions: sessions.slice(-256),
           truncated: sessions.length > 256,
+          unreadable: this.runtime.unreadableSessions,
         });
       } else if (
         request.method === "GET" &&
@@ -327,6 +335,14 @@ export class SessionHttp {
           receipt ?? { error: "unknown-receipt" },
         );
       } else {
+        const detail = /^\/api\/sessions\/([\w-]+)\/messages\/(\d{1,9})\/([\w-]+)\/(\d{1,9})\/(\d{1,10})$/.exec(path);
+        if (request.method === "GET" && detail && !url.search) {
+          const [, id, index, key, part, offset] = detail;
+          if (!uuid.test(id!) || !uuid.test(key!)) throw new RuntimeError("invalid-input");
+          const page = this.runtime.messagePage(id!, Number(index), key!, Number(part), Number(offset));
+          sendJson(response, 200, page);
+          return;
+        }
         const match = /^\/api\/sessions\/([\w-]+)\/(events|window)$/.exec(path);
         if (request.method !== "GET" || !match || !uuid.test(match[1]!)) {
           sendJson(response, 404, { error: "not-found" });
@@ -363,7 +379,14 @@ export class SessionHttp {
     }
   }
   private async observe(id: string, response: ServerResponse) {
-    const observation = this.runtime.observeWindow(id);
+    let observation;
+    try {
+      observation = this.runtime.observeWindow(id);
+    } catch (error) {
+      if (!(error instanceof RuntimeError) || error.code !== "not-found") throw error;
+      sendJson(response, 410, { error: "not-found" });
+      return;
+    }
     this.streams.add(response);
     const close = () => observation.events.close();
     response.once("close", close);

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { NativeMessage } from "./session-client.svelte";
+  import MessageReader from "./MessageReader.svelte";
   import UserTurn from "./UserTurn.svelte";
   import ToolCard from "./ToolCard.svelte";
   import ThoughtCard from "./ThoughtCard.svelte";
@@ -23,7 +24,7 @@
   <div class="flex flex-col gap-3" data-purpose="assistant-turn-stream">
     {#each message.parts as part, index}
       {#if hidden.has(index)}{:else if part.type === "toolCall"}
-        <ToolCard name={part.name ?? "Tool"} result="running" />
+        <ToolCard name={part.name ?? "Tool"} result="requested" />
       {:else if part.type === "thinking"}
         <ThoughtCard>{part.text}</ThoughtCard>
       {:else}
@@ -40,3 +41,4 @@
     {/if}
   </div>
 {/if}
+{#if message.detail}{#key message.detail.key}<MessageReader reference={message.detail} />{/key}{/if}

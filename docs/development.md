@@ -26,7 +26,7 @@ The root dev command starts both workspaces and stops the other when either exit
 | `npm run smoke` | `make smoke` | Check built entry, API, HTML, JS/CSS and favicon over HTTP |
 | `npm start` | `make start` | Serve the production build |
 
-Make is optional. All npm scripts work in Windows PowerShell/cmd as well as Unix shells. CI runs install, check, test, build, and HTTP smoke on Ubuntu and Windows using Node22.23.4. The pinned SDK requires Node22.19.0+, but PiSpark startup also requires patched bundled undici on every supported major. SDK-compatible patches are not necessarily supported hosts.
+Make is optional. All npm scripts work in Windows PowerShell/cmd as well as Unix shells. CI runs install, check, test, build, HTTP smoke and the production Chromium suite on Ubuntu and Windows using Node22.23.4. The pinned SDK requires Node22.19.0+, but PiSpark startup also requires patched bundled undici on every supported major. SDK-compatible patches are not necessarily supported hosts.
 
 ## Configuration
 
@@ -62,10 +62,11 @@ See [session configuration/protocol](session-protocol.md) for `PISPARK_CONFIG`, 
 
 ### Optional browser checks
 
-Install Playwright's Chromium once after `npm ci`, then run the browser suite:
+Install Playwright’s Chromium after `npm ci`, then build the assets used by the isolated browser hosts and run the suite:
 
 ```sh
 npx playwright install chromium
+npm run build
 npm run test:browser -w @pispark/web
 ```
 
@@ -85,7 +86,7 @@ npm run test:browser -w @pispark/web
 Remove-Item Env:PISPARK_TEST_PRODUCTION
 ```
 
-CI currently runs the core checks and HTTP smoke, not the optional browser suite. For a manual UI pass, test narrow layouts, Tab/Shift+Tab focus, Enter/Space activation, Escape dismissal/focus return, the skip link, sidebar toggle, independent Ask/reply drafts, real persona collection/create/editor and file-save/compose/validate/save/conflict states, session streaming/cancel/reconnect, concise Chat info and actual native title changes. Sources remains truthfully unavailable. The status dot reports client connectivity, not model-provider health. Drafts intentionally disappear on reload.
+CI installs Chromium and runs the production browser suite after the core checks and HTTP smoke. For a manual UI pass, test narrow layouts, Tab/Shift+Tab focus, Enter/Space activation, Escape dismissal/focus return, the skip link, sidebar toggle, independent Ask/reply drafts, real persona collection/create/editor and file-save/compose/validate/save/conflict states, session streaming/cancel/reconnect, concise Chat info and actual native title changes. Sources remains truthfully unavailable. The status dot reports client connectivity, not model-provider health. Drafts intentionally disappear on reload.
 
 ## Dependency findings
 

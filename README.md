@@ -18,7 +18,7 @@ Providers & models now supports Pi-native sign-in, stored credential removal, ca
 
 Every hosted session loads an ordinary built-in PiSpark integration extension. Its first native tool, `pispark_set_title`, lets that session set its own validated, durable chat title during normal agent interaction. No separate naming request, history backfill, filesystem permission or terminal Pi change is involved. Chat info shows persona, model, working folder and start time—not runtime diagnostics.
 
-Styles, other settings saves, source connections/marketplace and extension Svelte hosting remain deferred. General settings shows actual read-only configuration; Sources explains that connections are unavailable. Ask, reply and persona drafts survive route changes but reset on reload. Credentials persist server-side; the browser stores only the selected session UUID.
+Styles, other settings saves, source connections/marketplace and extension Svelte hosting remain deferred. General settings shows read-only host configuration and saves appearance preferences in this browser; Sources explains that connections are unavailable. Ask, reply and persona drafts survive route changes but reset on reload. Credentials persist server-side; the browser stores the selected session UUID and appearance preferences.
 
 ## Run locally
 

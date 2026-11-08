@@ -1,3 +1,4 @@
+import { hostedTest } from "./isolated-host";
 import { test, expect, type Page } from "@playwright/test";
 import {
   collection,
@@ -15,6 +16,39 @@ import {
   refFor,
   capture,
 } from "./persona-journey";
+
+hostedTest("metadata changes stay with the persona that opened the panel", async ({ page, request }) => {
+  const names = ["Alpha metadata owner", "Beta metadata owner"];
+  const refs = [];
+  for (const name of names) {
+    const res = await request.post("/api/personas/create", { data: { definition: { schemaVersion: 1, name } } });
+    expect(res.ok()).toBe(true);
+    refs.push((await res.json()).ref);
+  }
+  await page.goto("/#/persona");
+  await page.getByRole("link", { name: names[0], exact: true }).click();
+  await action(page, "Edit name and description");
+  const panel = page.getByRole("region", { name: "Edit name and description" });
+  await panel.getByRole("textbox", { name: "Description" }).fill("For Alpha only");
+  let resume!: () => void;
+  const waiting = new Promise<void>((resolve) => { resume = resolve; });
+  await page.route("**/api/personas/read", async (route) => {
+    await waiting;
+    await route.continue();
+  });
+  await page.getByRole("link", { name: names[1], exact: true }).click();
+  try {
+    await expect(panel).toHaveCount(0);
+  } finally {
+    resume();
+  }
+  await expect(page.getByRole("heading", { name: names[1], exact: true })).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  const beta = await (await request.post("/api/personas/read", { data: { ref: refs[1] } })).json();
+  expect(beta.definition.name).toBe(names[1]);
+  expect(beta.definition.description).toBeUndefined();
+});
 
 async function openRef(page: Page, ref: unknown) {
   await collection(page);

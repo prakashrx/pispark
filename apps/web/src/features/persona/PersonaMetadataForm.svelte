@@ -18,6 +18,7 @@
     onclose: () => void;
     oncreated: () => void;
   } = $props();
+  const owner = untrack(() => client.draft);
   let name = $state(
     untrack(() => (creating ? "" : (client.draft?.name ?? ""))),
   );
@@ -32,7 +33,7 @@
         oncreated();
         onclose();
       }
-    } else if (client.draft) {
+    } else if (client.draft && client.draft === owner && client.view?.writable && !client.reading) {
       client.draft.name = name.trim();
       client.draft.description = description;
       onclose();

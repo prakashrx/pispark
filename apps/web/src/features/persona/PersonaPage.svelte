@@ -17,7 +17,8 @@
   const sessions = useSessions(),
     client = sessions.personas;
   let promptToCustomize = $state<EffectiveResource>();
-  let dialog = $state<"create" | "metadata" | "preview">();
+  let dialog = $state<"create" | "preview">();
+  let metadataOwner = $state<typeof client.draft>();
   let skillToCustomize = $state<string>();
   let parentResources = $state<EffectiveResource[]>([]);
   const readonly = $derived(!client.view?.writable || client.reading);
@@ -105,13 +106,19 @@
                   id: "metadata",
                   label: "Edit name and description",
                   disabled: readonly,
-                  onselect: () => (dialog = "metadata"),
+                  onselect: () => {
+                    dialog = undefined;
+                    metadataOwner = client.draft;
+                  },
                 },
                 {
                   id: "preview",
                   label: "Preview",
                   disabled: !client.view,
-                  onselect: () => (dialog = "preview"),
+                  onselect: () => {
+                    metadataOwner = undefined;
+                    dialog = "preview";
+                  },
                 },
                 {
                   id: "reload",
@@ -124,7 +131,7 @@
           </div>
         </div>
       </header>
-      {#if dialog === "metadata" && client.mode === "editor"}<div class="my-6">
+      {#if metadataOwner && metadataOwner === client.draft && !readonly && client.mode === "editor"}<div class="my-6">
           {@render metadataForm(false)}
         </div>{/if}
       {#if dialog === "preview" && client.mode === "editor"}<div class="my-6">
@@ -314,6 +321,7 @@
     {creating}
     onclose={() => {
       dialog = undefined;
+      metadataOwner = undefined;
       if (client.mode === "editor") void client.validate();
     }}
     oncreated={() => {}}

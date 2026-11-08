@@ -1,6 +1,8 @@
 import { getContext, setContext } from "svelte";
 import type {
   Catalog,
+  MessageRef,
+  MessagePage,
   Command,
   Receipt,
   SessionInfo,
@@ -71,6 +73,7 @@ export class SessionClient {
   private mounting = false;
   private offline = () => {
     this.source?.abort();
+    this.snapshot = undefined;
     this.connection = "Reconnecting";
   };
   private online = () => this.reconnect();
@@ -140,7 +143,10 @@ export class SessionClient {
             this.refreshing = false;
           });
       }, 5000);
-      const stored = localStorage.getItem("pispark-session");
+      let stored: string | null = null;
+      try {
+        stored = localStorage.getItem("pispark-session");
+      } catch { /* Selection is optional when browser storage is unavailable. */ }
       const session =
         this.sessions.find((s) => s.id === stored) ?? this.sessions.at(-1);
       if (session) await this.select(session.id);
@@ -160,11 +166,15 @@ export class SessionClient {
     const result = await this.json<{
       sessions: SessionInfo[];
       truncated: boolean;
+      unreadable?: number;
     }>("/api/sessions");
     this.sessions = result.sessions;
     this.listNotice = result.truncated
       ? "Showing your latest 256 chats. Older chats are still saved."
       : "";
+    if (result.unreadable) {
+      this.listNotice = [this.listNotice, `${result.unreadable} chat records could not be read.`].filter(Boolean).join(" ");
+    }
   }
   private async submit(command: InputCommand): Promise<Receipt> {
     const commandId = crypto.randomUUID();
@@ -214,6 +224,8 @@ export class SessionClient {
     this.connection = "Connecting";
     try {
       localStorage.setItem("pispark-session", id);
+    } catch { /* In-memory selection still works. */ }
+    try {
       if (this.sessions.find((s) => s.id === id)?.status === "unloaded")
         await this.settled(await this.submit({ type: "open", sessionId: id }));
       if (generation !== this.selection || this.disposed) return;
@@ -239,6 +251,15 @@ export class SessionClient {
               AbortSignal.timeout(70_000),
             ]),
           });
+          if (response.status === 410) {
+            if (source !== this.source || source.signal.aborted) return;
+            this.snapshot = undefined;
+            this.older = undefined;
+            this.connection = "Unloaded";
+            const summary = this.sessions.find((session) => session.id === id);
+            if (summary) summary.status = "unloaded";
+            return;
+          }
           for await (const value of snapshots(response)) {
             if (
               source !== this.source ||
@@ -274,6 +295,7 @@ export class SessionClient {
           /* Lost connection or bounded decoder rejection: reconnect from fresh snapshot, never resend commands. */
         }
         if (source.signal.aborted || this.disposed) return;
+        this.snapshot = undefined;
         this.connection = "Reconnecting";
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
@@ -413,6 +435,9 @@ export class SessionClient {
     } catch (error) {
       this.recordError(error, id);
     }
+  }
+  readMessage(ref: MessageRef, part: number, offset: number) {
+    return this.json<MessagePage>(`/api/sessions/${this.selected}/messages/${ref.index}/${ref.key}/${part}/${offset}`);
   }
   async history() {
     const id = this.selected;

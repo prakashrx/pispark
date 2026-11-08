@@ -3,12 +3,12 @@
     name,
     result,
     content = "",
-  }: { name: string; result: "running" | "done" | "error"; content?: string } = $props();
+  }: { name: string; result: "requested" | "done" | "error"; content?: string } = $props();
 
   let expanded = $state(false);
   const hasContent = $derived(!!content?.trim());
   const label = $derived(
-    result === "running" ? "Running" : result === "error" ? "Failed" : "Done",
+    result === "requested" ? "Requested" : result === "error" ? "Failed" : "Done",
   );
 </script>
 
@@ -89,12 +89,9 @@
     border-radius: 50%;
     background: currentColor;
   }
-  [data-result="running"] .tool-status {
+  [data-result="requested"] .tool-status {
     background: var(--warning-muted);
     color: var(--warning-foreground);
-  }
-  [data-result="running"] .tool-dot {
-    animation: pulse 1.2s ease-in-out infinite;
   }
   [data-result="done"] .tool-status {
     background: var(--success-muted);
@@ -103,10 +100,6 @@
   [data-result="error"] .tool-status {
     background: var(--danger-muted);
     color: var(--danger-foreground);
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.35; }
   }
   .tool-chevron {
     width: 0.9rem;

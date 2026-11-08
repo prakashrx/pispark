@@ -70,7 +70,7 @@
           <span
             class={[
               "inline-flex h-2 w-2 rounded-full",
-              sessions.connection === "Connected" || sessions.connection === "Reconnecting"
+              ["Connected", "Live", "Unloaded"].includes(sessions.connection)
                 ? "bg-emerald-500"
                 : sessions.connection === "Disconnected"
                   ? "bg-red-500"

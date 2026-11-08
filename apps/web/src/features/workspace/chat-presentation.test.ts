@@ -52,15 +52,25 @@ test("uncertainty primary copy distinguishes acceptance, settlement and known-ch
   expect(commandUncertainty(undefined, true)).toBe("");
 });
 
+test("unmatched results never hide a pending tool, even when names repeat", () => {
+  const calls = { role: "assistant", parts: [
+    { type: "toolCall", text: "", name: "read", callId: "first" },
+    { type: "toolCall", text: "", name: "read", callId: "second" },
+  ] };
+  const result = { role: "toolResult", toolName: "read", parts: [] };
+  const turns = visibleTurns([calls, { ...result, callId: "other" }, { ...result, callId: "second" }, result]);
+  expect([...turns[0]!.hidden]).toEqual([1]);
+});
+
 test("visible turns drop empty messages and settle tool calls by their later result", () => {
   const turns = visibleTurns([
     { role: "assistant", parts: [{ type: "text", text: "  " }] },
     { role: "user", parts: [{ type: "text", text: "Hi" }] },
-    { role: "assistant", parts: [{ type: "toolCall", text: "", name: "a" }, { type: "toolCall", text: "", name: "b" }] },
-    { role: "toolResult", toolName: "b", parts: [{ type: "text", text: "ok" }] },
+    { role: "assistant", parts: [{ type: "toolCall", text: "", name: "a" }, { type: "toolCall", text: "", name: "b", callId: "second" }] },
+    { role: "toolResult", toolName: "b", callId: "second", parts: [{ type: "text", text: "ok" }] },
     { role: "assistant", parts: [{ type: "text", text: "" }], stopReason: "aborted" },
   ]);
   expect(turns.map((t) => t.message.role)).toEqual(["user", "assistant", "toolResult", "assistant"]);
-  // "a" has no result yet so it stays visible as running; "b" is settled.
+  // "a" has no result yet so its request stays visible; "b" is settled.
   expect([...(turns[1]?.hidden ?? [])]).toEqual([1]);
 });

@@ -88,6 +88,9 @@
           onclick={() => client.reconnect()}>Reconnect</Button
         >
       </p>
+    {:else if chat && client.connection === "Unloaded"}<p role="status" class="conversation-notice">
+        This chat is stopped. <Button class={button} onclick={() => client.reconnect()}>Reopen chat</Button>
+      </p>
     {:else if chat && client.connection === "Reconnecting"}<p
         role="status"
         class="conversation-notice"
