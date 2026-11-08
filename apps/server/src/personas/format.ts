@@ -187,7 +187,10 @@ export function itemPath(path: unknown): { type: ItemType; name: string } {
   return fail("invalid-path");
 }
 
-/** Minimal YAML-ish frontmatter: `key: value` lines between `---` fences. */
+/**
+ * Minimal YAML-ish frontmatter between `---` fences: `key: value` lines, including folded
+ * (`>`, `>-`) and literal (`|`, `|-`) blocks of indented lines.
+ */
 export function frontmatter(source: string): {
   data: Record<string, string>;
   body: string;
@@ -195,10 +198,17 @@ export function frontmatter(source: string): {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(source);
   if (!match) return { data: {}, body: source };
   const data: Record<string, string> = {};
-  for (const line of match[1]!.split(/\r?\n/)) {
-    const pair = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line);
-    if (pair)
-      data[pair[1]!] = pair[2]!.replace(/^(["'])(.*)\1$/, "$2").trim();
+  const lines = match[1]!.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const pair = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(lines[i]!);
+    if (!pair) continue;
+    const value = pair[2]!.trim();
+    if (/^[>|][+-]?$/.test(value)) {
+      const block: string[] = [];
+      while (i + 1 < lines.length && /^(\s+|$)/.test(lines[i + 1]!) && !/^\S/.test(lines[i + 1]!))
+        block.push(lines[++i]!.trim());
+      data[pair[1]!] = block.join(value.startsWith(">") ? " " : "\n").trim();
+    } else data[pair[1]!] = value.replace(/^(["'])(.*)\1$/, "$2");
   }
   return { data, body: source.slice(match[0].length) };
 }

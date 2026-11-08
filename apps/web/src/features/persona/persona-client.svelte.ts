@@ -154,7 +154,7 @@ export class PersonaClient {
   updateDefinition(update: (definition: PersonaDefinition) => PersonaDefinition) {
     const view = this.view;
     if (!view) return Promise.resolve(false);
-    return this.change(() => this.save(update(structuredClone(view.definition))));
+    return this.change(() => this.save(update($state.snapshot(view.definition) as PersonaDefinition)));
   }
   /**
    * Switch an item or tool on or off in this layer. The least change is tried first

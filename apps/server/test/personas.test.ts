@@ -11,6 +11,7 @@ import {
 } from "../src/personas/resolve.js";
 import {
   DEFAULT_TOOLS,
+  frontmatter,
   PersonaError,
   slug,
   validateDefinition,
@@ -70,6 +71,19 @@ test("readable slug IDs, revision-checked saves, delete rules", async (t) => {
   s.remove("dev");
   assert.equal(s.exists({ persona: "dev" }), false);
   assert.throws(() => s.create({ name: "X", base: ["nope"] }), code("missing-parent"));
+});
+
+test("frontmatter reads plain, quoted, folded and literal values", () => {
+  const { data, body } = frontmatter(
+    "---\nname: review\ndescription: >-\n  Split work into\n  small PRs.\nnote: |\n  line one\n  line two\nquoted: \"hi\"\n---\nBody",
+  );
+  assert.deepEqual(data, {
+    name: "review",
+    description: "Split work into small PRs.",
+    note: "line one\nline two",
+    quoted: "hi",
+  });
+  assert.equal(body, "Body");
 });
 
 test("the format is strict: unknown keys, bad switches and Default as a parent are refused", () => {
