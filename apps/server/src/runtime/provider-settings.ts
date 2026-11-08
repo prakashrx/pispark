@@ -1,4 +1,4 @@
-import { join, isAbsolute } from "node:path";
+import { isAbsolute } from "node:path";
 import {
   CredentialSynchronizationError,
   type ModelRuntime,
@@ -17,10 +17,9 @@ import {
 } from "./native-model-runtime.js";
 import { ModelDefaults, providerStores } from "./provider-storage.js";
 import { ProviderError } from "./provider-errors.js";
-import { SessionStorage } from "./storage.js";
 import { RuntimeError } from "./errors.js";
+import { homePaths } from "../home.js";
 
-const settingsOwner = "00000000-0000-4000-8000-000000000001";
 const text = (value: string, max = 256) => value.slice(0, max);
 /** Separate settings ownership. Session instances share only the deliberate native locked credential store. */
 export class ProviderSettings {
@@ -46,11 +45,10 @@ export class ProviderSettings {
   ) {}
   static async create(configuration: RuntimeConfiguration) {
     requireSupportedTransport();
-    const root =
-      configuration.providerSettings?.directory ??
-      join(configuration.storageDir, "provider-settings");
+    const root = homePaths(configuration.home).providers;
     if (!isAbsolute(root)) throw new ProviderError("provider-storage");
-    const release = new SessionStorage(root).claim(settingsOwner);
+    // One server per data root is enforced by the home lock.
+    const release = () => {};
     try {
       const stores = await providerStores(root);
       const defaults = new ModelDefaults(root);

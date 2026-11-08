@@ -20,6 +20,7 @@ import {
 } from "../src/runtime/native-model-runtime.js";
 
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { Setup } from "../src/personas/resolve.js";
 import { createSessionServices } from "../src/runtime/configuration.js";
 
 const provider = "pispark-local-test";
@@ -66,18 +67,7 @@ for (const kind of ["modelOverrides", "models"] as const)
     const f = await localProviderSettings(root, undefined, modelsPath);
     f.control.automatic = true;
     const sessions = new SessionRuntime(
-      {
-        storageDir: join(root, "sessions"),
-        workspaces: { local: root },
-        configurations: {
-          resources: {
-            credential: { stored: true },
-            systemPrompt: "test",
-            tools: [],
-          },
-        },
-        resolveSecret: async () => undefined,
-      },
+      { home: join(root, "pispark") },
       f.settings,
     );
     t.after(async () => {
@@ -102,8 +92,7 @@ for (const kind of ["modelOverrides", "models"] as const)
       "native case-insensitive model precedence",
     );
     const a = await sessions.create({
-      workspace: "local",
-      configuration: "resources",
+      folder: root,
     });
     assert.equal(
       (await sessions.start(a.id, "first").completion).outcome,
@@ -113,8 +102,7 @@ for (const kind of ["modelOverrides", "models"] as const)
     await f.settings.setDefault({ provider, id: "second" });
     assert.equal(sessions.snapshot(a.id).model?.id, "deterministic");
     const b = await sessions.create({
-      workspace: "local",
-      configuration: "resources",
+      folder: root,
     });
     assert.equal(b.model?.id, "second");
     await sessions.stop(a.id);
@@ -142,7 +130,7 @@ for (const kind of ["modelOverrides", "models"] as const)
     );
     await writeFile(modelsPath, "{PRIVATE_BROKEN_CONFIG");
     await assert.rejects(
-      sessions.create({ workspace: "local", configuration: "resources" }),
+      sessions.create({ folder: root }),
     );
     await sessions.start(a.id, "admitted despite broken file").completion;
     assert.equal(
@@ -161,10 +149,11 @@ for (const kind of ["modelOverrides", "models"] as const)
       publicValues,
       /PRIVATE_|"headers"\s*:|"baseUrl"\s*:|test-key/,
     );
-    for (const file of await readdir(join(root, "sessions", a.id))) {
-      if (file === "host.json" || file.endsWith(".jsonl"))
+    const chat = join(root, "pispark", "chats", a.id);
+    for (const file of await readdir(chat)) {
+      if (file === "chat.json" || file.endsWith(".jsonl"))
         assert.doesNotMatch(
-          await readFile(join(root, "sessions", a.id, file), "utf8"),
+          await readFile(join(chat, file), "utf8"),
           /PRIVATE_|"headers"\s*:|test-key/,
         );
     }
@@ -220,9 +209,8 @@ for (const kind of ["config-only", "builtin", "api-changing"] as const)
       }),
     );
     const configuration = {
-      storageDir: join(root, "sessions"),
+      home: root,
       providerSettings: {
-        directory: join(root, "providers"),
         modelsPath,
         providers:
           kind === "api-changing"
@@ -237,15 +225,6 @@ for (const kind of ["config-only", "builtin", "api-changing"] as const)
                 ]
               : [],
       },
-      workspaces: { local: root },
-      configurations: {
-        resources: {
-          credential: { stored: true as const },
-          systemPrompt: "test",
-          tools: [],
-        },
-      },
-      resolveSecret: async () => undefined,
     };
     const settings = await ProviderSettings.create(configuration);
     const sessions = new SessionRuntime(configuration, settings);
@@ -257,8 +236,7 @@ for (const kind of ["config-only", "builtin", "api-changing"] as const)
     });
     const choice = { provider: id, id: modelId };
     const a = await sessions.create({
-      workspace: "local",
-      configuration: "resources",
+      folder: root,
       model: choice,
     });
     const fake = recorder.provider();
@@ -404,39 +382,26 @@ test("SessionRuntime: managed native config cancellation before compaction dispa
     JSON.stringify({ [provider]: { type: "api_key", key: "test-key" } }),
   );
   await f.runtime.refresh({ allowNetwork: false });
-  const storageDir = join(root, "sessions");
-  const sessions = new SessionRuntime(
-    {
-      storageDir,
-      workspaces: { local: root },
-      configurations: {
-        resources: {
-          credential: { stored: true },
-          systemPrompt: "test",
-          tools: [],
-        },
-      },
-      resolveSecret: async () => undefined,
-    },
-    f.settings,
-  );
+  const home = join(root, "pispark");
+  const sessions = new SessionRuntime({ home }, f.settings);
   t.after(async () => {
     await sessions.shutdown();
     await f.settings.close();
     await rm(root, { recursive: true, force: true });
   });
   const request = {
-    workspace: "local",
-    configuration: "resources",
+    folder: root,
     model: { provider, id: "deterministic" },
   };
   const a = await sessions.create(request);
   for (let i = 0; i < 2; i++)
     await sessions.start(a.id, "history".repeat(8000)).completion;
   await sessions.stop(a.id);
-  const dir = join(storageDir, a.id);
-  const metadata = JSON.parse(await readFile(join(dir, "host.json"), "utf8"));
-  const native = join(dir, metadata.nativeFile);
+  const dir = join(home, "chats", a.id);
+  const native = join(
+    dir,
+    (await readdir(dir)).find((name) => name.endsWith(".jsonl"))!,
+  );
   const entries = (await readFile(native, "utf8"))
     .trim()
     .split("\n")
@@ -510,27 +475,21 @@ test("createSessionServices: independently mutable managed runtimes share only e
   );
   await f.runtime.refresh({ allowNetwork: false });
   const selected = await f.settings.select({ provider, id: "deterministic" });
-  const configuration = {
-    credential: { stored: true as const },
-    systemPrompt: "test",
-    tools: [],
+  const setup: Setup = {
+    layers: [], items: [], tools: [], settings: {}, instructions: [], skillDirs: [],
+    prompts: [], extensionPaths: [], mcpServers: {}, toolsOn: [], toolsOff: [], fingerprint: "",
   };
-  const a = await createSessionServices(
-    configuration,
-    root,
-    join(root, "agent-a"),
-    async () => undefined,
-    undefined,
-    selected,
-  );
-  const b = await createSessionServices(
-    configuration,
-    root,
-    join(root, "agent-b"),
-    async () => undefined,
-    undefined,
-    selected,
-  );
+  const services = (agentDir: string) =>
+    createSessionServices({
+      setup,
+      cwd: root,
+      agentDir,
+      managed: selected,
+      admission: { valid: () => true, beforeSettle: async () => {}, beforeProviderDispatch: () => {} },
+      host: { setTitle: () => {}, ownCleanup: () => {} },
+    });
+  const a = await services(join(root, "agent-a"));
+  const b = await services(join(root, "agent-b"));
   t.after(() => {
     a.resourceLoader.getExtensions().runtime.invalidate("test cleanup");
     b.resourceLoader.getExtensions().runtime.invalidate("test cleanup");

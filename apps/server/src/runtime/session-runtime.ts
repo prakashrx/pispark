@@ -4,8 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { SessionWindow } from "../protocol.js";
 import { messagePage, messageWindow } from "./message-window.js";
-import { basename, dirname, join } from "node:path";
-import { existsSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import {
   createAgentSession,
   SessionManager,
@@ -14,30 +13,25 @@ import type {
   AgentSession,
   SessionContext,
 } from "@earendil-works/pi-coding-agent";
-import { createSessionServices, resolveWorkspace } from "./configuration.js";
+import { createSessionServices, resolveFolder } from "./configuration.js";
 import type { RuntimeConfiguration } from "./configuration.js";
 import { deadline, RuntimeError, runtimeError, unsupported } from "./errors.js";
 import type { RuntimeErrorCode } from "./errors.js";
 import { bindHeadlessCapabilities } from "./pi-boundary.js";
 import { SessionChanges } from "./observation.js";
 import type { SessionChange } from "./observation.js";
-import { SessionStorage, validateId } from "./storage.js";
-import type { SessionMetadata } from "./storage.js";
+import { ChatStorage, validateId } from "./storage.js";
+import type { ChatMetadata } from "./storage.js";
 import type { ProviderSettings } from "./provider-settings.js";
 import type { ModelChoice } from "../provider-protocol.js";
+import type { Provider } from "@earendil-works/pi-ai";
 import { validChoice } from "./provider-storage.js";
 import { PersonaStore } from "../personas/store.js";
-import {
-  admitPersona,
-  restorePersona,
-  type AdmittedResources,
-} from "../personas/admission.js";
-import { ref as validatePersonaRef } from "../personas/schema.js";
-import type {
-  AdmittedPersonaSummary,
-  PersonaSelection,
-} from "../persona-protocol.js";
+import { resolveSetup, type Setup } from "../personas/resolve.js";
+import { DEFAULT_PERSONA, validPersonaId } from "../personas/format.js";
+import type { ChatPersona, PersonaTarget } from "../persona-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
+import { homePaths } from "../home.js";
 
 export type SessionStatus =
   | "starting"
@@ -49,14 +43,16 @@ export type SessionStatus =
   | "stopped";
 export interface SessionSummary {
   id: string;
-  workspace: string;
-  configuration: string;
+  /** Working folder on this host. */
+  folder: string;
   createdAt: string;
   title?: string;
   hasHistory?: boolean;
   status: SessionStatus | "unloaded";
   interrupted: boolean;
-  persona?: AdmittedPersonaSummary;
+  persona: ChatPersona;
+  /** The persona changed since this session started; reload to apply. */
+  personaChanged?: boolean;
 }
 export interface SessionSnapshot extends SessionSummary {
   sequence: number;
@@ -82,14 +78,13 @@ interface RunIdentity {
   input?: Promise<unknown>;
 }
 interface HostedSession {
-  metadata: SessionMetadata;
+  metadata: ChatMetadata;
   published: boolean;
   release: () => void;
   status: SessionStatus;
   sequence: number;
   observers: Set<SessionChanges>;
   session?: AgentSession;
-  secret?: string;
   error?: RuntimeErrorCode;
   run?: Promise<RunResult>;
   identity?: RunIdentity;
@@ -101,12 +96,13 @@ interface HostedSession {
   hostClosed?: boolean;
   loading?: Promise<SessionSnapshot>;
   extensionErrors: number;
-  persona?: AdmittedResources;
+  setupChanged?: boolean;
 }
 
 /** Client-independent local owner. No HTTP, browser lifetime, terminal configuration or replay of interrupted tools. */
 export class SessionRuntime {
-  private readonly storage: SessionStorage;
+  private readonly storage: ChatStorage;
+  private readonly unwatchPersonas: () => void;
   private readonly messageKeys = new WeakMap<object, string>();
   readonly personas: PersonaStore;
   private readonly live = new Map<string, HostedSession>();
@@ -131,47 +127,91 @@ export class SessionRuntime {
       )
     )
       throw new RuntimeError("configuration");
-    this.storage = new SessionStorage(configuration.storageDir);
+    const paths = homePaths(configuration.home);
+    this.storage = new ChatStorage(paths.chats);
     this.personas = new PersonaStore(
-      configuration.personas?.directory ??
-        join(dirname(configuration.storageDir), "personas"),
-      configuration.personas?.roots,
+      paths.personas,
+      paths.chats,
+      (chatId) => this.storage.read(chatId).persona,
       logger,
     );
+    this.unwatchPersonas = this.personas.onChange(() => this.checkSetups());
   }
 
   list(): SessionSummary[] {
+    const names = new Map(this.personas.list().map((p) => [p.id, p.name]));
     return this.storage
       .list()
-      .map((metadata) => this.summary(metadata, this.live.get(metadata.id)));
+      .map((metadata) =>
+        this.summary(metadata, this.live.get(metadata.id), names),
+      );
   }
   get unreadableSessions(): number {
     return this.storage.unreadable;
   }
+  /** Recent distinct working folders, newest first, for Ask's folder picker. */
+  recentFolders(limit = 8): string[] {
+    const folders: string[] = [];
+    for (const chat of this.storage
+      .list()
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
+      if (chat.cwd && !folders.includes(chat.cwd)) {
+        folders.push(chat.cwd);
+        if (folders.length >= limit) break;
+      }
+    return folders;
+  }
+  /** The chat's own layer once it has one, else the persona it started with. */
+  private target(metadata: ChatMetadata): PersonaTarget {
+    return this.personas.exists({ chat: metadata.id })
+      ? { chat: metadata.id }
+      : { persona: metadata.persona };
+  }
+  private personaName(id: string): string {
+    try {
+      return this.personas.read({ persona: id }).definition.name ?? id;
+    } catch {
+      return id;
+    }
+  }
   private summary(
-    metadata: SessionMetadata,
+    metadata: ChatMetadata,
     hosted?: HostedSession,
+    names?: Map<string, string>,
   ): SessionSummary {
     return {
       id: metadata.id,
-      workspace: metadata.workspace,
-      configuration: metadata.configuration,
+      folder: metadata.cwd,
       createdAt: metadata.createdAt,
-      hasHistory: metadata.hasHistory,
+      hasHistory: this.storage.hasHistory(metadata.id),
       ...(metadata.title ? { title: metadata.title } : {}),
       status: hosted?.status ?? "unloaded",
       interrupted: metadata.interrupted || (!hosted && metadata.active),
-      ...(metadata.persona
-        ? {
-            persona: {
-              ref: metadata.persona.ref,
-              name: metadata.persona.name,
-              revision: metadata.persona.revision,
-              effectiveRevision: metadata.persona.effectiveRevision,
-            },
-          }
-        : {}),
+      persona: {
+        id: metadata.persona,
+        name: names?.get(metadata.persona) ?? this.personaName(metadata.persona),
+        layered: this.personas.exists({ chat: metadata.id }),
+      },
+      ...(hosted?.setupChanged ? { personaChanged: true } : {}),
     };
+  }
+  /** After any persona edit, flag open chats whose resolved setup no longer matches. */
+  private checkSetups(): void {
+    for (const hosted of this.live.values()) {
+      if (!hosted.session || hosted.status === "stopping") continue;
+      let fingerprint: string;
+      try {
+        fingerprint = resolveSetup(this.personas, this.target(hosted.metadata))
+          .fingerprint;
+      } catch {
+        fingerprint = "";
+      }
+      const changed = fingerprint !== hosted.metadata.setup;
+      if (changed !== !!hosted.setupChanged) {
+        hosted.setupChanged = changed;
+        this.changed(hosted);
+      }
+    }
   }
   private changed(hosted: HostedSession): void {
     hosted.sequence++;
@@ -223,7 +263,7 @@ export class SessionRuntime {
         },
         error: hosted.error,
       },
-      hosted.secret,
+      undefined,
     );
   }
   /** Bounded native transcript window for clients; full canonical context remains Pi-owned. */
@@ -241,7 +281,7 @@ export class SessionRuntime {
     const budget = { remaining: 24_000, truncated: false };
     const partial =
       before === undefined && session.state.streamingMessage
-        ? messageWindow(session.state.streamingMessage, hosted.secret, budget)
+        ? messageWindow(session.state.streamingMessage, undefined, budget)
         : undefined;
     const projected = [];
     for (let index = end - 1; index >= start; index--) {
@@ -252,7 +292,7 @@ export class SessionRuntime {
         break;
       }
       const message = messages[index]!;
-      const preview = messageWindow(message, hosted.secret, budget, () => {
+      const preview = messageWindow(message, undefined, budget, () => {
         const key = this.messageKeys.get(message) ?? randomUUID();
         this.messageKeys.set(message, key);
         return { index, key };
@@ -283,7 +323,7 @@ export class SessionRuntime {
     const message = hosted.session!.messages[index];
     // A changed native context or reopened owner must never serve a different message.
     if (!message || this.messageKeys.get(message) !== key) throw new RuntimeError("not-found");
-    return messagePage(message, hosted.secret, part, offset);
+    return messagePage(message, undefined, part, offset);
   }
   observeWindow(id: string): {
     snapshot: SessionWindow;
@@ -317,71 +357,87 @@ export class SessionRuntime {
   }
 
   async create(request: {
-    workspace: string;
-    configuration: string;
+    folder: string;
     model?: ModelChoice;
-    persona?: PersonaSelection;
+    persona?: string;
   }): Promise<SessionSnapshot> {
     this.admit();
     if (
       !request ||
-      typeof request.workspace !== "string" ||
-      typeof request.configuration !== "string" ||
+      typeof request.folder !== "string" ||
       Object.keys(request).some(
-        (key) =>
-          key !== "workspace" &&
-          key !== "configuration" &&
-          key !== "model" &&
-          key !== "persona",
+        (key) => key !== "folder" && key !== "model" && key !== "persona",
       )
     )
       throw new RuntimeError("invalid-input");
-    if (
-      !Object.hasOwn(this.configuration.workspaces, request.workspace) ||
-      !Object.hasOwn(this.configuration.configurations, request.configuration)
-    )
-      throw new RuntimeError("configuration");
     if (request.model !== undefined && !validChoice(request.model))
       throw new RuntimeError("invalid-input");
-    if (request.persona !== undefined) {
-      try {
-        validatePersonaRef(request.persona, true);
-      } catch {
-        throw new RuntimeError("invalid-input");
-      }
-    }
-    const id = randomUUID();
-    const metadata: SessionMetadata = {
-      version: 1,
-      id,
-      workspace: request.workspace,
-      configuration: request.configuration,
-      model: request.model,
-      cwd: "",
+    const persona = request.persona ?? DEFAULT_PERSONA;
+    if (!validPersonaId(persona)) throw new RuntimeError("invalid-input");
+    if (!this.personas.exists({ persona })) throw new RuntimeError("persona");
+    if (!isAbsolute(request.folder) || request.folder.length > 4096)
+      throw new RuntimeError("invalid-input");
+    // The folder is checked and made canonical during setup, after the slot is reserved.
+    const metadata: ChatMetadata = {
+      version: 2,
+      id: randomUUID(),
+      cwd: request.folder,
+      persona,
+      ...(request.model ? { model: request.model } : {}),
       createdAt: new Date().toISOString(),
-      nativeFile: "",
       active: false,
-      hasHistory: false,
       interrupted: false,
     };
-    return this.load(metadata, false, request.persona);
+    return this.load(metadata, false);
   }
   async open(id: string): Promise<SessionSnapshot> {
-    this.admit();
     validateId(id);
     if (this.live.has(id)) throw new RuntimeError("owned");
+    this.admit();
     return this.load(this.storage.read(id), true);
   }
+  /** Restart a chat's Pi session from its transcript, picking up persona changes. */
+  async reload(id: string): Promise<SessionSnapshot> {
+    validateId(id);
+    const hosted = this.live.get(id);
+    if (hosted) {
+      if (
+        hosted.loading ||
+        (hosted.status !== "idle" && hosted.status !== "error")
+      )
+        throw new RuntimeError("busy");
+      await this.stop(id);
+    }
+    return this.open(id);
+  }
+  private async chooseModel(
+    metadata: ChatMetadata,
+    setup: Setup,
+  ): Promise<Awaited<ReturnType<ProviderSettings["select"]>>> {
+    if (!this.providers) throw new RuntimeError("configuration");
+    // A chat keeps its model. A new chat: Ask's choice, else the persona's, else the default.
+    if (metadata.model) return this.providers.select(metadata.model);
+    const preferred = setup.settings.model;
+    const slash = preferred?.indexOf("/") ?? -1;
+    if (preferred && slash > 0)
+      try {
+        return await this.providers.select({
+          provider: preferred.slice(0, slash),
+          id: preferred.slice(slash + 1),
+        });
+      } catch {
+        /* Not signed in to it: fall back to the default model. */
+      }
+    return this.providers.select(undefined);
+  }
   private async load(
-    metadata: SessionMetadata,
+    metadata: ChatMetadata,
     reopening: boolean,
-    selection?: PersonaSelection,
   ): Promise<SessionSnapshot> {
-    const release = this.storage.claim(metadata.id);
     const hosted: HostedSession = {
       metadata,
       published: reopening,
-      release,
+      release: () => {},
       status: "starting",
       sequence: 0,
       observers: new Set(),
@@ -389,66 +445,42 @@ export class SessionRuntime {
     };
     this.live.set(metadata.id, hosted); // Reserve admission before any async setup.
     const initialize = async () => {
-      let configuration = Object.hasOwn(
-        this.configuration.configurations,
-        metadata.configuration,
-      )
-        ? this.configuration.configurations[metadata.configuration]
-        : undefined;
-      const cwd = await resolveWorkspace(
-        Object.hasOwn(this.configuration.workspaces, metadata.workspace)
-          ? this.configuration.workspaces[metadata.workspace]
-          : undefined,
-      );
-      if (!configuration || (reopening && metadata.cwd !== cwd))
-        throw new RuntimeError("configuration");
-      let managed: Parameters<typeof createSessionServices>[5];
-      if ("stored" in configuration.credential) {
-        if (!this.providers || (reopening && !metadata.model))
-          throw new RuntimeError("configuration");
-        const selected = await this.providers.select(metadata.model);
-        metadata.model = selected.choice;
-        managed = selected;
+      const cwd = await resolveFolder(metadata.cwd);
+      let setup: Setup;
+      try {
+        setup = resolveSetup(this.personas, this.target(metadata));
+      } catch {
+        throw new RuntimeError("persona");
+      }
+      let managed: Awaited<ReturnType<ProviderSettings["select"]>> | undefined;
+      let fixed: { provider: Provider; id: string } | undefined;
+      if (this.configuration.fixedModel) {
+        const provider = this.configuration.fixedModel.provider();
+        fixed = { provider, id: this.configuration.fixedModel.id };
+        metadata.model = { provider: provider.id, id: fixed.id };
       } else {
-        const provider = configuration.provider?.();
-        if (!provider || !configuration.modelId)
-          throw new RuntimeError("configuration");
-        if (
-          metadata.model &&
-          (metadata.model.provider !== provider.id ||
-            metadata.model.id !== configuration.modelId)
-        )
-          throw new RuntimeError("configuration");
-        metadata.model = { provider: provider.id, id: configuration.modelId };
-        configuration = { ...configuration, provider: () => provider };
+        managed = await this.chooseModel(metadata, setup);
+        metadata.model = managed.choice;
       }
       metadata.cwd = cwd;
-      const dir = this.storage.directory(metadata.id);
-      const persisted = reopening && this.storage.validateHistory(metadata);
+      const dir = this.storage.prepare(metadata.id);
+      const transcript = reopening
+        ? this.storage.validateHistory(metadata)
+        : undefined;
       metadata.interrupted ||= metadata.active;
-      const manager = persisted
-        ? SessionManager.open(this.storage.nativePath(metadata), dir, cwd)
+      const manager = transcript
+        ? SessionManager.open(transcript, dir, cwd)
         : SessionManager.create(cwd, dir, { id: metadata.id });
-      metadata.nativeFile = basename(manager.getSessionFile()!);
       metadata.active = true;
-      if (metadata.persona)
-        hosted.persona = restorePersona(dir, metadata.persona, configuration);
-      else if (selection) {
-        hosted.persona = admitPersona(
-          this.personas,
-          selection,
-          configuration,
-          dir,
-        );
-        metadata.persona = hosted.persona.metadata;
-      }
+      metadata.setup = setup.fingerprint;
       if (reopening) this.storage.write(metadata);
-      const services = await createSessionServices(
-        configuration,
+      const services = await createSessionServices({
+        setup,
         cwd,
-        join(dir, "agent"),
-        this.configuration.resolveSecret,
-        {
+        agentDir: join(dir, "agent"),
+        managed,
+        fixed,
+        admission: {
           valid: () => this.inputAdmission.getStore()?.valid() ?? true,
           beforeProviderDispatch: () => {
             if (hosted.identity?.cancelled || hosted.status === "stopping") {
@@ -460,17 +492,6 @@ export class SessionRuntime {
                 "AbortError",
               );
             }
-            try {
-              hosted.persona?.verify();
-            } catch (error) {
-              hosted.error = "resource-integrity";
-              this.logger.event("resource.integrity", {
-                sessionId: metadata.id,
-                outcome: "failed",
-                code: "resource-integrity",
-              });
-              throw error;
-            }
           },
           beforeSettle: async () => {
             const identity = hosted.identity;
@@ -481,16 +502,14 @@ export class SessionRuntime {
             await identity.input?.catch(() => {});
           },
         },
-        managed,
-        hosted.persona,
-        {
+        host: {
           setTitle: (title, signal) => this.setTitle(hosted, title, signal),
           ownCleanup: (cleanup) => {
             hosted.disposeHost = cleanup;
           },
         },
-      );
-      hosted.secret = services.secret;
+      });
+      const thinkingLevel = setup.settings.thinking ?? "off";
       let session: AgentSession;
       try {
         ({ session } = await createAgentSession({
@@ -501,9 +520,9 @@ export class SessionRuntime {
           settingsManager: services.settingsManager,
           resourceLoader: services.resourceLoader,
           sessionManager: manager,
-          tools: [...new Set([...configuration.tools, TITLE_TOOL])],
-          thinkingLevel: "off",
-          scopedModels: [{ model: services.model, thinkingLevel: "off" }],
+          tools: services.activeTools,
+          thinkingLevel,
+          scopedModels: [{ model: services.model, thinkingLevel }],
           sessionStartEvent: {
             type: "session_start",
             reason: reopening ? "resume" : "new",
@@ -564,7 +583,7 @@ export class SessionRuntime {
       if (hosted.error) throw new RuntimeError(hosted.error);
       if (hosted.hostClosed) throw new RuntimeError("timeout");
       metadata.active = false;
-      metadata.hasHistory = existsSync(this.storage.nativePath(metadata));
+      hosted.setupChanged = false;
       hosted.status = "idle";
       this.changed(hosted);
       const snapshot = this.snapshot(metadata.id);
@@ -572,7 +591,7 @@ export class SessionRuntime {
       hosted.published = true;
       this.logger.event(reopening ? "session.recover" : "session.create", {
         sessionId: metadata.id,
-        personaId: metadata.persona?.ref.id,
+        personaId: metadata.persona,
         outcome: "completed",
       });
       return snapshot;
@@ -600,7 +619,7 @@ export class SessionRuntime {
         hosted.error = "timeout";
         hosted.hostClosed = true;
         hosted.status = "stopping";
-        // Setup may still own extension work. Retain admission/lock until it actually finishes.
+        // Setup may still own extension work. Keep admission until it actually finishes.
         void operation
           .then(
             () => this.disposeOwned(hosted),
@@ -633,18 +652,6 @@ export class SessionRuntime {
     hosted.metadata = metadata;
     this.changed(hosted);
   }
-  private verifyPersona(hosted: HostedSession): void {
-    try {
-      hosted.persona?.verify();
-    } catch (error) {
-      this.logger.event("resource.integrity", {
-        sessionId: hosted.metadata.id,
-        outcome: "failed",
-        code: "resource-integrity",
-      });
-      throw error;
-    }
-  }
   private validateText(text: string): void {
     if (
       typeof text !== "string" ||
@@ -659,12 +666,11 @@ export class SessionRuntime {
     const hosted = this.get(id);
     if (hosted.status !== "idle" || hosted.input)
       throw new RuntimeError("busy");
-    this.verifyPersona(hosted);
     const started = Date.now();
     const metadata = { ...hosted.metadata, active: true, interrupted: false };
     if (
       !metadata.title &&
-      !metadata.hasHistory &&
+      !this.storage.hasHistory(id) &&
       !hosted.session!.messages.length
     )
       metadata.title = chatTitle(text) || "New chat";
@@ -685,7 +691,8 @@ export class SessionRuntime {
       try {
         // Extension commands/templates are deliberately not a client-facing RPC seam.
         await session.prompt(text, {
-          expandPromptTemplates: false,
+          // The persona's prompts work as /commands, as in terminal Pi.
+          expandPromptTemplates: true,
           source: "rpc",
           // Pinned Pi1.4.0 INTERNAL typed callback: after native preflight resets
           // its abort flag, before agent_start (awaited before provider dispatch).
@@ -707,9 +714,6 @@ export class SessionRuntime {
         identity.settled = true;
         identity.abortedBeforeDispatch = false;
         clearTimeout(timer);
-        hosted.metadata.hasHistory = existsSync(
-          this.storage.nativePath(hosted.metadata),
-        );
         hosted.metadata.active = !!hosted.error;
         hosted.metadata.interrupted ||= !!hosted.error;
         try {
@@ -765,7 +769,6 @@ export class SessionRuntime {
       !identity.cancelled &&
       hosted.status === "running" &&
       !session.isIdle;
-    this.verifyPersona(hosted);
     const input = this.inputAdmission.run({ valid }, async () => {
       const outcome = await (kind === "steer"
         ? session.steer(text, undefined, { source: "rpc" })
@@ -870,9 +873,6 @@ export class SessionRuntime {
         cleanupError = "storage";
       hosted.unsubscribe?.();
       session.dispose();
-      hosted.metadata.hasHistory = existsSync(
-        this.storage.nativePath(hosted.metadata),
-      );
       hosted.metadata.active = hosted.error === "storage";
       try {
         if (hosted.published) this.storage.write(hosted.metadata);
@@ -891,6 +891,7 @@ export class SessionRuntime {
   }
   async shutdown(): Promise<void> {
     this.accepting = false;
+    this.unwatchPersonas();
     const results = await Promise.allSettled([
       this.personas.shutdown(),
       ...[...this.live.keys()].map((id) => this.stop(id)),
@@ -901,9 +902,6 @@ export class SessionRuntime {
   }
 }
 
-export type {
-  RuntimeConfiguration,
-  SessionConfiguration,
-} from "./configuration.js";
+export type { RuntimeConfiguration } from "./configuration.js";
 export { RuntimeError } from "./errors.js";
 export type { SessionChange } from "./observation.js";

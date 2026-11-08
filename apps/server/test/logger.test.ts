@@ -78,7 +78,7 @@ test("file rotation retains only active plus three bounded files", async (t) => 
   t.after(() => rm(directory, { recursive: true, force: true }));
   const logger = new SafeLogger({ directory, maxFileBytes: 256 });
   for (let i = 0; i < 20; i++)
-    logger.event("persona.resolve", { counts: { skills: i } });
+    logger.event("persona.save", { counts: { skills: i } });
   await logger.close();
   const files = await readdir(directory);
   assert.equal(files.length, 4);
@@ -86,7 +86,7 @@ test("file rotation retains only active plus three bounded files", async (t) => 
     const text = await readFile(join(directory, file), "utf8");
     assert(Buffer.byteLength(text) <= 256);
     for (const line of text.trim().split("\n"))
-      assert.equal(JSON.parse(line).event, "persona.resolve");
+      assert.equal(JSON.parse(line).event, "persona.save");
   }
 });
 

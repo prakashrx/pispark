@@ -1,20 +1,49 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
 import { body, sendJson } from "./session-http.js";
 import { correlated } from "./logger.js";
-import type { PersonaRef } from "./persona-protocol.js";
+import type { PersonaTarget } from "./persona-protocol.js";
 import type { PersonaStore } from "./personas/store.js";
-import { definition, object, PersonaError, ref } from "./personas/schema.js";
-import { publicView, resolvePersona } from "./personas/resolver.js";
+import { PersonaError } from "./personas/format.js";
+import { checkCycles, viewPersona } from "./personas/resolve.js";
 import { RuntimeError } from "./runtime/errors.js";
+
 const MAXIMUM = 512 * 1024;
+const REVISION = /^[a-f0-9]{64}$/;
+
+const plain = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+/** Exactly the keys an operation takes; anything else is refused. */
+function input(value: unknown, keys: string[], optional: string[] = []) {
+  if (!plain(value)) throw new PersonaError("invalid-input");
+  for (const key of Object.keys(value))
+    if (!keys.includes(key) && !optional.includes(key))
+      throw new PersonaError("invalid-input");
+  for (const key of keys)
+    if (!(key in value)) throw new PersonaError("invalid-input");
+  return value;
+}
+function target(value: unknown): PersonaTarget {
+  if (!plain(value) || Object.keys(value).length !== 1)
+    throw new PersonaError("invalid-input");
+  if (typeof value.persona === "string") return { persona: value.persona };
+  if (typeof value.chat === "string") return { chat: value.chat };
+  throw new PersonaError("invalid-input");
+}
+function revision(value: unknown, allowEmpty = false): string {
+  if (typeof value !== "string" || !(REVISION.test(value) || (allowEmpty && !value)))
+    throw new PersonaError("invalid-input");
+  return value;
+}
+
+/**
+ * GET /api/personas, then POST /api/personas/{read,create,save,delete,file/read,file/write,file/delete}.
+ * A target is `{ persona: id }` or `{ chat: id }` (a chat's own layer).
+ */
 export class PersonaHttp {
   constructor(readonly store: PersonaStore) {}
-  async handle(
-    request: IncomingMessage,
-    response: ServerResponse,
-  ): Promise<void> {
+  async handle(request: IncomingMessage, response: ServerResponse) {
     const requestId = randomUUID(),
       started = Date.now();
     await correlated({ requestId }, async () => {
@@ -22,144 +51,86 @@ export class PersonaHttp {
       const path = url.pathname;
       try {
         let result: unknown;
-        if (
-          request.method === "GET" &&
-          path === "/api/personas" &&
-          [...url.searchParams.keys()].every((k) => k === "cursor") &&
-          url.searchParams.getAll("cursor").length <= 1
-        ) {
-          const cursor = url.searchParams.get("cursor") ?? "0";
-          if (!/^\d{1,3}$/.test(cursor) || Number(cursor) > 256)
-            throw new PersonaError("invalid-input", 400);
-          const offset = Number(cursor),
-            items = this.store.list(offset, 65);
-          result = {
-            personas: items.slice(0, 64),
-            ...(items.length > 64 ? { nextCursor: String(offset + 64) } : {}),
-          };
-        } else {
+        if (request.method === "GET" && path === "/api/personas" && !url.search)
+          result = { personas: this.store.list() };
+        else {
           if (request.method !== "POST" || url.search)
             throw new PersonaError("not-found", 404);
-          const allowed: Record<string, string[]> = {
-            read: ["ref"],
-            validate: ["ref", "definition"],
-            create: ["definition"],
-            save: ["ref", "expectedRevision", "definition"],
-            instruction: ["ref", "path", "expectedRevision", "text"],
-            "instruction/read": ["ref", "path"],
-          };
           const operation = path.slice("/api/personas/".length);
-          if (!Object.hasOwn(allowed, operation))
-            throw new PersonaError("not-found", 404);
-          const keys = allowed[operation]!;
-          const input = object(
-            await body(request, MAXIMUM),
-            keys,
-            operation === "validate" ? ["definition"] : keys,
-          );
-          const reference =
-            input.ref === undefined
-              ? undefined
-              : (ref(input.ref) as PersonaRef);
-          if (operation === "create")
-            result = await this.store.create(input.definition);
-          else if (operation === "validate") {
-            const value = definition(input.definition);
-            const target = reference ?? {
-              root: "managed",
-              path: value.id,
-              id: value.id,
-            };
-            result = publicView(
-              resolvePersona(
-                this.store,
-                target,
-                value,
-                true,
-                reference
-                  ? undefined
-                  : join(this.store.roots.managed!, value.id),
-              ),
-            );
-          } else if (operation === "read") {
-            const stored = this.store.read(reference!);
-            try {
-              result = publicView(resolvePersona(this.store, reference!));
-            } catch (error) {
-              if (!(error instanceof PersonaError)) throw error;
-              result = {
-                ref: reference,
-                definition: stored.definition,
-                writable: stored.writable,
-                definitionRevision: stored.definitionRevision,
-                diagnostics: error.diagnostics,
-                instructions: [],
-                skills: [],
-                excluded: [],
-              };
+          const value = await body(request, MAXIMUM);
+          switch (operation) {
+            case "read": {
+              const i = input(value, ["target"]);
+              result = viewPersona(this.store, target(i.target));
+              break;
             }
-          } else if (operation === "save") {
-            if (
-              typeof input.expectedRevision !== "string" ||
-              !/^[a-f0-9]{64}$/.test(input.expectedRevision)
-            )
-              throw new PersonaError("invalid-input", 400);
-            result = await this.store.save(
-              reference!,
-              input.expectedRevision,
-              input.definition,
-            );
-          } else {
-            if (typeof input.path !== "string")
-              throw new PersonaError("invalid-input", 400);
-            if (operation === "instruction/read")
-              result = this.store.instruction(reference!, input.path);
-            else {
-              if (
-                typeof input.text !== "string" ||
-                (input.expectedRevision !== null &&
-                  (typeof input.expectedRevision !== "string" ||
-                    !/^[a-f0-9]{64}$/.test(input.expectedRevision)))
-              )
-                throw new PersonaError("invalid-input", 400);
-              result = await this.store.saveInstruction(
-                reference!,
-                input.path,
-                input.expectedRevision as string | null,
-                input.text,
+            case "create": {
+              const i = input(value, ["name"], ["description", "base"]);
+              if (typeof i.name !== "string") throw new PersonaError("invalid-input");
+              result = this.store.create({
+                name: i.name,
+                ...(typeof i.description === "string"
+                  ? { description: i.description }
+                  : {}),
+                ...(Array.isArray(i.base) ? { base: i.base as string[] } : {}),
+              });
+              break;
+            }
+            case "save": {
+              const i = input(value, ["target", "expectedRevision", "definition"]);
+              const t = target(i.target);
+              result = this.store.save(
+                t,
+                revision(i.expectedRevision, true),
+                i.definition,
+                (definition) => checkCycles(this.store, t, definition),
               );
+              break;
             }
+            case "delete": {
+              const i = input(value, ["id"]);
+              if (typeof i.id !== "string") throw new PersonaError("invalid-input");
+              this.store.remove(i.id);
+              result = {};
+              break;
+            }
+            case "file/read": {
+              const i = input(value, ["target", "path"]);
+              result = this.store.readFile(target(i.target), i.path as string);
+              break;
+            }
+            case "file/write": {
+              const i = input(value, ["target", "path", "expectedRevision", "text"]);
+              result = this.store.writeFile(
+                target(i.target),
+                i.path as string,
+                i.expectedRevision === null ? null : revision(i.expectedRevision),
+                i.text as string,
+              );
+              break;
+            }
+            case "file/delete": {
+              const i = input(value, ["target", "path", "expectedRevision"]);
+              this.store.deleteFile(
+                target(i.target),
+                i.path as string,
+                revision(i.expectedRevision),
+              );
+              result = {};
+              break;
+            }
+            default:
+              throw new PersonaError("not-found", 404);
           }
-          this.store.logger.event(
-            operation === "read" || operation === "instruction/read"
-              ? "persona.read"
-              : operation === "validate"
-                ? "persona.validate"
-                : "persona.save",
-            {
-              personaId: reference?.id,
-              durationMs: Date.now() - started,
-              outcome: "completed",
-            },
-          );
         }
-        // Encode before headers: response overflow must return a truthful bounded failure.
+        // Encode before headers: an oversized response fails truthfully.
         sendJson(response, 200, result, MAXIMUM);
       } catch (error) {
-        const code =
-          error instanceof PersonaError || error instanceof RuntimeError
-            ? error.code
-            : "storage";
+        const known = error instanceof PersonaError || error instanceof RuntimeError;
+        const code = known ? error.code : "storage";
         const status =
           error instanceof PersonaError
-            ? [
-                "invalid-definition",
-                "limit",
-                "unsupported-version",
-                "path-outside-root",
-              ].includes(error.code)
-              ? 400
-              : error.status
+            ? error.status
             : error instanceof RuntimeError
               ? 400
               : 500;
@@ -174,8 +145,8 @@ export class PersonaHttp {
           {
             error: code,
             requestId,
-            ...(error instanceof PersonaError
-              ? { diagnostics: error.diagnostics }
+            ...(error instanceof PersonaError && error.detail
+              ? { detail: error.detail }
               : {}),
           },
           MAXIMUM,

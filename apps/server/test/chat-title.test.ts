@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { chatTitle, validChatTitle } from "../src/runtime/chat-title.js";
 import {
-  SessionStorage,
-  type SessionMetadata,
+  ChatStorage,
+  type ChatMetadata,
 } from "../src/runtime/storage.js";
 
 test("chat titles take only the first nonempty line, normalize controls and bound Unicode code points", () => {
@@ -33,29 +33,27 @@ test("chat titles take only the first nonempty line, normalize controls and boun
   assert.equal(validChatTitle("A useful title"), true);
 });
 
-test("v1 storage accepts legacy optional titles and rejects malformed persisted title without reading native history", async () => {
+test("chat.json accepts an optional title and rejects malformed titles without reading the transcript", async () => {
   const root = await mkdtemp(join(tmpdir(), "pispark-titles-"));
   try {
-    const storage = new SessionStorage(root);
+    const storage = new ChatStorage(root);
     const id = "10000000-0000-4000-8000-000000000001";
-    storage.prepare(id);
-    const metadata: SessionMetadata = {
-      version: 1,
+    const metadata: ChatMetadata = {
+      version: 2,
       id,
-      workspace: "local",
-      configuration: "test",
       cwd: root,
+      persona: "default",
       createdAt: "2026-01-01T12:00:00Z",
-      nativeFile: `2026_${id}.jsonl`,
       active: false,
-      hasHistory: true,
       interrupted: false,
     };
     storage.write(metadata);
     assert.equal(storage.read(id).title, undefined);
     assert.equal(storage.list()[0]!.title, undefined);
+    assert.equal(storage.hasHistory(id), false);
     storage.write({ ...metadata, title: "First message" });
     assert.equal(storage.read(id).title, "First message");
+    const { id: _id, ...stored } = metadata;
     for (const title of [
       "",
       42,
@@ -64,11 +62,16 @@ test("v1 storage accepts legacy optional titles and rejects malformed persisted 
       "two\nlines",
     ]) {
       await writeFile(
-        join(root, id, "host.json"),
-        JSON.stringify({ ...metadata, title }),
+        join(root, id, "chat.json"),
+        JSON.stringify({ ...stored, title }),
       );
       assert.throws(() => storage.read(id), { code: "storage" });
     }
+    await writeFile(
+      join(root, id, "chat.json"),
+      JSON.stringify({ ...stored, persona: "../escape" }),
+    );
+    assert.throws(() => storage.read(id), { code: "storage" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

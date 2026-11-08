@@ -262,16 +262,11 @@ test("ProviderSettings: public native construction and exclusive ownership on su
   }
   const root = await mkdtemp(join(tmpdir(), "pispark-production-settings-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const config = {
-    storageDir: root,
-    workspaces: {},
-    configurations: {},
-    resolveSecret: async () => undefined,
-  };
+  // One server per data root is enforced by the home lock (host-configuration.test.ts).
+  const config = { home: root };
   const settings = await ProviderSettings.create(config);
   try {
     assert((await settings.catalog()).providers.length > 30);
-    await assert.rejects(ProviderSettings.create(config));
   } finally {
     await settings.close();
   }
@@ -288,29 +283,16 @@ test("ModelDefaults and SessionRuntime: restart selection, native history, indep
   );
   await f.runtime.refresh({ allowNetwork: false });
   await f.settings.setDefault({ provider: id, id: "deterministic" });
-  const config = {
-    storageDir: join(f.root, "sessions"),
-    workspaces: { local: f.root },
-    configurations: {
-      resources: {
-        credential: { stored: true as const },
-        systemPrompt: "local test",
-        tools: [],
-      },
-    },
-    resolveSecret: async () => undefined,
-  };
+  const config = { home: join(f.root, "pispark") };
   const sessions = new SessionRuntime(config, f.settings);
   f.owned.push(() => sessions.shutdown());
   const a = await sessions.create({
-    workspace: "local",
-    configuration: "resources",
+      folder: f.root,
   });
   await sessions.start(a.id, "first").completion;
   await f.settings.setDefault({ provider: id, id: "second" });
   const b = await sessions.create({
-    workspace: "local",
-    configuration: "resources",
+      folder: f.root,
   });
   assert.equal(sessions.snapshot(a.id).model?.id, "deterministic");
   assert.equal(b.model?.id, "second");
@@ -321,7 +303,7 @@ test("ModelDefaults and SessionRuntime: restart selection, native history, indep
   assert.equal(recovered.value?.id, "second");
   await f.settings.logout(id);
   await assert.rejects(
-    sessions.create({ workspace: "local", configuration: "resources" }),
+    sessions.create({ folder: f.root }),
   );
   assert.equal((await f.settings.catalog()).defaultModel?.id, "second");
   assert.equal(sessions.snapshot(b.id).model?.id, "second");
@@ -478,13 +460,7 @@ test("ProviderSettings: malformed/unreadable configured models and native compos
   const root = await mkdtemp(join(tmpdir(), "pispark-model-config-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, "models.json");
-  const config = {
-    storageDir: join(root, "sessions"),
-    providerSettings: { directory: join(root, "providers"), modelsPath: path },
-    workspaces: {},
-    configurations: {},
-    resolveSecret: async () => undefined,
-  };
+  const config = { home: root, providerSettings: { modelsPath: path } };
   for (const text of [
     "{PRIVATE_BROKEN",
     JSON.stringify({ providers: { openai: { oauth: "radius" } } }),
@@ -524,24 +500,12 @@ test("ProviderSettings: refresh config/cache failures disable catalog and new se
     f.settings.select({ provider: id, id: "deterministic" }),
     /^Error: provider-configuration$/,
   );
-  const config = {
-    storageDir: join(f.root, "sessions"),
-    workspaces: { local: f.root },
-    configurations: {
-      resources: {
-        credential: { stored: true as const },
-        systemPrompt: "local",
-        tools: [],
-      },
-    },
-    resolveSecret: async () => undefined,
-  };
+  const config = { home: join(f.root, "pispark") };
   const sessions = new SessionRuntime(config, f.settings);
   f.owned.push(() => sessions.shutdown());
   await assert.rejects(
     sessions.create({
-      workspace: "local",
-      configuration: "resources",
+      folder: f.root,
       model: { provider: id, id: "deterministic" },
     }),
   );
@@ -566,11 +530,8 @@ test("ProviderSettings: failed native cache restoration blocks startup without l
   );
   await assert.rejects(
     ProviderSettings.create({
-      storageDir: join(root, "sessions"),
-      providerSettings: { directory, modelsPath: models },
-      workspaces: {},
-      configurations: {},
-      resolveSecret: async () => undefined,
+      home: root,
+      providerSettings: { modelsPath: models },
     }),
     /^Error: provider-configuration$/,
   );
@@ -588,11 +549,8 @@ test("ProviderSettings: malformed configuration on refresh cannot admit built-in
     }),
   );
   const settings = await ProviderSettings.create({
-    storageDir: join(root, "sessions"),
-    providerSettings: { directory: join(root, "providers"), modelsPath },
-    workspaces: {},
-    configurations: {},
-    resolveSecret: async () => undefined,
+    home: root,
+    providerSettings: { modelsPath },
   });
   t.after(async () => {
     await settings.close();

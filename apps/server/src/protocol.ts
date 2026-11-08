@@ -1,18 +1,17 @@
-import type {
-  AdmittedPersonaSummary,
-  PersonaSelection,
-} from "./persona-protocol.js";
+import type { ChatPersona } from "./persona-protocol.js";
 /** Client-independent v1 contract. No SDK objects, secrets, file paths, or durable event cursors. */
 export interface SessionInfo {
   id: string;
-  workspace: string;
-  configuration: string;
+  /** Working folder on the backend host. */
+  folder: string;
   createdAt: string;
   title?: string;
   hasHistory?: boolean;
   status: string;
   interrupted: boolean;
-  persona?: AdmittedPersonaSummary;
+  persona: ChatPersona;
+  /** The persona changed since this session started; reload to apply. */
+  personaChanged?: boolean;
 }
 export interface MessageRef {
   index: number;
@@ -49,24 +48,21 @@ export interface SessionWindow extends SessionInfo {
   queue: { steering: number; followUp: number };
   error?: string;
 }
+/** Starting points for Ask's folder picker. Any existing folder on the host is allowed. */
 export interface Catalog {
-  workspaces: { value: string; label: string }[];
-  configurations: {
-    value: string;
-    label: string;
-    modelSelection?: "catalog" | "fixed";
-    skillReader?: boolean;
-  }[];
+  home: string;
+  recentFolders: string[];
 }
 export type Command = { commandId: string } & (
   | {
       type: "create";
-      workspace: string;
-      configuration: string;
+      /** Absolute path of an existing folder on the backend host. */
+      folder: string;
       model?: { provider: string; id: string };
-      persona?: PersonaSelection;
+      /** Persona ID; Default when omitted. */
+      persona?: string;
     }
-  | { type: "open" | "cancel" | "stop"; sessionId: string }
+  | { type: "open" | "reload" | "cancel" | "stop"; sessionId: string }
   | { type: "start" | "steer" | "follow-up"; sessionId: string; text: string }
 );
 export interface Receipt {

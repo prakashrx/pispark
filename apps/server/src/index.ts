@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { SafeLogger } from "./logger.js";
 import { fileURLToPath } from "node:url";
 import { createAppServer } from "./server.js";
-import { hostConfiguration, catalog } from "./host-configuration.js";
+import { hostConfiguration } from "./host-configuration.js";
+import { lockHome, prepareHome } from "./home.js";
 import { SessionRuntime } from "./runtime/session-runtime.js";
 import { SessionHttp } from "./session-http.js";
 import { ProviderSettings } from "./runtime/provider-settings.js";
@@ -20,16 +20,12 @@ if (!/^\d+$/.test(portInput) || Number(portInput) > 65535) {
   process.exit(1);
 }
 const webRoot = fileURLToPath(new URL("../../web/dist/", import.meta.url));
-const configuration = await hostConfiguration();
-const logger = new SafeLogger(
-  configuration.logging?.console
-    ? {}
-    : {
-        directory:
-          configuration.logging?.directory ??
-          join(dirname(configuration.storageDir), "logs"),
-      },
-);
+const configuration = hostConfiguration();
+// First start creates the folders (and the Default persona, via the runtime).
+const paths = prepareHome(configuration.home);
+const releaseHome = lockHome(paths);
+process.on("exit", releaseHome);
+const logger = new SafeLogger({ directory: paths.logs });
 const developmentOrigin =
   process.env.PISPARK_DEV_ORIGIN ??
   (process.argv.includes("--dev") ? "http://127.0.0.1:5173" : undefined);
@@ -43,7 +39,6 @@ if (
 const providers = await ProviderSettings.create(configuration);
 const sessions = new SessionHttp(
   new SessionRuntime(configuration, providers, logger),
-  catalog(configuration),
   developmentOrigin,
   new ProviderHttp(providers),
   logger,
@@ -65,6 +60,7 @@ server.listen(Number(portInput), host, () => {
   const port =
     address && typeof address !== "string" ? address.port : portInput;
   console.log(`PiSpark listening at http://${host}:${port}`);
+  console.log(`Data folder: ${paths.root}`);
   logger.event("host.start", { outcome: "completed" });
   if (!existsSync(new URL("../../web/dist/index.html", import.meta.url))) {
     console.log(

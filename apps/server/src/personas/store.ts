@@ -1,506 +1,379 @@
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
-  lstatSync,
+  readFileSync,
   renameSync,
   rmSync,
-  rmdirSync,
+  unlinkSync,
+  writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import type {
+  ItemFile,
+  ItemType,
   PersonaDefinition,
-  PersonaRef,
   PersonaSummary,
+  PersonaTarget,
 } from "../persona-protocol.js";
-import { type SafeLogger, silentLogger } from "../logger.js";
+import { silentLogger, type SafeLogger } from "../logger.js";
 import {
-  definition,
+  DEFAULT_PERSONA,
+  DEFAULT_TOOLS,
   digest,
-  hash,
   fail,
+  frontmatter,
+  itemPath,
   PersonaError,
-  ref as validateRef,
-  relativePath,
-  uuid,
-} from "./schema.js";
-import {
-  atomicWrite,
-  bytes,
-  contained,
-  inside,
-  noLinks,
-  storageError,
-  text,
-} from "./files.js";
-import {
-  resolvePersona,
-  publicView,
-  type ResolvedPersona,
-} from "./resolver.js";
+  slug,
+  validateDefinition,
+  validItemName,
+  validPersonaId,
+} from "./format.js";
 
-export interface StoredPersona {
-  ref: PersonaRef;
-  root: string;
-  directory: string;
-  definition: PersonaDefinition;
-  definitionRevision: string;
-  writable: boolean;
+const UUID =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+const MAX_FILE = 256 * 1024;
+const MAX_ITEMS = 64;
+
+/** An item a layer's folder (or persona.json) provides. */
+export interface LayerItem {
+  type: ItemType;
+  name: string;
+  /** Absolute path: file for instructions/prompts/extensions, folder for skills. */
+  location?: string;
+  /** Relative path the UI can read and edit. */
+  path?: string;
+  description?: string;
+  /** MCP server entry. */
+  config?: Record<string, unknown>;
 }
+
+export function writeAtomic(path: string, content: string): void {
+  const temporary = join(dirname(path), `.${randomUUID()}.tmp`);
+  try {
+    writeFileSync(temporary, content, { flag: "wx", mode: 0o600 });
+    renameSync(temporary, path);
+  } catch (error) {
+    try {
+      unlinkSync(temporary);
+    } catch {
+      /* The write error is what matters. */
+    }
+    throw error;
+  }
+}
+
+const readText = (path: string): string => {
+  if (lstatSync(path).isSymbolicLink()) fail("invalid-path");
+  const buffer = readFileSync(path);
+  if (buffer.length > MAX_FILE) fail("limit");
+  return buffer.toString("utf8");
+};
+
+/**
+ * Persona folders live in `<home>/personas/<id>/`; a chat's own layer in `<home>/chats/<id>/persona/`.
+ * Plain files, no copies: chats read personas live.
+ */
 export class PersonaStore {
-  readonly roots: Readonly<Record<string, string>>;
-  private writes = new Set<Promise<unknown>>();
-  private closed = false;
+  private listeners = new Set<(target: PersonaTarget) => void>();
   constructor(
-    directory: string,
-    roots: Record<string, string> = {},
+    readonly personasDir: string,
+    readonly chatsDir: string,
+    /** The persona a chat started with; the base of its layer. */
+    private readonly chatPersona: (chatId: string) => string,
     readonly logger: SafeLogger = silentLogger,
   ) {
-    if (
-      !isAbsolute(directory) ||
-      Object.keys(roots).length > 15 ||
-      Object.entries(roots).some(
-        ([key, path]) =>
-          key === "managed" ||
-          !/^[a-z][a-z0-9-]{0,63}$/.test(key) ||
-          !isAbsolute(path),
-      )
-    )
-      throw new PersonaError("invalid-definition", 400);
-    try {
-      mkdirSync(directory, { recursive: true, mode: 0o700 });
-      noLinks(directory);
-    } catch (error) {
-      storageError(error);
-    }
-    this.roots = Object.freeze({ managed: resolve(directory), ...roots });
+    mkdirSync(personasDir, { recursive: true, mode: 0o700 });
+    this.ensureDefault();
   }
-  location(reference: PersonaRef): {
-    root: string;
-    directory: string;
-    writable: boolean;
+
+  onChange(listener: (target: PersonaTarget) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+  private changed(target: PersonaTarget): void {
+    for (const listener of this.listeners) listener(target);
+  }
+
+  /** First start: a Default persona with Pi's built-in tools, so a new chat has full access. */
+  ensureDefault(): void {
+    const dir = join(this.personasDir, DEFAULT_PERSONA);
+    if (existsSync(join(dir, "persona.json"))) return;
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const definition: PersonaDefinition = {
+      name: "Default",
+      description: "The base of every persona.",
+      on: DEFAULT_TOOLS.map((tool) => `tool:${tool}`),
+    };
+    writeAtomic(
+      join(dir, "persona.json"),
+      JSON.stringify(definition, null, 2) + "\n",
+    );
+  }
+
+  dir(target: PersonaTarget): string {
+    if ("persona" in target) {
+      if (!validPersonaId(target.persona)) fail("invalid-input");
+      return join(this.personasDir, target.persona);
+    }
+    if (typeof target.chat !== "string" || !UUID.test(target.chat))
+      fail("invalid-input");
+    return join(this.chatsDir, target.chat, "persona");
+  }
+  /** Whether the persona (or chat layer) exists on disk. */
+  exists(target: PersonaTarget): boolean {
+    return existsSync(join(this.dir(target), "persona.json"));
+  }
+
+  read(target: PersonaTarget): {
+    definition: PersonaDefinition;
+    revision: string;
   } {
-    validateRef(reference);
-    const root = Object.hasOwn(this.roots, reference.root)
-      ? this.roots[reference.root]!
-      : undefined;
-    if (!root) throw new PersonaError("missing-parent", 404);
-    const directory = resolve(root, reference.path);
-    if (!inside(root, directory)) fail("path-outside-root");
-    return { root, directory, writable: reference.root === "managed" };
-  }
-  read(reference: PersonaRef): StoredPersona {
-    try {
-      const location = this.location(reference);
-      contained(location.root, location.directory, "directory");
-      const path = contained(
-        location.root,
-        join(location.directory, "persona.json"),
-        "file",
-      );
-      const content = bytes(path, 128 * 1024);
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(
-          new TextDecoder("utf-8", { fatal: true }).decode(content),
-        );
-      } catch {
-        fail("invalid-definition");
-      }
-      const value = definition(parsed);
-      if (value.id !== reference.id) fail("identity-mismatch");
-      return {
-        ...location,
-        ref: { ...reference },
-        definition: value,
-        definitionRevision: digest(content),
-      };
-    } catch (error) {
-      if (
-        ["ENOENT", "ENOTDIR"].includes(
-          (error as NodeJS.ErrnoException)?.code ?? "",
-        )
-      )
-        throw new PersonaError("missing-parent", 404);
-      storageError(error);
-    }
-  }
-  discover(): {
-    ref: PersonaRef;
-    writable: boolean;
-    definition?: PersonaDefinition;
-    diagnostics: { code: string }[];
-  }[] {
-    const results: ReturnType<PersonaStore["discover"]> = [];
-    let entries = 0;
-    const ids = new Map<string, number>();
-    try {
-      for (const [key, root] of Object.entries(this.roots)) {
-        contained(root, root, "directory");
-        const visit = (dir: string, depth: number) => {
-          if (depth > 8) fail("limit");
-          const path = relative(root, dir).split(/[/\\]/).join("/") || ".";
-          if (existsSync(join(dir, "persona.json"))) {
-            if (results.length >= 256) fail("limit");
-            let value: PersonaDefinition | undefined,
-              id = "",
-              diagnostics: { code: string }[] = [];
-            try {
-              contained(root, join(dir, "persona.json"), "file");
-              const raw = JSON.parse(
-                text(join(dir, "persona.json"), 128 * 1024),
-              );
-              if (typeof raw?.id === "string" && uuid.test(raw.id)) id = raw.id;
-              value = definition(raw);
-            } catch (error) {
-              diagnostics = [
-                {
-                  code:
-                    error instanceof PersonaError
-                      ? error.code
-                      : "invalid-definition",
-                },
-              ];
-            }
-            if (id) {
-              const previous = ids.get(id);
-              if (previous !== undefined) {
-                results[previous]!.diagnostics = [
-                  { code: "duplicate-identity" },
-                ];
-                diagnostics = [{ code: "duplicate-identity" }];
-              }
-              ids.set(id, results.length);
-            }
-            results.push({
-              ref: { root: key, path, id },
-              writable: key === "managed",
-              definition: value,
-              diagnostics,
-            });
-            return;
-          }
-          for (const name of readdirSync(dir).sort()) {
-            if (++entries > 2048) fail("limit");
-            if (
-              [".git", "node_modules"].includes(name) ||
-              name.startsWith(".persona-")
-            )
-              continue;
-            const target = contained(root, join(dir, name));
-            if (lstatSync(target).isDirectory()) visit(target, depth + 1);
-          }
+    const path = join(this.dir(target), "persona.json");
+    if (!existsSync(path)) {
+      if ("chat" in target)
+        return {
+          definition: { base: [this.chatPersona(target.chat)] },
+          revision: "",
         };
-        visit(root, 0);
-      }
-      return results;
-    } catch (error) {
-      storageError(error);
+      fail("not-found", 404);
     }
+    const source = readText(path);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(source);
+    } catch {
+      return fail("invalid-definition", 400, "json");
+    }
+    return {
+      definition: validateDefinition(parsed, { chatLayer: "chat" in target }),
+      revision: digest(source),
+    };
   }
-  assertIdentities(): void {
-    if (
-      this.discover().some((p) =>
-        p.diagnostics.some((d) => d.code === "duplicate-identity"),
-      )
-    )
-      fail("duplicate-identity");
-  }
-  list(cursor = 0, maximum = 256): PersonaSummary[] {
-    return this.discover()
-      .slice(cursor, cursor + maximum)
-      .map((item) => {
-        const summary: PersonaSummary = {
-          ref: item.ref,
-          name: item.definition?.name ?? "Invalid persona",
-          description: item.definition?.description,
-          writable: item.writable,
+
+  list(): PersonaSummary[] {
+    const summaries: PersonaSummary[] = [];
+    for (const id of readdirSync(this.personasDir)) {
+      if (!validPersonaId(id)) continue;
+      if (!existsSync(join(this.personasDir, id, "persona.json"))) continue;
+      try {
+        const { definition } = this.read({ persona: id });
+        summaries.push({
+          id,
+          name: definition.name ?? id,
+          ...(definition.description
+            ? { description: definition.description }
+            : {}),
+          base: definition.base ?? [],
+          builtIn: id === DEFAULT_PERSONA,
+          valid: true,
+        });
+      } catch (error) {
+        summaries.push({
+          id,
+          name: id,
+          base: [],
+          builtIn: id === DEFAULT_PERSONA,
           valid: false,
-          diagnostics: item.diagnostics,
-        };
-        if (!item.definition || item.diagnostics.length) return summary;
-        try {
-          const resolved = resolvePersona(this, item.ref, undefined, false);
-          return {
-            ...summary,
-            valid: true,
-            revision: resolved.revision,
-            skillCount: resolved.skills.length,
-          };
-        } catch (error) {
-          return {
-            ...summary,
-            diagnostics:
-              error instanceof PersonaError
-                ? error.diagnostics
-                : [{ code: "storage" }],
-          };
-        }
-      });
-  }
-  private write<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.closed) return Promise.reject(new PersonaError("shutdown", 503));
-    if (this.writes.size >= 16)
-      return Promise.reject(new PersonaError("busy", 409));
-    const pending = operation();
-    this.writes.add(pending);
-    void pending.finally(() => this.writes.delete(pending)).catch(() => {});
-    return pending;
-  }
-  private async locked<T>(directory: string, operation: () => T): Promise<T> {
-    const lock = join(directory, ".persona-write.lock");
-    const until = Date.now() + 1000;
-    for (;;) {
-      try {
-        noLinks(directory);
-        mkdirSync(lock, { mode: 0o700 });
-        break;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST")
-          storageError(error);
-        if (Date.now() >= until) throw new PersonaError("busy", 409);
-        await new Promise((resolve) => setTimeout(resolve, 25));
+          error: error instanceof PersonaError ? error.code : "storage",
+        });
       }
     }
-    try {
-      return operation();
-    } catch (error) {
-      storageError(error);
-    } finally {
-      rmdirSync(lock);
-    }
+    return summaries.sort((a, b) =>
+      a.builtIn !== b.builtIn
+        ? a.builtIn
+          ? -1
+          : 1
+        : a.name.localeCompare(b.name),
+    );
   }
-  create(input: unknown) {
-    return this.write(async () => {
-      if (
-        !input ||
-        typeof input !== "object" ||
-        Array.isArray(input) ||
-        Object.hasOwn(input, "id")
-      )
-        throw new PersonaError("invalid-definition", 400);
-      const id = randomUUID(),
-        value = definition({ ...input, id });
-      const reference = { root: "managed", path: id, id };
-      const root = this.roots.managed!,
-        staged = join(root, `.persona-${id}`),
-        target = join(root, id);
-      try {
-        noLinks(root);
-        mkdirSync(staged, { mode: 0o700 });
-        atomicWrite(
-          join(staged, "persona.json"),
-          JSON.stringify(value, null, 2) + "\n",
-          () => noLinks(staged),
-        );
-        // Empty creation is immediately useful; file/skill references must already exist.
-        const preview = publicView(
-          resolvePersona(this, reference, value, true, staged),
-        );
-        if (Buffer.byteLength(JSON.stringify(preview)) > 512 * 1024)
-          fail("limit");
-        noLinks(root);
-        renameSync(staged, target);
-        this.logger.event("persona.save", {
-          personaId: id,
-          outcome: "completed",
-        });
-        return publicView(resolvePersona(this, reference));
-      } catch (error) {
-        storageError(error);
-      } finally {
-        rmSync(staged, { force: true, recursive: true });
-      }
+
+  create(input: {
+    name: string;
+    description?: string;
+    base?: string[];
+  }): { id: string; revision: string } {
+    const definition = validateDefinition({
+      name: input.name,
+      ...(input.description ? { description: input.description } : {}),
+      ...(input.base?.length ? { base: input.base } : {}),
     });
+    const id = slug(definition.name!, (candidate) =>
+      existsSync(join(this.personasDir, candidate)),
+    );
+    for (const parent of definition.base ?? [])
+      if (!this.exists({ persona: parent })) fail("missing-parent", 400, parent);
+    const dir = join(this.personasDir, id);
+    mkdirSync(dir, { mode: 0o700 });
+    const content = JSON.stringify(definition, null, 2) + "\n";
+    writeAtomic(join(dir, "persona.json"), content);
+    this.logger.event("persona.save", { personaId: id, outcome: "completed" });
+    this.changed({ persona: id });
+    return { id, revision: digest(content) };
   }
-  save(reference: PersonaRef, expectedRevision: string, input: unknown) {
-    return this.write(async () => {
-      const current = this.read(reference);
-      if (!current.writable) throw new PersonaError("read-only", 403);
-      const value = definition(input);
-      if (value.id !== reference.id) fail("identity-mismatch");
-      return this.locked(current.directory, () => {
-        const check = (temporary?: string) => {
-          if (
-            resolvePersona(
-              this,
-              reference,
-              undefined,
-              true,
-              undefined,
-              temporary,
-            ).revision !== expectedRevision
-          )
-            throw new PersonaError("revision-conflict", 409);
-        };
-        check();
-        const preview = publicView(resolvePersona(this, reference, value));
-        if (Buffer.byteLength(JSON.stringify(preview)) > 512 * 1024)
-          fail("limit");
-        atomicWrite(
-          join(current.directory, "persona.json"),
-          JSON.stringify(value, null, 2) + "\n",
-          (temporary) => {
-            contained(current.root, current.directory, "directory");
-            check(temporary);
-          },
-        );
-        this.logger.event("persona.save", {
-          personaId: reference.id,
-          outcome: "completed",
-        });
-        return publicView(resolvePersona(this, reference));
-      });
+
+  /**
+   * Replace persona.json if it still has `expectedRevision`. For a chat with no layer yet,
+   * `expectedRevision` is "" and the layer is created.
+   */
+  save(
+    target: PersonaTarget,
+    expectedRevision: string,
+    input: unknown,
+    check?: (definition: PersonaDefinition) => void,
+  ): { revision: string } {
+    const definition = validateDefinition(input, {
+      chatLayer: "chat" in target,
     });
+    if ("persona" in target && definition.base?.includes(target.persona))
+      fail("cycle", 400, target.persona);
+    // Default is always the first layer; it has no parents.
+    if (
+      "persona" in target &&
+      target.persona === DEFAULT_PERSONA &&
+      definition.base?.length
+    )
+      fail("invalid-definition", 400, "base");
+    const current = this.exists(target) ? this.read(target).revision : "";
+    if (current !== expectedRevision) fail("revision-conflict", 409);
+    check?.(definition);
+    const dir = this.dir(target);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const content = JSON.stringify(definition, null, 2) + "\n";
+    writeAtomic(join(dir, "persona.json"), content);
+    this.logger.event("persona.save", {
+      personaId: "persona" in target ? target.persona : "chat",
+      outcome: "completed",
+    });
+    this.changed(target);
+    return { revision: digest(content) };
   }
-  instruction(reference: PersonaRef, path: string) {
-    const current = this.read(reference);
-    relativePath(path);
-    if (!current.definition.instructions?.some((i) => i.file === path))
-      fail("invalid-definition");
-    try {
-      const file = contained(
-        current.root,
-        resolve(current.directory, path),
-        "file",
-      );
-      const content = bytes(file, 64 * 1024);
-      return {
-        text: new TextDecoder("utf-8", { fatal: true }).decode(content),
-        revision: digest(content),
-      };
-    } catch (error) {
-      storageError(error);
-    }
+
+  remove(id: string): void {
+    if (!validPersonaId(id)) fail("invalid-input");
+    if (id === DEFAULT_PERSONA) fail("built-in");
+    if (!this.exists({ persona: id })) fail("not-found", 404);
+    const dependent = this.list().find((p) => p.base.includes(id));
+    if (dependent) fail("in-use", 409, dependent.id);
+    rmSync(join(this.personasDir, id), { recursive: true, force: true });
+    this.changed({ persona: id });
   }
-  saveInstruction(
-    reference: PersonaRef,
+
+  readFile(target: PersonaTarget, path: string): ItemFile {
+    itemPath(path);
+    const full = join(this.dir(target), path);
+    if (!existsSync(full)) fail("not-found", 404);
+    const text = readText(full);
+    return { text, revision: digest(text) };
+  }
+
+  /** Create (expectedRevision null) or replace an instruction, prompt or SKILL.md. */
+  writeFile(
+    target: PersonaTarget,
     path: string,
     expectedRevision: string | null,
-    value: string,
-  ) {
-    return this.write(async () => {
-      const current = this.read(reference);
-      if (!current.writable) throw new PersonaError("read-only", 403);
-      relativePath(path);
-      if (
-        !/\.(md|txt)$/i.test(path) ||
-        path
-          .split("/")
-          .some(
-            (p) =>
-              p === "." ||
-              p === ".." ||
-              p.toLowerCase() === ".persona-write.lock",
-          ) ||
-        /(^|\/)persona\.json$/i.test(path) ||
-        typeof value !== "string" ||
-        !value.trim() ||
-        value.includes("\0") ||
-        Buffer.byteLength(value) > 64 * 1024
-      )
-        fail("invalid-definition");
-      const target = resolve(current.directory, path);
-      if (!inside(current.directory, target)) fail("path-outside-root");
-      if (/(^|\/)SKILL\.md$/i.test(path))
-        throw new PersonaError("read-only", 403);
-      return this.locked(current.directory, () => {
-        const check = () => {
-          const latest = this.read(reference);
-          contained(latest.root, latest.directory, "directory");
-          if (
-            latest.definition.skills?.some((s) =>
-              inside(resolve(latest.directory, s.directory), target),
-            )
-          )
-            throw new PersonaError("read-only", 403);
-          if (
-            existsSync(target) &&
-            !latest.definition.instructions?.some((i) => i.file === path)
-          )
-            fail("invalid-definition");
-          // Provisioned skill trees stay read-only even before they are referenced by this definition.
-          for (
-            let dir = dirname(target);
-            inside(current.directory, dir);
-            dir = dirname(dir)
-          ) {
-            if (existsSync(dir)) {
-              contained(current.directory, dir, "directory");
-              if (existsSync(join(dir, "SKILL.md")))
-                throw new PersonaError("read-only", 403);
-            }
-            if (dir === current.directory) break;
-          }
-          const revision = existsSync(target)
-            ? digest(
-                bytes(contained(current.directory, target, "file"), 64 * 1024),
-              )
-            : null;
-          if (revision !== expectedRevision)
-            throw new PersonaError("revision-conflict", 409);
-        };
-        // Only owned .md/.txt paths; not an arbitrary file read/write endpoint.
-        check();
-        let before: ResolvedPersona | undefined;
-        try {
-          before = resolvePersona(this, reference);
-        } catch {
-          /* a missing instruction file may be repaired by this operation */
-        }
-        let dir = current.directory;
-        for (const part of relative(current.directory, dirname(target))
-          .split(/[/\\]/)
-          .filter(Boolean)) {
-          dir = join(dir, part);
-          if (!existsSync(dir)) mkdirSync(dir, { mode: 0o700 });
-          contained(current.directory, dir, "directory");
-        }
-        atomicWrite(target, value, () => {
-          contained(current.directory, dirname(target), "directory");
-          check();
-        });
-        let revision: string | undefined, beforeRevision: string | undefined;
-        try {
-          const after = resolvePersona(this, reference);
-          revision = after.revision;
-          // Prove the post-write graph differs only in this owned file, including changes
-          // by another process during the write. This is optimistic evidence, not OS CAS.
-          if (before) {
-            const ownedIds = new Set(
-              before.definition.instructions
-                ?.filter((i) => i.file === path)
-                .map((i) => i.id),
-            );
-            const resources = after.revisionInputs.resources.map((r) => {
-              if (
-                r.type !== "instructions" ||
-                r.ref.id !== reference.id ||
-                !ownedIds.has(r.id)
-              )
-                return r;
-              const prior = before!.revisionInputs.resources.find(
-                (p) =>
-                  p.type === r.type && p.ref.id === r.ref.id && p.id === r.id,
-              );
-              return prior ? { ...r, digest: prior.digest } : r;
-            });
-            if (
-              hash({ definitions: after.definitions, resources }) ===
-              before.revision
-            )
-              beforeRevision = before.revision;
-          }
-        } catch {
-          /* existing invalid definition remains repairable */
-        }
-        return { fileRevision: digest(value), beforeRevision, revision };
-      });
-    });
+    text: string,
+  ): ItemFile {
+    itemPath(path);
+    if (typeof text !== "string" || text.includes("\0")) fail("invalid-input");
+    if (Buffer.byteLength(text) > MAX_FILE) fail("limit");
+    if (!this.exists(target)) {
+      if ("persona" in target) fail("not-found", 404);
+      this.save(target, "", this.read(target).definition);
+    }
+    const full = join(this.dir(target), path);
+    const current = existsSync(full) ? digest(readText(full)) : null;
+    if (current !== expectedRevision) fail("revision-conflict", 409);
+    mkdirSync(dirname(full), { recursive: true, mode: 0o700 });
+    writeAtomic(full, text);
+    this.changed(target);
+    return { text, revision: digest(text) };
   }
+
+  deleteFile(target: PersonaTarget, path: string, expectedRevision: string) {
+    const item = itemPath(path);
+    const full = join(this.dir(target), path);
+    if (!existsSync(full)) fail("not-found", 404);
+    if (digest(readText(full)) !== expectedRevision)
+      fail("revision-conflict", 409);
+    // A skill is its whole folder (scripts, references).
+    if (item.type === "skills")
+      rmSync(dirname(full), { recursive: true, force: true });
+    else unlinkSync(full);
+    this.changed(target);
+  }
+
+  /** Items a layer folder provides, plus its MCP servers. */
+  items(target: PersonaTarget, definition: PersonaDefinition): LayerItem[] {
+    const dir = this.dir(target);
+    const found: LayerItem[] = [];
+    const entries = (name: string) => {
+      const folder = join(dir, name);
+      if (!existsSync(folder) || lstatSync(folder).isSymbolicLink()) return [];
+      return readdirSync(folder, { withFileTypes: true })
+        .filter((entry) => !entry.name.startsWith("."))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .slice(0, MAX_ITEMS);
+    };
+    for (const type of ["instructions", "prompts"] as const)
+      for (const entry of entries(type)) {
+        const name = entry.name.replace(/\.md$/i, "");
+        if (!entry.isFile() || name === entry.name || !validItemName(name))
+          continue;
+        const location = join(dir, type, entry.name);
+        let description: string | undefined;
+        if (type === "prompts") {
+          const { data, body } = frontmatter(readText(location));
+          description =
+            data.description ||
+            body.split(/\r?\n/).find((line) => line.trim())?.trim().slice(0, 200);
+        }
+        found.push({
+          type,
+          name,
+          location,
+          path: `${type}/${entry.name}`,
+          ...(description ? { description } : {}),
+        });
+      }
+    for (const entry of entries("skills")) {
+      const location = join(dir, "skills", entry.name);
+      const skill = join(location, "SKILL.md");
+      if (!entry.isDirectory() || !validItemName(entry.name) || !existsSync(skill))
+        continue;
+      const description = frontmatter(readText(skill)).data.description;
+      found.push({
+        type: "skills",
+        name: entry.name,
+        location,
+        path: `skills/${entry.name}/SKILL.md`,
+        ...(description ? { description: description.slice(0, 300) } : {}),
+      });
+    }
+    for (const entry of entries("extensions")) {
+      let name: string | undefined;
+      let location: string | undefined;
+      if (entry.isFile() && /\.(ts|js|mjs)$/.test(entry.name)) {
+        name = entry.name.replace(/\.(ts|js|mjs)$/, "");
+        location = join(dir, "extensions", entry.name);
+      } else if (entry.isDirectory()) {
+        const index = ["index.ts", "index.js", "index.mjs"]
+          .map((file) => join(dir, "extensions", entry.name, file))
+          .find((file) => existsSync(file));
+        if (index) [name, location] = [entry.name, index];
+      }
+      if (name && location && validItemName(name))
+        found.push({ type: "extensions", name, location });
+    }
+    for (const [name, config] of Object.entries(definition.mcpServers ?? {}))
+      found.push({ type: "mcp", name, config });
+    return found;
+  }
+
   async shutdown(): Promise<void> {
-    this.closed = true;
-    await Promise.allSettled([...this.writes]);
+    this.listeners.clear();
   }
 }

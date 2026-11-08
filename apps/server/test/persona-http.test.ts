@@ -1,58 +1,25 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { test, type TestContext } from "node:test";
 import { createAppServer } from "../src/server.js";
 import { SessionRuntime } from "../src/runtime/session-runtime.js";
 import { SessionHttp } from "../src/session-http.js";
 import { SafeLogger } from "../src/logger.js";
-import { LocalProviderControl } from "./fixtures/local-provider.js";
-import type { PersonaView } from "../src/persona-protocol.js";
+import type { PersonaSummary, PersonaView } from "../src/persona-protocol.js";
+import { testHome } from "./fixtures/home.js";
+
 async function fixture(t: TestContext) {
-  const root = await mkdtemp(join(tmpdir(), "pispark-persona-http-"));
-  const external = join(root, "external");
-  await mkdir(external);
-  const logs: string[] = [],
-    logger = new SafeLogger({
-      sink: async (line) => {
-        logs.push(line);
-      },
-    });
-  const provider = new LocalProviderControl();
-  provider.automatic = true;
-  const runtime = new SessionRuntime(
-    {
-      storageDir: join(root, "sessions"),
-      personas: {
-        directory: join(root, "personas"),
-        roots: { examples: external },
-      },
-      workspaces: { cwd: root },
-      configurations: {
-        local: {
-          provider: provider.provider,
-          modelId: "deterministic",
-          credential: { local: true },
-          tools: [],
-          systemPrompt: "Host",
-        },
-      },
-      resolveSecret: async () => undefined,
+  const h = await testHome("pispark-persona-http-");
+  const logs: string[] = [];
+  const logger = new SafeLogger({
+    sink: async (line) => {
+      logs.push(line);
     },
-    undefined,
-    logger,
-  );
-  const http = new SessionHttp(
-      runtime,
-      { configurations: [], workspaces: [] },
-      undefined,
-      undefined,
-      logger,
-    ),
-    server = createAppServer({ sessions: http, logger });
+  });
+  h.provider.automatic = true;
+  const runtime = new SessionRuntime(h.configuration, undefined, logger);
+  const http = new SessionHttp(runtime, undefined, undefined, logger);
+  const server = createAppServer({ sessions: http, logger });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -63,215 +30,125 @@ async function fixture(t: TestContext) {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await logger.close();
-    await rm(root, { recursive: true, force: true });
+    await h.remove();
   });
-  const post = async (operation: string, value: unknown) =>
+  const post = (operation: string, value: unknown, origin = base) =>
     fetch(`${base}/api/personas/${operation}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Origin: base },
+      headers: { "Content-Type": "application/json", Origin: origin },
       body: JSON.stringify(value),
     });
-  const create = async (name: string): Promise<PersonaView> => {
-    const response = await post("create", {
-      definition: { schemaVersion: 1, name },
-    });
-    assert.equal(response.status, 200);
-    return response.json();
+  const ok = async <T>(operation: string, value: unknown): Promise<T> => {
+    const response = await post(operation, value);
+    assert.equal(response.status, 200, await response.clone().text());
+    return response.json() as Promise<T>;
   };
-  return { root, external, runtime, http, base, logs, post, create };
+  const list = async () =>
+    ((await (await fetch(`${base}/api/personas`)).json()) as {
+      personas: PersonaSummary[];
+    }).personas;
+  return { ...h, runtime, base, logs, post, ok, list };
 }
-test("persona HTTP real create/file save/compose/validate/save/read and stale conflict", async (t) => {
-  const { base, post, create } = await fixture(t);
-  const a = await create("Base");
-  const file = await post("instruction", {
-    ref: a.ref,
-    path: "rules.md",
-    expectedRevision: null,
-    text: "PRIVATE-INSTRUCTION",
-  });
-  assert.equal(file.status, 200);
-  const draft = {
-    ...a.definition,
-    instructions: [{ id: "rule", file: "rules.md" }],
-  };
-  assert.equal(
-    (await post("validate", { ref: a.ref, definition: draft })).status,
-    200,
+
+test("persona HTTP: list Default, create, view the resolved layers, revision-checked save", async (t) => {
+  const f = await fixture(t);
+  assert.deepEqual(
+    (await f.list()).map((p) => [p.id, p.builtIn]),
+    [["default", true]],
   );
-  const savedResponse = await post("save", {
-    ref: a.ref,
-    expectedRevision: a.revision,
-    definition: draft,
+  const { id } = await f.ok<{ id: string }>("create", {
+    name: "Dev helper",
+    description: "Coding",
   });
-  const saved = await savedResponse.json();
-  assert.equal(savedResponse.status, 200);
-  const derived = await create("Derived");
-  const composed = await post("save", {
-    ref: derived.ref,
-    expectedRevision: derived.revision,
-    definition: {
-      ...derived.definition,
-      parents: [a.ref],
-      instructions: [{ id: "rule", replace: true, text: "Child" }],
-    },
+  assert.equal(id, "dev-helper");
+  const view = await f.ok<PersonaView>("read", { target: { persona: id } });
+  assert.deepEqual(view.layers.map((l) => l.id), ["default", "dev-helper"]);
+  assert.ok(view.tools.find((tool) => tool.name === "bash")!.on);
+  const saved = await f.ok<{ revision: string }>("save", {
+    target: { persona: id },
+    expectedRevision: view.revision,
+    definition: { ...view.definition, off: ["tool:bash"] },
   });
-  assert.equal(composed.status, 200);
-  assert.equal((await composed.json()).instructions[0].text, "Child");
-  const stale = await post("save", {
-    ref: a.ref,
-    expectedRevision: a.revision,
-    definition: draft,
+  const stale = await f.post("save", {
+    target: { persona: id },
+    expectedRevision: view.revision,
+    definition: view.definition,
   });
   assert.equal(stale.status, 409);
-  assert.match((await stale.json()).requestId, /^[a-f0-9-]{36}$/);
-  const list = await (await fetch(`${base}/api/personas`)).json();
-  assert.equal(list.personas.length, 2);
-  assert(!JSON.stringify(list).includes("PRIVATE-INSTRUCTION"));
-  const read = await post("read", { ref: saved.ref });
-  assert.equal((await read.json()).definition.instructions[0].file, "rules.md");
-});
-test("persona HTTP enforces same-origin, exact schema, reference/path/body bounds and read-only roots", async (t) => {
-  const { post, create, base, external } = await fixture(t);
-  const a = await create("Managed");
-  const foreign = await fetch(`${base}/api/personas/create`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: "http://evil.invalid",
-    },
-    body: "{}",
+  assert.equal((await stale.json()).error, "revision-conflict");
+  const after = await f.ok<PersonaView>("read", { target: { persona: id } });
+  assert.equal(after.revision, saved.revision);
+  assert.equal(after.tools.find((tool) => tool.name === "bash")!.on, false);
+  const cycle = await f.post("save", {
+    target: { persona: "default" },
+    expectedRevision: (await f.ok<PersonaView>("read", { target: { persona: "default" } })).revision,
+    definition: { name: "Default", base: ["dev-helper"] },
   });
-  assert.equal(foreign.status, 403);
-  const cross = await fetch(`${base}/api/personas`, {
-    headers: { "Sec-Fetch-Site": "cross-site" },
-  });
-  assert.equal(cross.status, 403);
-  assert.equal(
-    (await post("read", { ref: a.ref, extra: "SECRET" })).status,
-    400,
-  );
-  assert.equal(
-    (await post("read", { ref: { ...a.ref, path: "../private" } })).status,
-    400,
-  );
-  assert.equal(
-    (
-      await post("instruction", {
-        ref: a.ref,
-        path: "../private.md",
-        expectedRevision: null,
-        text: "SECRET",
-      })
-    ).status,
-    400,
-  );
-  assert.equal(
-    (
-      await post("create", {
-        definition: { schemaVersion: 1, name: "X", extensions: [] },
-      })
-    ).status,
-    400,
-  );
-  const oversized = await post("create", {
-    definition: {
-      schemaVersion: 1,
-      name: "X",
-      description: "x".repeat(513 * 1024),
-    },
-  });
-  assert.equal(oversized.status, 400);
-  const id = randomUUID();
-  await mkdir(join(external, "base"));
-  await writeFile(
-    join(external, "base", "persona.json"),
-    JSON.stringify({ schemaVersion: 1, id, name: "External" }),
-  );
-  const ref = { root: "examples", path: "base", id },
-    externalView = await (await post("read", { ref })).json();
-  assert.equal(externalView.writable, false);
-  assert.equal(
-    (
-      await post("save", {
-        ref,
-        expectedRevision: externalView.revision,
-        definition: externalView.definition,
-      })
-    ).status,
-    403,
-  );
-});
-test("persona HTTP safe correlated diagnostics and shutdown refuse new writes", async (t) => {
-  const { post, create, logs, runtime } = await fixture(t);
-  const a = await create("Safe");
-  const result = await post("validate", {
-    ref: a.ref,
-    definition: {
-      ...a.definition,
-      instructions: [{ id: "rule", file: "PRIVATE-RESOURCE.md" }],
-    },
-  });
-  assert.equal(result.status, 422);
-  const failure = await result.json();
-  assert.equal(failure.error, "missing-resource");
-  assert(!JSON.stringify(failure).includes("PRIVATE-RESOURCE"));
-  assert(logs.some((line) => JSON.parse(line).requestId === failure.requestId));
-  assert(!logs.join("").includes("PRIVATE-RESOURCE"));
-  await runtime.personas.shutdown();
-  assert.equal(
-    (
-      await post("create", {
-        definition: { schemaVersion: 1, name: "Stopped" },
-      })
-    ).status,
-    503,
-  );
+  assert.equal(cycle.status, 400);
 });
 
-test("persona HTTP distinguishes missing identities, resource conflicts and schema limits", async (t) => {
-  const { post, create } = await fixture(t);
-  const a = await create("A"),
-    b = await create("B"),
-    child = await create("Join");
-  for (const saved of [a, b]) {
-    assert.equal(
-      (
-        await post("save", {
-          ref: saved.ref,
-          expectedRevision: saved.revision,
-          definition: {
-            ...saved.definition,
-            instructions: [{ id: "tone", text: saved.definition.name }],
-          },
-        })
-      ).status,
-      200,
-    );
-  }
-  const conflict = await post("validate", {
-    ref: child.ref,
-    definition: { ...child.definition, parents: [a.ref, b.ref] },
+test("persona HTTP: item files, chat layers and delete rules", async (t) => {
+  const f = await fixture(t);
+  await f.ok("create", { name: "Dev" });
+  const target = { persona: "dev" };
+  const file = await f.ok<{ revision: string }>("file/write", {
+    target,
+    path: "skills/review/SKILL.md",
+    expectedRevision: null,
+    text: "---\nname: review\ndescription: Review code\n---\nSteps",
   });
-  assert.equal(conflict.status, 409);
-  assert.equal((await conflict.json()).diagnostics[0].resourceId, "tone");
-  const id = randomUUID();
+  const view = await f.ok<PersonaView>("read", { target });
+  const skill = view.items.find((item) => item.name === "review")!;
+  assert.equal(skill.description, "Review code");
+  assert.equal(skill.path, "skills/review/SKILL.md");
   assert.equal(
-    (await post("read", { ref: { root: "managed", path: id, id } })).status,
-    404,
+    (await f.ok<{ text: string }>("file/read", { target, path: skill.path })).text.includes("Steps"),
+    true,
   );
+  // A chat layer is created by its first edit and stacks on the chat's persona.
+  const chat = await f.runtime.create({ folder: await f.folder("work"), persona: "dev" });
+  const layer = { chat: chat.id };
+  const before = await f.ok<PersonaView>("read", { target: layer });
+  assert.equal(before.revision, "");
+  assert.deepEqual(before.definition, { base: ["dev"] });
+  await f.ok("save", {
+    target: layer,
+    expectedRevision: "",
+    definition: { base: ["dev"], off: ["skill:review"] },
+  });
+  const layered = await f.ok<PersonaView>("read", { target: layer });
+  assert.deepEqual(layered.layers.map((l) => l.id), ["default", "dev", "chat"]);
+  assert.equal(layered.items.find((i) => i.name === "review")!.on, false);
+  assert.equal(f.runtime.list()[0]!.persona.layered, true);
+  await f.ok("file/delete", { target, path: skill.path, expectedRevision: file.revision });
+  assert.equal((await f.ok<PersonaView>("read", { target })).items.length, 0);
+  const builtIn = await f.post("delete", { id: "default" });
+  assert.equal((await builtIn.json()).error, "built-in");
+  await f.ok("delete", { id: "dev" });
+  assert.deepEqual((await f.list()).map((p) => p.id), ["default"]);
+});
+
+test("persona HTTP: strict inputs, same-origin guard and content-free failure logs", async (t) => {
+  const f = await fixture(t);
+  for (const [operation, value] of [
+    ["read", { target: { persona: "../x" } }],
+    ["read", { target: { persona: "a", chat: "b" } }],
+    ["read", { target: { persona: "default" }, extra: true }],
+    ["create", { name: "X", tools: ["bash"] }],
+    ["save", { target: { persona: "default" }, expectedRevision: "nope", definition: {} }],
+    ["file/read", { target: { persona: "default" }, path: "../../etc/passwd" }],
+    ["file/write", { target: { persona: "default" }, path: "persona.json", expectedRevision: null, text: "{}" }],
+  ] as const) {
+    const response = await f.post(operation, value);
+    assert.equal(response.status, 400, `${operation} ${JSON.stringify(value)}`);
+  }
+  assert.equal((await f.post("unknown", {})).status, 404);
+  assert.equal((await f.post("read", { target: { persona: "missing" } })).status, 404);
   assert.equal(
-    (
-      await post("validate", {
-        ref: child.ref,
-        definition: {
-          ...child.definition,
-          instructions: Array.from({ length: 33 }, (_, i) => ({
-            id: `entry-${i}`,
-            text: "x",
-          })),
-        },
-      })
-    ).status,
-    400,
+    (await f.post("create", { name: "Evil" }, "http://evil.invalid")).status,
+    403,
   );
+  await f.post("create", { name: "PRIVATE-NAME", base: ["missing"] });
+  assert.doesNotMatch(f.logs.join(""), /PRIVATE-NAME/);
+  assert.match(f.logs.join(""), /missing-parent/);
 });

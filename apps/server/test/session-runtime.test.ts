@@ -1,4 +1,3 @@
-import { SessionStorage } from "../src/runtime/storage.js";
 import { SafeLogger } from "../src/logger.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -11,6 +10,7 @@ import {
   realpath,
   rm,
 } from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,83 +20,93 @@ import {
   SessionRuntime,
   RuntimeError,
 } from "../src/runtime/session-runtime.js";
-import type {
-  RuntimeConfiguration,
-  SessionConfiguration,
-} from "../src/runtime/session-runtime.js";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { assertPiBoundary } from "../src/runtime/pi-boundary.js";
-import { LocalProviderControl, eventually } from "./fixtures/local-provider.js";
+import { eventually } from "./fixtures/local-provider.js";
+import { addControlledExtension, testHome } from "./fixtures/home.js";
 
-const extension = fileURLToPath(
-  new URL("./fixtures/controlled-extension.mjs", import.meta.url),
-);
 const hasCode = (code: string) => (error: unknown) =>
   error instanceof RuntimeError && error.code === code;
+const ambient = (root: string) => ({
+  "value.txt": "",
+  "AGENTS.md": "FORBIDDEN-AMBIENT-CONTEXT",
+  ".pi/SYSTEM.md": "FORBIDDEN-AMBIENT-SYSTEM",
+  ".pi/settings.json": JSON.stringify({
+    packages: ["npm:must-not-install"],
+    extensions: ["./extensions/sentinel.js"],
+    defaultModel: "not-admitted",
+  }),
+  ".pi/extensions/sentinel.js": `import {writeFileSync} from 'node:fs'; export default ()=>writeFileSync(${JSON.stringify(join(root, "ambient-executed"))},'bad');`,
+});
 async function fixture(logger?: SafeLogger) {
-  const root = await mkdtemp(join(tmpdir(), "pispark-runtime-"));
-  const provider = new LocalProviderControl();
-  const storageDir = join(root, "state");
-  const workspaces = { a: join(root, "a"), b: join(root, "b") };
-  for (const [name, cwd] of Object.entries(workspaces)) {
-    await mkdir(join(cwd, ".pi", "extensions"), { recursive: true });
-    await writeFile(join(cwd, "value.txt"), `workspace-${name}`);
-    await writeFile(join(cwd, "approved.md"), `instructions-${name}`);
-    await writeFile(join(cwd, "AGENTS.md"), "FORBIDDEN-AMBIENT-CONTEXT");
-    await writeFile(join(cwd, ".pi", "SYSTEM.md"), "FORBIDDEN-AMBIENT-SYSTEM");
-    await writeFile(
-      join(cwd, ".pi", "settings.json"),
-      JSON.stringify({
-        packages: ["npm:must-not-install"],
-        extensions: ["./extensions/sentinel.js"],
-        defaultModel: "not-admitted",
-      }),
+  const h = await testHome("pispark-runtime-");
+  const folders: Record<"a" | "b", string> = { a: "", b: "" };
+  // Default grants nothing here; personas "a" and "b" each add read, an instruction and the controlled extension.
+  await h.persona("default", { name: "Default" });
+  for (const key of ["a", "b"] as const) {
+    folders[key] = realpathSync(
+      await h.folder(key, { ...ambient(h.root), "value.txt": `workspace-${key}` }),
     );
-    await writeFile(
-      join(cwd, ".pi", "extensions", "sentinel.js"),
-      `import {writeFileSync} from 'node:fs'; export default ()=>writeFileSync(${JSON.stringify(join(root, "ambient-executed"))},'bad');`,
+    await h.persona(
+      key,
+      { name: key.toUpperCase(), on: ["tool:read"] },
+      {
+        "instructions/1-system.md": `system-${key}`,
+        "instructions/2-approved.md": `instructions-${key}`,
+      },
     );
+    await addControlledExtension(h.home, key);
   }
-  const configuration: RuntimeConfiguration = {
-    storageDir,
-    workspaces,
-    configurations: Object.fromEntries(
-      Object.entries(workspaces).map(([key, cwd]) => [
-        key,
-        {
-          modelId: "deterministic",
-          provider: provider.provider,
-          credential: { secretRef: "fixture-only" },
-          systemPrompt: `system-${key}`,
-          tools: ["read"],
-          extensions: [extension],
-          instructions: [join(cwd, "approved.md")],
-        },
-      ]),
-    ),
-    resolveSecret: async (ref) =>
-      ref === "fixture-only" ? "local-test-not-a-real-secret" : undefined,
-  };
+  const configuration = h.configuration;
   const runtime = new SessionRuntime(configuration, undefined, logger);
-  const history = async (id: string) => {
-    const dir = join(storageDir, id);
-    const file = (await readdir(dir)).find((name) => name.endsWith(".jsonl"))!;
-    return (await readFile(join(dir, file), "utf8"))
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line));
+  const chatsDir = join(h.home, "chats");
+  const transcript = async (id: string) =>
+    join(
+      chatsDir,
+      id,
+      (await readdir(join(chatsDir, id))).find((n) => n.endsWith(".jsonl"))!,
+    );
+  /** Write an extension file into persona `persona`. */
+  const extension = async (persona: string, name: string, source: string) => {
+    const dir = join(h.home, "personas", persona, "extensions");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, name), source);
   };
   return {
-    root,
-    storageDir,
-    provider,
+    root: h.root,
+    home: h.home,
+    chatsDir,
+    folders,
+    provider: h.provider,
     configuration,
     runtime,
-    history,
+    history: h.history,
+    transcript,
+    extension,
+    create: (key: "a" | "b", target = runtime) =>
+      target.create({ folder: folders[key], persona: key }),
     cleanup: async () => {
       await runtime.shutdown();
-      await rm(root, { recursive: true, force: true });
+      await h.remove();
     },
+  };
+}
+/** An extension whose factory waits for `release()`, to hold a session in setup. */
+function setupGate(f: Awaited<ReturnType<typeof fixture>>) {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const key = `pispark-gate:${f.root}`;
+  (globalThis as unknown as Record<string, unknown>)[key] = pending;
+  return {
+    release,
+    install: () =>
+      f.extension(
+        "a",
+        "gate.mjs",
+        `export default async () => { await globalThis[${JSON.stringify(key)}]; }`,
+      ),
   };
 }
 
@@ -106,8 +116,8 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
   const originalEnv = { ...process.env };
   try {
     const [a, b] = await Promise.all([
-      f.runtime.create({ workspace: "a", configuration: "a" }),
-      f.runtime.create({ workspace: "b", configuration: "b" }),
+      f.create("a"),
+      f.create("b"),
     ]);
     const observerA = f.runtime.observe(a.id);
     const observerB = f.runtime.observe(b.id);
@@ -161,7 +171,7 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
     assert.doesNotMatch(requests[1]!, /instructions-a|FORBIDDEN/);
     assert.ok(
       f.provider.requests.every(
-        (request) => request.apiKey === "local-test-not-a-real-secret",
+        (request) => request.apiKey === "pispark-local-keyless",
       ),
     );
     await assert.rejects(readFile(join(f.root, "ambient-executed")), {
@@ -180,7 +190,7 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
       assert.equal(start.data.trusted, false);
       assert.equal(
         start.data.cwd,
-        await realpath(f.configuration.workspaces[id === a.id ? "a" : "b"]!),
+        f.folders[id === a.id ? "a" : "b"],
       );
       assert.equal(
         entries.find((entry) => entry.customType === "fixture-run").data
@@ -216,14 +226,14 @@ test("SessionRuntime: empty metadata, one live owner, admission and detached obs
   });
   const second = new SessionRuntime(f.configuration);
   try {
-    const a = await limited.create({ workspace: "a", configuration: "a" });
+    const a = await f.create("a", limited);
     assert.equal(limited.list().length, 1);
     assert.equal(a.context.messages.length, 0);
     await assert.rejects(
-      limited.create({ workspace: "b", configuration: "b" }),
+      f.create("b", limited),
       hasCode("limit"),
     );
-    await assert.rejects(second.open(a.id), hasCode("owned"));
+    await assert.rejects(limited.open(a.id), hasCode("owned"));
     const observations = Array.from({ length: 16 }, () =>
       limited.observe(a.id),
     );
@@ -239,7 +249,7 @@ test("SessionRuntime: empty metadata, one live owner, admission and detached obs
     await limited.stop(a.id);
     assert.equal((await second.open(a.id)).interrupted, false);
     await second.stop(a.id);
-    const empty = await limited.create({ workspace: "b", configuration: "b" });
+    const empty = await f.create("b", limited);
     await limited.stop(empty.id);
     assert.equal((await second.open(empty.id)).context.messages.length, 0);
   } finally {
@@ -253,8 +263,16 @@ test("SessionRuntime: errors are safe, missing model/auth/resources rejected, in
   const f = await fixture();
   try {
     await assert.rejects(
-      f.runtime.create({ workspace: "../outside", configuration: "a" }),
-      hasCode("configuration"),
+      f.runtime.create({ folder: join(f.root, "missing") }),
+      hasCode("folder"),
+    );
+    await assert.rejects(
+      f.runtime.create({ folder: "relative/path" }),
+      hasCode("invalid-input"),
+    );
+    await assert.rejects(
+      f.runtime.create({ folder: f.folders.a, persona: "nobody" }),
+      hasCode("persona"),
     );
     await assert.rejects(
       f.runtime.open("/absolute/native.jsonl"),
@@ -262,8 +280,7 @@ test("SessionRuntime: errors are safe, missing model/auth/resources rejected, in
     );
     await assert.rejects(
       f.runtime.create({
-        workspace: "a",
-        configuration: "a",
+        folder: f.folders.a,
         secret: "browser-supplied",
       } as never),
       hasCode("invalid-input"),
@@ -276,24 +293,15 @@ test("SessionRuntime: errors are safe, missing model/auth/resources rejected, in
       () => assertPiBoundary("1.4.0", undefined),
       hasCode("sdk-version"),
     );
-    for (const [override, code] of [
-      [{ modelId: "not-allowed" }, "configuration"],
-      [{ credential: { secretRef: "missing" } }, "credentials"],
-      [{ extensions: [join(f.root, "missing.mjs")] }, "resources"],
-    ] as [Partial<SessionConfiguration>, string][]) {
-      const invalid = new SessionRuntime({
-        ...f.configuration,
-        configurations: {
-          bad: { ...f.configuration.configurations.a!, ...override },
-        },
-      });
-      await assert.rejects(
-        invalid.create({ workspace: "a", configuration: "bad" }),
-        hasCode(code),
-      );
-      await invalid.shutdown();
-    }
-    const a = await f.runtime.create({ workspace: "a", configuration: "a" });
+    const wrongModel = new SessionRuntime({
+      ...f.configuration,
+      fixedModel: { ...f.configuration.fixedModel!, id: "not-allowed" },
+    });
+    await assert.rejects(f.create("a", wrongModel), hasCode("configuration"));
+    await wrongModel.shutdown();
+    await f.extension("b", "broken.mjs", "export default (");
+    await assert.rejects(f.create("b"), hasCode("extension"));
+    const a = await f.create("a");
     assert.throws(() => f.runtime.start(a.id, ""), hasCode("invalid-input"));
     assert.throws(
       () => f.runtime.start(a.id, "x".repeat(65537)),
@@ -313,7 +321,7 @@ test("SessionRuntime: errors are safe, missing model/auth/resources rejected, in
     assert.equal(f.runtime.snapshot(a.id).error, "execution");
     assert.doesNotMatch(
       JSON.stringify(f.runtime.snapshot(a.id)),
-      /local-test-not-a-real-secret|Fixture error/,
+      /pispark-local-keyless|Fixture error/,
     );
   } finally {
     await f.cleanup();
@@ -325,7 +333,7 @@ test("SessionRuntime: headless dialogs fail visibly and stop aborts before nativ
   try {
     f.provider.automatic = true;
     for (const text of ["ui-confirm", "ui-select", "ui-input", "ui-custom"]) {
-      const a = await f.runtime.create({ workspace: "a", configuration: "a" });
+      const a = await f.create("a");
       assert.deepEqual(await f.runtime.start(a.id, text).completion, {
         outcome: "failed",
         error: "extension",
@@ -333,8 +341,8 @@ test("SessionRuntime: headless dialogs fail visibly and stop aborts before nativ
       await f.runtime.stop(a.id);
     }
     f.provider.automatic = false;
-    const a = await f.runtime.create({ workspace: "a", configuration: "a" });
-    const b = await f.runtime.create({ workspace: "b", configuration: "b" });
+    const a = await f.create("a");
+    const b = await f.create("b");
     const runA = f.runtime.start(a.id, "stop-me");
     const runB = f.runtime.start(b.id, "keep-going");
     await eventually(() => f.provider.active === 2);
@@ -355,10 +363,10 @@ test("SessionRuntime: interrupted marker retains native history without replay, 
   const f = await fixture();
   try {
     f.provider.automatic = true;
-    const a = await f.runtime.create({ workspace: "a", configuration: "a" });
+    const a = await f.create("a");
     await f.runtime.start(a.id, "saved").completion;
     await f.runtime.stop(a.id);
-    const metadataPath = join(f.storageDir, a.id, "host.json");
+    const metadataPath = join(f.chatsDir, a.id, "chat.json");
     const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
     metadata.active = true;
     await writeFile(metadataPath, JSON.stringify(metadata));
@@ -368,11 +376,9 @@ test("SessionRuntime: interrupted marker retains native history without replay, 
     assert.match(JSON.stringify(reopened.context), /saved/);
     assert.equal(f.provider.requests.length, requestCount);
     await f.runtime.stop(a.id);
-    const native = join(f.storageDir, a.id, metadata.nativeFile);
+    const native = await f.transcript(a.id);
     const original = await readFile(native, "utf8");
     await writeFile(native, `${original}{broken`);
-    await assert.rejects(f.runtime.open(a.id), hasCode("storage"));
-    await rm(native);
     await assert.rejects(f.runtime.open(a.id), hasCode("storage"));
   } finally {
     await f.cleanup();
@@ -382,7 +388,7 @@ test("SessionRuntime: interrupted marker retains native history without replay, 
 test("SessionRuntime: queue race with cancel clears delayed input, bounded queues and graceful shutdown", async () => {
   const f = await fixture();
   try {
-    const a = await f.runtime.create({ workspace: "a", configuration: "a" });
+    const a = await f.create("a");
     const run = f.runtime.start(a.id, "run");
     await eventually(() => f.provider.active === 1);
     for (let i = 0; i < 8; i++)
@@ -407,7 +413,7 @@ test("SessionRuntime: queue race with cancel clears delayed input, bounded queue
     assert.equal(f.provider.requests.length, 2);
     await f.runtime.shutdown();
     await assert.rejects(
-      f.runtime.create({ workspace: "a", configuration: "a" }),
+      f.create("a"),
       hasCode("closed"),
     );
   } finally {
@@ -420,8 +426,9 @@ test("SessionRuntime: killed process recovers finalized native tool history, no 
   let child: ReturnType<typeof fork> | undefined;
   try {
     const effects = join(f.root, "effects.txt");
-    await writeFile(
-      join(f.root, "side-effect.mjs"),
+    await f.extension(
+      "a",
+      "side-effect.mjs",
       `import {appendFileSync} from 'node:fs'; export default (pi)=>{pi.on('tool_result',()=>{appendFileSync(${JSON.stringify(effects)},'effect\\n')})}`,
     );
     child = fork(
@@ -527,8 +534,8 @@ test("SessionRuntime: isolated child ignores home/project resources; native comm
 test("SessionRuntime: storage write failures are not reported as success", async () => {
   const f = await fixture();
   try {
-    const a = await f.runtime.create({ workspace: "a", configuration: "a" });
-    const metadata = join(f.storageDir, a.id, "host.json");
+    const a = await f.create("a");
+    const metadata = join(f.chatsDir, a.id, "chat.json");
     const original = await readFile(metadata, "utf8");
     await rm(metadata);
     await mkdir(metadata);
@@ -561,13 +568,10 @@ test("SessionRuntime: storage write failures are not reported as success", async
 test("SessionRuntime: native history append failure reports failed run and keeps recovery honest", async () => {
   const f = await fixture();
   try {
-    const a = await f.runtime.create({ workspace: "a", configuration: "a" });
+    const a = await f.create("a");
     const run = f.runtime.start(a.id, "native-write-failure");
     await eventually(() => f.provider.active === 1);
-    const metadata = JSON.parse(
-      await readFile(join(f.storageDir, a.id, "host.json"), "utf8"),
-    );
-    const native = join(f.storageDir, a.id, metadata.nativeFile);
+    const native = await f.transcript(a.id);
     const saved = await readFile(native, "utf8");
     await rm(native);
     await mkdir(native);
@@ -587,22 +591,19 @@ test("SessionRuntime: native history append failure reports failed run and keeps
 
 test("SessionRuntime: timeout retains ownership until noncooperative native shutdown actually finishes", async () => {
   const f = await fixture();
-  const slowExtension = join(f.root, "slow-shutdown.mjs");
-  await writeFile(
-    slowExtension,
+  await f.extension(
+    "a",
+    "slow-shutdown.mjs",
     `export default (pi)=>pi.on('session_shutdown',async()=>{await new Promise(r=>setTimeout(r,600))})`,
   );
   const slow = new SessionRuntime({
     ...f.configuration,
     operationTimeoutMs: 200,
-    configurations: {
-      a: { ...f.configuration.configurations.a!, extensions: [slowExtension] },
-    },
   });
   try {
-    const a = await slow.create({ workspace: "a", configuration: "a" });
+    const a = await f.create("a", slow);
     await assert.rejects(slow.stop(a.id), hasCode("timeout"));
-    await assert.rejects(f.runtime.open(a.id), hasCode("owned"));
+    await assert.rejects(slow.open(a.id), hasCode("owned"));
     assert.equal(slow.snapshot(a.id).status, "stopping");
     await eventually(() => slow.list()[0]?.status === "unloaded");
     await f.runtime.open(a.id);
@@ -614,29 +615,19 @@ test("SessionRuntime: timeout retains ownership until noncooperative native shut
 
 test("SessionRuntime: shutdown drains pending initialization; missing tool files remain native error results", async () => {
   const f = await fixture();
-  let release!: () => void;
-  const pending = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const initializing = new SessionRuntime({
-    ...f.configuration,
-    resolveSecret: async () => {
-      await pending;
-      return "local-test-not-a-real-secret";
-    },
-  });
+  const gate = setupGate(f);
+  const release = gate.release;
+  const initializing = new SessionRuntime(f.configuration);
   try {
-    const creation = initializing.create({
-      workspace: "a",
-      configuration: "a",
-    });
+    await gate.install();
+    const creation = f.create("a", initializing);
     const shutdown = initializing.shutdown();
     release();
     await creation;
     await shutdown;
     assert.equal(initializing.list()[0]?.status, "unloaded");
     f.provider.automatic = true;
-    const a = await f.runtime.create({ workspace: "a", configuration: "a" });
+    const a = await f.create("b");
     assert.equal(
       (await f.runtime.start(a.id, "read:missing.txt").completion).outcome,
       "completed",
@@ -656,32 +647,27 @@ test("SessionRuntime: shutdown drains pending initialization; missing tool files
 
 test("SessionRuntime: timed-out setup stays owned even if shutdown is requested again", async () => {
   const f = await fixture();
-  let release!: () => void;
-  const pending = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+  const gate = setupGate(f);
+  const release = gate.release;
   const blocked = new SessionRuntime({
     ...f.configuration,
     operationTimeoutMs: 40,
-    resolveSecret: async () => {
-      await pending;
-      return "explicit-only";
-    },
   });
   try {
+    await gate.install();
     await assert.rejects(
-      blocked.create({ workspace: "a", configuration: "a" }),
+      f.create("a", blocked),
       hasCode("timeout"),
     );
     assert.deepEqual(blocked.list(), []);
-    const [id] = await readdir(f.storageDir);
+    const [id] = await readdir(f.chatsDir);
     assert(id);
-    assert.throws(() => new SessionStorage(f.storageDir).claim(id), hasCode("owned"));
+    await assert.rejects(blocked.open(id), hasCode("owned"));
     await assert.rejects(blocked.shutdown(), hasCode("timeout"));
     release();
     await blocked.shutdown();
     assert.deepEqual(blocked.list(), []);
-    assert.deepEqual(await readdir(f.storageDir), []);
+    assert.deepEqual(await readdir(f.chatsDir), []);
   } finally {
     release();
     await blocked.shutdown();
@@ -693,7 +679,7 @@ test("SessionRuntime: cooperative run deadline fails truthfully and aborts the r
   const f = await fixture();
   const bounded = new SessionRuntime({ ...f.configuration, runTimeoutMs: 40 });
   try {
-    const a = await bounded.create({ workspace: "a", configuration: "a" });
+    const a = await f.create("a", bounded);
     const run = bounded.start(a.id, "deadline");
     assert.deepEqual(await run.completion, {
       outcome: "failed",
@@ -712,7 +698,7 @@ for (const action of ["cancel", "stop", "shutdown"] as const) {
     const f = await fixture();
     try {
       f.provider.automatic = true;
-      const a = await f.runtime.create({ workspace: "a", configuration: "a" });
+      const a = await f.create("a");
       const run = f.runtime.start(a.id, "slow-input");
       await (action === "shutdown"
         ? f.runtime.shutdown()
@@ -738,7 +724,7 @@ for (const kind of ["steer", "follow-up"] as const) {
   test(`SessionRuntime: delayed ${kind} settles within originating run and cannot contaminate next run`, async () => {
     const f = await fixture();
     try {
-      const a = await f.runtime.create({ workspace: "a", configuration: "a" });
+      const a = await f.create("a");
       const run = f.runtime.start(a.id, "original");
       await eventually(() => f.provider.requests.length === 1);
       const queued = f.runtime.queue(a.id, "slow-input", kind);
@@ -798,7 +784,7 @@ for (const action of ["cancel", "stop", "shutdown"] as const) {
     });
     try {
       f.provider.automatic = true;
-      const a = await f.runtime.create({ workspace: "a", configuration: "a" });
+      const a = await f.create("a");
       const original = ModelRuntime.prototype.checkAuth;
       t.mock.method(ModelRuntime.prototype, "hasConfiguredAuth", () => false);
       t.mock.method(
@@ -818,9 +804,7 @@ for (const action of ["cancel", "stop", "shutdown"] as const) {
         f.runtime.snapshot(a.id).status,
         action === "cancel" ? "cancelling" : "stopping",
       );
-      const other = new SessionRuntime(f.configuration);
-      await assert.rejects(other.open(a.id), hasCode("owned"));
-      await other.shutdown();
+      await assert.rejects(f.runtime.open(a.id), hasCode("owned"));
       release();
       await stopping;
       assert.equal((await run.completion).outcome, "cancelled");
@@ -862,9 +846,9 @@ async function gatedInput(f: Awaited<ReturnType<typeof fixture>>) {
     },
     boundary,
   };
-  const path = join(f.root, "gated-input.mjs");
-  await writeFile(
-    path,
+  await f.extension(
+    "a",
+    "gated-input.mjs",
     `export default pi => {
     pi.on('input', async event => {
       if (event.text === 'gated-input') {
@@ -877,7 +861,6 @@ async function gatedInput(f: Awaited<ReturnType<typeof fixture>>) {
     pi.on('agent_before_settle', () => globalThis[${JSON.stringify(key)}].boundary());
   }`,
   );
-  f.configuration.configurations.a!.extensions = [path];
   return {
     release,
     entering,
@@ -894,7 +877,7 @@ for (const kind of ["steer", "follow-up"] as const) {
     const f = await fixture();
     const gate = await gatedInput(f);
     try {
-      const a = await f.runtime.create({ workspace: "a", configuration: "a" });
+      const a = await f.create("a");
       const run = f.runtime.start(a.id, "original");
       await eventually(() => f.provider.active === 1);
       assert.equal(
@@ -947,7 +930,7 @@ for (const phase of ["initial", "queued"] as const) {
         operationTimeoutMs: 200,
       });
       try {
-        const a = await runtime.create({ workspace: "a", configuration: "a" });
+        const a = await f.create("a", runtime);
         const run = runtime.start(
           a.id,
           phase === "initial" ? "gated-input" : "original",
@@ -965,7 +948,7 @@ for (const phase of ["initial", "queued"] as const) {
           action === "shutdown" ? runtime.shutdown() : runtime[action](a.id),
           hasCode("timeout"),
         );
-        await assert.rejects(f.runtime.open(a.id), hasCode("owned"));
+        await assert.rejects(runtime.open(a.id), hasCode("owned"));
         assert.equal(
           runtime.snapshot(a.id).status,
           action === "cancel" ? "cancelling" : "stopping",
@@ -997,14 +980,11 @@ test("SessionRuntime: cancelled auth preflight cannot dispatch native history co
   });
   try {
     f.provider.automatic = true;
-    const a = await f.runtime.create({ workspace: "a", configuration: "a" });
+    const a = await f.create("a");
     for (let i = 0; i < 2; i++)
       await f.runtime.start(a.id, "history".repeat(8000)).completion;
     await f.runtime.stop(a.id);
-    const metadata = JSON.parse(
-      await readFile(join(f.storageDir, a.id, "host.json"), "utf8"),
-    );
-    const native = join(f.storageDir, a.id, metadata.nativeFile);
+    const native = await f.transcript(a.id);
     const entries = (await readFile(native, "utf8"))
       .trim()
       .split("\n")
@@ -1018,15 +998,18 @@ test("SessionRuntime: cancelled auth preflight cannot dispatch native history co
       native,
       entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
     );
-    f.configuration.configurations.a!.provider = () => {
-      const provider = f.provider.provider();
-      return {
-        ...provider,
-        getModels: () =>
-          provider
-            .getModels()
-            .map((model) => ({ ...model, contextWindow: 8192 })),
-      };
+    f.configuration.fixedModel = {
+      id: "deterministic",
+      provider: () => {
+        const provider = f.provider.provider();
+        return {
+          ...provider,
+          getModels: () =>
+            provider
+              .getModels()
+              .map((model) => ({ ...model, contextWindow: 8192 })),
+        };
+      },
     };
     await f.runtime.open(a.id);
     const original = ModelRuntime.prototype.checkAuth;
@@ -1068,7 +1051,7 @@ test("SessionRuntime: cancelled auth preflight cannot dispatch native history co
     assert(
       (await f.history(a.id)).some((entry) => entry.type === "compaction"),
     );
-    const peer = await f.runtime.create({ workspace: "b", configuration: "b" });
+    const peer = await f.create("b");
     assert.equal(
       (await f.runtime.start(peer.id, "peer unaffected").completion).outcome,
       "completed",
@@ -1089,7 +1072,7 @@ test("SessionRuntime: first accepted title survives cancellation, queueing and r
   });
   const f = await fixture(logger);
   try {
-    const chat = await f.runtime.create({ workspace: "a", configuration: "a" });
+    const chat = await f.create("a");
     assert.equal(chat.title, undefined);
     assert.equal(chat.hasHistory, false);
     assert.throws(() => f.runtime.start(chat.id, ""), hasCode("invalid-input"));
@@ -1115,7 +1098,7 @@ test("SessionRuntime: first accepted title survives cancellation, queueing and r
       "PRIVATE-TITLE first input",
     );
     await f.runtime.stop(chat.id);
-    const path = join(f.storageDir, chat.id, "host.json");
+    const path = join(f.chatsDir, chat.id, "chat.json");
     const metadata = JSON.parse(await readFile(path, "utf8"));
     delete metadata.title;
     await writeFile(path, JSON.stringify(metadata));
@@ -1142,7 +1125,7 @@ test("SessionRuntime: first accepted title survives cancellation, queueing and r
 test("SessionRuntime: accepted invisible-only input keeps its fallback title after pre-dispatch cancel and later input", async () => {
   const f = await fixture();
   try {
-    const chat = await f.runtime.create({ workspace: "a", configuration: "a" });
+    const chat = await f.create("a");
     const first = f.runtime.start(chat.id, "\u202E\u200B");
     await f.runtime.cancel(chat.id);
     assert.equal((await first.completion).outcome, "cancelled");

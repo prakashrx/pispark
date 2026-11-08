@@ -14,7 +14,8 @@ import {
   type SafeLogger,
 } from "./logger.js";
 import { PersonaHttp } from "./persona-http.js";
-import { ref as validatePersonaRef } from "./personas/schema.js";
+import { validPersonaId } from "./personas/format.js";
+import { homedir } from "node:os";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -48,12 +49,11 @@ function validate(value: unknown): Command {
   const keys =
     c.type === "create"
       ? [
-          "workspace",
-          "configuration",
+          "folder",
           ...(c.model === undefined ? [] : ["model"]),
           ...(c.persona === undefined ? [] : ["persona"]),
         ]
-      : ["open", "cancel", "stop"].includes(String(c.type))
+      : ["open", "reload", "cancel", "stop"].includes(String(c.type))
         ? ["sessionId"]
         : ["start", "steer", "follow-up"].includes(String(c.type))
           ? ["sessionId", "text"]
@@ -66,24 +66,14 @@ function validate(value: unknown): Command {
     throw new RuntimeError("invalid-input");
   if (c.model !== undefined && !validChoice(c.model))
     throw new RuntimeError("invalid-input");
-  if (c.persona !== undefined) {
-    try {
-      validatePersonaRef(c.persona, true);
-    } catch {
-      throw new RuntimeError("invalid-input");
-    }
-  }
+  if (c.persona !== undefined && !validPersonaId(c.persona))
+    throw new RuntimeError("invalid-input");
   for (const key of keys.filter((key) => key !== "model" && key !== "persona"))
     if (typeof c[key] !== "string" || !(c[key] as string).trim())
       throw new RuntimeError("invalid-input");
   if ("sessionId" in c && !uuid.test(String(c.sessionId)))
     throw new RuntimeError("invalid-input");
-  if (
-    c.type === "create" &&
-    keys
-      .filter((key) => key !== "model" && key !== "persona")
-      .some((key) => (c[key] as string).length > 128)
-  )
+  if (c.type === "create" && (c.folder as string).length > 4096)
     throw new RuntimeError("invalid-input");
   if ("text" in c && Buffer.byteLength(String(c.text)) > 64 * 1024)
     throw new RuntimeError("invalid-input");
@@ -132,7 +122,6 @@ export class SessionHttp {
   private readonly personas: PersonaHttp;
   constructor(
     readonly runtime: SessionRuntime,
-    readonly catalog: Catalog,
     private readonly developmentOrigin?: string,
     private readonly providers?: ProviderHttp,
     private readonly logger: SafeLogger = silentLogger,
@@ -208,8 +197,7 @@ export class SessionHttp {
         case "create":
           receipt.sessionId = (
             await this.runtime.create({
-              workspace: command.workspace,
-              configuration: command.configuration,
+              folder: command.folder,
               ...(command.model ? { model: command.model } : {}),
               ...(command.persona ? { persona: command.persona } : {}),
             })
@@ -217,6 +205,9 @@ export class SessionHttp {
           break;
         case "open":
           await this.runtime.open(command.sessionId);
+          break;
+        case "reload":
+          await this.runtime.reload(command.sessionId);
           break;
         case "start": {
           let run;
@@ -308,7 +299,10 @@ export class SessionHttp {
         path === "/api/catalog" &&
         !url.search
       )
-        sendJson(response, 200, this.catalog);
+        sendJson(response, 200, {
+          home: homedir(),
+          recentFolders: this.runtime.recentFolders(),
+        } satisfies Catalog);
       else if (
         request.method === "GET" &&
         path === "/api/sessions" &&

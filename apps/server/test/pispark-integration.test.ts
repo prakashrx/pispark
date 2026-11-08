@@ -8,6 +8,7 @@ import {
   rm,
   writeFile,
   readFile,
+  readdir,
   rename,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -24,28 +25,19 @@ import {
   TITLE_TOOL,
 } from "../src/extensions/host-protocol.js";
 import { toolChatTitle } from "../src/runtime/chat-title.js";
-import { LocalProviderControl, eventually } from "./fixtures/local-provider.js";
+import { eventually } from "./fixtures/local-provider.js";
+import { testHome } from "./fixtures/home.js";
 
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), "pispark-integration-"));
-  const cwd = join(root, "cwd");
-  await mkdir(cwd);
-  const control = new LocalProviderControl();
+  const h = await testHome("pispark-integration-");
+  const root = h.root;
+  const cwd = await h.folder("cwd");
+  const control = h.provider;
   control.automatic = true;
-  const configuration: RuntimeConfiguration = {
-    storageDir: join(root, "sessions"),
-    workspaces: { work: cwd },
-    configurations: {
-      quiet: {
-        credential: { local: true },
-        provider: control.provider,
-        modelId: "deterministic",
-        tools: [],
-        systemPrompt: "PRESERVE-HOST-PROMPT",
-      },
-    },
-    resolveSecret: async () => undefined,
-  };
+  // Default grants no tools, so the built-in title tool is the only one.
+  await h.persona("default", { name: "Default" }, { "instructions/host.md": "PRESERVE-HOST-PROMPT" });
+  const configuration: RuntimeConfiguration = h.configuration;
+  const chats = join(h.home, "chats");
   const logs: string[] = [];
   const logger = new SafeLogger({
     sink: async (line) => {
@@ -55,6 +47,10 @@ async function fixture() {
   const runtime = new SessionRuntime(configuration, undefined, logger);
   return {
     root,
+    home: h.home,
+    chats,
+    cwd,
+    persona: h.persona,
     configuration,
     control,
     runtime,
@@ -72,18 +68,10 @@ const command = (title: unknown) => `title:${JSON.stringify({ title })}`;
 test("PiSpark integration: real native title-only calls, persona/no-persona isolation, observers, persistence and reopen", async () => {
   const f = await fixture();
   try {
-    const persona = await f.runtime.personas.create({
-      schemaVersion: 1,
-      name: "Fixture",
-      instructions: [{ id: "context", text: "PRESERVE-PERSONA-PROMPT" }],
-    });
+    await f.persona("fixture", { name: "Fixture" }, { "instructions/context.md": "PRESERVE-PERSONA-PROMPT" });
     const [a, b] = await Promise.all([
-      f.runtime.create({ workspace: "work", configuration: "quiet" }),
-      f.runtime.create({
-        workspace: "work",
-        configuration: "quiet",
-        persona: { ...persona.ref, revision: persona.revision },
-      }),
+      f.runtime.create({ folder: f.cwd }),
+      f.runtime.create({ folder: f.cwd, persona: "fixture" }),
     ]);
     const observer = f.runtime.observe(a.id);
     const other = f.runtime.observe(b.id);
@@ -113,14 +101,10 @@ test("PiSpark integration: real native title-only calls, persona/no-persona isol
     assert(prompts.includes("PRESERVE-HOST-PROMPT"));
     assert(prompts.includes("PRESERVE-PERSONA-PROMPT"));
     assert(prompts.includes("when its purpose is clear"));
-    assert.deepEqual(f.configuration.configurations.quiet!.tools, []);
     await f.runtime.start(a.id, "later ordinary message").completion;
     assert.equal(f.runtime.snapshot(a.id).title, "Native");
     const durable = JSON.parse(
-      await readFile(
-        join(f.configuration.storageDir, a.id, "host.json"),
-        "utf8",
-      ),
+      await readFile(join(f.chats, a.id, "chat.json"), "utf8"),
     );
     assert.equal(durable.title, "Native");
     await f.runtime.stop(a.id);
@@ -147,10 +131,7 @@ test("PiSpark integration: real native title-only calls, persona/no-persona isol
 test("PiSpark integration: invalid model arguments do not replace fallback; no target-session parameter", async () => {
   const f = await fixture();
   try {
-    const a = await f.runtime.create({
-      workspace: "work",
-      configuration: "quiet",
-    });
+    const a = await f.runtime.create({ folder: f.cwd });
     await f.runtime.start(a.id, "fallback purpose").completion;
     for (const title of ["", "\u0000\u200b", "a".repeat(4097), {}, undefined]) {
       await f.runtime.start(a.id, command(title)).completion;
@@ -181,19 +162,20 @@ test("PiSpark integration: invalid model arguments do not replace fallback; no t
 test("PiSpark integration: reserved native tool collision fails before session execution", async () => {
   const f = await fixture();
   try {
-    const extension = join(f.root, "collision.mjs");
+    const extensions = join(f.home, "personas", "default", "extensions");
+    await mkdir(extensions, { recursive: true });
+    const extension = join(extensions, "collision.mjs");
     await writeFile(
       extension,
       `export default pi => pi.registerTool({name:'pispark_set_title', label:'Collision',description:'Collision',parameters:{type:'object',properties:{}},execute:async()=>({content:[],details:undefined})});`,
     );
-    f.configuration.configurations.quiet!.extensions = [extension];
     await assert.rejects(
-      f.runtime.create({ workspace: "work", configuration: "quiet" }),
-      { code: "resources" },
+      f.runtime.create({ folder: f.cwd }),
+      { code: "extension" },
     );
     assert.equal(f.control.requests.length, 0);
-    f.configuration.configurations.quiet!.extensions = [];
-    await f.runtime.create({ workspace: "work", configuration: "quiet" });
+    await rm(extension);
+    await f.runtime.create({ folder: f.cwd });
   } finally {
     await f.cleanup();
   }
@@ -202,10 +184,7 @@ test("PiSpark integration: reserved native tool collision fails before session e
 test("PiSpark integration: persist-first failure leaves current title and observation sequence intact", async () => {
   const f = await fixture();
   try {
-    const a = await f.runtime.create({
-      workspace: "work",
-      configuration: "quiet",
-    });
+    const a = await f.runtime.create({ folder: f.cwd });
     await f.runtime.start(a.id, "existing fixture").completion;
     // The host's synchronous closure is exercised directly to isolate metadata effects from native stream events.
     const internal = f.runtime as unknown as {
@@ -214,7 +193,7 @@ test("PiSpark integration: persist-first failure leaves current title and observ
     };
     const host = internal.live.get(a.id)!;
     const before = f.runtime.snapshot(a.id);
-    const path = join(f.configuration.storageDir, a.id, "host.json");
+    const path = join(f.chats, a.id, "chat.json");
     await rename(path, path + ".saved");
     await mkdir(path);
     try {
@@ -327,16 +306,13 @@ test("PiSpark integration: actual native tool storage failure is sanitized and o
   const f = await fixture();
   const sensitive = "PRIVATE-TITLE-FIXTURE";
   try {
-    const a = await f.runtime.create({
-      workspace: "work",
-      configuration: "quiet",
-    });
+    const a = await f.runtime.create({ folder: f.cwd });
     await f.runtime.start(a.id, "prior name").completion;
     f.control.automatic = false;
     const count = f.control.requests.length;
     const run = f.runtime.start(a.id, command(sensitive));
     await eventually(() => f.control.requests.length === count + 1);
-    const path = join(f.configuration.storageDir, a.id, "host.json");
+    const path = join(f.chats, a.id, "chat.json");
     await rename(path, path + ".saved");
     await mkdir(path);
     try {
@@ -378,19 +354,14 @@ test("PiSpark integration: actual native tool storage failure is sanitized and o
 test("PiSpark integration: legacy unmentioned tool activates on reopen; explicit host policy reactivates recorded removals", async () => {
   const f = await fixture();
   try {
-    const a = await f.runtime.create({
-      workspace: "work",
-      configuration: "quiet",
-    });
+    const a = await f.runtime.create({ folder: f.cwd });
     await f.runtime.start(a.id, "legacy fixture").completion;
     await f.runtime.stop(a.id);
-    const metadata = JSON.parse(
-      await readFile(
-        join(f.configuration.storageDir, a.id, "host.json"),
-        "utf8",
-      ),
+    const path = join(
+      f.chats,
+      a.id,
+      (await readdir(join(f.chats, a.id))).find((n) => n.endsWith(".jsonl"))!,
     );
-    const path = join(f.configuration.storageDir, a.id, metadata.nativeFile);
     const original = (await readFile(path, "utf8"))
       .trim()
       .split("\n")

@@ -8,12 +8,7 @@ const events = [
   "host.stop",
   "http.reject",
   "http.failure",
-  "persona.read",
-  "persona.validate",
   "persona.save",
-  "persona.resolve",
-  "resource.admit",
-  "resource.integrity",
   "session.create",
   "session.recover",
   "session.start",
@@ -24,6 +19,8 @@ const events = [
 export type LogEvent = (typeof events)[number];
 const codes = [
   "invalid-input",
+  "invalid-path",
+  "invalid-definition",
   "forbidden",
   "limit",
   "storage",
@@ -31,33 +28,19 @@ const codes = [
   "configuration",
   "credentials",
   "resources",
+  "folder",
+  "persona",
   "revision-conflict",
-  "read-only",
-  "resource-changed",
-  "resource-integrity",
-  "configuration-changed",
-  "invalid-definition",
-  "unsupported-version",
-  "identity-mismatch",
-  "duplicate-identity",
   "missing-parent",
-  "unknown-selection",
-  "invalid-replacement",
-  "path-outside-root",
-  "symlink",
-  "invalid-resource",
-  "invalid-skill",
-  "duplicate-resource",
-  "skill-name-conflict",
+  "cycle",
+  "in-use",
+  "built-in",
   "not-found",
   "closed",
   "owned",
   "sdk-version",
   "unsupported",
   "extension",
-  "resource-conflict",
-  "missing-resource",
-  "cycle",
   "busy",
   "shutdown",
   "timeout",
@@ -129,14 +112,15 @@ export class SafeLogger {
       event,
     };
     const context = { ...ids.getStore(), ...fields };
-    for (const key of [
-      "requestId",
-      "operationId",
-      "sessionId",
-      "personaId",
-    ] as const)
+    for (const key of ["requestId", "operationId", "sessionId"] as const)
       if (typeof context[key] === "string" && uuid.test(context[key]))
         record[key] = context[key];
+    // Persona IDs are short slugs ("dev") chosen at creation.
+    if (
+      typeof context.personaId === "string" &&
+      /^[a-z0-9][a-z0-9-]{0,47}$/.test(context.personaId)
+    )
+      record.personaId = context.personaId;
     if (Number.isFinite(fields.durationMs) && fields.durationMs! >= 0)
       record.durationMs = Math.min(Math.round(fields.durationMs!), 86_400_000);
     if (

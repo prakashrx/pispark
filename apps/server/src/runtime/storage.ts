@@ -1,60 +1,50 @@
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
-  openSync,
-  closeSync,
-  writeFileSync,
+  readdirSync,
   readFileSync,
   renameSync,
-  unlinkSync,
-  rmdirSync,
-  readdirSync,
-  lstatSync,
-  statSync,
   rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
 } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { RuntimeError } from "./errors.js";
 import { validChoice } from "./provider-storage.js";
 import type { ModelChoice } from "../provider-protocol.js";
-import {
-  validAdmissionMetadata,
-  type PersonaAdmissionMetadata,
-} from "../personas/admission.js";
-
 import { validChatTitle } from "./chat-title.js";
+import { validPersonaId } from "../personas/format.js";
 
-export interface SessionMetadata {
-  version: 1;
+/** `chat.json`: what PiSpark knows about a chat. Pi's JSONL beside it is the transcript. */
+export interface ChatMetadata {
+  version: 2;
   id: string;
-  workspace: string;
-  configuration: string;
-  model?: ModelChoice;
-  persona?: PersonaAdmissionMetadata;
   cwd: string;
+  persona: string;
+  model?: ModelChoice;
   createdAt: string;
   title?: string;
-  nativeFile: string;
+  /** A run was in progress; set before model or tool side effects. */
   active: boolean;
-  hasHistory: boolean;
   interrupted: boolean;
+  /** Setup fingerprint when the session last started. */
+  setup?: string;
 }
 
+const UUID =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 export function validateId(id: string): void {
-  if (
-    typeof id !== "string" ||
-    !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
-      id,
-    )
-  )
+  if (typeof id !== "string" || !UUID.test(id))
     throw new RuntimeError("invalid-input");
 }
 
-/** Host metadata only. Pi JSONL remains the sole transcript store. Dedicated trusted local directory. */
-export class SessionStorage {
+/** `<home>/chats/<id>/`. The chat ID is the folder name and is not repeated in chat.json. */
+export class ChatStorage {
   readonly root: string;
-  private catalog = new Map<string, SessionMetadata>();
+  private catalog = new Map<string, ChatMetadata>();
   private rescanAt = 0;
   unreadable = 0;
   constructor(root: string) {
@@ -79,31 +69,24 @@ export class SessionStorage {
       throw new RuntimeError("storage");
     }
   }
-  read(id: string): SessionMetadata {
+  read(id: string): ChatMetadata {
     try {
       const value = JSON.parse(
-        readFileSync(join(this.directory(id), "host.json"), "utf8"),
-      ) as SessionMetadata;
-      if (value.persona !== undefined && !validAdmissionMetadata(value.persona))
-        throw new RuntimeError("resource-integrity");
+        readFileSync(join(this.directory(id), "chat.json"), "utf8"),
+      ) as Omit<ChatMetadata, "id">;
       if (
-        (value.title !== undefined && !validChatTitle(value.title)) ||
-        value.version !== 1 ||
-        value.id !== id ||
-        typeof value.workspace !== "string" ||
-        typeof value.configuration !== "string" ||
-        (value.model !== undefined && !validChoice(value.model)) ||
+        value.version !== 2 ||
         typeof value.cwd !== "string" ||
+        !validPersonaId(value.persona) ||
+        (value.model !== undefined && !validChoice(value.model)) ||
         typeof value.createdAt !== "string" ||
-        typeof value.nativeFile !== "string" ||
-        basename(value.nativeFile) !== value.nativeFile ||
-        !value.nativeFile.endsWith(`_${id}.jsonl`) ||
+        (value.title !== undefined && !validChatTitle(value.title)) ||
         typeof value.active !== "boolean" ||
-        typeof value.hasHistory !== "boolean" ||
-        typeof value.interrupted !== "boolean"
+        typeof value.interrupted !== "boolean" ||
+        (value.setup !== undefined && !/^[a-f0-9]{64}$/.test(value.setup))
       )
         throw new Error();
-      return value;
+      return { ...value, id };
     } catch (error) {
       if (error instanceof RuntimeError) throw error;
       if ((error as NodeJS.ErrnoException).code === "ENOENT")
@@ -111,145 +94,86 @@ export class SessionStorage {
       throw new RuntimeError("storage");
     }
   }
-  write(metadata: SessionMetadata): void {
-    const dir = this.directory(metadata.id);
-    const temporary = join(dir, `host-${randomUUID()}.tmp`);
+  write(metadata: ChatMetadata): void {
+    const dir = this.prepare(metadata.id);
+    const temporary = join(dir, `.chat-${randomUUID()}.tmp`);
+    const { id: _id, ...stored } = metadata;
     try {
-      writeFileSync(temporary, JSON.stringify(metadata), {
+      writeFileSync(temporary, JSON.stringify(stored, null, 2) + "\n", {
         flag: "wx",
         mode: 0o600,
       });
-      renameSync(temporary, join(dir, "host.json"));
+      renameSync(temporary, join(dir, "chat.json"));
       this.catalog.set(metadata.id, structuredClone(metadata));
     } catch {
       try {
         unlinkSync(temporary);
       } catch {
-        /* Original write failure is authoritative. */
+        /* The write error is what matters. */
       }
       throw new RuntimeError("storage");
     }
   }
-  list(): SessionMetadata[] {
+  list(): ChatMetadata[] {
     try {
       if (Date.now() >= this.rescanAt) {
-        const entries = new Map<string, SessionMetadata>();
+        const entries = new Map<string, ChatMetadata>();
         let unreadable = 0;
         for (const id of readdirSync(this.root)) {
-          if (!/^[a-f0-9-]{36}$/.test(id)) continue;
+          if (!UUID.test(id)) continue;
           try {
             entries.set(id, this.read(id));
           } catch (error) {
-            if (!(error instanceof RuntimeError && error.code === "not-found")) unreadable++;
+            if (!(error instanceof RuntimeError && error.code === "not-found"))
+              unreadable++;
           }
         }
         this.catalog = entries;
         this.unreadable = unreadable;
-        // Local writes update the cache immediately. Reconcile external edits once per host.
+        // Local writes update the cache immediately; pick up outside edits every 30s.
         this.rescanAt = Date.now() + 30_000;
       }
-      // Copies: callers must never be able to edit the cache.
       return Array.from(this.catalog.values(), (entry) => structuredClone(entry));
     } catch (error) {
       if (error instanceof RuntimeError) throw error;
       throw new RuntimeError("storage");
     }
   }
+  /** Remove a chat folder that never got a chat.json (a failed first start). */
   discardUnpublished(id: string): void {
     const dir = this.directory(id);
-    if (!existsSync(join(dir, "host.json"))) rmSync(dir, { recursive: true, force: true });
+    if (!existsSync(join(dir, "chat.json")))
+      rmSync(dir, { recursive: true, force: true });
   }
-  nativePath(metadata: SessionMetadata): string {
-    return join(this.directory(metadata.id), metadata.nativeFile);
+  /** Pi names the transcript `<time>_<id>.jsonl`; it's the only such file in the folder. */
+  transcript(id: string): string | undefined {
+    const dir = this.directory(id);
+    if (!existsSync(dir)) return undefined;
+    const file = readdirSync(dir).find((name) => name.endsWith(`_${id}.jsonl`));
+    return file ? join(dir, file) : undefined;
   }
-  validateHistory(metadata: SessionMetadata): boolean {
-    const path = this.nativePath(metadata);
+  hasHistory(id: string): boolean {
+    return this.transcript(id) !== undefined;
+  }
+  /** Pi skips malformed lines; refuse a corrupted transcript rather than silently lose history. */
+  validateHistory(metadata: ChatMetadata): string | undefined {
+    const path = this.transcript(metadata.id);
+    if (!path) return undefined;
     try {
-      if (!existsSync(path)) {
-        if (metadata.hasHistory) throw new Error();
-        return false;
-      }
-      if (
-        lstatSync(path).isSymbolicLink() ||
-        statSync(path).size > 64 * 1024 * 1024
-      )
+      if (lstatSync(path).isSymbolicLink() || statSync(path).size > 64 * 1024 * 1024)
         throw new Error();
       const lines = readFileSync(path, "utf8").trim().split("\n");
-      // Pi skips malformed lines; refuse corruption rather than silently lose finalized history.
-      const entries = lines.map(
-        (line) => JSON.parse(line) as Record<string, unknown>,
-      );
+      const entries = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
       const header = entries[0];
       if (
         header?.type !== "session" ||
         header.id !== metadata.id ||
-        header.cwd !== metadata.cwd ||
         header.version !== 3
       )
         throw new Error();
-      return true;
+      return path;
     } catch {
       throw new RuntimeError("storage");
     }
-  }
-  claim(id: string): () => void {
-    const dir = this.prepare(id);
-    const lock = join(dir, "owner.lock");
-    const recovery = join(dir, "owner-recovery");
-    const token = randomUUID();
-    const acquire = () => {
-      const fd = openSync(lock, "wx", 0o600);
-      try {
-        writeFileSync(fd, JSON.stringify({ pid: process.pid, token }));
-      } finally {
-        closeSync(fd);
-      }
-    };
-    const isDead = () => {
-      const owner = JSON.parse(readFileSync(lock, "utf8")) as { pid: number };
-      if (!Number.isSafeInteger(owner.pid) || owner.pid < 1) return false;
-      try {
-        process.kill(owner.pid, 0);
-        return false;
-      } catch (error) {
-        return (error as NodeJS.ErrnoException).code === "ESRCH";
-      }
-    };
-    try {
-      if (existsSync(recovery)) throw new RuntimeError("owned");
-      try {
-        acquire();
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        if (!isDead()) throw new RuntimeError("owned");
-        // Serialize stale-owner recovery, then re-read: never remove a replacement owner's lock.
-        try {
-          mkdirSync(recovery);
-        } catch {
-          throw new RuntimeError("owned");
-        }
-        try {
-          if (!isDead()) throw new RuntimeError("owned");
-          unlinkSync(lock);
-          acquire();
-        } finally {
-          rmdirSync(recovery);
-        }
-      }
-    } catch (error) {
-      if (error instanceof RuntimeError) throw error;
-      throw new RuntimeError("storage");
-    }
-    return () => {
-      try {
-        const owner = JSON.parse(readFileSync(lock, "utf8")) as {
-          token: string;
-        };
-        if (owner.token !== token) throw new Error();
-        unlinkSync(lock);
-      } catch {
-        throw new RuntimeError("storage");
-      }
-    };
   }
 }

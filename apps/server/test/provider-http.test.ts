@@ -9,21 +9,14 @@ import { SessionRuntime } from "../src/runtime/session-runtime.js";
 import { SessionHttp } from "../src/session-http.js";
 import { ProviderHttp } from "../src/provider-http.js";
 import { createAppServer } from "../src/server.js";
-import { catalog } from "../src/host-configuration.js";
 import { localProviderSettings } from "./fixtures/provider-settings.js";
 
 async function host(t: { after: (fn: () => unknown) => void }) {
   const root = await mkdtemp(join(tmpdir(), "pispark-provider-http-"));
   const f = await localProviderSettings(root);
-  const configuration = {
-    storageDir: join(root, "sessions"),
-    workspaces: {},
-    configurations: {},
-    resolveSecret: async () => undefined,
-  };
+  const configuration = { home: join(root, "pispark") };
   const handlers = new SessionHttp(
     new SessionRuntime(configuration, f.settings),
-    catalog(configuration),
     undefined,
     new ProviderHttp(f.settings),
   );
@@ -284,18 +277,8 @@ for (const failure of ["throws", "hangs"] as const)
     const f = await localProviderSettings(root);
     f.control.automatic = true;
     const config = {
-      storageDir: join(root, "sessions"),
-      workspaces: { local: root },
-      configurations: {
-        local: {
-          provider: f.control.provider,
-          modelId: "deterministic",
-          credential: { local: true as const },
-          systemPrompt: "local",
-          tools: [],
-        },
-      },
-      resolveSecret: async () => undefined,
+      home: join(root, "pispark"),
+      fixedModel: { provider: f.control.provider, id: "deterministic" },
     };
     const runtime = new SessionRuntime(config);
     let release!: () => void;
@@ -311,12 +294,7 @@ for (const failure of ["throws", "hangs"] as const)
         : async () => {
             await gate;
           };
-    const handlers = new SessionHttp(
-      runtime,
-      catalog(config),
-      undefined,
-      providers,
-    );
+    const handlers = new SessionHttp(runtime, undefined, providers);
     t.after(async () => {
       release();
       await runtime.shutdown();
@@ -324,10 +302,7 @@ for (const failure of ["throws", "hangs"] as const)
       await f.settings.close();
       await rm(root, { recursive: true, force: true });
     });
-    const session = await runtime.create({
-      workspace: "local",
-      configuration: "local",
-    });
+    const session = await runtime.create({ folder: root });
     f.control.automatic = false;
     const run = runtime.start(session.id, "hold active session");
     const closing = handlers.shutdown();

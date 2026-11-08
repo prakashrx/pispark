@@ -11,31 +11,19 @@ import { SessionRuntime } from "../src/runtime/session-runtime.js";
 import { SessionHttp } from "../src/session-http.js";
 import { createAppServer } from "../src/server.js";
 import { bundledTransportPatched } from "../src/host-configuration.js";
-import { LocalProviderControl, eventually } from "./fixtures/local-provider.js";
+import { eventually } from "./fixtures/local-provider.js";
+import { testHome } from "./fixtures/home.js";
 import type { Receipt, SnapshotEvent } from "../src/protocol.js";
 
 async function fixture(t: TestContext) {
-  const root = await mkdtemp(join(tmpdir(), "pispark-http-"));
-  await mkdir(join(root, "a"));
-  await mkdir(join(root, "b"));
-  const provider = new LocalProviderControl();
-  const configuration = {
-    storageDir: join(root, "state"),
-    workspaces: { a: join(root, "a"), b: join(root, "b") },
-    configurations: {
-      local: {
-        modelId: "deterministic",
-        provider: provider.provider,
-        credential: { local: true as const },
-        systemPrompt: "test only",
-        tools: [],
-        extensions: [] as string[],
-      },
-    },
-    resolveSecret: async () => undefined,
-  };
+  const h = await testHome("pispark-http-");
+  const root = h.root;
+  const folders = { a: await h.folder("a"), b: await h.folder("b") };
+  await h.persona("default", { name: "Default" }, { "instructions/test.md": "test only" });
+  const provider = h.provider;
+  const configuration = h.configuration;
   const runtime = new SessionRuntime(configuration);
-  const http = new SessionHttp(runtime, { workspaces: [], configurations: [] });
+  const http = new SessionHttp(runtime);
   const server = createAppServer({ sessions: http });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -66,9 +54,9 @@ async function fixture(t: TestContext) {
     }
     return receipt;
   };
-  const create = async (workspace: string) => {
+  const create = async (folder: "a" | "b") => {
     const r = await settle(
-      await post({ type: "create", workspace, configuration: "local" }),
+      await post({ type: "create", folder: folders[folder] }),
     );
     assert.equal(r.outcome, "completed");
     return r.sessionId!;
@@ -83,6 +71,8 @@ async function fixture(t: TestContext) {
     settle,
     create,
     configuration,
+    folders,
+    home: h.home,
   };
 }
 async function observe(base: string, id: string) {
@@ -189,10 +179,10 @@ test("SessionHttp: strict Host/Origin/JSON/identity, explicit failures, receipts
     {
       commandId: randomUUID(),
       type: "create",
-      workspace: "a",
-      configuration: "local",
+      folder: "/tmp",
       apiKey: "NEVER",
     },
+    { commandId: randomUUID(), type: "create", folder: "/tmp", persona: "../x" },
     {
       commandId: randomUUID(),
       type: "start",
@@ -219,18 +209,16 @@ test("SessionHttp: strict Host/Origin/JSON/identity, explicit failures, receipts
       400,
     );
   const bad = await f.settle(
-    await f.post({
-      type: "create",
-      workspace: "missing",
-      configuration: "local",
-    }),
+    await f.post({ type: "create", folder: join(f.root, "missing") }),
   );
-  assert.equal(bad.error, "configuration");
+  assert.equal(bad.error, "folder");
+  const catalog = await (await fetch(`${f.base}/api/catalog`)).json();
+  assert.equal(typeof catalog.home, "string");
+  assert.deepEqual(catalog.recentFolders, []);
   const command = {
     commandId: randomUUID(),
     type: "create",
-    workspace: "a",
-    configuration: "local",
+    folder: f.folders.a,
   };
   const first = await f.settle(await f.post(command));
   const second = await f.settle(await f.post(command));
@@ -278,14 +266,14 @@ test("a bad metadata record is counted and a rejected new chat is never publishe
   const f = await fixture(t);
   const rejected = new SessionRuntime({
     ...f.configuration,
-    configurations: { missing: { ...f.configuration.configurations.local, credential: { secretRef: "missing" } } },
+    fixedModel: { ...f.configuration.fixedModel!, id: "missing" },
   });
-  await assert.rejects(rejected.create({ workspace: "a", configuration: "missing" }));
+  await assert.rejects(rejected.create({ folder: f.folders.a }));
   await rejected.shutdown();
   const id = await f.create("a");
-  const damaged = join(f.configuration.storageDir, randomUUID());
+  const damaged = join(f.home, "chats", randomUUID());
   await mkdir(damaged);
-  await writeFile(join(damaged, "host.json"), "{");
+  await writeFile(join(damaged, "chat.json"), "{");
   const list = await (await fetch(f.base + "/api/sessions")).json();
   assert.equal(list.unreadable, 1);
   assert.deepEqual(list.sessions.map((s: { id: string }) => s.id), [id]);
@@ -492,12 +480,12 @@ for (const boundary of ["retained", "pending"] as const) {
       const key = `pispark-http-input:${f.root}`;
       const globals = globalThis as unknown as Record<string, unknown>;
       globals[key] = () => gate;
-      const path = join(f.root, "pending-input.mjs");
+      const dir = join(f.home, "personas", "default", "extensions");
+      await mkdir(dir, { recursive: true });
       await writeFile(
-        path,
+        join(dir, "pending-input.mjs"),
         `export default pi => pi.on('input', async event => { if(event.text === 'pending') await globalThis[${JSON.stringify(key)}](); return {action:'continue'}; });`,
       );
-      f.configuration.configurations.local.extensions = [path];
       t.after(() => {
         release();
         delete globals[key];
