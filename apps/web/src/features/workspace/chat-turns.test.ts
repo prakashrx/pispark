@@ -186,3 +186,17 @@ test("a tool an extension placed a component for is drawn by it alone; custom it
   expect(slotOf(custom!)).toEqual({ slot: "custom:note", data: expect.objectContaining({ customType: "note" }) });
   expect(slotOf(plain[0]!.segments[0]!)).toBeUndefined();
 });
+
+test("a notice kept in the chat's history is a notice where it happened", () => {
+  n = 0;
+  const [turn] = buildTurns(
+    [
+      item("user", [text("go")]),
+      item("entry", [], { customType: "pispark:notice", details: { kind: "warning", lines: [[{ text: "Heads up" }]], at: 1 } }),
+      item("assistant", [text("done")]),
+    ],
+    { running: false },
+  );
+  expect(turn!.segments.map((s) => s.kind)).toEqual(["notice", "text"]);
+  expect(turn!.segments[0]).toMatchObject({ notice: { kind: "warning", lines: [[{ text: "Heads up" }]] } });
+});

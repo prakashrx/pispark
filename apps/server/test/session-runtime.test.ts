@@ -23,7 +23,7 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { assertPiBoundary } from "../src/runtime/pi-boundary.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { addControlledExtension, testHome } from "./fixtures/home.js";
-import { chatItems, chatText, inFlight } from "./fixtures/chat.js";
+import { chatItems, chatNotices, chatText, inFlight } from "./fixtures/chat.js";
 
 const hasCode = (code: string) => (error: unknown) =>
   error instanceof RuntimeError && error.code === code;
@@ -371,7 +371,7 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
     assert.deepEqual(view.statuses, [{ key: "fixture", line: [{ text: "ready", fg: "accent" }] }]);
     assert.deepEqual(view.widgets, [{ key: "fixture", placement: "below", lines: [[{ text: "widget line" }]] }]);
     assert.equal(view.draft?.text, "drafted by fixture");
-    assert.deepEqual(view.notices.map((n) => [n.kind, n.lines[0]![0]!.text]), [
+    const expectedNotices = [
       // A line for each question a person answered or skipped; what they typed is not echoed.
       ["info", "Proceed? → yes"],
       ["info", "Pick one → two"],
@@ -379,7 +379,9 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
       ["info", "Pick one → skipped"],
       ["warning", "Heads up"],
       ["error", "The controlled extension failed in before_agent_start: fixture failure"],
-    ]);
+    ];
+    assert.deepEqual(chatNotices(f.runtime, a.id).map((n) => [n.kind, n.lines[0]![0]!.text]), expectedNotices);
+    assert.deepEqual(view.notices, [], "notices of an open chat are kept in its history");
     assert.equal(f.runtime.session(a.id).error, undefined);
     // Working indicator, thinking label, window title, one header and footer; Pi's session name is the chat title.
     assert.equal((await f.runtime.start(a.id, "ui-chrome").completion).outcome, "completed");
@@ -398,6 +400,10 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
     const quiet = f.runtime.session(a.id).extensions;
     assert.equal(quiet.working?.hidden, true);
     assert.equal(quiet.header, undefined);
+    await f.runtime.stop(a.id);
+    // Reopened, the chat still has its notices where they happened.
+    await f.runtime.open(a.id);
+    assert.deepEqual(chatNotices(f.runtime, a.id).map((n) => [n.kind, n.lines[0]![0]!.text]), expectedNotices);
     await f.runtime.stop(a.id);
     f.provider.automatic = false;
     await stopAbortsBeforeShutdown(f);

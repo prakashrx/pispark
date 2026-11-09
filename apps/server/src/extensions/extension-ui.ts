@@ -108,6 +108,8 @@ export class ExtensionUI {
       position: () => number;
       /** The chat's working folder, for the footer's git branch. */
       cwd: string;
+      /** Keeps a notice in the chat's history; false while the chat is still opening. */
+      save?: (notice: { kind: Notice["kind"]; lines: StyledLine[]; at: number }) => boolean;
     },
   ) {}
 
@@ -180,17 +182,15 @@ export class ExtensionUI {
     this.changed();
   }
 
+  /**
+   * A notice in the chat. Once the chat is open it is saved in the session's history, so it stays
+   * where it happened across reopening; notices raised while the chat opens are shown only then.
+   */
   private notice(message: string, kind: Notice["kind"]) {
-    this.notices = [
-      ...this.notices,
-      {
-        id: ++this.counter,
-        kind,
-        lines: styledLines(String(message).slice(0, MAX_TEXT)),
-        after: this.host.position(),
-        at: Date.now(),
-      },
-    ].slice(-MAX_NOTICES);
+    const lines = styledLines(String(message).slice(0, MAX_TEXT));
+    const at = Date.now();
+    if (!this.closed && this.host.save?.({ kind, lines, at })) return;
+    this.notices = [...this.notices, { id: ++this.counter, kind, lines, after: this.host.position(), at }].slice(-MAX_NOTICES);
     this.changed();
   }
 

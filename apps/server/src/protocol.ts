@@ -17,6 +17,12 @@ export interface SessionInfo {
   waiting?: boolean;
 }
 /**
+ * A notice PiSpark showed in an open chat (an extension's message or failure, an answered question),
+ * kept as a custom entry of this type in Pi's session so it stays where it happened. Its item is an
+ * `entry` whose `details` are `{ kind, lines, at }`.
+ */
+export const NOTICE_ENTRY = "pispark:notice";
+/**
  * One thing in the chat, projected from Pi's session: a message, a summary, or a custom entry.
  * Content keeps Pi's shape; what is large travels by reference and is read on demand.
  */

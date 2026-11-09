@@ -19,7 +19,7 @@ import {
 import { TITLE_TOOL, toolChatTitle } from "../src/runtime/chat-title.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
-import { chatItems, chatText } from "./fixtures/chat.js";
+import { chatItems, chatNotices, chatText } from "./fixtures/chat.js";
 
 async function fixture() {
   const h = await testHome("pispark-integration-");
@@ -239,7 +239,7 @@ test("PiSpark integration: a title that cannot be saved is said in the chat, and
       f.control.requests.at(-1)!.release();
       await eventually(() => f.control.requests.length === count + 2);
       // Pi named the session; saving it as the chat's title failed, and the chat says so.
-      const notices = JSON.stringify(f.runtime.session(a.id).extensions.notices);
+      const notices = JSON.stringify(chatNotices(f.runtime, a.id));
       assert.match(notices, /The chat title could not be saved/);
       assert(!notices.includes(sensitive));
       assert(!notices.includes(f.root));

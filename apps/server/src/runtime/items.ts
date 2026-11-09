@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, SessionEntry, SessionProjection } from "@earendil-works/pi-coding-agent";
 import type { ExtensionRendering } from "../extensions/extension-render.js";
-import type { Item, ItemPart, ItemsPage, PartPage, ToolProgress } from "../protocol.js";
+import { NOTICE_ENTRY, type Item, type ItemPart, type ItemsPage, type PartPage, type ToolProgress } from "../protocol.js";
 import type { Json } from "../stream-ops.js";
 import { RuntimeError } from "./errors.js";
 
@@ -264,7 +264,11 @@ export class ItemProjector {
       case "branch_summary":
         return true;
       case "custom":
-        return !!this.session.extensionRunner.getEntryRenderer(entry.customType) || this.entryView(entry.customType);
+        return (
+          entry.customType === NOTICE_ENTRY ||
+          !!this.session.extensionRunner.getEntryRenderer(entry.customType) ||
+          this.entryView(entry.customType)
+        );
       default:
         return false;
     }
@@ -282,6 +286,8 @@ export class ItemProjector {
       case "branch_summary":
         return { id: entry.id, key: entry.id, role: "summary", parts: parts(entry.summary) };
       case "custom": {
+        if (entry.customType === NOTICE_ENTRY)
+          return { id: entry.id, key: entry.id, role: "entry", customType: NOTICE_ENTRY, parts: [], ...details(entry.data) };
         const body = this.rendering.entry(entry);
         const view = this.entryView(entry.customType);
         if (!body && !view) return undefined;

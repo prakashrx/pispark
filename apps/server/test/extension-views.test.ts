@@ -10,6 +10,7 @@ import { SessionRuntime } from "../src/runtime/session-runtime.js";
 import { SessionHttp } from "../src/session-http.js";
 import { createAppServer } from "../src/server.js";
 import { addViewExtension, testHome, viewExtension } from "./fixtures/home.js";
+import { noticeText } from "./fixtures/chat.js";
 
 const eventually = async (check: () => boolean, ms = 10_000) => {
   const until = Date.now() + ms;
@@ -43,7 +44,7 @@ test("extensions show components with Pi's bus: slots, props, calls back, entrie
     const runtime = new SessionRuntime({ ...h.configuration, callTimeoutMs: 300 });
     const chat = await runtime.create({ folder: await h.folder("work") });
     const views = () => runtime.session(chat.id).extensions.views;
-    const notices = () => runtime.session(chat.id).extensions.notices.map((n) => n.lines.map((l) => l.map((s) => s.text).join("")).join(" "));
+    const notices = () => noticeText(runtime, chat.id);
 
     // Placed while the extension loaded; each shows once compiled.
     await eventually(() => views().length === 7);

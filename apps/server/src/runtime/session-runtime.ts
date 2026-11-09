@@ -1,7 +1,7 @@
 import { chatTitle, toolChatTitle } from "./chat-title.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import type { ItemsPage, LiveDoc, PartPage, SessionDoc } from "../protocol.js";
+import { NOTICE_ENTRY, type ItemsPage, type LiveDoc, type PartPage, type SessionDoc } from "../protocol.js";
 import { ItemProjector, progressOf } from "./items.js";
 import { LiveView } from "./live-view.js";
 import { basename, dirname, isAbsolute, join } from "node:path";
@@ -439,6 +439,12 @@ export class SessionRuntime {
         changed: () => this.changed(hosted),
         position: () => hosted.session?.messages.length ?? 0,
         cwd,
+        save: (notice) => {
+          if (!hosted.published || !hosted.session || hosted.hostClosed) return false;
+          hosted.session.sessionManager.appendCustomEntry(NOTICE_ENTRY, notice);
+          this.changed(hosted);
+          return true;
+        },
       });
       hosted.views = new ExtensionViews(
         setup.extensionPaths.map((path) => dirname(path)),

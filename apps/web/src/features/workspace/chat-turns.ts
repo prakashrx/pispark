@@ -1,4 +1,4 @@
-import type { ExtensionView, Item, ItemPart, ToolProgress } from "../../../../server/src/protocol";
+import { NOTICE_ENTRY, type ExtensionView, type Item, type ItemPart, type StyledLine, type ToolProgress } from "../../../../server/src/protocol";
 import type { Json } from "../../../../server/src/stream-ops";
 import { artifactsOf } from "./tool-views";
 
@@ -38,7 +38,7 @@ export type Segment =
   | { kind: "image"; key: string; itemId?: string; part: number; mimeType: string; bytes: number; alt: string }
   /** ... or an SVG a tool wrote, drawn from the markup in its arguments. */
   | { kind: "svg"; key: string; markup: string; alt: string; /** The markup was cut to fit, so it is not drawn. */ clipped?: boolean }
-  | { kind: "notice"; key: string; notice: Notice }
+  | { kind: "notice"; key: string; notice: Pick<Notice, "kind" | "lines"> }
   /** A tool call drawn by the component its extension placed in the `tool:<name>` slot. */
   | { kind: "view"; key: string; slot: string; call: ToolCall }
   | { kind: "stopped"; key: string; reason: "aborted" | "error" };
@@ -138,6 +138,10 @@ export function buildTurns(
       });
       if (item.stopReason === "aborted" || item.stopReason === "error")
         emit(turn, { kind: "stopped", key: `${item.key}.stop`, reason: item.stopReason });
+    } else if (item.role === "entry" && item.customType === NOTICE_ENTRY) {
+      // A notice the chat kept in its history, where it happened.
+      const saved = (item.details ?? {}) as { kind?: Notice["kind"]; lines?: StyledLine[] };
+      emit(turn, { kind: "notice", key: item.key, notice: { kind: saved.kind ?? "info", lines: Array.isArray(saved.lines) ? saved.lines : [] } });
     } else if (item.role === "custom" || item.role === "entry") {
       emit(turn, { kind: "custom", key: item.key, item });
     } else if (item.role === "summary") {
