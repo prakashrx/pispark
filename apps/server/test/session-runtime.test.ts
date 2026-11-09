@@ -23,6 +23,7 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { assertPiBoundary } from "../src/runtime/pi-boundary.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { addControlledExtension, testHome } from "./fixtures/home.js";
+import { chatItems, chatText, inFlight } from "./fixtures/chat.js";
 
 const hasCode = (code: string) => (error: unknown) =>
   error instanceof RuntimeError && error.code === code;
@@ -118,46 +119,43 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
       f.create("a"),
       f.create("b"),
     ]);
-    const observerA = f.runtime.observe(a.id);
-    const observerB = f.runtime.observe(b.id);
+    const observerA = f.runtime.observeLive(a.id);
+    const observerB = f.runtime.observeLive(b.id);
     const runA = f.runtime.start(a.id, "first-a");
     const runB = f.runtime.start(b.id, "read:value.txt");
     await eventually(
-      () => f.provider.active === 2 && !!f.runtime.snapshot(a.id).partial,
+      () => f.provider.active === 2 && inFlight(f.runtime, a.id).length > 0,
     );
     assert.equal(f.provider.peak, 2);
     assert.match(
-      JSON.stringify(f.runtime.snapshot(a.id).partial),
+      JSON.stringify(inFlight(f.runtime, a.id)),
       /partial-local/,
     );
     assert.equal((await observerA.events.next()).value?.sessionId, a.id);
     assert.equal((await observerB.events.next()).value?.sessionId, b.id);
     await f.runtime.queue(a.id, "must-not-run", "follow-up");
     await f.runtime.queue(a.id, "also-not-run", "steer");
-    assert.equal(f.runtime.snapshot(a.id).queue.followUp.length, 1);
+    assert.equal(f.runtime.session(a.id).queue.followUp, 1);
     await f.runtime.cancel(a.id);
     assert.deepEqual(await runA.completion, { outcome: "cancelled" });
-    assert.deepEqual(f.runtime.snapshot(a.id).queue, {
-      steering: [],
-      followUp: [],
+    assert.deepEqual(f.runtime.session(a.id).queue, {
+      steering: 0,
+      followUp: 0,
     });
-    assert.equal(f.runtime.snapshot(b.id).status, "running");
+    assert.equal(f.runtime.session(b.id).status, "running");
     assert.equal(f.provider.active, 1);
     f.provider.requests[1]!.release();
     await eventually(() => f.provider.requests.length === 3);
     f.provider.requests[2]!.release();
     assert.deepEqual(await runB.completion, { outcome: "completed" });
-    assert.equal(
-      (await observerB.events.next()).value?.sequence,
-      f.runtime.snapshot(b.id).sequence,
-      "slow observation coalesces to latest snapshot boundary",
-    );
+    // A slow observer keeps one latest invalidation, not every event.
+    assert.equal((await observerB.events.next()).value?.sessionId, b.id);
     assert.match(
-      JSON.stringify(f.runtime.snapshot(b.id).context),
+      chatText(f.runtime, b.id),
       /workspace-b/,
     );
     assert.doesNotMatch(
-      JSON.stringify(f.runtime.snapshot(a.id).context),
+      chatText(f.runtime, a.id),
       /workspace-b|must-not-run|also-not-run/,
     );
     const requests = f.provider.requests.map((request) =>
@@ -204,7 +202,7 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
     const reopened = await f.runtime.open(b.id);
     assert.equal(reopened.id, b.id);
     assert.equal(reopened.interrupted, false);
-    assert.match(JSON.stringify(reopened.context), /workspace-b/);
+    assert.match(chatText(f.runtime, b.id), /workspace-b/);
     assert.equal(
       f.provider.requests.length,
       3,
@@ -227,18 +225,18 @@ test("SessionRuntime: empty metadata, one live owner, admission and detached obs
   try {
     const a = await f.create("a", limited);
     assert.equal(limited.list().length, 1);
-    assert.equal(a.context.messages.length, 0);
+    assert.equal(chatItems(limited, a.id).length, 0);
     await assert.rejects(
       f.create("b", limited),
       hasCode("limit"),
     );
     await assert.rejects(limited.open(a.id), hasCode("owned"));
     const observations = Array.from({ length: 16 }, () =>
-      limited.observe(a.id),
+      limited.observeLive(a.id),
     );
-    assert.throws(() => limited.observe(a.id), hasCode("limit"));
+    assert.throws(() => limited.observeLive(a.id), hasCode("limit"));
     observations.forEach((observation) => observation.events.close());
-    const detached = limited.observe(a.id);
+    const detached = limited.observeLive(a.id);
     detached.events.close();
     f.provider.automatic = true;
     assert.deepEqual(
@@ -250,7 +248,8 @@ test("SessionRuntime: empty metadata, one live owner, admission and detached obs
     await second.stop(a.id);
     const empty = await f.create("b", limited);
     await limited.stop(empty.id);
-    assert.equal((await second.open(empty.id)).context.messages.length, 0);
+    await second.open(empty.id);
+    assert.equal(chatItems(second, empty.id).length, 0);
   } finally {
     await limited.shutdown();
     await second.shutdown();
@@ -317,9 +316,9 @@ test("SessionRuntime: errors are safe, missing model/auth/resources rejected, in
       outcome: "failed",
       error: "execution",
     });
-    assert.equal(f.runtime.snapshot(a.id).error, "execution");
+    assert.equal(f.runtime.session(a.id).error, "execution");
     assert.doesNotMatch(
-      JSON.stringify(f.runtime.snapshot(a.id)),
+      JSON.stringify(f.runtime.session(a.id)),
       /pispark-local-keyless|Fixture error/,
     );
   } finally {
@@ -381,7 +380,7 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
       ["warning", "Heads up"],
       ["error", "The controlled extension failed in before_agent_start: fixture failure"],
     ]);
-    assert.equal(f.runtime.snapshot(a.id).error, undefined);
+    assert.equal(f.runtime.session(a.id).error, undefined);
     // Working indicator, thinking label, window title, one header and footer; Pi's session name is the chat title.
     assert.equal((await f.runtime.start(a.id, "ui-chrome").completion).outcome, "completed");
     const chrome = f.runtime.session(a.id);
@@ -416,7 +415,7 @@ async function stopAbortsBeforeShutdown(f: Awaited<ReturnType<typeof fixture>>) 
     await eventually(() => f.provider.active === 2);
     await f.runtime.stop(a.id);
     assert.equal((await runA.completion).outcome, "cancelled");
-    assert.equal(f.runtime.snapshot(b.id).status, "running");
+    assert.equal(f.runtime.session(b.id).status, "running");
     f.provider.requests.at(-1)!.release();
     assert.equal((await runB.completion).outcome, "completed");
     const entries = await f.history(a.id);
@@ -439,7 +438,7 @@ test("SessionRuntime: interrupted marker retains native history without replay, 
     const requestCount = f.provider.requests.length;
     const reopened = await f.runtime.open(a.id);
     assert.equal(reopened.interrupted, true);
-    assert.match(JSON.stringify(reopened.context), /saved/);
+    assert.match(chatText(f.runtime, a.id), /saved/);
     assert.equal(f.provider.requests.length, requestCount);
     await f.runtime.stop(a.id);
     const native = await f.transcript(a.id);
@@ -472,9 +471,9 @@ test("SessionRuntime: queue race with cancel clears delayed input, bounded queue
     const cancel = f.runtime.cancel(a.id);
     await Promise.all([rejected, cancel]);
     await next.completion;
-    assert.deepEqual(f.runtime.snapshot(a.id).queue, {
-      steering: [],
-      followUp: [],
+    assert.deepEqual(f.runtime.session(a.id).queue, {
+      steering: 0,
+      followUp: 0,
     });
     assert.equal(f.provider.requests.length, 2);
     await f.runtime.shutdown();
@@ -522,8 +521,8 @@ test("SessionRuntime: killed process recovers finalized native tool history, no 
     const restored = await f.runtime.open(ready.id);
     assert.equal(restored.interrupted, true);
     assert.equal(restored.status, "idle");
-    assert.match(JSON.stringify(restored.context), /workspace-a/);
-    assert.equal(restored.partial, undefined);
+    assert.match(chatText(f.runtime, ready.id), /workspace-a/);
+    assert.equal(inFlight(f.runtime, ready.id).length, 0);
     assert.equal(f.provider.requests.length, 0);
     assert.equal(await readFile(effects, "utf8"), "effect\n");
     assert.equal(
@@ -610,7 +609,7 @@ test("SessionRuntime: storage write failures are not reported as success", async
       hasCode("storage"),
     );
     assert.equal(f.provider.requests.length, 0);
-    assert.equal(f.runtime.snapshot(a.id).title, undefined);
+    assert.equal(f.runtime.session(a.id).title, undefined);
     await rm(metadata, { recursive: true });
     await writeFile(metadata, original);
     const run = f.runtime.start(a.id, "write-fails-at-settlement");
@@ -623,7 +622,7 @@ test("SessionRuntime: storage write failures are not reported as success", async
       outcome: "failed",
       error: "storage",
     });
-    assert.equal(f.runtime.snapshot(a.id).status, "error");
+    assert.equal(f.runtime.session(a.id).status, "error");
     await rm(metadata, { recursive: true });
     await writeFile(metadata, activeMetadata);
   } finally {
@@ -643,7 +642,7 @@ test("SessionRuntime: native history append failure reports failed run and keeps
     await mkdir(native);
     f.provider.requests[0]!.release();
     assert.equal((await run.completion).outcome, "failed");
-    assert.equal(f.runtime.snapshot(a.id).status, "error");
+    assert.equal(f.runtime.session(a.id).status, "error");
     await rm(native, { recursive: true });
     await writeFile(native, saved);
     await f.runtime.stop(a.id);
@@ -670,7 +669,7 @@ test("SessionRuntime: timeout retains ownership until noncooperative native shut
     const a = await f.create("a", slow);
     await assert.rejects(slow.stop(a.id), hasCode("timeout"));
     await assert.rejects(slow.open(a.id), hasCode("owned"));
-    assert.equal(slow.snapshot(a.id).status, "stopping");
+    assert.equal(slow.session(a.id).status, "stopping");
     await eventually(() => slow.list()[0]?.status === "unloaded");
     await f.runtime.open(a.id);
   } finally {
@@ -699,10 +698,7 @@ test("SessionRuntime: shutdown drains pending initialization; missing tool files
       "completed",
     );
     assert.ok(
-      f.runtime
-        .snapshot(a.id)
-        .messages.some(
-          (message) => message.role === "toolResult" && message.isError,
+      chatItems(f.runtime, a.id).some((message) => message.role === "toolResult" && message.isError,
         ),
     );
   } finally {
@@ -752,7 +748,7 @@ test("SessionRuntime: cooperative run deadline fails truthfully and aborts the r
       error: "timeout",
     });
     assert.equal(f.provider.requests[0]?.aborted, true);
-    await eventually(() => bounded.snapshot(a.id).status === "error");
+    await eventually(() => bounded.session(a.id).status === "error");
   } finally {
     await bounded.shutdown();
     await f.cleanup();
@@ -773,12 +769,10 @@ for (const action of ["cancel", "stop", "shutdown"] as const) {
       assert.equal(f.provider.requests.length, 0);
       if (action === "cancel") {
         assert.equal(
-          f.runtime
-            .snapshot(a.id)
-            .messages.some((m) => m.role === "toolResult"),
+          chatItems(f.runtime, a.id).some((m) => m.role === "toolResult"),
           false,
         );
-        assert.equal(f.runtime.snapshot(a.id).status, "idle");
+        assert.equal(f.runtime.session(a.id).status, "idle");
       } else assert.equal(f.runtime.list()[0]!.status, "unloaded");
     } finally {
       await f.cleanup();
@@ -808,16 +802,13 @@ for (const kind of ["steer", "follow-up"] as const) {
         /slow-input/,
       );
       f.provider.automatic = false;
-      assert.deepEqual(f.runtime.snapshot(a.id).queue, {
-        steering: [],
-        followUp: [],
+      assert.deepEqual(f.runtime.session(a.id).queue, {
+        steering: 0,
+        followUp: 0,
       });
       const next = f.runtime.start(a.id, "unrelated");
       await eventually(() => f.provider.requests.length === 3);
-      assert.doesNotMatch(
-        JSON.stringify(f.runtime.snapshot(a.id).queue),
-        /slow-input/,
-      );
+      assert.deepEqual(f.runtime.session(a.id).queue, { steering: 0, followUp: 0 });
       await f.runtime.queue(a.id, "valid-next-input", kind);
       f.provider.automatic = true;
       f.provider.requests[2]!.release();
@@ -867,7 +858,7 @@ for (const action of ["cancel", "stop", "shutdown"] as const) {
       const stopping =
         action === "shutdown" ? f.runtime.shutdown() : f.runtime[action](a.id);
       assert.equal(
-        f.runtime.snapshot(a.id).status,
+        f.runtime.session(a.id).status,
         action === "cancel" ? "cancelling" : "stopping",
       );
       await assert.rejects(f.runtime.open(a.id), hasCode("owned"));
@@ -877,9 +868,7 @@ for (const action of ["cancel", "stop", "shutdown"] as const) {
       assert.equal(f.provider.requests.length, 0);
       if (action === "cancel")
         assert.equal(
-          f.runtime
-            .snapshot(a.id)
-            .messages.some((m) => m.role === "toolResult"),
+          chatItems(f.runtime, a.id).some((m) => m.role === "toolResult"),
           false,
         );
     } finally {
@@ -954,7 +943,7 @@ for (const kind of ["steer", "follow-up"] as const) {
       await gate.entering;
       f.provider.requests[0]!.release();
       await gate.settling;
-      assert.equal(f.runtime.snapshot(a.id).status, "running");
+      assert.equal(f.runtime.session(a.id).status, "running");
       assert.throws(() => f.runtime.start(a.id, "unrelated"), hasCode("busy"));
       await assert.rejects(
         f.runtime.queue(a.id, "concurrent", kind),
@@ -969,9 +958,9 @@ for (const kind of ["steer", "follow-up"] as const) {
         3,
         "original request, queued tool call, tool result continuation",
       );
-      assert.deepEqual(f.runtime.snapshot(a.id).queue, {
-        steering: [],
-        followUp: [],
+      assert.deepEqual(f.runtime.session(a.id).queue, {
+        steering: 0,
+        followUp: 0,
       });
       await f.runtime.start(a.id, "next").completion;
       assert.equal(
@@ -1016,7 +1005,7 @@ for (const phase of ["initial", "queued"] as const) {
         );
         await assert.rejects(runtime.open(a.id), hasCode("owned"));
         assert.equal(
-          runtime.snapshot(a.id).status,
+          runtime.session(a.id).status,
           action === "cancel" ? "cancelling" : "stopping",
         );
         f.provider.automatic = true;
@@ -1142,7 +1131,7 @@ test("SessionRuntime: first accepted title survives cancellation, queueing and r
     assert.equal(chat.title, undefined);
     assert.equal(chat.hasHistory, false);
     assert.throws(() => f.runtime.start(chat.id, ""), hasCode("invalid-input"));
-    assert.equal(f.runtime.snapshot(chat.id).title, undefined);
+    assert.equal(f.runtime.session(chat.id).title, undefined);
     const first = f.runtime.start(
       chat.id,
       ["PRIVATE-TITLE first\tinput", "not the title"].join("\n"),
@@ -1174,7 +1163,7 @@ test("SessionRuntime: first accepted title survives cancellation, queueing and r
     await f.runtime.cancel(chat.id);
     await legacy.completion;
     assert.equal(
-      f.runtime.snapshot(chat.id).title,
+      f.runtime.session(chat.id).title,
       undefined,
       "never backfill legacy history",
     );
@@ -1198,15 +1187,15 @@ test("SessionRuntime: accepted invisible-only input keeps its fallback title aft
     assert.equal(f.provider.requests.length, 0);
     // Native cancellation can persist the user and aborted response; it is not rollback.
     assert.equal(
-      f.runtime.snapshot(chat.id).messages.some((m) => m.role === "toolResult"),
+      chatItems(f.runtime, chat.id).some((m) => m.role === "toolResult"),
       false,
     );
-    assert.equal(f.runtime.snapshot(chat.id).title, "New chat");
+    assert.equal(f.runtime.session(chat.id).title, "New chat");
     const second = f.runtime.start(chat.id, "Visible input must not rename");
     await eventually(() => f.provider.active === 1);
     await f.runtime.cancel(chat.id);
     await second.completion;
-    assert.equal(f.runtime.snapshot(chat.id).title, "New chat");
+    assert.equal(f.runtime.session(chat.id).title, "New chat");
     await f.runtime.stop(chat.id);
     assert.equal((await f.runtime.open(chat.id)).title, "New chat");
   } finally {

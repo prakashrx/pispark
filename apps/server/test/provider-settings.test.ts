@@ -294,7 +294,7 @@ test("ModelDefaults and SessionRuntime: restart selection, native history, indep
   const b = await sessions.create({
       folder: f.root,
   });
-  assert.equal(sessions.snapshot(a.id).model?.id, "deterministic");
+  assert.equal(sessions.session(a.id).model?.id, "deterministic");
   assert.equal(b.model?.id, "second");
   await sessions.stop(a.id);
   assert.equal((await sessions.open(a.id)).model?.id, "deterministic");
@@ -306,7 +306,7 @@ test("ModelDefaults and SessionRuntime: restart selection, native history, indep
     sessions.create({ folder: f.root }),
   );
   assert.equal((await f.settings.catalog()).defaultModel?.id, "second");
-  assert.equal(sessions.snapshot(b.id).model?.id, "second");
+  assert.equal(sessions.session(b.id).model?.id, "second");
   await assert.rejects(
     f.settings.setDefault({ provider: id, id: "missing" }),
     /provider-unavailable/,

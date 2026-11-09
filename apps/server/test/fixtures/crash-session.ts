@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { SessionRuntime } from "../../src/runtime/session-runtime.js";
 import { LocalProviderControl, eventually } from "./local-provider.js";
+import { inFlight } from "./chat.js";
 
 // The parent prepared <root>/home (persona "a" with the controlled and side-effect extensions).
 const root = process.argv[2]!;
@@ -15,7 +16,7 @@ await eventually(() => provider.requests.length === 1);
 provider.requests[0]!.release();
 await eventually(
   () =>
-    provider.requests.length === 2 && !!runtime.snapshot(session.id).partial,
+    provider.requests.length === 2 && inFlight(runtime, session.id).length > 0,
 );
 process.send!({ id: session.id });
 // Parent terminates this process during the second actual SDK request.

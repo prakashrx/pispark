@@ -100,7 +100,7 @@ for (const kind of ["modelOverrides", "models"] as const)
     );
     assert.deepEqual(f.control.requests.at(-1)?.headers, nativeHeaders);
     await f.settings.setDefault({ provider, id: "second" });
-    assert.equal(sessions.snapshot(a.id).model?.id, "deterministic");
+    assert.equal(sessions.session(a.id).model?.id, "deterministic");
     const b = await sessions.create({
       folder: root,
     });
@@ -142,7 +142,7 @@ for (const kind of ["modelOverrides", "models"] as const)
     const publicValues = JSON.stringify([
       (await f.settings.catalog()).providers.find((p) => p.id === provider),
       sessions.list(),
-      sessions.snapshot(b.id),
+      sessions.session(b.id),
       sessions.session(b.id),
     ]);
     assert.doesNotMatch(

@@ -10,6 +10,7 @@ import { eventually } from "./fixtures/local-provider.js";
 import { localProviderSettings } from "./fixtures/provider-settings.js";
 import { testHome } from "./fixtures/home.js";
 import type { LocalRequest } from "./fixtures/local-provider.js";
+import { chatText } from "./fixtures/chat.js";
 
 const toolsOf = (request: LocalRequest) => [
   ...new Set(
@@ -49,7 +50,7 @@ test("a fresh data root needs no setup: Default gives every chat Pi's built-in t
       toolsOf(f.provider.requests[0]!).sort(),
       [...DEFAULT_TOOLS, TITLE_TOOL].sort(),
     );
-    assert.match(JSON.stringify(f.runtime.snapshot(chat.id).messages), /WORK-FILE/);
+    assert.match(chatText(f.runtime, chat.id), /WORK-FILE/);
   } finally {
     await f.cleanup();
   }

@@ -12,7 +12,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type {
   AgentSession,
-  SessionContext,
 } from "@earendil-works/pi-coding-agent";
 import { createSessionServices, resolveFolder } from "./configuration.js";
 import type { RuntimeConfiguration } from "./configuration.js";
@@ -60,15 +59,6 @@ export interface SessionSummary {
   /** An extension asked a question and the run waits for an answer. */
   waiting?: boolean;
 }
-export interface SessionSnapshot extends SessionSummary {
-  sequence: number;
-  model?: { provider: string; id: string };
-  context: SessionContext;
-  messages: AgentSession["messages"];
-  partial?: AgentSession["state"]["streamingMessage"];
-  queue: { steering: string[]; followUp: string[] };
-  error?: RuntimeErrorCode;
-}
 export interface RunResult {
   outcome: "completed" | "cancelled" | "failed";
   error?: RuntimeErrorCode;
@@ -86,7 +76,6 @@ interface RunIdentity {
 interface HostedSession {
   metadata: ChatMetadata;
   published: boolean;
-  release: () => void;
   status: SessionStatus;
   sequence: number;
   observers: Set<SessionChanges>;
@@ -100,7 +89,7 @@ interface HostedSession {
   unsubscribe?: () => void;
   disposeHost?: () => void;
   hostClosed?: boolean;
-  loading?: Promise<SessionSnapshot>;
+  loading?: Promise<SessionDoc>;
   extensionErrors: number;
   setupChanged?: boolean;
   /** What extensions show through Pi's `ctx.ui`, and their own renderers. */
@@ -254,35 +243,6 @@ export class SessionRuntime {
     if (!this.accepting) throw new RuntimeError("closed");
     if (this.live.size >= this.maxLive) throw new RuntimeError("limit");
   }
-  /** A detached copy without provider error text, diagnostics or stacks. */
-  private publicCopy<T>(value: T): T {
-    return JSON.parse(
-      JSON.stringify(value, (key, item: unknown) =>
-        key === "errorMessage" || key === "diagnostics" || key === "stack" ? undefined : item,
-      ),
-    ) as T;
-  }
-  snapshot(id: string): SessionSnapshot {
-    const hosted = this.get(id);
-    const session = hosted.session!;
-    return this.publicCopy(
-      {
-        ...this.summary(hosted.metadata, hosted),
-        sequence: hosted.sequence,
-        model: session.model
-          ? { provider: session.model.provider, id: session.model.id }
-          : undefined,
-        context: session.sessionManager.buildSessionContext(),
-        messages: session.messages,
-        partial: session.state.streamingMessage,
-        queue: {
-          steering: [...session.getSteeringMessages()],
-          followUp: [...session.getFollowUpMessages()],
-        },
-        error: hosted.error,
-      },
-    );
-  }
   /** Everything about a chat except its history: status, model, queue and what extensions show. */
   session(id: string): SessionDoc {
     const hosted = this.get(id);
@@ -318,6 +278,11 @@ export class SessionRuntime {
   text(id: string, itemId: string, part: number, offset: number): PartPage {
     return this.projector(id).text(itemId, part, offset);
   }
+  /** The live document: session state, the items in flight and what running tools reported. */
+  liveDoc(id: string): LiveDoc {
+    const hosted = this.get(id);
+    return { session: this.session(id), tail: this.projector(id).tail(), progress: progressOf(hosted.running) };
+  }
   /** A connection's live view of the chat, and the invalidations that say when to ask it for more. */
   observeLive(id: string): {
     view: LiveView;
@@ -330,7 +295,7 @@ export class SessionRuntime {
     hosted.observers.add(events);
     try {
       const view = new LiveView(id, {
-        doc: (): LiveDoc => ({ session: this.session(id), tail: items.tail(), progress: progressOf(hosted.running) }),
+        doc: () => this.liveDoc(id),
         head: () => items.head(),
         since: (after) => items.since(after),
       });
@@ -352,27 +317,12 @@ export class SessionRuntime {
     if (!ui) throw new RuntimeError("not-found");
     ui.answer(dialogId, answer);
   }
-  observe(id: string): {
-    snapshot: SessionSnapshot;
-    events: AsyncIterableIterator<SessionChange> & { close(): void };
-  } {
-    const hosted = this.get(id);
-    if (hosted.observers.size >= 16) throw new RuntimeError("limit");
-    const events = new SessionChanges(() => hosted.observers.delete(events));
-    hosted.observers.add(events);
-    try {
-      return { snapshot: this.snapshot(id), events };
-    } catch (error) {
-      events.close();
-      throw error;
-    }
-  }
 
   async create(request: {
     folder: string;
     model?: ModelChoice;
     persona?: string;
-  }): Promise<SessionSnapshot> {
+  }): Promise<SessionDoc> {
     this.admit();
     if (
       !request ||
@@ -402,14 +352,14 @@ export class SessionRuntime {
     };
     return this.load(metadata, false);
   }
-  async open(id: string): Promise<SessionSnapshot> {
+  async open(id: string): Promise<SessionDoc> {
     validateId(id);
     if (this.live.has(id)) throw new RuntimeError("owned");
     this.admit();
     return this.load(this.storage.read(id), true);
   }
   /** Restart a chat's Pi session from its transcript, picking up persona changes. */
-  async reload(id: string): Promise<SessionSnapshot> {
+  async reload(id: string): Promise<SessionDoc> {
     validateId(id);
     const hosted = this.live.get(id);
     if (hosted) {
@@ -445,11 +395,10 @@ export class SessionRuntime {
   private async load(
     metadata: ChatMetadata,
     reopening: boolean,
-  ): Promise<SessionSnapshot> {
+  ): Promise<SessionDoc> {
     const hosted: HostedSession = {
       metadata,
       published: reopening,
-      release: () => {},
       status: "starting",
       sequence: 0,
       observers: new Set(),
@@ -641,7 +590,7 @@ export class SessionRuntime {
       hosted.setupChanged = false;
       hosted.status = "idle";
       this.changed(hosted);
-      const snapshot = this.snapshot(metadata.id);
+      const doc = this.session(metadata.id);
       this.storage.write(metadata);
       hosted.published = true;
       this.logger.event(reopening ? "session.recover" : "session.create", {
@@ -649,7 +598,7 @@ export class SessionRuntime {
         personaId: metadata.persona,
         outcome: "completed",
       });
-      return snapshot;
+      return doc;
     };
     const operation = initialize().catch(async (error: unknown) => {
       hosted.error = runtimeError(error, "configuration").code;
@@ -943,7 +892,6 @@ export class SessionRuntime {
     hosted.status = "stopped";
     this.changed(hosted);
     for (const observer of hosted.observers) observer.close();
-    hosted.release();
     this.live.delete(hosted.metadata.id);
     if (!hosted.published) this.storage.discardUnpublished(hosted.metadata.id);
     if (cleanupError) throw new RuntimeError(cleanupError);

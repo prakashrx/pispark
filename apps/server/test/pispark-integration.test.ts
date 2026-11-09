@@ -27,6 +27,7 @@ import {
 import { toolChatTitle } from "../src/runtime/chat-title.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
+import { chatItems, chatText } from "./fixtures/chat.js";
 
 async function fixture() {
   const h = await testHome("pispark-integration-");
@@ -73,17 +74,16 @@ test("PiSpark integration: real native title-only calls, persona/no-persona isol
       f.runtime.create({ folder: f.cwd }),
       f.runtime.create({ folder: f.cwd, persona: "fixture" }),
     ]);
-    const observer = f.runtime.observe(a.id);
-    const other = f.runtime.observe(b.id);
+    const observer = f.runtime.observeLive(a.id);
+    const other = f.runtime.observeLive(b.id);
     await Promise.all([
       f.runtime.start(a.id, command("  Native\nfixture  ")).completion,
       f.runtime.start(b.id, command("Persona fixture")).completion,
     ]);
-    assert.equal(f.runtime.snapshot(a.id).title, "Native");
-    assert.equal(f.runtime.snapshot(b.id).title, "Persona fixture");
+    assert.equal(f.runtime.session(a.id).title, "Native");
+    assert.equal(f.runtime.session(b.id).title, "Persona fixture");
     assert.equal((await observer.events.next()).value?.sessionId, a.id);
     assert.equal((await other.events.next()).value?.sessionId, b.id);
-    assert(f.runtime.snapshot(a.id).sequence > observer.snapshot.sequence);
     for (const request of f.control.requests)
       assert.deepEqual(
         request.context.messages.flatMap((message) =>
@@ -102,7 +102,7 @@ test("PiSpark integration: real native title-only calls, persona/no-persona isol
     assert(prompts.includes("PRESERVE-PERSONA-PROMPT"));
     assert(prompts.includes("when its purpose is clear"));
     await f.runtime.start(a.id, "later ordinary message").completion;
-    assert.equal(f.runtime.snapshot(a.id).title, "Native");
+    assert.equal(f.runtime.session(a.id).title, "Native");
     const durable = JSON.parse(
       await readFile(join(f.chats, a.id, "chat.json"), "utf8"),
     );
@@ -110,7 +110,7 @@ test("PiSpark integration: real native title-only calls, persona/no-persona isol
     await f.runtime.stop(a.id);
     await f.runtime.open(a.id);
     await f.runtime.start(a.id, command("Reopened fixture")).completion;
-    assert.equal(f.runtime.snapshot(a.id).title, "Reopened fixture");
+    assert.equal(f.runtime.session(a.id).title, "Reopened fixture");
     assert.deepEqual(
       f.control.requests
         .at(-1)!
@@ -135,16 +135,14 @@ test("PiSpark integration: invalid model arguments do not replace fallback; no t
     await f.runtime.start(a.id, "fallback purpose").completion;
     for (const title of ["", "\u0000\u200b", "a".repeat(4097), {}, undefined]) {
       await f.runtime.start(a.id, command(title)).completion;
-      assert.equal(f.runtime.snapshot(a.id).title, "fallback purpose");
+      assert.equal(f.runtime.session(a.id).title, "fallback purpose");
       assert(
-        f.runtime
-          .snapshot(a.id)
-          .messages.some((m) => m.role === "toolResult" && m.isError),
+        chatItems(f.runtime, a.id).some((m) => m.role === "toolResult" && m.isError),
       );
     }
     await f.runtime.start(a.id, command(12)).completion;
     assert.equal(
-      f.runtime.snapshot(a.id).title,
+      f.runtime.session(a.id).title,
       "12",
       "Native Pi normalizes numeric tool input to a schema string before execution",
     );
@@ -152,7 +150,7 @@ test("PiSpark integration: invalid model arguments do not replace fallback; no t
       a.id,
       `title:${JSON.stringify({ title: "must not persist", sessionId: a.id })}`,
     ).completion;
-    assert.equal(f.runtime.snapshot(a.id).title, "12");
+    assert.equal(f.runtime.session(a.id).title, "12");
     assert.equal(Array.from(toolChatTitle("😀".repeat(90))).length, 80);
   } finally {
     await f.cleanup();
@@ -192,7 +190,7 @@ test("PiSpark integration: persist-first failure leaves current title and observ
       setTitle: (host: unknown, title: string, signal: AbortSignal) => void;
     };
     const host = internal.live.get(a.id)!;
-    const before = f.runtime.snapshot(a.id);
+    const before = f.runtime.session(a.id);
     const path = join(f.chats, a.id, "chat.json");
     await rename(path, path + ".saved");
     await mkdir(path);
@@ -206,8 +204,8 @@ test("PiSpark integration: persist-first failure leaves current title and observ
           ),
         { code: "storage" },
       );
-      assert.equal(f.runtime.snapshot(a.id).title, before.title);
-      assert.equal(f.runtime.snapshot(a.id).sequence, before.sequence);
+      assert.equal(f.runtime.session(a.id).title, before.title);
+      assert.deepEqual(f.runtime.session(a.id), before);
     } finally {
       await rm(path, { recursive: true });
       await rename(path + ".saved", path);
@@ -218,7 +216,7 @@ test("PiSpark integration: persist-first failure leaves current title and observ
       "Idle after cancellation",
       new AbortController().signal,
     );
-    assert.equal(f.runtime.snapshot(a.id).title, "Idle after cancellation");
+    assert.equal(f.runtime.session(a.id).title, "Idle after cancellation");
     const aborted = new AbortController();
     aborted.abort();
     assert.throws(() => internal.setTitle(host, "aborted", aborted.signal), {
@@ -239,7 +237,7 @@ test("PiSpark integration: persist-first failure leaves current title and observ
       () => internal.setTitle(host, "old owner", new AbortController().signal),
       { code: "closed" },
     );
-    assert.equal(f.runtime.snapshot(a.id).title, "Idle after cancellation");
+    assert.equal(f.runtime.session(a.id).title, "Idle after cancellation");
   } finally {
     await f.cleanup();
   }
@@ -318,18 +316,16 @@ test("PiSpark integration: actual native tool storage failure is sanitized and o
     try {
       f.control.requests.at(-1)!.release();
       await eventually(() => f.control.requests.length === count + 2);
-      const result = f.runtime
-        .snapshot(a.id)
-        .messages.findLast((m) => m.role === "toolResult");
+      const result = chatItems(f.runtime, a.id).findLast((m) => m.role === "toolResult");
       assert(result?.role === "toolResult" && result.isError);
       assert(
-        JSON.stringify(result.content).includes(
+        JSON.stringify(result.parts).includes(
           "PiSpark title update: storage",
         ),
       );
-      assert(!JSON.stringify(result.content).includes(sensitive));
-      assert(!JSON.stringify(result.content).includes(f.root));
-      assert.equal(f.runtime.snapshot(a.id).title, "prior name");
+      assert(!JSON.stringify(result.parts).includes(sensitive));
+      assert(!JSON.stringify(result.parts).includes(f.root));
+      assert.equal(f.runtime.session(a.id).title, "prior name");
     } finally {
       await rm(path, { recursive: true });
       await rename(path + ".saved", path);
@@ -340,10 +336,10 @@ test("PiSpark integration: actual native tool storage failure is sanitized and o
       "completed",
       "A failed native tool result does not itself make the host run fail",
     );
-    assert.equal(f.runtime.snapshot(a.id).title, "prior name");
+    assert.equal(f.runtime.session(a.id).title, "prior name");
     // Canonical native history normally includes tool arguments, unlike operational logging.
     assert(
-      JSON.stringify(f.runtime.snapshot(a.id).messages).includes(sensitive),
+      chatText(f.runtime, a.id).includes(sensitive),
     );
   } finally {
     await f.cleanup();
@@ -388,7 +384,7 @@ test("PiSpark integration: legacy unmentioned tool activates on reopen; explicit
     );
     await f.runtime.open(a.id);
     await f.runtime.start(a.id, command("Upgraded legacy fixture")).completion;
-    assert.equal(f.runtime.snapshot(a.id).title, "Upgraded legacy fixture");
+    assert.equal(f.runtime.session(a.id).title, "Upgraded legacy fixture");
     await f.runtime.stop(a.id);
     const removed = structuredClone(original);
     const system = removed.find(

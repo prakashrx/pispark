@@ -6,7 +6,7 @@ This is a **client-independent runtime**, now owned by the local HTTP entry poin
 
 ## Entry point and ownership
 
-`apps/server/src/runtime/session-runtime.ts` exports `SessionRuntime`, configuration/snapshot types and safe `RuntimeError` codes.
+`apps/server/src/runtime/session-runtime.ts` exports `SessionRuntime`, configuration types and safe `RuntimeError` codes.
 
 Construct one owner with a `RuntimeConfiguration` whose only required field is `home`, the data folder. Chats live in `<home>/chats`, personas in `<home>/personas`, providers in `<home>/providers`. Tests may also pass `fixedModel` (a keyless loopback provider) and `providerSettings` (extra native providers, a models file); production never sets them.
 
@@ -18,15 +18,14 @@ Every session gets a separate `ModelRuntime`, `SettingsManager`, `ResourceLoader
 
 | Method | Meaning |
 | --- | --- |
-| `create({ folder, model?, persona? })` | Reserve a live slot, check the absolute folder exists, resolve the persona (Default when omitted), choose the model, initialize/bind native extensions, return snapshot. Unknown request fields are rejected. |
+| `create({ folder, model?, persona? })` | Reserve a live slot, check the absolute folder exists, resolve the persona (Default when omitted), choose the model, initialize/bind native extensions, return the session document. Unknown request fields are rejected. |
 | `open(id)` | Reopen a known chat's native history (or an empty session) with its persona resolved now. Never accepts a session-file path. Never prompts/replays tools. |
 | `reload(id)` | Stop an idle chat and open it again, so persona changes apply. Busy while running. |
 | `list()` | Stored metadata summaries, including empty/unloaded sessions and interrupted status. |
-| `snapshot(id)` | Copy of live status, sequence, canonical native context, current messages, partial streaming output, queues and safe error code. |
 | `session(id)` | The chat's session document: status, model, queue, safe error and what extensions show; no history. |
 | `items(id, {before?, after?, limit?})` / `image(id, itemId, part)` / `text(id, itemId, part, offset)` | Finalized items on Pi's active branch read straight from the session, bounded by count and bytes; an image's bytes; a chunk of a clipped text part. Pi's entry ids are the cursors. |
+| `liveDoc(id)` | The live document: the session document, the items not yet saved (including the message being written) and what running tools reported. |
 | `observeLive(id)` | A per-connection live view (the document of unpersisted items and session state, diffed into operations on each tick) plus the invalidation iterator that says when to ask it. |
-| `observe(id)` | Atomic initial snapshot plus async iterator of `{ sessionId, sequence, type: 'changed' }` invalidations. |
 | `start(id, text)` | Reserve the idle session and persist active marker before execution; returns `{ completion }`. Completion resolves to completed/cancelled/failed, not just command acceptance. |
 | `queue(id, text, 'steer' or 'follow-up')` | Native queued-input hooks/semantics; resolves queued/handled or rejects busy when cancelled/superseded. Only while running, one input admission in flight. |
 | `cancel(id)` | Prevent new inputs, clear both queues, abort/drain, clear again after outstanding input hooks. Cooperative; cannot undo tool effects. |
@@ -37,13 +36,13 @@ A host-owned final native input handler and `agent_before_settle` handler associ
 
 Start input goes through Pi's normal prompt handling: persona prompt templates expand as `/commands` and extension commands run, as in terminal Pi. Native command-context new/switch/fork/tree/reload operations throw unsupported. Resource expansion requested by extensions also throws; additional resources require host admission. Native extension hooks, tools, bus events and lifecycle remain available. No arbitrary EventBus channel is exposed to clients.
 
-Failures use safe codes, not raw provider/extension stacks. Snapshots omit SDK error diagnostics/stacks. This is not a general DLP guarantee: trusted tools/extensions and model output can contain sensitive filesystem data. Native JSONL is private server-side data and may include raw provider errors; never serve it as an unauthenticated static asset.
+Failures use safe codes, not raw provider/extension stacks. Items and session documents never carry SDK error diagnostics or stacks. This is not a general DLP guarantee: trusted tools/extensions and model output can contain sensitive filesystem data. Native JSONL is private server-side data and may include raw provider errors; never serve it as an unauthenticated static asset.
 
 ## Observation and limits
 
-Observers pull invalidations; SDK listeners never invoke subscribers, perform disk I/O, or copy/serialize transcripts. This matters because Pi emits `message_end` before native persistence. A slow observer retains **one latest invalidation**, not a growing token-event queue. Re-read `snapshot()` to render the complete current state, including partial output. Sequence gaps mean coalescing, not lost durable conversation. Sequence numbers are scoped to one live owner, not durable replay cursors; reopening/restarting begins a new observation lifetime. Closing an observer does not stop the session. Snapshot plus subscription registration is synchronous and has no interleaving gap.
+Observers pull invalidations; SDK listeners never invoke subscribers, perform disk I/O, or copy/serialize transcripts. This matters because Pi emits `message_end` before native persistence. A slow observer retains **one latest invalidation**, not a growing token-event queue. Re-read the live document to render the complete current state, including partial output. Sequence gaps mean coalescing, not lost durable conversation. Sequence numbers are scoped to one live owner, not durable replay cursors; reopening/restarting begins a new observation lifetime. Closing an observer does not stop the session. Creating the live view and registering its subscription is synchronous and has no interleaving gap.
 
-Defaults: 8 live sessions (including starting/stopping), 16 observers per session, 8 pending native inputs, 64KiB UTF-8 input, 32 exact files per resource category, 64MiB maximum native file on open, 10-second operation/cleanup wait, 5-minute cooperative run deadline. Live-session and deadline limits are trusted host options. History has no disk quota or retention manager. Clients must bound snapshot serialization/output independently.
+Defaults: 8 live sessions (including starting/stopping), 16 observers per session, 8 pending native inputs, 64KiB UTF-8 input, 32 exact files per resource category, 64MiB maximum native file on open, 10-second operation/cleanup wait, 5-minute cooperative run deadline. Live-session and deadline limits are trusted host options. History has no disk quota or retention manager. The live document and items are bounded by the projection (see [protocol](session-protocol.md)).
 
 Deadlines do not kill arbitrary JavaScript or tools. If an extension ignores cancellation or shutdown hangs, the operation reports timeout and **retains ownership/admission** until actual cleanup completes. CPU-blocking trusted code can stall every same-process session. Strong adversarial isolation would require another approved design. A session with execution/storage error rejects new starts; inspect it, stop and reopen deliberately rather than automatically retry side effects.
 
@@ -78,7 +77,7 @@ Titles bound raw input to4096 UTF-16 units, normalize controls/whitespace to one
 
 ## Evidence and remaining gates
 
-`apps/server/test/session-runtime.test.ts` uses the real pinned SDK with a deterministic **in-process local test provider**, ordinary native extension files and actual cwd-bound tools. It covers simultaneous sessions, partial snapshots, cancel/queue races, native lifecycle/headless failures, empty/native history, duplicate ownership, a killed child after a tool result, no replay, ambient-resource sentinels and explicit auth probes, storage failures and timeout ownership retention. The local provider is not a fake replacement AgentSession, but it is also **not an external hosted-provider/network certification**.
+`apps/server/test/session-runtime.test.ts` uses the real pinned SDK with a deterministic **in-process local test provider**, ordinary native extension files and actual cwd-bound tools. It covers simultaneous sessions, in-flight output, cancel/queue races, native lifecycle/headless failures, empty/native history, duplicate ownership, a killed child after a tool result, no replay, ambient-resource sentinels and explicit auth probes, storage failures and timeout ownership retention. The local provider is not a fake replacement AgentSession, but it is also **not an external hosted-provider/network certification**.
 
 External paid-provider execution was not performed. Provider-specific auth/streaming compatibility, real network cancellation and Node's bundled fetch security remain separate validation gates. See [dependency findings](development.md#dependency-findings). The [HTTP integration](session-protocol.md) keeps loopback binding, validates Host/Origin, accepts only host keys/UUIDs, separates command acceptance/settlement, bounds client output and maps invalidations without pretending they are a durable replay log. No publication/remote deployment is implied by runtime tests.
 
