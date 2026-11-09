@@ -36,7 +36,9 @@
       ? "Opening…"
       : working?.hidden
         ? ""
-        : (working?.message ?? chatStatus(chat?.status, chat?.interrupted)),
+        : chat?.waiting && chat.status === "running"
+          ? chatStatus(chat.status, chat.interrupted, true)
+          : (working?.message ?? chatStatus(chat?.status, chat?.interrupted)),
   );
   // An extension's window title names the browser tab while this chat is open.
   $effect(() => {

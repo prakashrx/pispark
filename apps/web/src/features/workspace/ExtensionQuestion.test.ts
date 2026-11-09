@@ -3,9 +3,6 @@ import { expect, test, vi } from "vitest";
 import type { ExtensionDialog } from "../../../../server/src/protocol";
 import ExtensionQuestion from "./ExtensionQuestion.svelte";
 
-// jsdom does not scroll.
-Element.prototype.scrollIntoView = vi.fn();
-
 const ask = (dialog: ExtensionDialog) => {
   const onanswer = vi.fn();
   render(ExtensionQuestion, { dialog, onanswer });

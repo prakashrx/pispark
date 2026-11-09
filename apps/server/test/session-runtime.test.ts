@@ -338,9 +338,13 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
       const run = f.runtime.start(a.id, text);
       await eventually(() => f.runtime.session(a.id).extensions.dialogs.length === 1);
       const dialog = f.runtime.session(a.id).extensions.dialogs[0]!;
+      // The chat says it waits for someone, in the list as well.
+      assert.equal(f.runtime.session(a.id).waiting, true);
+      assert.equal(f.runtime.list().find((chat) => chat.id === a.id)?.waiting, true);
       f.runtime.answer(a.id, dialog.id, answer);
       assert.equal((await run.completion).outcome, "completed");
       assert.equal(f.runtime.session(a.id).extensions.dialogs.length, 0);
+      assert.equal(f.runtime.session(a.id).waiting, undefined);
       return dialog;
     };
     const confirm = await ask("ui-confirm", true);

@@ -55,6 +55,8 @@ export interface SessionSummary {
   persona: ChatPersona;
   /** The persona changed since this session started; reload to apply. */
   personaChanged?: boolean;
+  /** An extension asked a question and the run waits for an answer. */
+  waiting?: boolean;
 }
 export interface SessionSnapshot extends SessionSummary {
   sequence: number;
@@ -207,6 +209,7 @@ export class SessionRuntime {
         layered: this.personas.exists({ chat: metadata.id }),
       },
       ...(hosted?.setupChanged ? { personaChanged: true } : {}),
+      ...(hosted?.ui?.asking ? { waiting: true } : {}),
     };
   }
   /** After any persona edit, flag open chats whose resolved setup no longer matches. */

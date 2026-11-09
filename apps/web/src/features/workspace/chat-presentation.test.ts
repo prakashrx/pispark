@@ -34,6 +34,9 @@ test("normal status is quiet and cancellation/agent errors remain distinct", () 
   expect(chatStatus("starting")).toBe("Opening…");
   expect(chatStatus("error")).toBe("Needs attention");
   expect(chatStatus("unloaded", true)).toBe("Needs attention");
+  // A question an extension asked comes first while the run waits on it.
+  expect(chatStatus("running", false, true)).toBe("Waiting for you");
+  expect(chatStatus("idle", false, true)).toBe("");
 });
 
 test("uncertainty primary copy distinguishes acceptance, settlement and known-chat scope without interpreting raw errors", () => {

@@ -13,6 +13,8 @@ export interface SessionInfo {
   persona: ChatPersona;
   /** The persona changed since this session started; reload to apply. */
   personaChanged?: boolean;
+  /** An extension asked a question and the run waits for an answer. */
+  waiting?: boolean;
 }
 /**
  * One thing in the chat, projected from Pi's session: a message, a summary, or a custom entry.

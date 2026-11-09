@@ -294,8 +294,9 @@ export class SessionClient {
       interrupted: session.interrupted,
       persona: session.persona,
       personaChanged: session.personaChanged,
+      waiting: session.waiting,
     };
-    if (row && JSON.stringify(next) !== JSON.stringify({ title: row.title, hasHistory: row.hasHistory, status: row.status, interrupted: row.interrupted, persona: row.persona, personaChanged: row.personaChanged }))
+    if (row && JSON.stringify(next) !== JSON.stringify({ title: row.title, hasHistory: row.hasHistory, status: row.status, interrupted: row.interrupted, persona: row.persona, personaChanged: row.personaChanged, waiting: row.waiting }))
       this.sessions = this.sessions.map((s) => (s.id === id ? { ...s, ...next } : s));
   }
   /** An extension called Pi's `setEditorText`: put its text in this chat's reply box. */

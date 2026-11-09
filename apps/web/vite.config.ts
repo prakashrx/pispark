@@ -17,5 +17,5 @@ export default defineConfig(({ mode }) => ({
   },
   // Preserve source alpha values: CSS minification rounds .7 to 8-bit hex alpha.
   build: { cssMinify: false },
-  test: { environment: "jsdom", include: ["src/**/*.test.ts"] },
+  test: { environment: "jsdom", include: ["src/**/*.test.ts"], setupFiles: ["src/test-setup.ts"] },
 }));

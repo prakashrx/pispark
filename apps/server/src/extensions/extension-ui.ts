@@ -290,6 +290,11 @@ export class ExtensionUI {
     this.notice(`The ${name} extension failed in ${event}: ${message.slice(0, 500)}`, "error");
   }
 
+  /** Whether a question is open, so the chat can say it waits for someone. */
+  get asking(): boolean {
+    return this.dialogs.size > 0;
+  }
+
   answer(dialogId: string, answer: string | boolean | null): void {
     const pending = this.dialogs.get(dialogId);
     if (!pending) throw new RuntimeError("not-found");
