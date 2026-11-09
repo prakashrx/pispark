@@ -181,6 +181,17 @@ export class LocalProviderControl {
           ];
           message.stopReason = "toolUse";
           events.push({ type: "done", reason: "toolUse", message });
+        } else if (text.startsWith("tools:") && last?.role !== "toolResult") {
+          // "tools:<json array of {name, args}>" calls several tools in one assistant message.
+          const calls = JSON.parse(text.slice(6)) as { name: string; args?: any }[];
+          message.content = calls.map((call, index) => ({
+            type: "toolCall" as const,
+            id: `local-tools-${index}`,
+            name: call.name,
+            arguments: call.args ?? {},
+          }));
+          message.stopReason = "toolUse";
+          events.push({ type: "done", reason: "toolUse", message });
         } else if (text.startsWith("read:") && last?.role !== "toolResult") {
           message.content = [
             {

@@ -1,5 +1,4 @@
 import type { SessionInfo } from "../../../../server/src/protocol";
-import type { NativeMessage } from "./chat-view";
 import { validChatTitle } from "../../../../server/src/runtime/chat-title";
 
 export type CommandUncertaintyKind =
@@ -44,68 +43,4 @@ export function chatStarted(chat: SessionInfo): string {
         dateStyle: "short",
         timeStyle: "short",
       });
-}
-
-export interface VisibleTurn {
-  message: NativeMessage;
-  /** Part indexes not worth rendering: empty text, or tool calls already settled by a later result. */
-  hidden: Set<number>;
-}
-/**
- * Presentation-only pass over a native message window. A requested tool call is shown
- * until a later result with the same invocation ID arrives; the result then
- * carries the outcome on its own. Turns with nothing visible are dropped.
- */
-export function visibleTurns(messages: NativeMessage[]): VisibleTurn[] {
-  const turns = messages.map((message) => ({ message, hidden: new Set<number>() }));
-  const pending = new Map<string, { turn: VisibleTurn; index: number }>();
-  for (const turn of turns) {
-    const { message, hidden } = turn;
-    if (message.role === "toolResult") {
-      const call = message.callId && pending.get(message.callId);
-      if (call && message.callId) {
-        call.turn.hidden.add(call.index);
-        pending.delete(message.callId);
-      }
-      continue;
-    }
-    message.parts.forEach((part, index) => {
-      if (part.type === "toolCall") {
-        if (part.callId) pending.set(part.callId, { turn, index });
-      }
-      else if (!part.text?.trim()) hidden.add(index);
-    });
-  }
-  return turns.filter(
-    ({ message, hidden }) =>
-      !!message.detail ||
-      message.role === "toolResult" ||
-      message.stopReason === "aborted" ||
-      message.stopReason === "error" ||
-      hidden.size < message.parts.length,
-  );
-}
-
-/** Something placed between messages: it follows the first `after` messages of Pi's context. */
-export interface Anchored {
-  after: number;
-  /** Order among items at the same place. */
-  at?: number;
-}
-/**
- * Places notices and custom entries among visible turns: each goes before the first turn whose
- * message came at or after its position; the rest go at the end.
- */
-export function placeAnchored<T extends Anchored>(
-  turns: VisibleTurn[],
-  items: T[],
-): { before: T[][]; end: T[] } {
-  const before: T[][] = turns.map(() => []);
-  const end: T[] = [];
-  for (const item of [...items].sort((a, b) => a.after - b.after || (a.at ?? 0) - (b.at ?? 0))) {
-    const turn = turns.findIndex((t) => (t.message.index ?? Infinity) >= item.after);
-    if (turn < 0) end.push(item);
-    else before[turn]!.push(item);
-  }
-  return { before, end };
 }

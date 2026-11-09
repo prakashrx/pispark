@@ -1,0 +1,123 @@
+import { expect, test } from "vitest";
+import type { Item, ItemPart } from "../../../../server/src/protocol";
+import { buildTurns, clippedPart, itemText } from "./chat-turns";
+import { describeCall, summarizeCalls } from "./tool-summary";
+
+let n = 0;
+const item = (role: Item["role"], parts: ItemPart[], extra: Partial<Item> = {}): Item => ({
+  id: `e${++n}`,
+  key: `k${n}`,
+  role,
+  parts,
+  pos: n,
+  ...extra,
+});
+const text = (value: string, size?: number): ItemPart => ({ type: "text", text: value, ...(size ? { size } : {}) });
+const call = (id: string, name: string, args: Record<string, string> = {}): ItemPart => ({ type: "toolCall", id, name, args });
+const result = (callId: string, value = "ok", extra: Partial<Item> = {}) =>
+  item("toolResult", [text(value)], { callId, toolName: "x", ...extra });
+
+test("a turn is your message and its response as ordered segments, tool results attached to their calls", () => {
+  n = 0;
+  const turns = buildTurns(
+    [
+      item("user", [text("tidy it")]),
+      item("assistant", [{ type: "thinking", text: "plan" }, text("On it."), call("c1", "read", { path: "a.ts" })]),
+      result("c1"),
+      item("assistant", [call("c2", "edit", { path: "a.ts" })]),
+      result("c2", "edited"),
+      item("assistant", [text("Done.")]),
+    ],
+    { running: false },
+  );
+  expect(turns).toHaveLength(1);
+  expect(turns[0]!.user?.parts[0]).toEqual(text("tidy it"));
+  expect(turns[0]!.segments.map((s) => s.kind)).toEqual(["thinking", "text", "activity", "text"]);
+  const activity = turns[0]!.segments[2]!;
+  // Calls from separate assistant messages with nothing said between them are one activity.
+  expect(activity.kind === "activity" && activity.calls.map((c) => [c.name, c.status])).toEqual([["read", "done"], ["edit", "done"]]);
+  expect(activity.kind === "activity" && activity.calls[1]!.result?.parts[0]).toEqual(text("edited"));
+});
+
+test("text between calls splits activities; a call with no result is running only while the agent is", () => {
+  n = 0;
+  const items = [
+    item("user", [text("go")]),
+    item("assistant", [call("c1", "bash"), text("then"), call("c2", "bash")]),
+    result("c1"),
+  ];
+  const running = buildTurns(items, { running: true })[0]!;
+  expect(running.segments.map((s) => s.kind)).toEqual(["activity", "text", "activity"]);
+  const first = running.segments[0];
+  const second = running.segments[2];
+  expect(first?.kind === "activity" && first.calls[0]!.status).toBe("done");
+  expect(second?.kind === "activity" && [second.calls[0]!.status, second.live]).toEqual(["running", true]);
+  const stopped = buildTurns(items, { running: false })[0]!;
+  const tail = stopped.segments[2]!;
+  expect(tail.kind === "activity" && [tail.calls[0]!.status, tail.live]).toEqual(["unfinished", false]);
+});
+
+test("the item being written streams; finished items do not", () => {
+  n = 0;
+  const items = [item("user", [text("hi")]), item("assistant", [text("first")]), item("assistant", [text("sec")])];
+  const live = buildTurns(items, { running: true })[0]!;
+  expect(live.segments.map((s) => s.kind === "text" && s.streaming)).toEqual([false, true]);
+  expect(buildTurns(items, { running: false })[0]!.segments.every((s) => s.kind !== "text" || !s.streaming)).toBe(true);
+});
+
+test("history that begins mid-answer still shows; blank text and thinking are skipped; stops are said", () => {
+  n = 0;
+  const turns = buildTurns(
+    [item("assistant", [text("  "), { type: "thinking", text: "" }, text("kept")], { stopReason: "aborted" }), item("user", [text("next")])],
+    { running: false },
+  );
+  expect(turns).toHaveLength(2);
+  expect(turns[0]!.user).toBeUndefined();
+  expect(turns[0]!.segments.map((s) => s.kind)).toEqual(["text", "stopped"]);
+  expect(turns[1]!.segments).toEqual([]);
+});
+
+test("extension notices land where they happened; one ahead of your message ends the answer before it", () => {
+  n = 0;
+  const notice = (id: number, after: number) => ({ id, kind: "info" as const, lines: [], after, at: id });
+  // Item positions are 1 (you), 2 (answer), 3 (you), 4 (answer).
+  const turns = buildTurns(
+    [item("user", [text("a")]), item("assistant", [text("b")]), item("user", [text("c")]), item("assistant", [text("d")])],
+    { running: false, notices: [notice(1, 2), notice(2, 3), notice(3, 99)] },
+  );
+  expect(turns.map((t) => t.segments.map((s) => s.kind))).toEqual([
+    ["notice", "text", "notice"], // before the answer at 2; and ahead of your message at 3, ending this answer
+    ["text", "notice"], // the leftover goes at the end
+  ]);
+});
+
+test("custom entries, summaries and clipped parts keep their identity", () => {
+  n = 0;
+  const clipped = item("assistant", [text("start", 500)]);
+  const turns = buildTurns([item("user", [text("q")]), clipped, item("entry", [], { rendered: { body: [[{ text: "note" }]] } }), item("summary", [text("earlier chat")])], { running: false });
+  expect(turns[0]!.segments.map((s) => s.kind)).toEqual(["text", "custom", "summary"]);
+  const body = turns[0]!.segments[0]!;
+  expect(body.kind === "text" && body.detail).toEqual({ id: clipped.id, part: 0 });
+  expect(clippedPart(clipped)).toEqual({ id: clipped.id, part: 0 });
+  expect(itemText(item("user", [text("a"), text("b")]))).toBe("a\nb");
+});
+
+test("calls are described in words and grouped into one line", () => {
+  expect(describeCall("edit", { path: "src/a/demo.ts" })).toMatchObject({ doing: "Editing", done: "Edited", object: "demo.ts" });
+  expect(describeCall("bash", { command: "npm test\nand more" }).object).toBe("npm test");
+  expect(describeCall("hello", {})).toMatchObject({ doing: "Using hello", group: "other" });
+  expect(describeCall("write", {}).object).toBeUndefined();
+  expect(
+    summarizeCalls([
+      { name: "read", args: { path: "a" } },
+      { name: "read", args: { path: "b" } },
+      { name: "edit", args: { path: "demo.ts" } },
+      { name: "bash", args: { command: "x" } },
+      { name: "bash", args: { command: "y" } },
+      { name: "hello", args: {} },
+    ]),
+  ).toBe("Read 2 files, edited demo.ts, ran 2 commands, used hello");
+  // Things are listed in the order they first happened.
+  expect(summarizeCalls([{ name: "bash", args: { command: "x" } }, { name: "write", args: { path: "a.txt" } }, { name: "bash", args: { command: "y" } }])).toBe("Ran 2 commands, wrote a.txt");
+  expect(summarizeCalls([{ name: "bash", args: {} }])).toBe("Ran 1 command");
+});

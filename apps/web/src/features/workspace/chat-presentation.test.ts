@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { chatName, chatStatus, commandUncertainty, folderName, placeAnchored, visibleTurns } from "./chat-presentation";
+import { chatName, chatStatus, commandUncertainty, folderName } from "./chat-presentation";
 import type { SessionInfo } from "../../../../server/src/protocol";
 const chat: SessionInfo = {
   id: "private-uuid",
@@ -52,43 +52,8 @@ test("uncertainty primary copy distinguishes acceptance, settlement and known-ch
   expect(commandUncertainty(undefined, true)).toBe("");
 });
 
-test("unmatched results never hide a pending tool, even when names repeat", () => {
-  const calls = { role: "assistant", parts: [
-    { type: "toolCall", text: "", name: "read", callId: "first" },
-    { type: "toolCall", text: "", name: "read", callId: "second" },
-  ] };
-  const result = { role: "toolResult", toolName: "read", parts: [] };
-  const turns = visibleTurns([calls, { ...result, callId: "other" }, { ...result, callId: "second" }, result]);
-  expect([...turns[0]!.hidden]).toEqual([1]);
-});
-
-test("visible turns drop empty messages and settle tool calls by their later result", () => {
-  const turns = visibleTurns([
-    { role: "assistant", parts: [{ type: "text", text: "  " }] },
-    { role: "user", parts: [{ type: "text", text: "Hi" }] },
-    { role: "assistant", parts: [{ type: "toolCall", text: "", name: "a" }, { type: "toolCall", text: "", name: "b", callId: "second" }] },
-    { role: "toolResult", toolName: "b", callId: "second", parts: [{ type: "text", text: "ok" }] },
-    { role: "assistant", parts: [{ type: "text", text: "" }], stopReason: "aborted" },
-  ]);
-  expect(turns.map((t) => t.message.role)).toEqual(["user", "assistant", "toolResult", "assistant"]);
-  // "a" has no result yet so its request stays visible; "b" is settled.
-  expect([...(turns[1]?.hidden ?? [])]).toEqual([1]);
-});
-
 test("folder labels use the last path segment on any platform", () => {
   expect(folderName("D:\\dev\\pispark")).toBe("pispark");
   expect(folderName("/home/me/project/")).toBe("project");
   expect(folderName("C:\\")).toBe("C:");
-});
-
-test("extension notices and entries go before the first turn at or after their position", () => {
-  const turns = visibleTurns([
-    { index: 1, role: "user", parts: [{ type: "text", text: "Hi" }] },
-    { index: 2, role: "assistant", parts: [{ type: "text", text: "" }] },
-    { index: 3, role: "assistant", parts: [{ type: "text", text: "Hello" }] },
-  ]);
-  const placed = placeAnchored(turns, [{ after: 9 }, { after: 2 }, { after: 0 }]);
-  // Index 2 was empty and dropped, so its entry waits for the next visible turn.
-  expect(placed.before.map((items) => items.map((i) => i.after))).toEqual([[0], [2]]);
-  expect(placed.end.map((i) => i.after)).toEqual([9]);
 });

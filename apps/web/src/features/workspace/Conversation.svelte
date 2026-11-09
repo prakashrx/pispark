@@ -1,7 +1,8 @@
 <script lang="ts">
   import Button from "../../lib/ui/Button.svelte";
-  import NativeTurn from "./NativeTurn.svelte";
-  import ExtensionBlock from "./ExtensionBlock.svelte";
+  import { tick } from "svelte";
+  import ResponseTurn from "./ResponseTurn.svelte";
+  import { buildTurns } from "./chat-turns";
   import StyledText from "./StyledText.svelte";
   import WorkingFrames from "./WorkingFrames.svelte";
   import ChatDetails from "./ChatDetails.svelte";
@@ -12,8 +13,6 @@
     chatStatus,
     chatStarted,
     folderName,
-    placeAnchored,
-    visibleTurns,
   } from "./chat-presentation";
   import { useSessions } from "./session-client.svelte";
   const client = useSessions();
@@ -52,9 +51,60 @@
   const queued = $derived(
     (snapshot?.queue.steering ?? 0) + (snapshot?.queue.followUp ?? 0),
   );
-  const turns = $derived(snapshot ? visibleTurns(snapshot.messages) : []);
-  // Extension notices, placed where they happened among the turns.
-  const placed = $derived(placeAnchored(turns, snapshot?.extensions.notices ?? []));
+  const running = $derived(["running", "cancelling"].includes(snapshot?.status ?? ""));
+  // The chat as turns of ordered segments; extension notices land where they happened.
+  const turns = $derived(
+    snapshot ? buildTurns(client.live.items, { running, notices: snapshot.extensions.notices }) : [],
+  );
+
+  // One continuous scroll: older items are read in above as you reach the top, the view stays
+  // where it was, and new output follows only while you are at the bottom.
+  let scroller = $state<HTMLElement>();
+  let top = $state<HTMLElement>();
+  let following = $state(true);
+  let loadingEarlier = $state(false);
+  let earlierFailed = $state(false);
+  const atBottom = () =>
+    !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+  async function earlier() {
+    if (loadingEarlier || !client.live.more || !scroller) return;
+    loadingEarlier = true;
+    const fromBottom = scroller.scrollHeight - scroller.scrollTop;
+    earlierFailed = !(await client.loadEarlier());
+    await tick();
+    if (scroller) scroller.scrollTop = scroller.scrollHeight - fromBottom;
+    loadingEarlier = false;
+    // Still at the top (the older page did not fill the view): keep reading.
+    if (scroller && scroller.scrollTop < 40 && client.live.more && !earlierFailed) void earlier();
+  }
+  $effect(() => {
+    if (!scroller || !top) return;
+    const watcher = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting) && !earlierFailed) void earlier();
+      },
+      { root: scroller },
+    );
+    watcher.observe(top);
+    return () => watcher.disconnect();
+  });
+  // A different chat starts at its end.
+  $effect(() => {
+    client.selected;
+    following = true;
+    earlierFailed = false;
+  });
+  $effect(() => {
+    turns;
+    if (!following) return;
+    void tick().then(() => {
+      if (scroller && following) scroller.scrollTop = scroller.scrollHeight;
+    });
+  });
+  function jumpToLatest() {
+    following = true;
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  }
   const modelName = $derived(
     client.providers.catalog.providers
       .find((p) => p.id === snapshot?.model?.provider)
@@ -66,7 +116,9 @@
 <main
   id="workspace"
   aria-label="Chat conversation"
-  class="flex-1 overflow-y-auto px-6 pt-8 pb-6 flex flex-col items-center"
+  class="conversation flex-1 overflow-y-auto px-6 pt-8 pb-6 flex flex-col items-center"
+  bind:this={scroller}
+  onscroll={() => (following = atBottom())}
 >
   <div class="w-full max-w-3xl flex flex-col gap-8">
     <header class="pb-5 border-b border-[var(--border)]">
@@ -156,23 +208,44 @@
       {#if queued > 0}<p class="text-sm text-muted-foreground">
           {queued} messages queued
         </p>{/if}
-      {#if client.live.more}<Button
+      <div bind:this={top} aria-hidden="true"></div>
+      {#if loadingEarlier}<p role="status" class="text-sm text-muted-foreground">Loading earlier messages…</p>
+      {:else if client.live.more && earlierFailed}<Button
           class={button}
-          onclick={() => client.loadEarlier()}>Load earlier messages</Button
+          onclick={() => {
+            earlierFailed = false;
+            void earlier();
+          }}>Load earlier messages</Button
         >{/if}
       <div class="flex flex-col gap-8">
-        {#each turns as turn, index}
-          {#each placed.before[index] ?? [] as item}<ExtensionBlock lines={item.lines} kind={item.kind} />{/each}
-          <NativeTurn message={turn.message} hidden={turn.hidden} thinkingLabel={snapshot?.extensions.thinkingLabel} />
+        {#each turns as turn (turn.key)}
+          <ResponseTurn {turn} thinkingLabel={snapshot?.extensions.thinkingLabel} />
         {/each}
-        {#each placed.end as item}<ExtensionBlock lines={item.lines} kind={item.kind} />{/each}
       </div>
     {/if}
     <div class="h-10"></div>
+    {#if !following && turns.length}<div class="jump">
+        <Button class={button} onclick={jumpToLatest}>Jump to latest</Button>
+      </div>{/if}
   </div>
 </main>
 
 <style>
+  /* Prepending older items must not move what you are reading; the position is restored by hand. */
+  .conversation {
+    overflow-anchor: none;
+  }
+  .jump {
+    position: sticky;
+    bottom: 0.5rem;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+    margin-top: -2.5rem;
+  }
+  .jump :global(.ui-button) {
+    pointer-events: auto;
+  }
   .chat-status {
     display: inline-flex;
     align-items: center;

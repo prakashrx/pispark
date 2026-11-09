@@ -43,9 +43,9 @@ test("operations grow the tail in place and a commit moves finished items into h
   const { live } = chat({ "?limit=40": page([item("a", "hi", "user")], "a") });
   await live.load("s");
   await live.apply("s", snapshot("a", [{ ...item("", "wor"), id: undefined, key: "t1" }]));
-  expect(live.view!.messages.map((m) => m.parts[0]!.text)).toEqual(["hi", "wor"]);
+  expect(live.items.map((i) => (i.parts[0] as { text: string }).text)).toEqual(["hi", "wor"]);
   expect(await live.apply("s", ops(1, { op: "append", path: ["tail", 0, "parts", 0, "text"], text: "ld" }))).toBe(true);
-  expect(live.view!.messages.at(-1)!.parts[0]!.text).toBe("world");
+  expect((live.items.at(-1)!.parts[0] as { text: string }).text).toBe("world");
   const done = { ...item("b", "world"), key: "t1" };
   expect(
     await live.apply("s", ops(2, { op: "commit", after: "a", head: "b", items: [done] }, { op: "set", path: ["tail"], value: [] })),
@@ -76,13 +76,3 @@ test("a commit announced without its items is read as history", async () => {
   expect(live.history.map((i) => i.id)).toEqual(["a", "b"]);
 });
 
-test("finalized items are presented once; clipped text points at its reader", async () => {
-  const clipped: Item = { id: "c", key: "c", role: "assistant", parts: [{ type: "text", text: "start", size: 99 }] };
-  const { live } = chat({ "?limit=40": page([item("a", "hi"), clipped], "c") });
-  await live.load("s");
-  await live.apply("s", snapshot("c"));
-  const first = live.view!.messages;
-  await live.apply("s", ops(1, { op: "set", path: ["session", "status"], value: "idle" }));
-  expect(live.view!.messages[0]).toBe(first[0]);
-  expect(live.view!.messages[1]!.detail).toEqual({ id: "c", part: 0 });
-});

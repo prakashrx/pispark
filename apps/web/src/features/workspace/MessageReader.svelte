@@ -2,7 +2,7 @@
   import { tick } from "svelte";
   import type { PartPage } from "../../../../server/src/protocol";
   import Button from "../../lib/ui/Button.svelte";
-  import type { PartRef } from "./chat-view";
+  import type { PartRef } from "./chat-turns";
   import { useSessions } from "./session-client.svelte";
   let { reference }: { reference: PartRef } = $props();
   const client = useSessions();

@@ -7,8 +7,7 @@ import type {
   SessionDoc,
   SessionInfo,
 } from "../../../../server/src/protocol";
-export type { NativeMessage } from "./chat-view";
-import type { PartRef } from "./chat-view";
+import type { PartRef } from "./chat-turns";
 import { LiveChat } from "./live-chat.svelte";
 import { liveEvents } from "./live-stream";
 import type { CommandUncertaintyKind } from "./chat-presentation";
@@ -41,9 +40,9 @@ export class SessionClient {
   selected = $state("");
   /** The open chat: Pi's history by cursor plus the live document. */
   readonly live = new LiveChat((path) => this.json(path));
-  /** The open chat as the conversation components draw it. */
+  /** The open chat's session document: status, model, queue and what extensions show. */
   get snapshot() {
-    return this.live.view;
+    return this.live.doc?.session;
   }
   drafts = $state<Record<string, string>>({});
   connection = $state("Loading");
@@ -475,12 +474,15 @@ export class SessionClient {
   readPart(ref: PartRef, offset: number) {
     return this.json<PartPage>(`/api/sessions/${this.selected}/items/${ref.id}/parts/${ref.part}?offset=${offset}`);
   }
-  async loadEarlier() {
+  /** Reads the next older items in; `false` when that failed. */
+  async loadEarlier(): Promise<boolean> {
     const id = this.selected;
     try {
       await this.live.loadEarlier(id);
+      return true;
     } catch (error) {
       this.recordError(error, id);
+      return false;
     }
   }
   dispose() {

@@ -6,7 +6,6 @@ import type {
 } from "../../../../server/src/protocol";
 import { applyOp } from "../../../../server/src/stream-ops";
 import type { Json } from "../../../../server/src/stream-ops";
-import { toMessage, type ChatView, type NativeMessage } from "./chat-view";
 
 const PAGE = 40;
 type Get = <T>(path: string) => Promise<T>;
@@ -24,7 +23,6 @@ export class LiveChat {
   /** The session's last entry id as far as `history` goes; `undefined` until history is loaded. */
   private head: string | null | undefined;
   private seq = 0;
-  private readonly messages = new WeakMap<Item, NativeMessage>();
 
   constructor(private readonly get: Get) {}
 
@@ -33,21 +31,6 @@ export class LiveChat {
     const keys = new Set(this.history.map((item) => item.key));
     return [...this.history, ...(this.doc?.tail ?? []).filter((item) => !keys.has(item.key))];
   });
-  /** The existing conversation components' view of the chat. */
-  readonly view = $derived.by((): ChatView | undefined => {
-    const doc = this.doc;
-    if (!doc) return undefined;
-    // Finalized items never change, so their presentation is made once.
-    const finalized = new Set(this.history);
-    const messages = this.items.map((item) => {
-      if (!finalized.has(item)) return toMessage(item);
-      let message = this.messages.get(item);
-      if (!message) this.messages.set(item, (message = toMessage(item)));
-      return message;
-    });
-    return { ...doc.session, messages };
-  });
-
   get loaded() {
     return this.head !== undefined;
   }
