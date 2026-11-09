@@ -342,6 +342,10 @@ export class SessionHttp {
         await this.providers.handle(request, response);
         return;
       }
+      if (path === "/api/settings" && !url.search && (request.method === "GET" || request.method === "POST")) {
+        sendJson(response, 200, request.method === "GET" ? this.runtime.settings() : this.runtime.updateSettings(await body(request)));
+        return;
+      }
       if (
         request.method === "POST" &&
         path === "/api/commands" &&

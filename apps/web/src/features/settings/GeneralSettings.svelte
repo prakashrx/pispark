@@ -7,8 +7,29 @@
   import ThemePicker from "../../lib/theme/ThemePicker.svelte";
   import { appearance } from "../../lib/theme/appearance.svelte";
   import { fonts, textSizes } from "../../lib/theme/themes";
+  import Input from "../../lib/ui/Input.svelte";
   import { useSessions } from "../workspace/session-client.svelte";
   const client = useSessions();
+  // How many chats may work at once; saved on the server when a valid number is entered.
+  let running = $state("");
+  let runningError = $state("");
+  $effect(() => {
+    if (client.settings && !running) running = String(client.settings.maxRunning);
+  });
+  async function saveRunning() {
+    const value = Number(running);
+    if (!Number.isInteger(value) || value < 1 || value > 32) {
+      runningError = "Enter a whole number from 1 to 32.";
+      return;
+    }
+    runningError = "";
+    if (value === client.settings?.maxRunning) return;
+    try {
+      await client.saveSettings({ maxRunning: value });
+    } catch {
+      runningError = "Couldn’t save. Try again.";
+    }
+  }
   const fontOptions = fonts.map((font) => ({
     value: font.id,
     label: font.name,
@@ -81,6 +102,24 @@
               </p>{:else}<p class="text-muted-foreground">None yet. New chats start in your home folder.</p>{/each}{/if}
         </div>
       </FieldRow>
+      <FieldRow label="Chats working at once" description="More messages wait their turn and start when a chat finishes.">
+        <div class="flex flex-col items-end gap-1">
+          <Input
+            type="number"
+            min="1"
+            max="32"
+            step="1"
+            label="Chats working at once"
+            density="compact"
+            class="running-input"
+            invalid={!!runningError}
+            disabled={!client.settings}
+            bind:value={running}
+            onchange={() => void saveRunning()}
+          />
+          {#if runningError}<p role="alert" class="text-xs text-[var(--danger-foreground)]">{runningError}</p>{/if}
+        </div>
+      </FieldRow>
       <FieldRow label="Default persona" description="Skills, tools and instructions every chat starts with.">
         <a
           class="settings-link"
@@ -103,6 +142,10 @@
 </SettingsPage>
 
 <style>
+  :global(.ui-input.running-input) {
+    width: 5rem;
+    text-align: right;
+  }
   .type-sample {
     padding: 1rem 1.25rem 1.25rem;
     background: var(--code-surface);

@@ -157,6 +157,11 @@ export interface LiveDoc {
   /** Running tool calls by (opaque) call id. Pi reports them only as events, never in its state. */
   progress: Record<string, ToolProgress>;
 }
+/** PiSpark's own settings. */
+export interface HostSettings {
+  /** How many chats may have an agent working at once; more prompts wait for a turn. */
+  maxRunning: number;
+}
 /** Starting points for Ask's folder picker. Any existing folder on the host is allowed. */
 export interface Catalog {
   home: string;

@@ -4,6 +4,7 @@ import type {
   CallRequest,
   CallResponse,
   Catalog,
+  HostSettings,
   Command,
   PartPage,
   Receipt,
@@ -37,6 +38,8 @@ export class SessionClient {
   readonly providers = new ProviderClient();
   readonly personas = new PersonaClient();
   catalog = $state<Catalog>({ home: "", recentFolders: [] });
+  /** PiSpark's own settings; undefined until loaded. */
+  settings = $state<HostSettings>();
   catalogLoading = $state(true);
   catalogError = $state(false);
   sessions = $state<SessionInfo[]>([]);
@@ -134,6 +137,9 @@ export class SessionClient {
     this.catalogError = false;
     try {
       this.catalog = await this.json<Catalog>("/api/catalog");
+      void this.json<HostSettings>("/api/settings")
+        .then((settings) => (this.settings = settings))
+        .catch(() => {});
       this.catalogLoading = false;
       await this.refresh();
       this.connection = "Connected";
@@ -330,6 +336,14 @@ export class SessionClient {
     const answer = (await response.json()) as CallResponse;
     if (!response.ok) throw new Error(answer.detail ?? answer.error ?? "The call failed");
     return answer.result;
+  }
+  /** Saves a settings change; rejects when the server refused it. */
+  async saveSettings(settings: HostSettings): Promise<void> {
+    this.settings = await this.json<HostSettings>("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings),
+    });
   }
   /** Answer a question an extension is waiting on; null dismisses it. */
   async answer(dialogId: string, value: string | boolean | null) {

@@ -17,6 +17,8 @@ export interface HomePaths {
   personas: string;
   providers: string;
   logs: string;
+  /** PiSpark's own settings file. */
+  settings: string;
 }
 
 export function homePaths(root: string): HomePaths {
@@ -27,6 +29,7 @@ export function homePaths(root: string): HomePaths {
     personas: join(base, "personas"),
     providers: join(base, "providers"),
     logs: join(base, "logs"),
+    settings: join(base, "settings.json"),
   };
 }
 

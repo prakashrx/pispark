@@ -43,6 +43,7 @@ Types: `apps/server/src/protocol.ts`, `provider-protocol.ts` and `persona-protoc
 | `GET /api/sessions/:uuid/items?before=ID&limit=N` / `?after=ID` | Finalized items on Pi's active branch, oldest first, read straight from Pi's session; bounded by count and bytes; `head` is the session's last entry id, `more` says whether the page was cut |
 | `GET /api/sessions/:uuid/live` | SSE: one `snapshot` of the live document, then `ops` batches (see below) |
 | `GET /api/sessions/:uuid/items/:id/parts/:n` | An image part's bytes, or with `?offset=` a chunk of a clipped text part |
+| `GET /api/settings` / `POST /api/settings {maxRunning}` | PiSpark's own settings, saved in `<home>/settings.json`: how many chats may have an agent working at once (1–32, default 8) |
 | `POST /api/sessions/:uuid/calls` | An extension component's `host.call` (see below) |
 | `GET /api/views/:hash.js` | An extension's compiled Svelte component, addressed by its content; the session document lists them under `extensions.views` ([extensions](extensions.md)) |
 

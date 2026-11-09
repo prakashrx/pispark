@@ -1,10 +1,11 @@
 import { chatTitle, toolChatTitle } from "./chat-title.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import { NOTICE_ENTRY, type ItemsPage, type LiveDoc, type PartPage, type SessionDoc } from "../protocol.js";
+import { NOTICE_ENTRY, type HostSettings, type ItemsPage, type LiveDoc, type PartPage, type SessionDoc } from "../protocol.js";
 import { ItemProjector, progressOf } from "./items.js";
 import { LiveView } from "./live-view.js";
 import { RunSlots } from "./run-slots.js";
+import { readSettings, validSettings, writeSettings } from "./host-settings.js";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import {
   createAgentSession,
@@ -133,6 +134,7 @@ export class SessionRuntime {
   private readonly maxLive: number;
   /** Chats whose agent works now, and the ones waiting for a turn. */
   private readonly slots: RunSlots;
+  private readonly settingsPath: string;
   private readonly timeout: number;
   private readonly runTimeout: number;
   constructor(
@@ -141,7 +143,8 @@ export class SessionRuntime {
     private readonly logger: SafeLogger = silentLogger,
   ) {
     this.maxLive = configuration.maxLiveSessions ?? 8;
-    this.slots = new RunSlots(configuration.maxRunning ?? 8);
+    this.settingsPath = homePaths(configuration.home).settings;
+    this.slots = new RunSlots(configuration.maxRunning ?? readSettings(this.settingsPath).maxRunning);
     this.timeout = configuration.operationTimeoutMs ?? 10_000;
     this.runTimeout = configuration.runTimeoutMs ?? 300_000;
     if (
@@ -161,6 +164,18 @@ export class SessionRuntime {
     this.unwatchPersonas = this.personas.onChange(() => this.checkSetups());
   }
 
+  /** PiSpark's own settings. */
+  settings(): HostSettings {
+    return { maxRunning: this.slots.max };
+  }
+  /** Saves a settings change; a new run limit applies at once (running chats keep running). */
+  updateSettings(input: unknown): HostSettings {
+    const settings = validSettings(input);
+    writeSettings(this.settingsPath, settings);
+    this.slots.setLimit(settings.maxRunning);
+    for (const hosted of this.live.values()) this.changed(hosted);
+    return this.settings();
+  }
   list(): SessionSummary[] {
     const names = new Map(this.personas.list().map((p) => [p.id, p.name]));
     return this.storage

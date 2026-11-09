@@ -40,7 +40,7 @@ Failures use safe codes, not raw provider/extension stacks. Items and session do
 
 ## Run slots
 
-At most `maxRunning` chats (default 8) have an agent working at once (`runtime/run-slots.ts`). Further prompts wait in order with status `queued` and `queued: true` in the summary; the session document carries the waiting `queuedText`. A run whose extension waits for a person (an open `ctx.ui` question) gives its slot to the next chat. When the question is answered or gives up, the run needs a slot to go on and goes ahead of prompts that have not started; meanwhile it reports `queued: true`. Cancelling or stopping a chat that waits for a slot ends the wait at once.
+At most `maxRunning` chats have an agent working at once: Settings → General → Chats working at once, saved in `<home>/settings.json` (1–32, default 8; `settings()` / `updateSettings()`). A changed limit applies at once: a higher one starts waiting prompts, a lower one lets running chats finish (`runtime/run-slots.ts`). Further prompts wait in order with status `queued` and `queued: true` in the summary; the session document carries the waiting `queuedText`. A run whose extension waits for a person (an open `ctx.ui` question) gives its slot to the next chat. When the question is answered or gives up, the run needs a slot to go on and goes ahead of prompts that have not started; meanwhile it reports `queued: true`. Cancelling or stopping a chat that waits for a slot ends the wait at once.
 
 ## Observation and limits
 

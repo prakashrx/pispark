@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
+import { SessionHttp } from "../src/session-http.js";
+import { createAppServer } from "../src/server.js";
 import { SessionRuntime } from "../src/runtime/session-runtime.js";
 import { addControlledExtension, testHome } from "./fixtures/home.js";
 import { eventually } from "./fixtures/local-provider.js";
@@ -122,5 +126,69 @@ test("cancelling a run that waits for a slot after an answer ends it at once", a
     assert.deepEqual(await runB.completion, { outcome: "completed" });
   } finally {
     await f.cleanup();
+  }
+});
+
+test("the run limit is a setting: saved in the data folder, applied at once, validated", async () => {
+  const h = await testHome("pispark-queue-settings-");
+  await h.persona("default", { name: "Default" });
+  const runtimes: SessionRuntime[] = [];
+  const make = () => {
+    const runtime = new SessionRuntime(h.configuration);
+    runtimes.push(runtime);
+    return runtime;
+  };
+  try {
+    const runtime = make();
+    assert.deepEqual(runtime.settings(), { maxRunning: 8 });
+    assert.deepEqual(runtime.updateSettings({ maxRunning: 1 }), { maxRunning: 1 });
+    assert.deepEqual(JSON.parse(await readFile(join(h.home, "settings.json"), "utf8")), { maxRunning: 1 });
+    for (const bad of [{ maxRunning: 0 }, { maxRunning: 33 }, { maxRunning: 1.5 }, { maxRunning: 2, extra: 1 }, {}, null])
+      assert.throws(() => runtime.updateSettings(bad), (error: { code?: string }) => error.code === "invalid-input");
+
+    // With one slot, a second prompt waits; raising the limit starts it.
+    const folder = await h.folder("work");
+    const [a, b] = [await runtime.create({ folder }), await runtime.create({ folder })];
+    const runA = runtime.start(a.id, "first");
+    const runB = runtime.start(b.id, "second");
+    assert.equal(runtime.session(b.id).status, "queued");
+    runtime.updateSettings({ maxRunning: 2 });
+    assert.equal(runtime.session(b.id).status, "running");
+    h.provider.automatic = true;
+    await eventually(() => h.provider.requests.length === 2);
+    for (const request of h.provider.requests) request.release();
+    await Promise.all([runA.completion, runB.completion]);
+    await runtime.shutdown();
+
+    // A new start reads the saved setting.
+    assert.deepEqual(make().settings(), { maxRunning: 2 });
+  } finally {
+    await Promise.allSettled(runtimes.map((r) => r.shutdown()));
+    await h.remove();
+  }
+});
+
+test("settings over HTTP: read, change, refuse a bad value", async () => {
+  const h = await testHome("pispark-queue-http-");
+  const runtime = new SessionRuntime(h.configuration);
+  const http = new SessionHttp(runtime);
+  const server = createAppServer({ sessions: http });
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const post = (body: unknown) =>
+      fetch(`${base}/api/settings`, { method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify(body) });
+    assert.deepEqual(await (await fetch(`${base}/api/settings`)).json(), { maxRunning: 8 });
+    const saved = await post({ maxRunning: 3 });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(await saved.json(), { maxRunning: 3 });
+    assert.equal((await post({ maxRunning: "3" })).status, 400);
+    assert.deepEqual(await (await fetch(`${base}/api/settings`)).json(), { maxRunning: 3 });
+  } finally {
+    await http.shutdown();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await h.remove();
   }
 });
