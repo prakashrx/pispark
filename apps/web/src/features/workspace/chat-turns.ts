@@ -1,5 +1,6 @@
 import type { ExtensionView, Item, ItemPart } from "../../../../server/src/protocol";
 import type { Json } from "../../../../server/src/stream-ops";
+import { artifactsOf } from "./tool-views";
 
 /** A clipped part of a finalized item, read on demand. */
 export interface PartRef {
@@ -21,7 +22,7 @@ export interface ToolCall {
 /** One thing in a response, in the order it happened. */
 export type Segment =
   | { kind: "text"; key: string; text: string; size?: number; streaming: boolean; detail?: PartRef }
-  | { kind: "thinking"; key: string; text: string; streaming: boolean }
+  | { kind: "thinking"; key: string; text: string; streaming: boolean; /** An extension's name for collapsed thinking. */ label?: string }
   /** Consecutive tool calls, however many assistant messages they came in. */
   | { kind: "activity"; key: string; calls: ToolCall[]; live: boolean }
   /** A custom message or entry an extension renders. */
@@ -36,11 +37,22 @@ export type Segment =
   | { kind: "notice"; key: string; notice: Notice }
   | { kind: "stopped"; key: string; reason: "aborted" | "error" };
 
+/**
+ * A segment of a kind an extension defined (`name:kind`) and has a view registered for. The
+ * rest of what it carries is its own business; PiSpark only places it.
+ */
+export interface ViewSegment {
+  kind: `${string}:${string}`;
+  key: string;
+  [data: string]: unknown;
+}
+export type AnySegment = Segment | ViewSegment;
+
 /** Your message and everything the agent did and said in answer to it. */
 export interface Turn {
   key: string;
   user?: Item;
-  segments: Segment[];
+  segments: AnySegment[];
   /** The agent is still working on this turn. */
   running: boolean;
 }
@@ -54,34 +66,12 @@ export function clippedPart(item: Item): PartRef | undefined {
   return part >= 0 && item.id ? { id: item.id, part } : undefined;
 }
 
-const field = (value: Json | undefined, name: string): Json | undefined =>
-  value && typeof value === "object" && !Array.isArray(value) ? value[name] : undefined;
-
-/** Output of a finished call that reads better as part of the message than inside its activity. */
-export function artifactsOf(call: ToolCall): Segment[] {
-  const result = call.result;
-  if (!result) return [];
-  const out: Segment[] = [];
-  const path = field(call.args, "path");
-  const patch = field(result.details, "patch");
-  if (typeof patch === "string" && patch.trim())
-    out.push({ kind: "diff", key: `diff.${call.id}`, patch, path: typeof path === "string" ? path : undefined });
-  result.parts.forEach((part, index) => {
-    if (part.type === "image")
-      out.push({ kind: "image", key: `image.${call.id}.${index}`, itemId: result.id, part: index, mimeType: part.mimeType, bytes: part.bytes, alt: `Image from ${call.name}` });
-  });
-  const markup = field(call.args, "content");
-  if (call.name === "write" && call.status === "done" && typeof path === "string" && /\.svg$/i.test(path) && typeof markup === "string" && markup.includes("<svg"))
-    out.push({ kind: "svg", key: `svg.${call.id}`, markup, alt: path });
-  return out;
-}
-
 /**
  * Groups the chat's items into turns of ordered segments. Presentation only: tool results attach
  * to their call, consecutive calls merge into one activity, and extension notices land where they
  * happened. `running` says the agent is still working on the last turn.
  */
-export function buildTurns(items: Item[], options: { running: boolean; notices?: Notice[] }): Turn[] {
+export function buildTurns(items: Item[], options: { running: boolean; notices?: Notice[]; thinkingLabel?: string }): Turn[] {
   const results = new Map<string, Item>();
   for (const item of items) if (item.role === "toolResult" && item.callId) results.set(item.callId, item);
   const notices = [...(options.notices ?? [])].sort((a, b) => a.after - b.after || a.at - b.at);
@@ -90,7 +80,7 @@ export function buildTurns(items: Item[], options: { running: boolean; notices?:
   let notice = 0;
 
   const current = (): Turn => turns.at(-1) ?? turns[turns.push({ key: "earlier", segments: [], running: false }) - 1]!;
-  const emit = (turn: Turn, segment: Segment) => turn.segments.push(segment);
+  const emit = (turn: Turn, segment: AnySegment) => turn.segments.push(segment);
   // A notice lands before the first item at or after its position. Called before a new turn starts,
   // so a notice ahead of your message ends the answer before it.
   const flush = (position: number | undefined) => {
@@ -115,7 +105,7 @@ export function buildTurns(items: Item[], options: { running: boolean; notices?:
         if (part.type === "text" && part.text.trim()) {
           emit(turn, { kind: "text", key, text: part.text, size: part.size, streaming, detail: part.size !== undefined && item.id ? { id: item.id, part: index } : undefined });
         } else if (part.type === "thinking" && part.text.trim()) {
-          emit(turn, { kind: "thinking", key, text: part.text, streaming });
+          emit(turn, { kind: "thinking", key, text: part.text, streaming, label: options.thinkingLabel });
         } else if (part.type === "toolCall") {
           const result = results.get(part.id);
           const call: ToolCall = {

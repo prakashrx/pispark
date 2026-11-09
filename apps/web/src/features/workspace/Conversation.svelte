@@ -54,7 +54,11 @@
   const running = $derived(["running", "cancelling"].includes(snapshot?.status ?? ""));
   // The chat as turns of ordered segments; extension notices land where they happened.
   const turns = $derived(
-    snapshot ? buildTurns(client.live.items, { running, notices: snapshot.extensions.notices }) : [],
+    snapshot ? buildTurns(client.live.items, {
+          running,
+          notices: snapshot.extensions.notices,
+          thinkingLabel: snapshot.extensions.thinkingLabel,
+        }) : [],
   );
 
   // One continuous scroll: older items are read in above as you reach the top, the view stays
@@ -219,7 +223,7 @@
         >{/if}
       <div class="flex flex-col gap-8">
         {#each turns as turn (turn.key)}
-          <ResponseTurn {turn} sessionId={client.selected} thinkingLabel={snapshot?.extensions.thinkingLabel} />
+          <ResponseTurn {turn} sessionId={client.selected} />
         {/each}
       </div>
     {/if}

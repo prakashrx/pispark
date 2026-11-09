@@ -1,10 +1,13 @@
 <script lang="ts">
-  import StyledText from "./StyledText.svelte";
-  import type { ToolCall } from "./chat-turns";
-  import { describeCall, summarizeCalls } from "./tool-summary";
+  import type { Segment, ToolCall } from "./chat-turns";
+  import ToolDetail from "./ToolDetail.svelte";
+  import { describeCall, summarizeCalls } from "./tool-views";
+  import { resolveToolView } from "./views.svelte";
 
   /** Consecutive tool calls as one quiet line that opens into what each call did. */
-  let { calls, live = false }: { calls: ToolCall[]; live?: boolean } = $props();
+  let { segment }: { segment: Extract<Segment, { kind: "activity" }> } = $props();
+  const calls = $derived(segment.calls);
+  const live = $derived(segment.live);
   let open = $state(false);
   let openCall = $state<string>();
 
@@ -14,20 +17,17 @@
     if (live) {
       // Say what is happening now, not what has happened so far.
       const current = calls.findLast((call) => call.status === "running") ?? calls.at(-1)!;
-      const words = describeCall(current.name, current.args);
+      const words = describeCall(current);
       return `${words.doing}${words.object ? ` ${words.object}` : ""}…`;
     }
     const summary = summarizeCalls(calls);
     return [summary, failed ? `${failed} failed` : "", unfinished ? "didn’t finish" : ""].filter(Boolean).join(" · ");
   });
   const rowLabel = (call: ToolCall) => {
-    const words = describeCall(call.name, call.args);
+    const words = describeCall(call);
     const verb = call.status === "running" ? words.doing : words.done;
     return `${verb}${words.object ? ` ${words.object}` : ""}`;
   };
-  const resultText = (call: ToolCall) =>
-    call.result?.parts.map((part) => (part.type === "text" ? part.text : part.type === "image" ? `[${part.mimeType} image]` : "")).filter(Boolean).join("\n") ?? "";
-  const argsText = (call: ToolCall) => JSON.stringify(call.args, null, 2);
 </script>
 
 <div class="activity" data-purpose="activity">
@@ -45,7 +45,6 @@
   {#if open}
     <ul class="activity-list">
       {#each calls as call (call.id)}
-        {@const body = call.result ? resultText(call) : ""}
         <li>
           <button
             type="button"
@@ -59,13 +58,8 @@
             {#if call.status === "error"}<span class="call-state">failed</span>{:else if call.status === "unfinished"}<span class="call-state">didn’t finish</span>{/if}
           </button>
           {#if openCall === call.id}
-            <div class="call-detail">
-              {#if call.result?.rendered}
-                {#if call.result.rendered.call}<StyledText lines={call.result.rendered.call} />{/if}
-                {#if call.result.rendered.body}<StyledText lines={call.result.rendered.body} />{/if}
-              {:else if body}<pre class="call-output">{body}</pre>
-              {:else}<pre class="call-output">{argsText(call)}</pre>{/if}
-            </div>
+            {@const Detail = resolveToolView(call.name).detail ?? ToolDetail}
+            <Detail {call} />
           {/if}
         </li>
       {/each}
@@ -166,24 +160,5 @@
   }
   [data-status="error"] .call-state {
     color: var(--danger-foreground);
-  }
-  .call-detail {
-    margin: 0.25rem 0 0.5rem;
-  }
-  .call-output {
-    margin: 0;
-    padding: 0.625rem 0.875rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--code-surface);
-    font-family: var(--font-mono);
-    font-variant-ligatures: none;
-    font-size: 0.8125rem;
-    line-height: 1.6;
-    color: var(--foreground);
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    max-height: 16rem;
-    overflow-y: auto;
   }
 </style>

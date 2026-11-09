@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import type { Item, ItemPart } from "../../../../server/src/protocol";
 import { buildTurns, clippedPart, itemText } from "./chat-turns";
-import { describeCall, summarizeCalls } from "./tool-summary";
+import { describeCall, summarizeCalls } from "./tool-views";
 
 let n = 0;
 const item = (role: Item["role"], parts: ItemPart[], extra: Partial<Item> = {}): Item => ({
@@ -135,22 +135,25 @@ test("an SVG a tool wrote is drawn from its arguments once the write is done", (
   expect(notSvg[0]!.segments.map((s) => s.kind)).toEqual(["activity"]);
 });
 
+const tc = (name: string, args: Record<string, string> = {}) => ({ id: name, name, args, status: "done" as const });
+
 test("calls are described in words and grouped into one line", () => {
-  expect(describeCall("edit", { path: "src/a/demo.ts" })).toMatchObject({ doing: "Editing", done: "Edited", object: "demo.ts" });
-  expect(describeCall("bash", { command: "npm test\nand more" }).object).toBe("npm test");
-  expect(describeCall("hello", {})).toMatchObject({ doing: "Using hello", group: "other" });
-  expect(describeCall("write", {}).object).toBeUndefined();
+  expect(describeCall(tc("edit", { path: "src/a/demo.ts" }))).toMatchObject({ doing: "Editing", done: "Edited", object: "demo.ts" });
+  expect(describeCall(tc("bash", { command: "npm test\nand more" })).object).toBe("npm test");
+  expect(describeCall(tc("hello"))).toMatchObject({ doing: "Using hello", done: "Used hello" });
+  expect(describeCall(tc("write")).object).toBeUndefined();
   expect(
     summarizeCalls([
-      { name: "read", args: { path: "a" } },
-      { name: "read", args: { path: "b" } },
-      { name: "edit", args: { path: "demo.ts" } },
-      { name: "bash", args: { command: "x" } },
-      { name: "bash", args: { command: "y" } },
-      { name: "hello", args: {} },
+      tc("read", { path: "a" }),
+      tc("read", { path: "b" }),
+      tc("edit", { path: "demo.ts" }),
+      tc("bash", { command: "x" }),
+      tc("bash", { command: "y" }),
+      tc("hello"),
     ]),
   ).toBe("Read 2 files, edited demo.ts, ran 2 commands, used hello");
-  // Things are listed in the order they first happened.
-  expect(summarizeCalls([{ name: "bash", args: { command: "x" } }, { name: "write", args: { path: "a.txt" } }, { name: "bash", args: { command: "y" } }])).toBe("Ran 2 commands, wrote a.txt");
-  expect(summarizeCalls([{ name: "bash", args: {} }])).toBe("Ran 1 command");
+  // Things are listed in the order they first happened; tools of one group share a phrase.
+  expect(summarizeCalls([tc("bash", { command: "x" }), tc("write", { path: "a.txt" }), tc("bash", { command: "y" })])).toBe("Ran 2 commands, wrote a.txt");
+  expect(summarizeCalls([tc("grep", { pattern: "a" }), tc("ls", { path: "." }), tc("find", { pattern: "b" })])).toBe("Searched 3 times");
+  expect(summarizeCalls([tc("bash")])).toBe("Ran 1 command");
 });
