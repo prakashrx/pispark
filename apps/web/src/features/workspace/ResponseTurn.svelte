@@ -1,5 +1,7 @@
 <script lang="ts">
   import ActivityGroup from "./ActivityGroup.svelte";
+  import ArtifactImage from "./ArtifactImage.svelte";
+  import DiffView from "./DiffView.svelte";
   import ExtensionBlock from "./ExtensionBlock.svelte";
   import MessageReader from "./MessageReader.svelte";
   import StreamingMarkdown from "./StreamingMarkdown.svelte";
@@ -8,7 +10,7 @@
   import { clippedPart, itemText, type Turn } from "./chat-turns";
 
   /** One turn: your message, then everything the agent did and said, in order. */
-  let { turn, thinkingLabel }: { turn: Turn; thinkingLabel?: string } = $props();
+  let { turn, sessionId, thinkingLabel }: { turn: Turn; sessionId: string; thinkingLabel?: string } = $props();
   // Text cut at its limit ends where the cut was, not mid-word as if it were whole.
   const ellipsis = (text: string, cut: boolean) => (cut ? `${text.trimEnd()}…` : text);
 </script>
@@ -41,6 +43,12 @@
           <ThoughtCard label="Earlier messages were summarized">{segment.text}</ThoughtCard>
         {:else if segment.kind === "notice"}
           <ExtensionBlock lines={segment.notice.lines} kind={segment.notice.kind} />
+        {:else if segment.kind === "diff"}
+          <DiffView patch={segment.patch} path={segment.path} />
+        {:else if segment.kind === "image"}
+          <ArtifactImage {sessionId} itemId={segment.itemId} part={segment.part} mimeType={segment.mimeType} alt={segment.alt} />
+        {:else if segment.kind === "svg"}
+          <ArtifactImage {sessionId} markup={segment.markup} alt={segment.alt} />
         {:else if segment.reason === "aborted"}
           <p class="text-sm text-subtle italic">Cancelled</p>
         {:else}

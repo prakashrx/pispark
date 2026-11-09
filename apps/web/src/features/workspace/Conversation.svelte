@@ -219,7 +219,7 @@
         >{/if}
       <div class="flex flex-col gap-8">
         {#each turns as turn (turn.key)}
-          <ResponseTurn {turn} thinkingLabel={snapshot?.extensions.thinkingLabel} />
+          <ResponseTurn {turn} sessionId={client.selected} thinkingLabel={snapshot?.extensions.thinkingLabel} />
         {/each}
       </div>
     {/if}

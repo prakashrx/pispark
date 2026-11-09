@@ -177,6 +177,7 @@
     border-radius: var(--radius-md);
     background: var(--code-surface);
     font-family: var(--font-mono);
+    font-variant-ligatures: none;
     font-size: 0.8125rem;
     line-height: 1.6;
     color: var(--foreground);

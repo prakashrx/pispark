@@ -102,6 +102,39 @@ test("custom entries, summaries and clipped parts keep their identity", () => {
   expect(itemText(item("user", [text("a"), text("b")]))).toBe("a\nb");
 });
 
+test("a call's diff and images come out of its activity into the message, in order", () => {
+  n = 0;
+  const details = { patch: ["--- a.ts", "+++ a.ts", "@@ -1 +1 @@", "-a", "+b", ""].join(String.fromCharCode(10)), diff: "x" };
+  const turns = buildTurns(
+    [
+      item("user", [text("go")]),
+      item("assistant", [call("c1", "read", { path: "a.ts" }), call("c2", "edit", { path: "a.ts" }), call("c3", "bash")]),
+      result("c1"),
+      item("toolResult", [text("edited"), { type: "image", mimeType: "image/png", bytes: 213 }], { callId: "c2", details, toolName: "edit" }),
+      result("c3"),
+    ],
+    { running: false },
+  );
+  expect(turns[0]!.segments.map((s) => s.kind)).toEqual(["activity", "diff", "image", "activity"]);
+  const diff = turns[0]!.segments[1]!;
+  expect(diff.kind === "diff" && diff.path).toBe("a.ts");
+  const image = turns[0]!.segments[2]!;
+  expect(image.kind === "image" && [image.part, image.mimeType, image.itemId]).toEqual([1, "image/png", expect.any(String)]);
+  const first = turns[0]!.segments[0]!;
+  expect(first.kind === "activity" && first.calls.map((c) => c.name)).toEqual(["read", "edit"]);
+});
+
+test("an SVG a tool wrote is drawn from its arguments once the write is done", () => {
+  n = 0;
+  const svg = { path: "icon.svg", content: "<svg xmlns='http://www.w3.org/2000/svg'/>" };
+  const withResult = buildTurns([item("user", [text("go")]), item("assistant", [call("w", "write", svg)]), result("w")], { running: false });
+  expect(withResult[0]!.segments.map((s) => s.kind)).toEqual(["activity", "svg"]);
+  const running = buildTurns([item("user", [text("go")]), item("assistant", [call("w", "write", svg)])], { running: true });
+  expect(running[0]!.segments.map((s) => s.kind)).toEqual(["activity"]);
+  const notSvg = buildTurns([item("user", [text("go")]), item("assistant", [call("w", "write", { path: "a.txt", content: "<svg/>" })]), result("w")], { running: false });
+  expect(notSvg[0]!.segments.map((s) => s.kind)).toEqual(["activity"]);
+});
+
 test("calls are described in words and grouped into one line", () => {
   expect(describeCall("edit", { path: "src/a/demo.ts" })).toMatchObject({ doing: "Editing", done: "Edited", object: "demo.ts" });
   expect(describeCall("bash", { command: "npm test\nand more" }).object).toBe("npm test");

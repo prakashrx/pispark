@@ -27,6 +27,12 @@ export type Segment =
   /** A custom message or entry an extension renders. */
   | { kind: "custom"; key: string; item: Item }
   | { kind: "summary"; key: string; text: string }
+  /** What a tool produced that is worth reading in the message itself: changes to a file ... */
+  | { kind: "diff"; key: string; path?: string; patch: string }
+  /** ... an image a tool returned (its bytes are read by reference) ... */
+  | { kind: "image"; key: string; itemId?: string; part: number; mimeType: string; bytes: number; alt: string }
+  /** ... or an SVG a tool wrote, drawn from the markup in its arguments. */
+  | { kind: "svg"; key: string; markup: string; alt: string }
   | { kind: "notice"; key: string; notice: Notice }
   | { kind: "stopped"; key: string; reason: "aborted" | "error" };
 
@@ -46,6 +52,28 @@ export const itemText = (item: Item) => item.parts.map(textOf).join("\n");
 export function clippedPart(item: Item): PartRef | undefined {
   const part = item.parts.findIndex((p) => (p.type === "text" || p.type === "thinking") && p.size !== undefined);
   return part >= 0 && item.id ? { id: item.id, part } : undefined;
+}
+
+const field = (value: Json | undefined, name: string): Json | undefined =>
+  value && typeof value === "object" && !Array.isArray(value) ? value[name] : undefined;
+
+/** Output of a finished call that reads better as part of the message than inside its activity. */
+export function artifactsOf(call: ToolCall): Segment[] {
+  const result = call.result;
+  if (!result) return [];
+  const out: Segment[] = [];
+  const path = field(call.args, "path");
+  const patch = field(result.details, "patch");
+  if (typeof patch === "string" && patch.trim())
+    out.push({ kind: "diff", key: `diff.${call.id}`, patch, path: typeof path === "string" ? path : undefined });
+  result.parts.forEach((part, index) => {
+    if (part.type === "image")
+      out.push({ kind: "image", key: `image.${call.id}.${index}`, itemId: result.id, part: index, mimeType: part.mimeType, bytes: part.bytes, alt: `Image from ${call.name}` });
+  });
+  const markup = field(call.args, "content");
+  if (call.name === "write" && call.status === "done" && typeof path === "string" && /\.svg$/i.test(path) && typeof markup === "string" && markup.includes("<svg"))
+    out.push({ kind: "svg", key: `svg.${call.id}`, markup, alt: path });
+  return out;
 }
 
 /**
@@ -100,6 +128,8 @@ export function buildTurns(items: Item[], options: { running: boolean; notices?:
           const last = turn.segments.at(-1);
           if (last?.kind === "activity") last.calls.push(call);
           else emit(turn, { kind: "activity", key: `a.${part.id}`, calls: [call], live: false });
+          // Anything worth reading follows its call; the next call then starts a new activity.
+          for (const artifact of artifactsOf(call)) emit(turn, artifact);
         }
       });
       if (item.stopReason === "aborted" || item.stopReason === "error")
