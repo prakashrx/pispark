@@ -34,17 +34,33 @@ Pi's terminal components are just `render(width)` → lines, so PiSpark calls an
 
 ## Svelte components: an extension's own web views
 
-An extension can put its own Svelte components in the chat, from its normal `index.ts`, with one event on **Pi's own event bus**. There is no PiSpark API, manifest or second entry file. Terminal Pi has no listener for the event, so there it does nothing, and the extension's terminal rendering is used instead.
+An extension shows its own Svelte component with one event on **Pi's own event bus**, from its normal `index.ts`, and gives it the functions it may call. The component gets props and can call those functions. There is no PiSpark API, manifest or second entry file. Terminal Pi has no listener for the event, so there it does nothing and the extension's terminal rendering is used.
 
 ```ts
-const file = (name) => new URL(name, import.meta.url).href;
-
 export default function (pi) {
-  pi.events.emit("pispark:view", { slot: "tool:deploy", component: file("./DeployResult.svelte") });
-  pi.events.emit("pispark:view", { slot: "above-reply", key: "progress", component: file("./Progress.svelte"), props: { step: 3, of: 7 } });
-  pi.events.on("deploy:rollback", (data) => { /* … then emit new props */ });
+  let count = 0;
+  const show = () =>
+    pi.events.emit("pispark:view", {
+      slot: "above-reply",
+      component: new URL("./Counter.svelte", import.meta.url),
+      props: { count },
+      calls: {
+        add: (by) => { count += by; show(); return count; },
+      },
+    });
+  show();
 }
 ```
+
+```svelte
+<script>
+  let { count, host } = $props();
+</script>
+
+<button onclick={() => host.call("add", 1)}>Count {count}</button>
+```
+
+That is the whole model: **show or update** by emitting `pispark:view` again, **remove** by leaving out `component`, **data down** as props (plus the slot's own data), **actions up** with `host.call(name, data)`, which resolves with the function's result or rejects with its error.
 
 | Slot | Where | The component gets |
 | --- | --- | --- |
@@ -53,13 +69,13 @@ export default function (pi) {
 | `above-reply`, `below-reply` | Around the reply box | the props sent |
 | `header` | The top of the conversation | the props sent |
 
-- **Event shape:** `{ slot, key?, component?, props? }`. `component` is an absolute path or `file:` URL of a `.svelte` file inside the extension's own folder. Emitting again with the same slot and key replaces it, and new props for the same file update it in place. Leaving out `component` removes it. `props` is JSON of at most 64 KiB.
-- **Every component also gets `emit(name, data)`.** It raises `name` on the chat's Pi event bus, where the extension listens with `pi.events.on`. State flows down as props and events flow up. PiSpark's own `pispark:` channels are not open to components.
-- **Lifetime:** contributions belong to the session. A reload or reopen starts empty, and the extension places them again as it loads.
+- **Event shape:** `{ slot, component, props?, calls?, key? }`. `component` is a `file:` URL (a `URL` or its string) or absolute path of a `.svelte` file inside the extension's own folder. `key` tells several placements in one slot apart. Emitting again with the same slot and key replaces the placement; new props for the same file update the mounted component in place.
+- **Calls:** `calls[name](data, { signal })` runs in the extension, in the server. A component reaches only the functions its own placement gave it, never the bus or another extension. Data and results are JSON of at most 64 KiB; a call is cancelled when the chat closes (its `signal` aborts) and times out after 30 s; a chat has at most 16 calls pending. A function that throws rejects the component's call with its message, and the chat is unaffected.
+- **Lifetime:** placements belong to the session. A reload or reopen starts empty, and the extension shows them again as it loads.
 - **Compiling:** the server compiles the file and what it imports (TypeScript, `.svelte`, `.svelte.ts` modules, npm packages from the extension's folder) with esbuild and Svelte's compiler, in runes mode. Each file compiles once per session and is served by content hash. Imports of `svelte` and its public subpaths resolve to the app's own instance (`extensions/shared-svelte.ts`), so components mount inside PiSpark's tree and use its theme tokens (`var(--interactive-text)` and so on).
-- **Failures:** a refused path or a compile error is a notice in the chat. A component that throws is replaced by a short line, and the rest of the chat keeps working.
+- **Failures:** a refused path or a compile error is a notice in the chat (with file and line). A component that throws while rendering is replaced by a short line; the rest of the chat keeps working.
 
-Folder extensions only: a component file must live inside the extension's folder, so a single-file extension that wants views becomes a folder (`extensions/<name>/index.ts`).
+Folder extensions only: a component file must live inside the extension's folder, so a single-file extension that wants a view becomes a folder (`extensions/<name>/index.ts`).
 
 ## Not yet
 

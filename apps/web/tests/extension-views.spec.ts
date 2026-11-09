@@ -3,7 +3,7 @@ import { hostedTest as test } from "./isolated-host";
 
 // The "Extension views" persona loads an ordinary Pi extension that places its own Svelte components
 // in the chat's slots with Pi's event bus (apps/server/test/fixtures/view-extension).
-test("an extension's own Svelte components appear in the chat's slots, take events and follow the theme", async ({
+test("an extension's own Svelte components appear in the chat's slots, answer calls and follow the theme", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -26,11 +26,16 @@ test("an extension's own Svelte components appear in the chat's slots, take even
   // tool:shout: the call is drawn by the extension's component, from Pi's details.
   await expect(page.locator('[data-slot="tool:shout"]')).toHaveText("Shouted HI");
 
-  // An event from the component reaches the extension on Pi's bus; its new props arrive live,
-  // and the mounted component keeps its own state.
+  // host.call runs the extension's function: its result comes back to the component, its new
+  // props arrive live, and the mounted component keeps its own state.
   await counter.getByRole("button", { name: "Add one" }).click();
+  await expect(counter.getByText("Now 1", { exact: true })).toBeVisible();
   await expect(counter.getByText("Count 1", { exact: true })).toBeVisible();
   await expect(counter.getByText("1 pressed here")).toBeVisible();
+  // The extension's own error reaches the component that called, not the chat.
+  await counter.getByRole("button", { name: "Jam it" }).click();
+  await expect(counter.getByText("The counter is jammed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
 
   // entry:note: a custom entry drawn by the extension's component from the entry's own data.
   const reply = page.getByRole("textbox", { name: "Reply to chat" });

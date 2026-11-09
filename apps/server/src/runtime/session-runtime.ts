@@ -340,11 +340,11 @@ export class SessionRuntime {
       throw error;
     }
   }
-  /** An extension component's event, emitted on the chat's Pi event bus for its extension to hear. */
-  emit(id: string, name: string, data?: Json): void {
+  /** An extension component's `host.call`: a function of its own placement, and its result. */
+  call(id: string, slot: string, key: string, name: string, data?: Json): Promise<Json | undefined> {
     const views = this.get(id).views;
     if (!views) throw new RuntimeError("not-found");
-    views.emit(name, data);
+    return views.call(slot, key, name, data);
   }
   /** Answer a question an extension asked through Pi's `ctx.ui`. */
   answer(id: string, dialogId: string, answer: string | boolean | null): void {
@@ -498,6 +498,7 @@ export class SessionRuntime {
         {
           changed: () => this.changed(hosted),
           failed: (message) => hosted.ui?.failed(message),
+          callTimeoutMs: this.configuration.callTimeoutMs,
         },
       );
       const services = await createSessionServices({

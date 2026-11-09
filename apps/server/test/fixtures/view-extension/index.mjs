@@ -1,25 +1,43 @@
-// An ordinary Pi extension that places Svelte components in PiSpark's slots through Pi's own event
-// bus. Terminal Pi has no listener for "pispark:view", so there the events do nothing.
-const file = (name) => new URL(name, import.meta.url).href;
-const view = (pi, slot, component, extra = {}) => pi.events.emit("pispark:view", { slot, component, ...extra });
+// An ordinary Pi extension that shows Svelte components in PiSpark's slots with Pi's own event bus,
+// and gives each the functions it may call. Terminal Pi has no listener for "pispark:view".
+const file = (name) => new URL(name, import.meta.url);
 
 export default function (pi) {
   let count = 0;
-  const counter = () => view(pi, "above-reply", file("./Counter.svelte"), { key: "counter", props: { count } });
+  const show = () =>
+    pi.events.emit("pispark:view", {
+      slot: "above-reply",
+      key: "counter",
+      component: file("./Counter.svelte"),
+      props: { count },
+      calls: {
+        add: (by) => {
+          count += by ?? 1;
+          show();
+          return count;
+        },
+        jam: () => {
+          throw new Error("The counter is jammed");
+        },
+        // Waits until PiSpark gives up on it.
+        hang: (_data, { signal }) => new Promise((resolve) => signal.addEventListener("abort", resolve)),
+        notJson: () => () => {},
+      },
+    });
+  show();
 
-  counter();
-  view(pi, "header", file("./Banner.svelte"), { props: { text: "Fixture banner" } });
-  view(pi, "tool:shout", file("./Shout.svelte"));
-  view(pi, "entry:note", file("./Note.svelte"));
-
-  // Events from the components come back on the same bus; new props are the answer.
-  pi.events.on("view-fixture:add", (data) => {
-    count += data?.by ?? 1;
-    counter();
+  pi.events.emit("pispark:view", {
+    slot: "header",
+    component: file("./Banner.svelte"),
+    props: { text: "Fixture banner" },
+    calls: {
+      removeCounter: () => pi.events.emit("pispark:view", { slot: "above-reply", key: "counter" }),
+      placeOutside: () => pi.events.emit("pispark:view", { slot: "below-reply", component: file("../Outside.svelte") }),
+      placeBroken: () => pi.events.emit("pispark:view", { slot: "below-reply", key: "broken", component: file("./Broken.svelte") }),
+    },
   });
-  pi.events.on("view-fixture:remove", () => pi.events.emit("pispark:view", { slot: "above-reply", key: "counter" }));
-  pi.events.on("view-fixture:outside", () => view(pi, "below-reply", file("../Outside.svelte")));
-  pi.events.on("view-fixture:broken", () => view(pi, "below-reply", file("./Broken.svelte"), { key: "broken" }));
+  pi.events.emit("pispark:view", { slot: "tool:shout", component: file("./Shout.svelte") });
+  pi.events.emit("pispark:view", { slot: "entry:note", component: file("./Note.svelte") });
 
   pi.registerTool({
     name: "shout",

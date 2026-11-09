@@ -17,6 +17,7 @@ import { PersonaHttp } from "./persona-http.js";
 import { validPersonaId } from "./personas/format.js";
 import { homedir } from "node:os";
 import { viewBundle } from "./extensions/view-compiler.js";
+import { CallError } from "./extensions/views.js";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -54,7 +55,7 @@ function validate(value: unknown): Command {
   )
     throw new RuntimeError("invalid-input");
   if (c.type === "answer") return validAnswer(c);
-  if (c.type === "emit") return validEmit(c);
+  if (c.type === "call") return validCall(c);
   const keys =
     c.type === "create"
       ? [
@@ -106,16 +107,18 @@ function validAnswer(c: Record<string, unknown>): Command {
   // SAFETY: exact keys and every field validated above.
   return c as unknown as Command;
 }
-/** An extension component's event: a name for Pi's bus and optional JSON data. */
-function validEmit(c: Record<string, unknown>): Command {
-  const keys = ["commandId", "type", "sessionId", "name", ...("data" in c ? ["data"] : [])];
+/** An extension component's call: which placement, which of its functions, and optional JSON data. */
+function validCall(c: Record<string, unknown>): Command {
+  const keys = ["commandId", "type", "sessionId", "slot", "key", "name", ...("data" in c ? ["data"] : [])];
+  const short = (value: unknown, empty = false) =>
+    typeof value === "string" && (empty ? /^[\w.:-]{0,64}$/ : /^[\w.:-]{1,80}$/).test(value);
   if (
     Object.keys(c).length !== keys.length ||
     !keys.every((key) => key in c) ||
     !uuid.test(String(c.sessionId)) ||
-    typeof c.name !== "string" ||
-    !/^[\w.:/-]{1,128}$/.test(c.name) ||
-    c.name.startsWith("pispark:")
+    !short(c.slot) ||
+    !short(c.key, true) ||
+    !short(c.name)
   )
     throw new RuntimeError("invalid-input");
   // SAFETY: exact keys and every field validated above; the body limit bounds `data`.
@@ -155,7 +158,7 @@ export async function body(
 export class SessionHttp {
   private receipts = new Map<
     string,
-    { receipt: Receipt; input: string; expires: number; lifecycle?: string }
+    { receipt: Receipt; input: string; expires: number; lifecycle?: string; done?: Promise<void> }
   >();
   private streams = new Set<ServerResponse>();
   private requests = 0;
@@ -231,7 +234,12 @@ export class SessionHttp {
       state: "accepted",
       ...("sessionId" in command ? { sessionId: command.sessionId } : {}),
     };
-    const entry = { receipt, input, expires: Infinity, lifecycle };
+    const entry: { receipt: Receipt; input: string; expires: number; lifecycle?: string; done?: Promise<void> } = {
+      receipt,
+      input,
+      expires: Infinity,
+      lifecycle,
+    };
     this.receipts.set(command.commandId, entry);
     const execute = async () => {
       switch (command.type) {
@@ -281,16 +289,19 @@ export class SessionHttp {
         case "answer":
           this.runtime.answer(command.sessionId, command.dialogId, command.value);
           break;
-        case "emit":
-          this.runtime.emit(command.sessionId, command.name, command.data);
+        case "call": {
+          const result = await this.runtime.call(command.sessionId, command.slot, command.key, command.name, command.data);
+          if (result !== undefined) receipt.result = result;
           break;
+        }
       }
       receipt.outcome ??= "completed";
     };
-    void correlated({ operationId: requestId() }, execute)
+    entry.done = correlated({ operationId: requestId() }, execute)
       .catch((error) => {
         receipt.outcome = "failed";
         receipt.error = failure(error);
+        if (error instanceof CallError) receipt.detail = error.detail;
       })
       .finally(() => {
         receipt.state = "settled";
@@ -340,7 +351,12 @@ export class SessionHttp {
         !url.search
       ) {
         const command = validate(await body(request));
-        sendJson(response, 202, this.command(command));
+        const receipt = this.command(command);
+        // A component waits on its call; most answer at once, so reply with the result when it is ready soon.
+        const done = command.type === "call" ? this.receipts.get(command.commandId)?.done : undefined;
+        if (done && receipt.state === "accepted")
+          await Promise.race([done, new Promise((resolve) => setTimeout(resolve, 2000))]);
+        sendJson(response, 202, { ...(this.receipts.get(command.commandId)?.receipt ?? receipt) });
       } else if (
         request.method === "GET" &&
         path === "/api/catalog" &&

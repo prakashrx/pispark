@@ -4,13 +4,16 @@
 
   /**
    * One of the chat's contribution points: mounts what extensions placed here. A component gets
-   * the props its extension sent, the slot's own data (a tool call, a custom entry) and `emit`,
-   * which raises an event on the chat's Pi event bus for its extension to hear.
+   * the props its extension sent, the slot's own data (a tool call, a custom entry) and `host`,
+   * whose `call(name, data)` runs one of the functions its own placement gave it.
    */
   let { slot, data = {} }: { slot: string; data?: Record<string, unknown> } = $props();
   const client = useSessions();
   const contributions = $derived(contributionsFor(client.snapshot?.extensions, slot));
-  const emit = (name: string, payload?: unknown) => client.emit(name, payload);
+  // One host per placement: it can reach only that placement's functions.
+  const hostFor = (key: string) => ({
+    call: (name: string, payload?: unknown) => client.call(slot, key, name, payload),
+  });
   const propsOf = (props: unknown): Record<string, unknown> =>
     props && typeof props === "object" && !Array.isArray(props)
       ? (props as Record<string, unknown>)
@@ -23,7 +26,7 @@
   <div class="extension-view" data-slot={slot}>
     {#await loadView(contribution.url) then View}
       <svelte:boundary>
-        <View {...propsOf(contribution.props)} {...data} {emit} />
+        <View {...propsOf(contribution.props)} {...data} host={hostFor(contribution.key)} />
         {#snippet failed()}<p class="extension-view-failed" role="status">This extension view stopped working.</p>{/snippet}
       </svelte:boundary>
     {:catch}

@@ -27,7 +27,7 @@ test("view compiler: one browser module on the page's shared Svelte, addressed b
   await assert.rejects(compileView(join(viewExtension, "Broken.svelte")), /Broken\.svelte|Expected|Unexpected/);
 });
 
-test("extensions place components with Pi's bus: slots, props, events back, entries with data, failures", async () => {
+test("extensions show components with Pi's bus: slots, props, calls back, entries with data, failures", async () => {
   const h = await testHome("pispark-views-");
   try {
     await h.persona("default", { name: "Default" });
@@ -35,7 +35,7 @@ test("extensions place components with Pi's bus: slots, props, events back, entr
     // A component outside the extension's folder is refused.
     await writeFile(join(h.home, "personas", "default", "extensions", "Outside.svelte"), "<p>no</p>");
     h.provider.automatic = true;
-    const runtime = new SessionRuntime(h.configuration);
+    const runtime = new SessionRuntime({ ...h.configuration, callTimeoutMs: 300 });
     const chat = await runtime.create({ folder: await h.folder("work") });
     const views = () => runtime.session(chat.id).extensions.views;
     const notices = () => runtime.session(chat.id).extensions.notices.map((n) => n.lines.map((l) => l.map((s) => s.text).join("")).join(" "));
@@ -57,12 +57,20 @@ test("extensions place components with Pi's bus: slots, props, events back, entr
     }
     const counterUrl = views()[0]!.url;
 
-    // A component's event reaches its extension on the chat's bus; new props come back at once,
-    // reusing the compiled component.
-    runtime.emit(chat.id, "view-fixture:add", { by: 2 });
+    // host.call runs a function of the component's own placement and gives back its result; the
+    // extension shows new props at once, reusing the compiled component.
+    assert.equal(await runtime.call(chat.id, "above-reply", "counter", "add", 2), 2);
     assert.deepEqual(views()[0], { slot: "above-reply", key: "counter", url: counterUrl, props: { count: 2 } });
-    // PiSpark's own channels are not open to components.
-    assert.throws(() => runtime.emit(chat.id, "pispark:view", {}), (error: { code?: string }) => error.code === "invalid-input");
+    const code = (expected: string, detail?: RegExp) => (error: { code?: string; detail?: string }) =>
+      error.code === expected && (!detail || detail.test(error.detail ?? ""));
+    // The extension's own error comes back to the component; the chat is unaffected.
+    await assert.rejects(runtime.call(chat.id, "above-reply", "counter", "jam"), code("extension", /The counter is jammed/));
+    // A function that never answers times out; a result that is not JSON is refused.
+    await assert.rejects(runtime.call(chat.id, "above-reply", "counter", "hang"), code("timeout"));
+    await assert.rejects(runtime.call(chat.id, "above-reply", "counter", "notJson"), code("extension", /must be JSON/));
+    // A placement reaches only its own functions: the header has no "add", the counter no "removeCounter".
+    await assert.rejects(runtime.call(chat.id, "header", "", "add", 1), code("not-found"));
+    await assert.rejects(runtime.call(chat.id, "above-reply", "counter", "removeCounter"), code("not-found"));
 
     // A custom entry with a placed component reaches the browser with its data, even with no terminal renderer.
     await runtime.start(chat.id, "/note saved").completion;
@@ -76,13 +84,13 @@ test("extensions place components with Pi's bus: slots, props, events back, entr
     assert.deepEqual(result?.details, { loud: "HI" });
 
     // Removing: an event with no component.
-    runtime.emit(chat.id, "view-fixture:remove");
+    await runtime.call(chat.id, "header", "", "removeCounter");
     assert.equal(views().some((v) => v.key === "counter"), false);
 
     // Refused and broken components are notices, not failures of the chat.
-    runtime.emit(chat.id, "view-fixture:outside");
+    await runtime.call(chat.id, "header", "", "placeOutside");
     await eventually(() => notices().some((n) => /not inside an extension this chat loads/.test(n)));
-    runtime.emit(chat.id, "view-fixture:broken");
+    await runtime.call(chat.id, "header", "", "placeBroken");
     await eventually(() => notices().some((n) => /Broken\.svelte could not be compiled/.test(n)));
     assert.equal(views().some((v) => v.key === "broken"), false);
     assert.equal(runtime.session(chat.id).error, undefined);

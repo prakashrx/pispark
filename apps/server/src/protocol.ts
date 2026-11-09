@@ -168,8 +168,8 @@ export type Command = { commandId: string } & (
       dialogId: string;
       value: string | boolean | null;
     }
-  /** An extension component's event, emitted on the chat's Pi event bus. */
-  | { type: "emit"; sessionId: string; name: string; data?: Json }
+  /** An extension component's `host.call(name, data)` to a function of its own placement. */
+  | { type: "call"; sessionId: string; slot: string; key: string; name: string; data?: Json }
 );
 export interface Receipt {
   commandId: string;
@@ -177,6 +177,10 @@ export interface Receipt {
   state: "accepted" | "settled";
   outcome?: "completed" | "cancelled" | "failed" | "queued" | "handled";
   error?: string;
+  /** A `call`'s result. */
+  result?: Json;
+  /** A failed `call`: the extension's own message. */
+  detail?: string;
 }
 /** Changes to the live document, applied in order; a `commit` moves persisted items into history. */
 export type LiveOp =
