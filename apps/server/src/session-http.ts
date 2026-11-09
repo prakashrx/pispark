@@ -5,6 +5,7 @@ import {
   RuntimeError,
 } from "./runtime/session-runtime.js";
 import type { Catalog, Command, LiveEvent, Receipt } from "./protocol.js";
+import type { Json } from "./stream-ops.js";
 import type { ProviderHttp } from "./provider-http.js";
 import { validChoice } from "./runtime/provider-storage.js";
 import {
@@ -55,7 +56,6 @@ function validate(value: unknown): Command {
   )
     throw new RuntimeError("invalid-input");
   if (c.type === "answer") return validAnswer(c);
-  if (c.type === "call") return validCall(c);
   const keys =
     c.type === "create"
       ? [
@@ -108,21 +108,22 @@ function validAnswer(c: Record<string, unknown>): Command {
   return c as unknown as Command;
 }
 /** An extension component's call: which placement, which of its functions, and optional JSON data. */
-function validCall(c: Record<string, unknown>): Command {
-  const keys = ["commandId", "type", "sessionId", "slot", "key", "name", ...("data" in c ? ["data"] : [])];
+function validCall(value: unknown): { slot: string; key: string; name: string; data?: Json } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new RuntimeError("invalid-input");
+  const c = value as Record<string, unknown>;
+  const keys = ["slot", "key", "name", ...("data" in c ? ["data"] : [])];
   const short = (value: unknown, empty = false) =>
     typeof value === "string" && (empty ? /^[\w.:-]{0,64}$/ : /^[\w.:-]{1,80}$/).test(value);
   if (
     Object.keys(c).length !== keys.length ||
     !keys.every((key) => key in c) ||
-    !uuid.test(String(c.sessionId)) ||
     !short(c.slot) ||
     !short(c.key, true) ||
     !short(c.name)
   )
     throw new RuntimeError("invalid-input");
   // SAFETY: exact keys and every field validated above; the body limit bounds `data`.
-  return c as unknown as Command;
+  return c as { slot: string; key: string; name: string; data?: Json };
 }
 export async function body(
   request: IncomingMessage,
@@ -158,7 +159,7 @@ export async function body(
 export class SessionHttp {
   private receipts = new Map<
     string,
-    { receipt: Receipt; input: string; expires: number; lifecycle?: string; done?: Promise<void> }
+    { receipt: Receipt; input: string; expires: number; lifecycle?: string }
   >();
   private streams = new Set<ServerResponse>();
   private requests = 0;
@@ -234,7 +235,7 @@ export class SessionHttp {
       state: "accepted",
       ...("sessionId" in command ? { sessionId: command.sessionId } : {}),
     };
-    const entry: { receipt: Receipt; input: string; expires: number; lifecycle?: string; done?: Promise<void> } = {
+    const entry: { receipt: Receipt; input: string; expires: number; lifecycle?: string } = {
       receipt,
       input,
       expires: Infinity,
@@ -289,19 +290,13 @@ export class SessionHttp {
         case "answer":
           this.runtime.answer(command.sessionId, command.dialogId, command.value);
           break;
-        case "call": {
-          const result = await this.runtime.call(command.sessionId, command.slot, command.key, command.name, command.data);
-          if (result !== undefined) receipt.result = result;
-          break;
-        }
       }
       receipt.outcome ??= "completed";
     };
-    entry.done = correlated({ operationId: requestId() }, execute)
+    void correlated({ operationId: requestId() }, execute)
       .catch((error) => {
         receipt.outcome = "failed";
         receipt.error = failure(error);
-        if (error instanceof CallError) receipt.detail = error.detail;
       })
       .finally(() => {
         receipt.state = "settled";
@@ -351,12 +346,7 @@ export class SessionHttp {
         !url.search
       ) {
         const command = validate(await body(request));
-        const receipt = this.command(command);
-        // A component waits on its call; most answer at once, so reply with the result when it is ready soon.
-        const done = command.type === "call" ? this.receipts.get(command.commandId)?.done : undefined;
-        if (done && receipt.state === "accepted")
-          await Promise.race([done, new Promise((resolve) => setTimeout(resolve, 2000))]);
-        sendJson(response, 202, { ...(this.receipts.get(command.commandId)?.receipt ?? receipt) });
+        sendJson(response, 202, this.command(command));
       } else if (
         request.method === "GET" &&
         path === "/api/catalog" &&
@@ -406,6 +396,11 @@ export class SessionHttp {
         });
         response.end(code);
       } else {
+        const calls = /^\/api\/sessions\/([\w-]+)\/calls$/.exec(path);
+        if (request.method === "POST" && calls && uuid.test(calls[1]!) && !url.search) {
+          await this.call(calls[1]!, validCall(await body(request)), response);
+          return;
+        }
         const one = /^\/api\/sessions\/([\w-]+)$/.exec(path);
         if (request.method === "GET" && one && uuid.test(one[1]!) && !url.search) {
           sendJson(response, 200, this.runtime.session(one[1]!));
@@ -451,6 +446,20 @@ export class SessionHttp {
       else sendJson(response, 400, { error: failure(error) });
     } finally {
       this.requests--;
+    }
+  }
+  /**
+   * An extension component's `host.call(name, data)`: a plain request and response. The result, or
+   * the extension's own error message; nothing is retained once it answers.
+   */
+  private async call(id: string, call: { slot: string; key: string; name: string; data?: Json }, response: ServerResponse) {
+    try {
+      const result = await this.runtime.call(id, call.slot, call.key, call.name, call.data);
+      sendJson(response, 200, result === undefined ? {} : { result });
+    } catch (error) {
+      if (response.headersSent || response.destroyed) return;
+      const status = error instanceof RuntimeError && error.code === "not-found" ? 404 : error instanceof CallError ? 422 : 400;
+      sendJson(response, status, { error: failure(error), ...(error instanceof CallError ? { detail: error.detail } : {}) });
     }
   }
   /** An image part's bytes, or a chunk of a clipped text part (`?offset=`). */

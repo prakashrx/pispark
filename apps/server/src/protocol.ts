@@ -168,8 +168,6 @@ export type Command = { commandId: string } & (
       dialogId: string;
       value: string | boolean | null;
     }
-  /** An extension component's `host.call(name, data)` to a function of its own placement. */
-  | { type: "call"; sessionId: string; slot: string; key: string; name: string; data?: Json }
 );
 export interface Receipt {
   commandId: string;
@@ -177,9 +175,18 @@ export interface Receipt {
   state: "accepted" | "settled";
   outcome?: "completed" | "cancelled" | "failed" | "queued" | "handled";
   error?: string;
-  /** A `call`'s result. */
+}
+/** `POST /api/sessions/:id/calls`: an extension component's `host.call(name, data)` to a function of its own placement. */
+export interface CallRequest {
+  slot: string;
+  key: string;
+  name: string;
+  data?: Json;
+}
+/** The call's answer: its result, or (with an error status) `error` and the extension's own `detail`. */
+export interface CallResponse {
   result?: Json;
-  /** A failed `call`: the extension's own message. */
+  error?: string;
   detail?: string;
 }
 /** Changes to the live document, applied in order; a `commit` moves persisted items into history. */

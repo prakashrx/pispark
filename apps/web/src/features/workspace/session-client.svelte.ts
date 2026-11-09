@@ -1,6 +1,8 @@
 import { getContext, setContext } from "svelte";
 import type { Json } from "../../../../server/src/stream-ops";
 import type {
+  CallRequest,
+  CallResponse,
   Catalog,
   Command,
   PartPage,
@@ -213,7 +215,7 @@ export class SessionClient {
       }
     }
     if (receipt.error)
-      throw new Error(receipt.detail ?? `${receipt.error} (${receipt.commandId})`);
+      throw new Error(`${receipt.error} (${receipt.commandId})`);
     return receipt;
   }
   async select(id: string) {
@@ -317,10 +319,16 @@ export class SessionClient {
    * decides what to show; nothing is reported to the chat.
    */
   async call(slot: string, key: string, name: string, data?: unknown): Promise<unknown> {
-    const receipt = await this.settled(
-      await this.submit({ type: "call", sessionId: this.selected, slot, key, name, ...(data === undefined ? {} : { data: data as Json }) }),
-    );
-    return receipt.result;
+    const request: CallRequest = { slot, key, name, ...(data === undefined ? {} : { data: data as Json }) };
+    const response = await fetch(`/api/sessions/${this.selected}/calls`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal: AbortSignal.any([this.controller.signal, AbortSignal.timeout(40_000)]),
+    });
+    const answer = (await response.json()) as CallResponse;
+    if (!response.ok) throw new Error(answer.detail ?? answer.error ?? "The call failed");
+    return answer.result;
   }
   /** Answer a question an extension is waiting on; null dismisses it. */
   async answer(dialogId: string, value: string | boolean | null) {

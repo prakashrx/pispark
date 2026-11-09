@@ -2,8 +2,13 @@ import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
+import { once } from "node:events";
+import { randomUUID } from "node:crypto";
+import type { AddressInfo } from "node:net";
 import { compileView, viewBundle } from "../src/extensions/view-compiler.js";
 import { SessionRuntime } from "../src/runtime/session-runtime.js";
+import { SessionHttp } from "../src/session-http.js";
+import { createAppServer } from "../src/server.js";
 import { addViewExtension, testHome, viewExtension } from "./fixtures/home.js";
 
 const eventually = async (check: () => boolean, ms = 10_000) => {
@@ -100,6 +105,58 @@ test("extensions show components with Pi's bus: slots, props, calls back, entrie
 
     await runtime.shutdown();
   } finally {
+    await h.remove();
+  }
+});
+
+test("host.call over HTTP is a plain request and response: many calls never block the chat", async () => {
+  const h = await testHome("pispark-views-http-");
+  const runtime = new SessionRuntime({ ...h.configuration, callTimeoutMs: 300 });
+  const http = new SessionHttp(runtime);
+  const server = createAppServer({ sessions: http });
+  try {
+    await h.persona("default", { name: "Default" });
+    await addViewExtension(h.home, "default");
+    h.provider.automatic = true;
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address() as AddressInfo;
+    const base = `http://127.0.0.1:${address.port}`;
+    const chat = await runtime.create({ folder: await h.folder("work") });
+    await eventually(() => runtime.session(chat.id).extensions.views.length === 7);
+    const call = (body: unknown) =>
+      fetch(`${base}/api/sessions/${chat.id}/calls`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: base },
+        body: JSON.stringify(body),
+      });
+
+    // More calls than the server keeps command receipts for: each answers and is forgotten.
+    for (let i = 0; i < 300; i++) {
+      const response = await call({ slot: "reply.above", key: "counter", name: "add", data: 1 });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { result: i + 1 });
+    }
+    // The extension's own error, and a function the placement does not have.
+    const jam = await call({ slot: "reply.above", key: "counter", name: "jam" });
+    assert.equal(jam.status, 422);
+    assert.deepEqual(await jam.json(), { error: "extension", detail: "The counter is jammed" });
+    assert.equal((await call({ slot: "chat.header", key: "", name: "add" })).status, 404);
+    assert.equal((await call({ slot: "reply.above", key: "counter", name: "add", extra: 1 })).status, 400);
+
+    // Sending a message still works.
+    const response = await fetch(`${base}/api/commands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: base },
+      body: JSON.stringify({ commandId: randomUUID(), type: "start", sessionId: chat.id, text: "hello" }),
+    });
+    assert.equal(response.status, 202);
+    assert.equal(((await response.json()) as { error?: string }).error, undefined);
+    await eventually(() => runtime.session(chat.id).status === "idle");
+  } finally {
+    await http.shutdown();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await h.remove();
   }
 });
