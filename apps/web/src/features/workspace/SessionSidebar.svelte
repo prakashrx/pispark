@@ -47,7 +47,7 @@
             <p class="px-3 pt-2 pb-1.5 text-xs font-medium text-subtle">{group.label}</p>
             <div class="space-y-px">
               {#each group.items as session (session.id)}
-                {@const status = chatStatus(session.status, session.interrupted, session.waiting)}
+                {@const status = chatStatus(session.status, session.interrupted, session.waiting, session.queued)}
                 <a
                   href="#/workspace"
                   onclick={() => client.select(session.id)}
@@ -62,8 +62,8 @@
                   </span>
                   {#if status}
                     <!-- Shape carries the meaning (spinner vs alert) and the text is announced; color only reinforces it. -->
-                    <span class="chat-status" data-tone={status === "Needs attention" ? "warning" : status === "Waiting for you" ? "waiting" : "active"} title={status}>
-                      {#if status === "Needs attention"}<Icon name="alert" class="h-4 w-4" />{:else if status === "Waiting for you"}<Icon name="help" class="h-4 w-4" />{:else}<span class="chat-spinner" aria-hidden="true"></span>{/if}
+                    <span class="chat-status" data-tone={status === "Needs attention" ? "warning" : status === "Waiting for you" || status === "Queued" ? "waiting" : "active"} title={status}>
+                      {#if status === "Needs attention"}<Icon name="alert" class="h-4 w-4" />{:else if status === "Waiting for you"}<Icon name="help" class="h-4 w-4" />{:else if status === "Queued"}<Icon name="clock" class="h-4 w-4" />{:else}<span class="chat-spinner" aria-hidden="true"></span>{/if}
                       <span class="sr-only">{status}</span>
                     </span>
                   {/if}

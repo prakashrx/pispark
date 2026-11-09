@@ -26,9 +26,9 @@ Every session gets a separate `ModelRuntime`, `SettingsManager`, `ResourceLoader
 | `items(id, {before?, after?, limit?})` / `image(id, itemId, part)` / `text(id, itemId, part, offset)` | Finalized items on Pi's active branch read straight from the session, bounded by count and bytes; an image's bytes; a chunk of a clipped text part. Pi's entry ids are the cursors. |
 | `liveDoc(id)` | The live document: the session document, the items not yet saved (including the message being written) and what running tools reported. |
 | `observeLive(id)` | A per-connection live view (the document of unpersisted items and session state, diffed into operations on each tick) plus the invalidation iterator that says when to ask it. |
-| `start(id, text)` | Reserve the idle session and persist active marker before execution; returns `{ completion }`. Completion resolves to completed/cancelled/failed, not just command acceptance. |
+| `start(id, text)` | Send a prompt to an idle chat; returns `{ completion }`, which resolves to completed/cancelled/failed, not just acceptance. If a run slot is free the run starts now (the active marker is saved before execution); otherwise the chat is `queued` and the prompt is saved in `chat.json` until a slot frees. |
 | `queue(id, text, 'steer' or 'follow-up')` | Native queued-input hooks/semantics; resolves queued/handled or rejects busy when cancelled/superseded. Only while running, one input admission in flight. |
-| `cancel(id)` | Prevent new inputs, clear both queues, abort/drain, clear again after outstanding input hooks. Cooperative; cannot undo tool effects. |
+| `cancel(id)` | A queued prompt leaves the queue. A run: prevent new inputs, clear both queues, abort/drain, clear again after outstanding input hooks. Cooperative; cannot undo tool effects. |
 | `stop(id)` | Stop admissions, abort/drain, await native `session_shutdown`, flush settings, dispose, release owner. History remains. |
 | `shutdown()` | Stop new sessions/inputs and drain all live sessions, including pending initialization. |
 
@@ -37,6 +37,10 @@ A host-owned final native input handler and `agent_before_settle` handler associ
 Start input goes through Pi's normal prompt handling: persona prompt templates expand as `/commands` and extension commands run, as in terminal Pi. Native command-context new/switch/fork/tree/reload operations throw unsupported. Resource expansion requested by extensions also throws; additional resources require host admission. Native extension hooks, tools, bus events and lifecycle remain available. No arbitrary EventBus channel is exposed to clients.
 
 Failures use safe codes, not raw provider/extension stacks. Items and session documents never carry SDK error diagnostics or stacks. This is not a general DLP guarantee: trusted tools/extensions and model output can contain sensitive filesystem data. Native JSONL is private server-side data and may include raw provider errors; never serve it as an unauthenticated static asset.
+
+## Run slots
+
+At most `maxRunning` chats (default 8) have an agent working at once (`runtime/run-slots.ts`). Further prompts wait in order with status `queued` and `queued: true` in the summary; the session document carries the waiting `queuedText`. A run whose extension waits for a person (an open `ctx.ui` question) gives its slot to the next chat. When the question is answered or gives up, the run needs a slot to go on and goes ahead of prompts that have not started; meanwhile it reports `queued: true`. Cancelling or stopping a chat that waits for a slot ends the wait at once.
 
 ## Observation and limits
 

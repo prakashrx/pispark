@@ -159,7 +159,7 @@ export async function body(
 export class SessionHttp {
   private receipts = new Map<
     string,
-    { receipt: Receipt; input: string; expires: number; lifecycle?: string }
+    { receipt: Receipt; input: string; expires: number; lifecycle?: string; start?: boolean }
   >();
   private streams = new Set<ServerResponse>();
   private requests = 0;
@@ -225,9 +225,10 @@ export class SessionHttp {
     const pool = [...this.receipts.values()].filter(
       (e) => Boolean(e.lifecycle) === Boolean(lifecycle),
     );
+    // A start stays pending while its prompt waits for a turn and runs; there is at most one per chat.
     if (
       pool.length >= (lifecycle ? 32 : 256) ||
-      pool.filter((e) => e.receipt.state === "accepted").length >= 16
+      (command.type !== "start" && pool.filter((e) => e.receipt.state === "accepted" && !e.start).length >= 16)
     )
       throw new RuntimeError("limit");
     const receipt: Receipt = {
@@ -235,11 +236,12 @@ export class SessionHttp {
       state: "accepted",
       ...("sessionId" in command ? { sessionId: command.sessionId } : {}),
     };
-    const entry: { receipt: Receipt; input: string; expires: number; lifecycle?: string } = {
+    const entry: { receipt: Receipt; input: string; expires: number; lifecycle?: string; start?: boolean } = {
       receipt,
       input,
       expires: Infinity,
       lifecycle,
+      ...(command.type === "start" ? { start: true } : {}),
     };
     this.receipts.set(command.commandId, entry);
     const execute = async () => {

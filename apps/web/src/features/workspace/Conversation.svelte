@@ -6,6 +6,7 @@
   import StyledText from "./StyledText.svelte";
   import WorkingFrames from "./WorkingFrames.svelte";
   import ViewSlot from "./ViewSlot.svelte";
+  import UserTurn from "./UserTurn.svelte";
   import { placedSlots } from "./extension-views";
   import ChatDetails from "./ChatDetails.svelte";
   import InlinePanel from "../../lib/ui/InlinePanel.svelte";
@@ -40,7 +41,9 @@
         ? ""
         : chat?.waiting && chat.status === "running"
           ? chatStatus(chat.status, chat.interrupted, true)
-          : (working?.message ?? chatStatus(chat?.status, chat?.interrupted)),
+          : chat?.queued
+            ? chatStatus(chat.status, chat.interrupted, false, true)
+            : (working?.message ?? chatStatus(chat?.status, chat?.interrupted)),
   );
   const placed = $derived(placedSlots(snapshot?.extensions));
   // An extension's window title names the browser tab while this chat is open.
@@ -184,6 +187,10 @@
             class={button}
             aria-label="Stop response"
             onclick={() => client.cancel()}>Stop</Button
+          >{:else if snapshot?.status === "queued"}<Button
+            class={button}
+            aria-label="Cancel queued message"
+            onclick={() => client.cancel()}>Cancel</Button
           >{/if}
         <ChatDetails oneditpersona={() => (editingPersona = true)} />
       </div>
@@ -251,6 +258,12 @@
         {#each turns as turn (turn.key)}
           <ResponseTurn {turn} sessionId={client.selected} />
         {/each}
+        {#if snapshot.status === "queued" && snapshot.queuedText}<div class="queued-turn">
+            <UserTurn text={snapshot.queuedText} />
+            <p role="status" class="queued-note">
+              {snapshot.restored ? "Queued from before PiSpark restarted." : "Queued."} Starts when another chat finishes.
+            </p>
+          </div>{/if}
       </div>
     {/if}
     <div class="h-10"></div>
@@ -264,6 +277,17 @@
   /* Prepending older items must not move what you are reading; the position is restored by hand. */
   .conversation {
     overflow-anchor: none;
+  }
+  .queued-turn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+    opacity: 0.75;
+  }
+  .queued-note {
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
   }
   .jump {
     position: sticky;

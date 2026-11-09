@@ -27,8 +27,9 @@ export function chatName(chat?: SessionInfo): string {
   if (chat.hasHistory === false) return "New chat";
   return "Untitled chat";
 }
-export function chatStatus(status?: string, interrupted = false, waiting = false): string {
+export function chatStatus(status?: string, interrupted = false, waiting = false, queued = false): string {
   if (waiting && status === "running") return "Waiting for you";
+  if (queued || status === "queued") return "Queued";
   if (status === "cancelling" || status === "stopping") return "Stopping…";
   if (status === "running") return "Working…";
   if (status === "starting") return "Opening…";

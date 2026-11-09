@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { request, type IncomingMessage, type ServerResponse } from "node:http";
 import { observeLive } from "./fixtures/live-client.js";
-import { SessionRuntime } from "../src/runtime/session-runtime.js";
+import { SessionRuntime, type RuntimeConfiguration } from "../src/runtime/session-runtime.js";
 import { SessionHttp } from "../src/session-http.js";
 import { createAppServer } from "../src/server.js";
 import { bundledTransportPatched } from "../src/host-configuration.js";
@@ -29,13 +29,13 @@ export default function (pi) {
   });
 }
 `;
-async function fixture(t: TestContext, extensions: Record<string, string> = {}) {
+async function fixture(t: TestContext, extensions: Record<string, string> = {}, options: Partial<RuntimeConfiguration> = {}) {
   const h = await testHome("pispark-http-");
   const root = h.root;
   const folders = { a: await h.folder("a"), b: await h.folder("b") };
   await h.persona("default", { name: "Default" }, { "instructions/test.md": "test only", ...extensions });
   const provider = h.provider;
-  const configuration = h.configuration;
+  const configuration = { ...h.configuration, ...options };
   const runtime = new SessionRuntime(configuration);
   const http = new SessionHttp(runtime);
   const server = createAppServer({ sessions: http });
@@ -474,7 +474,8 @@ test("bundledTransportPatched: numeric patched branches and unknown/prerelease f
 
 for (const boundary of ["retained", "pending"] as const) {
   test(`SessionHttp: lifecycle remains available at ordinary ${boundary} saturation and coalesces bounded controls`, async (t) => {
-    const f = await fixture(t);
+    // A start may wait for its turn, so only other commands fill the pending reserve: 16 chats, each with a pending steer.
+    const f = await fixture(t, {}, boundary === "pending" ? { maxLiveSessions: 16, maxRunning: 16 } : {});
     let release!: () => void;
     if (boundary === "pending") {
       const gate = new Promise<void>((resolve) => {
@@ -495,7 +496,7 @@ for (const boundary of ["retained", "pending"] as const) {
       });
     }
     const ids: string[] = [];
-    for (let i = 0; i < (boundary === "pending" ? 8 : 1); i++)
+    for (let i = 0; i < (boundary === "pending" ? 16 : 1); i++)
       ids.push(await f.create("a"));
     if (boundary === "retained") {
       for (let i = 0; i < 254; i++)
@@ -513,7 +514,7 @@ for (const boundary of ["retained", "pending"] as const) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         commandId: randomUUID(),
-        type: "start",
+        type: boundary === "pending" ? "steer" : "start",
         sessionId: ids[0],
         text: "overflow",
       }),

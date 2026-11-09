@@ -15,6 +15,8 @@ export interface SessionInfo {
   personaChanged?: boolean;
   /** An extension asked a question and the run waits for an answer. */
   waiting?: boolean;
+  /** Waits for a free run slot: a prompt that has not started, or a run resuming after an answer. */
+  queued?: boolean;
 }
 /**
  * A notice PiSpark showed in an open chat (an extension's message or failure, an answered question),
@@ -135,6 +137,10 @@ export interface ExtensionView {
 /** Everything about a chat except its history: status, model, queue, and what extensions show. */
 export interface SessionDoc extends SessionInfo {
   model?: { provider: string; id: string };
+  /** The prompt waiting for a run slot, while the chat is `queued`. */
+  queuedText?: string;
+  /** That prompt was waiting when PiSpark stopped, and was queued again when the chat opened. */
+  restored?: true;
   queue: { steering: number; followUp: number };
   error?: string;
   extensions: ExtensionView;

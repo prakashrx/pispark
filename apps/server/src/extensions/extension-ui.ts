@@ -86,7 +86,7 @@ function gitBranch(cwd: string): string | null {
 export class ExtensionUI {
   private readonly dialogs = new Map<
     string,
-    { dialog: ExtensionDialog; settle: (answer: Answer) => void }
+    { dialog: ExtensionDialog; settle: (answer: Answer, direct?: boolean) => void }
   >();
   private readonly statuses = new Map<string, string>();
   private readonly widgets = new Map<string, Widget>();
@@ -108,6 +108,10 @@ export class ExtensionUI {
       position: () => number;
       /** The chat's working folder, for the footer's git branch. */
       cwd: string;
+      /** A question opened: the run waits for a person. */
+      paused?: () => void;
+      /** A question was answered or gave up: `go` lets the extension continue, once the run may. */
+      resume?: (go: () => void) => void;
       /** Keeps a notice in the chat's history; false while the chat is still opening. */
       save?: (notice: { kind: Notice["kind"]; lines: StyledLine[]; at: number }) => boolean;
     },
@@ -141,11 +145,14 @@ export class ExtensionUI {
     const id = randomUUID();
     return new Promise<T>((resolve) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const settle = (answer: Answer) => {
+      // `direct`: the run is ending (cancelled or closed), so the handler finishes at once.
+      const settle = (answer: Answer, direct = false) => {
         if (!this.dialogs.delete(id)) return;
         clearTimeout(timer);
         options?.signal?.removeEventListener("abort", dismiss);
-        resolve(answer === undefined ? fallback : accept(answer));
+        const finish = () => resolve(answer === undefined ? fallback : accept(answer));
+        if (direct || !this.host.resume) finish();
+        else this.host.resume(finish);
         this.changed();
       };
       const dismiss = () => settle(undefined);
@@ -160,6 +167,7 @@ export class ExtensionUI {
         } as ExtensionDialog,
         settle,
       });
+      if (this.dialogs.size === 1) this.host.paused?.();
       this.changed();
     });
   }
@@ -322,7 +330,7 @@ export class ExtensionUI {
 
   /** Dismiss open questions, e.g. when the run is cancelled, so waiting handlers finish. */
   dismissAll(): void {
-    for (const { settle } of [...this.dialogs.values()]) settle(undefined);
+    for (const { settle } of [...this.dialogs.values()]) settle(undefined, true);
   }
 
   close(): void {

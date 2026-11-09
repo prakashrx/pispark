@@ -43,6 +43,8 @@ export interface RuntimeConfiguration {
   /** Tests only: one keyless loopback model instead of Providers & models. */
   fixedModel?: { provider: () => Provider; id: string };
   maxLiveSessions?: number;
+  /** How many chats may run at once; more prompts wait for a turn (default 8). */
+  maxRunning?: number;
   /** How long an extension component's call may take (default 30 s). */
   callTimeoutMs?: number;
   operationTimeoutMs?: number;

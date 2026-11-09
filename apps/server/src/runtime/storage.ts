@@ -32,6 +32,8 @@ export interface ChatMetadata {
   interrupted: boolean;
   /** Setup fingerprint when the session last started. */
   setup?: string;
+  /** A prompt waiting for a run slot, kept so a restart does not lose it. */
+  queued?: string;
 }
 
 const UUID =
@@ -83,7 +85,8 @@ export class ChatStorage {
         (value.title !== undefined && !validChatTitle(value.title)) ||
         typeof value.active !== "boolean" ||
         typeof value.interrupted !== "boolean" ||
-        (value.setup !== undefined && !/^[a-f0-9]{64}$/.test(value.setup))
+        (value.setup !== undefined && !/^[a-f0-9]{64}$/.test(value.setup)) ||
+        (value.queued !== undefined && (typeof value.queued !== "string" || value.queued.length > 64 * 1024))
       )
         throw new Error();
       return { ...value, id };

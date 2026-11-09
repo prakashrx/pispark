@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { NOTICE_ENTRY, type ItemsPage, type LiveDoc, type PartPage, type SessionDoc } from "../protocol.js";
 import { ItemProjector, progressOf } from "./items.js";
 import { LiveView } from "./live-view.js";
+import { RunSlots } from "./run-slots.js";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import {
   createAgentSession,
@@ -38,6 +39,8 @@ import { homePaths } from "../home.js";
 export type SessionStatus =
   | "starting"
   | "idle"
+  /** A prompt waits for a free run slot. */
+  | "queued"
   | "running"
   | "cancelling"
   | "stopping"
@@ -57,6 +60,8 @@ export interface SessionSummary {
   personaChanged?: boolean;
   /** An extension asked a question and the run waits for an answer. */
   waiting?: boolean;
+  /** Waits for a free run slot: a prompt that has not started, or a run resuming after an answer. */
+  queued?: boolean;
 }
 export interface RunResult {
   outcome: "completed" | "cancelled" | "failed";
@@ -99,6 +104,14 @@ interface HostedSession {
   items?: ItemProjector;
   /** Running tool calls and what they reported last (Pi's partial result), by call id. References only. */
   running: Map<string, unknown>;
+  /** A queued prompt's run, resolved once it ran or was cancelled. */
+  queuedRun?: (result: Promise<RunResult> | RunResult) => void;
+  /** The run gave its slot up while an extension waits for a person. */
+  paused?: boolean;
+  /** Answered, the run waits for a slot to go on; called to go on. */
+  resuming?: () => void;
+  /** The queued prompt was waiting when PiSpark stopped. */
+  restored?: true;
 }
 
 /** "extensions/notes.ts" and "extensions/notes/index.ts" are both "notes". */
@@ -118,6 +131,8 @@ export class SessionRuntime {
     valid: () => boolean;
   }>();
   private readonly maxLive: number;
+  /** Chats whose agent works now, and the ones waiting for a turn. */
+  private readonly slots: RunSlots;
   private readonly timeout: number;
   private readonly runTimeout: number;
   constructor(
@@ -126,6 +141,7 @@ export class SessionRuntime {
     private readonly logger: SafeLogger = silentLogger,
   ) {
     this.maxLive = configuration.maxLiveSessions ?? 8;
+    this.slots = new RunSlots(configuration.maxRunning ?? 8);
     this.timeout = configuration.operationTimeoutMs ?? 10_000;
     this.runTimeout = configuration.runTimeoutMs ?? 300_000;
     if (
@@ -201,6 +217,7 @@ export class SessionRuntime {
       },
       ...(hosted?.setupChanged ? { personaChanged: true } : {}),
       ...(hosted?.ui?.asking ? { waiting: true } : {}),
+      ...(hosted?.status === "queued" || this.slots.queued(metadata.id) ? { queued: true } : {}),
     };
   }
   /** After any persona edit, flag open chats whose resolved setup no longer matches. */
@@ -254,6 +271,8 @@ export class SessionRuntime {
         steering: session.getSteeringMessages().length,
         followUp: session.getFollowUpMessages().length,
       },
+      ...(hosted.status === "queued" && hosted.metadata.queued !== undefined ? { queuedText: hosted.metadata.queued } : {}),
+      ...(hosted.status === "queued" && hosted.restored ? { restored: true as const } : {}),
       error: hosted.error,
       extensions: {
         ...(hosted.ui?.view() ?? { dialogs: [], statuses: [], widgets: [], notices: [] }),
@@ -439,6 +458,28 @@ export class SessionRuntime {
         changed: () => this.changed(hosted),
         position: () => hosted.session?.messages.length ?? 0,
         cwd,
+        // Waiting for a person, the run gives its slot to the next chat; it needs one to go on.
+        paused: () => {
+          if (this.slots.release(metadata.id)) {
+            hosted.paused = true;
+            this.changed(hosted);
+          }
+        },
+        resume: (go) => {
+          if (!hosted.paused || hosted.status !== "running" || hosted.identity?.cancelled) return go();
+          const resume = () => {
+            hosted.resuming = undefined;
+            hosted.paused = false;
+            go();
+            this.changed(hosted);
+          };
+          if (this.slots.take(metadata.id)) resume();
+          else {
+            hosted.resuming = resume;
+            this.slots.wait(metadata.id, resume, true);
+            this.changed(hosted);
+          }
+        },
         save: (notice) => {
           if (!hosted.published || !hosted.session || hosted.hostClosed) return false;
           hosted.session.sessionManager.appendCustomEntry(NOTICE_ENTRY, notice);
@@ -659,14 +700,72 @@ export class SessionRuntime {
     )
       throw new RuntimeError("invalid-input");
   }
+  /**
+   * Sends a prompt: it runs now if a run slot is free, else it waits for one in order. A waiting
+   * prompt is saved with the chat, so a restart keeps it.
+   */
   start(id: string, text: string): RunHandle {
     this.validateText(text);
     if (!this.accepting) throw new RuntimeError("closed");
     const hosted = this.get(id);
     if (hosted.status !== "idle" || hosted.input)
       throw new RuntimeError("busy");
+    if (!this.slots.take(id)) return { completion: this.enqueue(hosted, text) };
+    try {
+      return { completion: this.begin(hosted, text) };
+    } catch (error) {
+      this.slots.release(id);
+      throw error;
+    }
+  }
+  private enqueue(hosted: HostedSession, text: string): Promise<RunResult> {
+    const id = hosted.metadata.id;
+    const metadata = { ...hosted.metadata, queued: text };
+    this.storage.write(metadata);
+    hosted.metadata = metadata;
+    hosted.status = "queued";
+    hosted.error = undefined;
+    this.changed(hosted);
+    return new Promise<Promise<RunResult> | RunResult>((resolve) => {
+      hosted.queuedRun = resolve;
+      this.slots.wait(id, () => {
+        hosted.queuedRun = undefined;
+        hosted.status = "idle";
+        try {
+          resolve(this.begin(hosted, text));
+        } catch (error) {
+          this.slots.release(id);
+          hosted.error = runtimeError(error, "storage").code;
+          hosted.status = "error";
+          this.changed(hosted);
+          resolve({ outcome: "failed", error: hosted.error });
+        }
+      });
+    }).then((result) => result);
+  }
+  /** Takes a queued prompt off the queue; a stopping chat keeps it saved for its next start. */
+  private unqueue(hosted: HostedSession, keep: boolean): void {
+    this.slots.withdraw(hosted.metadata.id);
+    const resolve = hosted.queuedRun;
+    hosted.queuedRun = undefined;
+    if (!keep && hosted.metadata.queued !== undefined) {
+      const { queued: _queued, ...metadata } = hosted.metadata;
+      try {
+        this.storage.write(metadata);
+      } catch {
+        /* The prompt stays saved; it is offered again when the chat opens. */
+      }
+      hosted.metadata = metadata;
+    }
+    if (hosted.status === "queued") hosted.status = "idle";
+    resolve?.({ outcome: "cancelled" });
+    this.changed(hosted);
+  }
+  private begin(hosted: HostedSession, text: string): Promise<RunResult> {
+    const id = hosted.metadata.id;
     const started = Date.now();
-    const metadata = { ...hosted.metadata, active: true, interrupted: false };
+    const { queued: _queued, ...current } = hosted.metadata;
+    const metadata = { ...current, active: true, interrupted: false };
     if (
       !metadata.title &&
       !this.storage.hasHistory(id) &&
@@ -723,6 +822,9 @@ export class SessionRuntime {
         }
         if (hosted.status === "running")
           hosted.status = hosted.error ? "error" : "idle";
+        hosted.paused = false;
+        this.slots.withdraw(id);
+        this.slots.release(id);
         this.logger.event("session.settle", {
           sessionId: id,
           durationMs: Date.now() - started,
@@ -738,7 +840,7 @@ export class SessionRuntime {
     })().then((result) =>
       hosted.error ? { outcome: "failed", error: hosted.error } : result,
     );
-    return { completion: hosted.run };
+    return hosted.run;
   }
   async queue(
     id: string,
@@ -797,14 +899,17 @@ export class SessionRuntime {
   async cancel(id: string): Promise<void> {
     const hosted = this.get(id);
     if (hosted.loading) throw new RuntimeError("busy");
+    // A prompt that has not started yet simply leaves the queue.
+    if (hosted.status === "queued") return this.unqueue(hosted, false);
     if (!hosted.cancel) {
       this.logger.event("session.cancel", {
         sessionId: id,
         outcome: "completed",
       });
       if (hosted.identity) hosted.identity.cancelled = true;
-      // Questions an extension is waiting on would hold the run open.
+      // Questions an extension is waiting on, or an answered one waiting for a slot, would hold the run open.
       hosted.ui?.dismissAll();
+      this.wake(hosted);
       if (hosted.status !== "stopping") hosted.status = "cancelling";
       this.changed(hosted);
       const session = hosted.session!;
@@ -848,7 +953,18 @@ export class SessionRuntime {
     }
     await deadline(hosted.stop, this.timeout);
   }
+  /** A run that waits for a slot to go on is ending: let it go on now, without one. */
+  private wake(hosted: HostedSession): void {
+    const resume = hosted.resuming;
+    if (!resume) return;
+    this.slots.withdraw(hosted.metadata.id);
+    resume();
+  }
   private async disposeOwned(hosted: HostedSession): Promise<void> {
+    if (hosted.queuedRun) this.unqueue(hosted, true);
+    if (hosted.identity) hosted.identity.cancelled = true;
+    hosted.ui?.dismissAll();
+    this.wake(hosted);
     hosted.status = "stopping";
     hosted.hostClosed = true;
     hosted.ui?.close();
