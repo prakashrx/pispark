@@ -14,7 +14,7 @@ Pi's terminal components are just `render(width)` → lines, so PiSpark calls an
 
 | Pi API | In PiSpark |
 | --- | --- |
-| `ctx.ui.select`, `confirm`, `input`, `editor` | A question card above the reply box. It takes focus; arrows move between options, Enter answers, Escape dismisses, focus returns. Honours Pi's `timeout` (with a countdown) and `signal`. Cancelling or stopping the chat dismisses open questions. Questions wait while no browser is watching. |
+| `ctx.ui.select`, `confirm`, `input`, `editor` | A question card above the reply box, with one frame for every kind: it takes focus (a confirmation starts on the question, not on an answer; a list starts on its filter or first option), Escape or Skip skips, focus returns afterwards, a timeout shows a countdown, and a hint line names the keys. Confirmations answer to Y and N; lists scroll inside the card, filter from eight options up, answer to 1–9 and show `label — detail` as two lines; text is submitted with Enter, an editor with Ctrl+Enter. Honours Pi's `timeout` and `signal`. Cancelling or stopping the chat dismisses open questions. Questions wait while no browser is watching. An answered or skipped question leaves a line in the chat ("Proceed? → no"); what a person typed is not echoed. |
 | `ctx.ui.notify` | A line in the conversation where it happened; warnings and errors are labelled and tinted. Kept for the live session, like terminal scrollback. |
 | `ctx.ui.setStatus` | A quiet status line under the reply box. |
 | `ctx.ui.setWidget` (lines or a component) | Above or below the reply box, as `placement` says. |

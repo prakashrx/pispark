@@ -22,6 +22,14 @@ interface Widget {
   component?: Owned;
 }
 type Notice = ExtensionView["notices"][number];
+
+/** What a question's answer is called in the line the chat keeps: the choice, yes or no, or that it was answered. */
+function receipt(dialog: ExtensionDialog, answer: string | boolean | null): string {
+  if (answer === null) return "skipped";
+  if (dialog.kind === "confirm") return answer === true ? "yes" : "no";
+  if (dialog.kind === "select") return plain(String(answer), 120);
+  return "answered";
+}
 type Question = ExtensionDialog extends infer D
   ? D extends ExtensionDialog
     ? Omit<D, "id" | "expiresAt">
@@ -296,6 +304,10 @@ export class ExtensionUI {
     )
       throw new RuntimeError("invalid-input");
     pending.settle(answer ?? undefined);
+    // The chat keeps a line of what was asked and answered, as terminal scrollback would. What a
+    // person typed is not echoed: it may be a name, a path or something private.
+    this.notice(`${plain(dialog.title, 120).split(String.fromCharCode(10))[0]} → ${receipt(dialog, answer)}`, "info");
+    this.changed();
   }
 
   /** Dismiss open questions, e.g. when the run is cancelled, so waiting handlers finish. */

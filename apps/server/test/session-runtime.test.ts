@@ -369,6 +369,11 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
     assert.deepEqual(view.widgets, [{ key: "fixture", placement: "below", lines: [[{ text: "widget line" }]] }]);
     assert.equal(view.draft?.text, "drafted by fixture");
     assert.deepEqual(view.notices.map((n) => [n.kind, n.lines[0]![0]!.text]), [
+      // A line for each question a person answered or skipped; what they typed is not echoed.
+      ["info", "Proceed? → yes"],
+      ["info", "Pick one → two"],
+      ["info", "Name → answered"],
+      ["info", "Pick one → skipped"],
       ["warning", "Heads up"],
       ["error", "The controlled extension failed in before_agent_start: fixture failure"],
     ]);

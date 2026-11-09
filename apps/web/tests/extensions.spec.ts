@@ -31,14 +31,27 @@ test("an extension's notice, status, widget and question appear around the chat 
   await expect(question).toHaveCount(0);
   await expect(reply).toBeFocused();
   await expect(page.getByText("local:ui-select", { exact: true })).toBeVisible();
+  // The chat keeps a line of what was asked and chosen.
+  await expect(page.getByText("Pick one → two", { exact: true })).toBeVisible();
 
-  // Escape dismisses a question.
+  // A confirmation starts on the question itself, not on an answer; Y and N answer, Escape skips.
   await reply.fill("ui-confirm");
   await reply.press("Enter");
-  await expect(page.getByRole("group", { name: "Proceed?" }).getByRole("button", { name: "Yes" })).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("group", { name: "Proceed?" })).toHaveCount(0);
+  const confirm = page.getByRole("group", { name: "Proceed?" });
+  await expect(confirm).toBeFocused();
+  await expect(confirm.getByRole("button", { name: "Yes" })).not.toBeFocused();
+  await expect(confirm.getByRole("button", { name: "No" })).toBeVisible();
+  await page.keyboard.press("n");
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByText("Proceed? → no", { exact: true })).toBeVisible();
   await expect(page.getByText("local:ui-confirm", { exact: true })).toBeVisible();
+  await reply.fill("ui-confirm");
+  await reply.press("Enter");
+  await expect(confirm).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByText("Proceed? → skipped", { exact: true })).toBeVisible();
+  await expect(page.getByText("local:ui-confirm", { exact: true })).toHaveCount(2);
 
   // One header and footer slot, the browser tab title, and Pi's session name as the chat title.
   await reply.fill("ui-chrome");
