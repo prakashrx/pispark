@@ -18,10 +18,16 @@ test("an extension's own Svelte components appear in the chat's slots, answer ca
   await ask.fill('tool:shout:{"word":"hi"}');
   await ask.press("Enter");
 
-  // header and above-reply: placed when the extension loaded, with the props it sent.
-  await expect(page.locator('[data-slot="header"]')).toHaveText("Fixture banner");
-  const counter = page.locator('[data-slot="above-reply"]');
+  // Places: shown when the extension loaded, with the props it sent; the footer replaces the status line.
+  await expect(page.locator('[data-slot="chat.header"]')).toHaveText("Fixture banner");
+  const counter = page.locator('[data-slot="reply.above"]');
   await expect(counter.getByText("Count 0", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-slot="chat.title"]')).toHaveText("fixture chip");
+  await expect(page.locator('[data-slot="reply.footer"]')).toHaveText("Fixture footer");
+  const toggle = page.locator('[data-slot="reply.actions"]').getByRole("button", { name: "Fixture mode" });
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
 
   // tool:shout: the call is drawn by the extension's component, from Pi's details.
   await expect(page.locator('[data-slot="tool:shout"]')).toHaveText("Shouted HI");
@@ -37,12 +43,12 @@ test("an extension's own Svelte components appear in the chat's slots, answer ca
   await expect(counter.getByText("The counter is jammed", { exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 
-  // entry:note: a custom entry drawn by the extension's component from the entry's own data.
+  // custom:note: a custom entry drawn by the extension's component from the entry's own data.
   const reply = page.getByRole("textbox", { name: "Reply to chat" });
   await expect(page.getByRole("button", { name: "Send message" })).not.toHaveAttribute("aria-disabled", "true");
   await reply.fill("/note saved");
   await reply.press("Enter");
-  await expect(page.locator('[data-slot="entry:note"]')).toHaveText("Note: saved");
+  await expect(page.locator('[data-slot="custom:note"]')).toHaveText("Note: saved");
 
   // Components style themselves with PiSpark's tokens, so they follow the theme.
   const color = () => counter.locator(".counter").evaluate((node) => getComputedStyle(node).color);
@@ -56,7 +62,7 @@ test("an extension's own Svelte components appear in the chat's slots, answer ca
   await page.getByRole("button", { name: "Reopen chat" }).click();
   await expect(counter.getByText("Count 0", { exact: true })).toBeVisible();
   await expect(page.locator('[data-slot="tool:shout"]')).toHaveText("Shouted HI");
-  await expect(page.locator('[data-slot="entry:note"]')).toHaveText("Note: saved");
+  await expect(page.locator('[data-slot="custom:note"]')).toHaveText("Note: saved");
 
   expect(errors).toEqual([]);
 });

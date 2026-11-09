@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import type { Item, ItemPart } from "../../../../server/src/protocol";
 import { buildTurns, clippedPart, itemText } from "./chat-turns";
 import { describeCall, summarizeCalls } from "./tool-views";
+import { slotOf } from "./extension-views";
 
 let n = 0;
 const item = (role: Item["role"], parts: ItemPart[], extra: Partial<Item> = {}): Item => ({
@@ -164,4 +165,24 @@ test("a running call carries what it has output so far; a finished one does not"
   const progress = { c1: { output: "compiling\n" }, c2: { output: "stale" } };
   const segment = buildTurns(items, { running: true, progress })[0]!.segments[0]!;
   expect(segment.kind === "activity" && segment.calls.map((c) => c.progress?.output)).toEqual(["compiling\n", undefined]);
+});
+
+test("a tool an extension placed a component for is drawn by it alone; custom items map to their slot", () => {
+  n = 0;
+  const details = { patch: ["--- a.ts", "+++ a.ts", "@@ -1 +1 @@", "-a", "+b", ""].join(String.fromCharCode(10)) };
+  const items = [
+    item("user", [text("go")]),
+    item("assistant", [call("c1", "edit", { path: "a.ts" })]),
+    item("toolResult", [text("edited")], { callId: "c1", details, toolName: "edit" }),
+    item("custom", [text("saved")], { customType: "note" }),
+  ];
+  const plain = buildTurns(items, { running: false });
+  expect(plain[0]!.segments.map((s) => s.kind)).toEqual(["activity", "diff", "custom"]);
+  const placed = buildTurns(items, { running: false, placed: (slot) => slot === "tool:edit" });
+  // The component is the whole call: no activity line, no default diff.
+  expect(placed[0]!.segments.map((s) => s.kind)).toEqual(["view", "custom"]);
+  const [view, custom] = placed[0]!.segments;
+  expect(slotOf(view!)).toEqual({ slot: "tool:edit", data: expect.objectContaining({ name: "edit", status: "done" }) });
+  expect(slotOf(custom!)).toEqual({ slot: "custom:note", data: expect.objectContaining({ customType: "note" }) });
+  expect(slotOf(plain[0]!.segments[0]!)).toBeUndefined();
 });

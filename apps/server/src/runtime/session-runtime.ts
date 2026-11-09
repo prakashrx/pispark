@@ -601,7 +601,7 @@ export class SessionRuntime {
       });
       hosted.rendering = new ExtensionRendering(session, () => this.changed(hosted));
       const views = hosted.views;
-      hosted.items = new ItemProjector(session, hosted.rendering, (customType) => views.has(`entry:${customType}`));
+      hosted.items = new ItemProjector(session, hosted.rendering, (customType) => views.has(`custom:${customType}`));
       // Pi's mode for clients that are not a terminal: dialogs and notices work, terminal components don't.
       await session.bindExtensions({
         mode: "rpc",

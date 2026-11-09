@@ -15,14 +15,14 @@
 </script>
 
 {#if view}
-  {#if placement === "below"}<ViewSlot slot="below-reply" />{/if}
+  {#if placement === "below"}<ViewSlot slot="reply.below" />{/if}
   {#if widgets.length}
     <div class="extension-widgets" data-placement={placement}>
       {#each widgets as widget (widget.key)}<StyledText lines={widget.lines} />{/each}
     </div>
   {/if}
   {#if placement === "above"}
-    <ViewSlot slot="above-reply" />
+    <ViewSlot slot="reply.above" />
     {#if view.dialogs.length}
       <div class="extension-questions">
         {#each view.dialogs as dialog (dialog.id)}
@@ -30,6 +30,9 @@
         {/each}
       </div>
     {/if}
+  {:else if view.views.some((v) => v.slot === "reply.footer")}
+    <!-- A footer component replaces the status line, as Pi's setFooter replaces its footer. -->
+    <ViewSlot slot="reply.footer" />
   {:else if view.footer}
     <!-- An extension footer replaces the status line, as it replaces terminal Pi's footer. -->
     <div class="extension-statuses" aria-label="Extension status"><StyledText class="extension-status" lines={view.footer} /></div>

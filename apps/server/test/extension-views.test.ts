@@ -41,14 +41,17 @@ test("extensions show components with Pi's bus: slots, props, calls back, entrie
     const notices = () => runtime.session(chat.id).extensions.notices.map((n) => n.lines.map((l) => l.map((s) => s.text).join("")).join(" "));
 
     // Placed while the extension loaded; each shows once compiled.
-    await eventually(() => views().length === 4);
+    await eventually(() => views().length === 7);
     assert.deepEqual(
       views().map(({ slot, key, props }) => ({ slot, key, props })),
       [
-        { slot: "above-reply", key: "counter", props: { count: 0 } },
-        { slot: "header", key: "", props: { text: "Fixture banner" } },
+        { slot: "reply.above", key: "counter", props: { count: 0 } },
+        { slot: "reply.actions", key: "", props: { on: false } },
+        { slot: "chat.title", key: "", props: { text: "fixture chip" } },
+        { slot: "reply.footer", key: "", props: { text: "Fixture footer" } },
+        { slot: "chat.header", key: "", props: { text: "Fixture banner" } },
         { slot: "tool:shout", key: "", props: undefined },
-        { slot: "entry:note", key: "", props: undefined },
+        { slot: "custom:note", key: "", props: undefined },
       ],
     );
     for (const { url } of views()) {
@@ -59,18 +62,18 @@ test("extensions show components with Pi's bus: slots, props, calls back, entrie
 
     // host.call runs a function of the component's own placement and gives back its result; the
     // extension shows new props at once, reusing the compiled component.
-    assert.equal(await runtime.call(chat.id, "above-reply", "counter", "add", 2), 2);
-    assert.deepEqual(views()[0], { slot: "above-reply", key: "counter", url: counterUrl, props: { count: 2 } });
+    assert.equal(await runtime.call(chat.id, "reply.above", "counter", "add", 2), 2);
+    assert.deepEqual(views()[0], { slot: "reply.above", key: "counter", url: counterUrl, props: { count: 2 } });
     const code = (expected: string, detail?: RegExp) => (error: { code?: string; detail?: string }) =>
       error.code === expected && (!detail || detail.test(error.detail ?? ""));
     // The extension's own error comes back to the component; the chat is unaffected.
-    await assert.rejects(runtime.call(chat.id, "above-reply", "counter", "jam"), code("extension", /The counter is jammed/));
+    await assert.rejects(runtime.call(chat.id, "reply.above", "counter", "jam"), code("extension", /The counter is jammed/));
     // A function that never answers times out; a result that is not JSON is refused.
-    await assert.rejects(runtime.call(chat.id, "above-reply", "counter", "hang"), code("timeout"));
-    await assert.rejects(runtime.call(chat.id, "above-reply", "counter", "notJson"), code("extension", /must be JSON/));
+    await assert.rejects(runtime.call(chat.id, "reply.above", "counter", "hang"), code("timeout"));
+    await assert.rejects(runtime.call(chat.id, "reply.above", "counter", "notJson"), code("extension", /must be JSON/));
     // A placement reaches only its own functions: the header has no "add", the counter no "removeCounter".
-    await assert.rejects(runtime.call(chat.id, "header", "", "add", 1), code("not-found"));
-    await assert.rejects(runtime.call(chat.id, "above-reply", "counter", "removeCounter"), code("not-found"));
+    await assert.rejects(runtime.call(chat.id, "chat.header", "", "add", 1), code("not-found"));
+    await assert.rejects(runtime.call(chat.id, "reply.above", "counter", "removeCounter"), code("not-found"));
 
     // A custom entry with a placed component reaches the browser with its data, even with no terminal renderer.
     await runtime.start(chat.id, "/note saved").completion;
@@ -84,13 +87,13 @@ test("extensions show components with Pi's bus: slots, props, calls back, entrie
     assert.deepEqual(result?.details, { loud: "HI" });
 
     // Removing: an event with no component.
-    await runtime.call(chat.id, "header", "", "removeCounter");
+    await runtime.call(chat.id, "chat.header", "", "removeCounter");
     assert.equal(views().some((v) => v.key === "counter"), false);
 
     // Refused and broken components are notices, not failures of the chat.
-    await runtime.call(chat.id, "header", "", "placeOutside");
+    await runtime.call(chat.id, "chat.header", "", "placeOutside");
     await eventually(() => notices().some((n) => /not inside an extension this chat loads/.test(n)));
-    await runtime.call(chat.id, "header", "", "placeBroken");
+    await runtime.call(chat.id, "chat.header", "", "placeBroken");
     await eventually(() => notices().some((n) => /Broken\.svelte could not be compiled/.test(n)));
     assert.equal(views().some((v) => v.key === "broken"), false);
     assert.equal(runtime.session(chat.id).error, undefined);

@@ -9,8 +9,12 @@ import { compileView } from "./view-compiler.js";
 
 /** The one event an extension uses to show a component: `pi.events.emit(VIEW_EVENT, {...})`. */
 export const VIEW_EVENT = "pispark:view";
-/** The chat's contribution points. */
-const SLOT = /^(tool:[\w.-]{1,64}|entry:[\w.:-]{1,64}|above-reply|below-reply|header)$/;
+/**
+ * The chat's contribution points. Content: `tool:<name>` (a tool's output, like Pi's tool renderers)
+ * and `custom:<customType>` (custom messages and entries, like Pi's message and entry renderers).
+ * Places: the chat's title row and header, and around the reply box.
+ */
+const SLOT = /^(tool:[\w.-]{1,64}|custom:[\w.:-]{1,64}|chat\.title|chat\.header|reply\.above|reply\.below|reply\.actions|reply\.footer)$/;
 const NAME = /^[\w.:-]{1,64}$/;
 const KEY = /^[\w.:-]{0,64}$/;
 const MAX_JSON = 64 * 1024;

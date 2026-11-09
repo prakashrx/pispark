@@ -34,19 +34,17 @@ Pi's terminal components are just `render(width)` → lines, so PiSpark calls an
 
 ## Svelte components: an extension's own web views
 
-An extension shows its own Svelte component with one event on **Pi's own event bus**, from its normal `index.ts`, and gives it the functions it may call. The component gets props and can call those functions. There is no PiSpark API, manifest or second entry file. Terminal Pi has no listener for the event, so there it does nothing and the extension's terminal rendering is used.
+An extension shows its own Svelte component with one event on **Pi's own event bus**, from its normal `index.ts`, and gives it the functions it may call. There is no PiSpark API, manifest or second entry file. Terminal Pi has no listener for the event, so there it does nothing and the extension's terminal rendering is used.
 
 ```ts
 export default function (pi) {
   let count = 0;
   const show = () =>
     pi.events.emit("pispark:view", {
-      slot: "above-reply",
+      slot: "reply.above",
       component: new URL("./Counter.svelte", import.meta.url),
       props: { count },
-      calls: {
-        add: (by) => { count += by; show(); return count; },
-      },
+      calls: { add: (by) => { count += by; show(); return count; } },
     });
   show();
 }
@@ -54,28 +52,35 @@ export default function (pi) {
 
 ```svelte
 <script>
-  let { count, host } = $props();
+  let { data, host, count } = $props();
 </script>
 
 <button onclick={() => host.call("add", 1)}>Count {count}</button>
 ```
 
-That is the whole model: **show or update** by emitting `pispark:view` again, **remove** by leaving out `component`, **data down** as props (plus the slot's own data), **actions up** with `host.call(name, data)`, which resolves with the function's result or rejects with its error.
+**One rule:** a slot is the name of something PiSpark draws. Components placed in a slot are drawn there instead of PiSpark's default, in the order they were placed; with none placed, the default shows. Show or update by emitting again; remove by leaving out `component`.
 
-| Slot | Where | The component gets |
-| --- | --- | --- |
-| `tool:<name>` | Under each call of that tool, in the message (it replaces the default diff and pictures; the call's words and opened row stay) | `call`: its args, status, and result with Pi's `details` |
-| `entry:<customType>` | Custom messages and entries of that type (entries are sent with their data) | `item`: the message or entry, its data as `details` |
-| `above-reply`, `below-reply` | Around the reply box | the props sent |
-| `header` | The top of the conversation | the props sent |
+**One component shape:** every component gets `data` (what that place draws, when it has something), `host` (whose `call(name, data)` runs a function its own placement gave it and resolves with the result, or rejects with the extension's error) and the props the extension sent.
 
-- **Event shape:** `{ slot, component, props?, calls?, key? }`. `component` is a `file:` URL (a `URL` or its string) or absolute path of a `.svelte` file inside the extension's own folder. `key` tells several placements in one slot apart. Emitting again with the same slot and key replaces the placement; new props for the same file update the mounted component in place.
+| Slot | Where | `data` | Pi's terminal equivalent |
+| --- | --- | --- | --- |
+| `tool:<name>` | Each call of that tool (the component is the whole call: PiSpark draws no activity line, opened row, diff or pictures for it) | the call: args, status, progress, result with Pi's `details` | `renderResult`, `registerToolRenderer` |
+| `custom:<customType>` | Custom messages and entries of that type (entries are sent with their data) | the message or entry, its data as `details` | `registerMessageRenderer`, `registerEntryRenderer` |
+| `chat.title` | Small things beside the chat title (chips) | — | — |
+| `chat.header` | Under the chat header | — | `setHeader` |
+| `reply.above`, `reply.below` | Above and below the reply box | — | `setWidget` above or below the editor |
+| `reply.actions` | Small actions beside Send (toggles, buttons) | — | — |
+| `reply.footer` | Under the reply box, replacing the status line | — | `setFooter` |
+
+PiSpark owns each place's frame (chips and actions sit in a row, blocks around the reply box are spaced like widgets), and the extension owns what is inside. Thinking, answer text, summaries and notices are PiSpark's own, as they are Pi's in the terminal.
+
+- **Event shape:** `{ slot, component, props?, calls?, key? }`. `component` is a `file:` URL (a `URL` or its string) or absolute path of a `.svelte` file inside the extension's own folder. `key` tells several placements in one slot apart. New props for the same file update the mounted component in place.
 - **Calls:** `calls[name](data, { signal })` runs in the extension, in the server. A component reaches only the functions its own placement gave it, never the bus or another extension. Data and results are JSON of at most 64 KiB; a call is cancelled when the chat closes (its `signal` aborts) and times out after 30 s; a chat has at most 16 calls pending. A function that throws rejects the component's call with its message, and the chat is unaffected.
 - **Lifetime:** placements belong to the session. A reload or reopen starts empty, and the extension shows them again as it loads.
 - **Compiling:** the server compiles the file and what it imports (TypeScript, `.svelte`, `.svelte.ts` modules, npm packages from the extension's folder) with esbuild and Svelte's compiler, in runes mode. Each file compiles once per session and is served by content hash. Imports of `svelte` and its public subpaths resolve to the app's own instance (`extensions/shared-svelte.ts`), so components mount inside PiSpark's tree and use its theme tokens (`var(--interactive-text)` and so on).
 - **Failures:** a refused path or a compile error is a notice in the chat (with file and line). A component that throws while rendering is replaced by a short line; the rest of the chat keeps working.
 
-Folder extensions only: a component file must live inside the extension's folder, so a single-file extension that wants a view becomes a folder (`extensions/<name>/index.ts`).
+Folder extensions only: a component file must live inside the extension's folder, so a single-file extension that wants a view becomes a folder (`extensions/<name>/index.ts`). More places (side panel tabs, Chat info menu items) can join the catalog under the same rule.
 
 ## Not yet
 

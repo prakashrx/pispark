@@ -79,7 +79,14 @@ export function clippedPart(item: Item): PartRef | undefined {
  */
 export function buildTurns(
   items: Item[],
-  options: { running: boolean; notices?: Notice[]; thinkingLabel?: string; progress?: Record<string, ToolProgress> },
+  options: {
+    running: boolean;
+    notices?: Notice[];
+    thinkingLabel?: string;
+    progress?: Record<string, ToolProgress>;
+    /** Whether an extension placed a component in a slot (`tool:<name>`). */
+    placed?: (slot: string) => boolean;
+  },
 ): Turn[] {
   const results = new Map<string, Item>();
   for (const item of items) if (item.role === "toolResult" && item.callId) results.set(item.callId, item);
@@ -126,6 +133,13 @@ export function buildTurns(
             ...(part.clipped ? { clipped: true as const } : {}),
             ...(!result && options.progress?.[part.id] ? { progress: options.progress[part.id] } : {}),
           };
+          // A tool an extension placed a component for is drawn by that component alone: no activity
+          // line, no default output. The next call then starts a new activity.
+          const slot = `tool:${call.name}`;
+          if (options.placed?.(slot)) {
+            emit(turn, { kind: "view", key: `view.${call.id}`, slot, call });
+            return;
+          }
           const last = turn.segments.at(-1);
           if (last?.kind === "activity") last.calls.push(call);
           else emit(turn, { kind: "activity", key: `a.${part.id}`, calls: [call], live: false });

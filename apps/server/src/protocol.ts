@@ -92,7 +92,7 @@ export type ExtensionDialog = {
  * `pi.events.emit("pispark:view", { slot, key?, component?, props? })`.
  */
 export interface ExtensionContribution {
-  /** `tool:<name>`, `entry:<customType>`, `above-reply`, `below-reply` or `header`. */
+  /** `tool:<name>`, `custom:<customType>`, `chat.title`, `chat.header`, `reply.above`, `reply.below`, `reply.actions` or `reply.footer`. */
   slot: string;
   /** Tells several contributions to one slot apart. */
   key: string;

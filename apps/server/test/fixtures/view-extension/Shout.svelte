@@ -1,8 +1,8 @@
 <script lang="ts">
   type Call = { status: string; args: { word?: string }; result?: { details?: { loud?: string } } };
-  let { call }: { call: Call } = $props();
+  let { data }: { data: Call } = $props();
 </script>
 
 <p class="shout">
-  {#if call.status === "done"}Shouted {call.result?.details?.loud}{:else}Shouting {call.args.word}…{/if}
+  {#if data.status === "done"}Shouted {data.result?.details?.loud}{:else}Shouting {data.args.word}…{/if}
 </p>

@@ -1,7 +1,6 @@
 import type { Component } from "svelte";
 import type { ExtensionContribution, ExtensionView } from "../../../../server/src/protocol";
 import type { AnySegment } from "./chat-turns";
-import { registerToolView, resolveToolView } from "./views.svelte";
 
 /**
  * Components extensions place in the chat's slots with Pi's event bus. The server compiles them
@@ -37,16 +36,17 @@ export function loadView(url: string): Promise<ExtensionComponent> {
 export const contributionsFor = (view: ExtensionView | undefined, slot: string): ExtensionContribution[] =>
   view?.views.filter((contribution) => contribution.slot === slot) ?? [];
 
+/** The slots that have at least one placement. */
+export const placedSlots = (view: ExtensionView | undefined): Set<string> =>
+  new Set(view?.views.map((contribution) => contribution.slot) ?? []);
+
 /**
- * A `tool:<name>` contribution: the tool's calls show the extension's component in the message,
- * under the call. What PiSpark already says about the tool (its words, summary, opened row) stays;
- * the component replaces the default pictures and diffs. Returns a function that undoes it.
+ * Where a part of a turn can be drawn by an extension, and what its component gets as `data`:
+ * a tool's output gets the call, a custom message or entry gets the item.
  */
-export function registerToolSlot(tool: string): () => void {
-  const base = resolveToolView(tool);
-  const slot = `tool:${tool}`;
-  return registerToolView(tool, {
-    ...base,
-    artifacts: (call): AnySegment[] => [{ kind: "view", key: `view.${call.id}`, slot, call }],
-  });
+export function slotOf(segment: AnySegment): { slot: string; data: unknown } | undefined {
+  if (segment.kind === "view") return { slot: segment.slot, data: segment.call };
+  if (segment.kind === "custom" && segment.item.customType)
+    return { slot: `custom:${segment.item.customType}`, data: segment.item };
+  return undefined;
 }
