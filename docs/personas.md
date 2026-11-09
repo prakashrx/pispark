@@ -49,7 +49,7 @@ Cycles and a missing parent are reported (`cycle`, `missing-parent`); at most 16
 
 ## Chats use personas live
 
-A chat records only which persona it uses; nothing is copied. When its Pi session starts, the chat stores a fingerprint of the resolved setup. After any persona change, open chats whose resolved setup differs show **"The persona changed. Reload to apply it"**; **Reload chat** restarts the Pi session from the same transcript. Changes never apply in the middle of a run.
+A chat records only which persona it uses; nothing is copied. When its Pi session starts, the chat stores a fingerprint of the resolved setup. After any persona change, open chats whose resolved setup differs show **"The persona changed. Reload to apply it"**; **Reload chat** restarts the Pi session from the same transcript. Changes never apply in the middle of a run. The fingerprint covers every file of a skill folder and of an extension folder (`extensions/<name>/`: its code, helpers and Svelte components); a single-file extension is that file. Edits made outside PiSpark, in an editor, count too: the server watches the personas folder. A reload compiles changed components again.
 
 **Editing inside a chat** (Chat info → Edit persona) writes the chat's own layer in `chats/<id>/persona/`, with the same folder shape and the chat's persona as its base. The persona itself is unchanged. Closing the panel reloads the chat.
 

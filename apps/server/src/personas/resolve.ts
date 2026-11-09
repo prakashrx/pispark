@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import type {
   ItemType,
   LayerRef,
@@ -163,12 +163,16 @@ function fold(store: PersonaStore, layers: Layer[]) {
   return { entries, tools, settings };
 }
 
-/** Cheap content identity for a skill folder: SKILL.md text plus file names, sizes and times. */
-function treeIdentity(dir: string): string {
+/**
+ * Cheap content identity for a skill or extension folder: its main file's text plus every file's
+ * name, size and time, so editing a script, a helper or a component counts as a change.
+ */
+function treeIdentity(dir: string, main: string): string {
   const parts: string[] = [];
   const walk = (folder: string, depth: number) => {
     if (depth > 4 || parts.length > 256) return;
     for (const entry of readdirSync(folder, { withFileTypes: true })) {
+      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
       const path = join(folder, entry.name);
       if (entry.isDirectory()) walk(path, depth + 1);
       else if (entry.isFile()) {
@@ -178,8 +182,11 @@ function treeIdentity(dir: string): string {
     }
   };
   walk(dir, 0);
-  return digest(readFileSync(join(dir, "SKILL.md")) + "\n" + parts.sort().join("\n"));
+  return digest(readFileSync(main) + "\n" + parts.sort().join("\n"));
 }
+/** An extension folder (`extensions/<name>/index.ts`) is all of its files; a single-file extension is that file. */
+const extensionIdentity = (location: string): string =>
+  /^index\.(ts|js|mjs)$/.test(basename(location)) ? treeIdentity(dirname(location), location) : digest(readFileSync(location));
 
 export function resolveSetup(
   store: PersonaStore,
@@ -227,11 +234,8 @@ export function resolveSetup(
     JSON.stringify({
       instructions: instructions.map((i) => [i.name, digest(i.text)]),
       prompts: prompts.map((p) => [p.name, digest(p.content), p.description]),
-      skills: of("skills").map((e) => [e.item.name, treeIdentity(e.item.location!)]),
-      extensions: of("extensions").map((e) => [
-        e.item.name,
-        digest(readFileSync(e.item.location!)),
-      ]),
+      skills: of("skills").map((e) => [e.item.name, treeIdentity(e.item.location!, join(e.item.location!, "SKILL.md"))]),
+      extensions: of("extensions").map((e) => [e.item.name, extensionIdentity(e.item.location!)]),
       mcpServers,
       toolsOn,
       toolsOff,

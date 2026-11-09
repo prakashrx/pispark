@@ -29,7 +29,8 @@ async function store() {
     join(h.home, "chats"),
     () => "dev",
   );
-  return { ...h, store: s };
+  // The store watches its folder; stop watching before the folder is removed.
+  return { ...h, store: s, remove: async () => { await s.shutdown(); await h.remove(); } };
 }
 
 test("first start creates a Default persona with Pi's built-in tools", async (t) => {
@@ -222,8 +223,8 @@ test("chat layers: a chat reads its persona until edited, then layers on top wit
 
 test("a chat on Default gets a layer with no listed parents", async (t) => {
   const h = await testHome("pispark-personas-");
-  t.after(h.remove);
   const s = new PersonaStore(join(h.home, "personas"), join(h.home, "chats"), () => "default");
+  t.after(async () => { await s.shutdown(); await h.remove(); });
   const chat = { chat: CHAT };
   assert.deepEqual(s.read(chat), { definition: {}, revision: "" });
   assert.equal(resolveSetup(s, chat).fingerprint, resolveSetup(s, { persona: "default" }).fingerprint);

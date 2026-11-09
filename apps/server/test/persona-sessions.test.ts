@@ -173,3 +173,28 @@ test("model choice: Ask's model, else the persona's preferred model, else the de
     await h.remove();
   }
 });
+
+test("editing any file of an extension folder outside PiSpark flags open chats; a single-file extension is its file", async () => {
+  const f = await fixture();
+  try {
+    const extension = "export default function (pi) { pi.on(\"session_start\", () => {}); }\n";
+    await f.persona("ext", { name: "Ext" }, {
+      "extensions/panel/index.ts": extension,
+      "extensions/panel/Panel.svelte": "<p>first</p>\n",
+      "extensions/panel/helper.js": "export const a = 1;\n",
+      "extensions/single.ts": extension,
+    });
+    const chat = await f.runtime.create({ folder: f.folder, persona: "ext" });
+    assert.equal(f.runtime.session(chat.id).personaChanged, undefined);
+    // A component edited in an editor, not through PiSpark.
+    const dir = join(f.home, "personas", "ext", "extensions");
+    await writeFile(join(dir, "panel", "Panel.svelte"), "<p>second, a little longer</p>\n");
+    await eventually(() => f.runtime.session(chat.id).personaChanged === true);
+    await f.runtime.reload(chat.id);
+    assert.equal(f.runtime.session(chat.id).personaChanged, undefined);
+    await writeFile(join(dir, "single.ts"), extension + "// edited\n");
+    await eventually(() => f.runtime.session(chat.id).personaChanged === true);
+  } finally {
+    await f.cleanup();
+  }
+});

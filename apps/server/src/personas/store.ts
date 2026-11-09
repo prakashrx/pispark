@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
+  type FSWatcher,
+  watch,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -79,6 +81,9 @@ const readText = (path: string): string => {
  */
 export class PersonaStore {
   private listeners = new Set<(target: PersonaTarget) => void>();
+  private watcher?: FSWatcher;
+  private readonly pending = new Set<string>();
+  private timer?: ReturnType<typeof setTimeout>;
   constructor(
     readonly personasDir: string,
     readonly chatsDir: string,
@@ -88,6 +93,32 @@ export class PersonaStore {
   ) {
     mkdirSync(personasDir, { recursive: true, mode: 0o700 });
     this.ensureDefault();
+    this.watch();
+  }
+
+  /**
+   * Edits made outside PiSpark (an extension's code or component, an instruction in an editor)
+   * count as changes too, so open chats can offer to reload. A burst is reported once.
+   */
+  private watch(): void {
+    try {
+      this.watcher = watch(this.personasDir, { recursive: true }, (_event, file) => {
+        const path = file ? String(file) : "";
+        const id = path.split(/[\\/]/)[0];
+        if (!id || !validPersonaId(id) || /\.tmp$/.test(path)) return;
+        this.pending.add(id);
+        clearTimeout(this.timer);
+        this.timer = setTimeout(() => {
+          const ids = [...this.pending];
+          this.pending.clear();
+          for (const persona of ids) this.changed({ persona });
+        }, 300);
+      });
+      this.watcher.on("error", () => this.watcher?.close());
+      this.watcher.unref();
+    } catch {
+      /* Without file watching, edits made in PiSpark are still noticed. */
+    }
   }
 
   onChange(listener: (target: PersonaTarget) => void): () => void {
@@ -378,5 +409,7 @@ export class PersonaStore {
 
   async shutdown(): Promise<void> {
     this.listeners.clear();
+    clearTimeout(this.timer);
+    this.watcher?.close();
   }
 }
