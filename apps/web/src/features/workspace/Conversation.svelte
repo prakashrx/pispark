@@ -63,10 +63,13 @@
   );
 
   // One continuous scroll: older items are read in above as you reach the top, the view stays
-  // where it was, and new output follows only while you are at the bottom.
+  // where it was, and new output follows while you are at the bottom. Following stops only when
+  // you scroll up, not because something grew below you, and starts again at the bottom.
   let scroller = $state<HTMLElement>();
+  let column = $state<HTMLElement>();
   let top = $state<HTMLElement>();
   let following = $state(true);
+  let lastTop = 0;
   let loadingEarlier = $state(false);
   let earlierFailed = $state(false);
   const atBottom = () =>
@@ -99,16 +102,30 @@
     following = true;
     earlierFailed = false;
   });
+  function toBottom() {
+    if (!scroller) return;
+    scroller.scrollTop = scroller.scrollHeight;
+    lastTop = scroller.scrollTop;
+  }
+  function onscroll() {
+    if (!scroller) return;
+    if (atBottom()) following = true;
+    else if (scroller.scrollTop < lastTop - 2) following = false;
+    lastTop = scroller.scrollTop;
+  }
+  // Anything that makes the conversation taller (a reply, a late image, a diff, a question) keeps
+  // the end in view while following.
   $effect(() => {
-    turns;
-    if (!following) return;
-    void tick().then(() => {
-      if (scroller && following) scroller.scrollTop = scroller.scrollHeight;
+    if (!column) return;
+    const watcher = new ResizeObserver(() => {
+      if (following) toBottom();
     });
+    watcher.observe(column);
+    return () => watcher.disconnect();
   });
   function jumpToLatest() {
     following = true;
-    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+    toBottom();
   }
   const modelName = $derived(
     client.providers.catalog.providers
@@ -123,9 +140,9 @@
   aria-label="Chat conversation"
   class="conversation flex-1 overflow-y-auto px-6 pt-8 pb-6 flex flex-col items-center"
   bind:this={scroller}
-  onscroll={() => (following = atBottom())}
+  {onscroll}
 >
-  <div class="w-full max-w-3xl flex flex-col gap-8">
+  <div class="w-full max-w-3xl flex flex-col gap-8" bind:this={column}>
     <header class="pb-5 border-b border-[var(--border)]">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0 flex-1">

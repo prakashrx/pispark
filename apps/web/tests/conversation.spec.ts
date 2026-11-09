@@ -63,3 +63,44 @@ test("older messages read in as you scroll up and the view stays where it was", 
   await expect(jump).toHaveCount(0);
   await expect.poll(() => main.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThan(5);
 });
+
+test("following the end survives late growth, and stops only when you scroll up", async ({ page, request }) => {
+  test.setTimeout(120_000);
+  const command = async (body: Record<string, unknown>) => {
+    const response = await request.post("/api/commands", { data: { commandId: crypto.randomUUID(), ...body } });
+    let receipt = await response.json();
+    while (receipt.state === "accepted") {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      receipt = await (await request.get(`/api/receipts/${receipt.commandId}`)).json();
+    }
+    return receipt;
+  };
+  const { home } = await (await request.get("/api/catalog")).json();
+  const { sessionId } = await command({ type: "create", folder: home });
+  for (let n = 1; n <= 8; n++) await command({ type: "start", sessionId, text: `turn ${n}` });
+  await page.goto("/");
+  const main = page.getByRole("main", { name: "Chat conversation" });
+  await expect(page.getByText("local:turn 8", { exact: true })).toBeVisible();
+  const fromBottom = () => main.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  const grow = () =>
+    main.evaluate((el) => {
+      const tall = document.createElement("div");
+      tall.style.height = "600px";
+      el.querySelector("[data-purpose=turn]:last-of-type")?.append(tall);
+    });
+  // Something late (an image, a diff) makes the chat taller while you follow: the end stays in view.
+  await grow();
+  await expect.poll(fromBottom).toBeLessThan(5);
+  // Scrolling up stops following; more growth leaves you where you are.
+  await main.evaluate((el) => (el.scrollTop -= 500));
+  await expect(page.getByRole("button", { name: "Jump to latest" })).toBeVisible();
+  const before = await main.evaluate((el) => el.scrollTop);
+  await grow();
+  await page.waitForTimeout(200);
+  expect(await main.evaluate((el) => el.scrollTop)).toBe(before);
+  // Back at the bottom, following starts again.
+  await main.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await expect(page.getByRole("button", { name: "Jump to latest" })).toHaveCount(0);
+  await grow();
+  await expect.poll(fromBottom).toBeLessThan(5);
+});

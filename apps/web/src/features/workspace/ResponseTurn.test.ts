@@ -88,3 +88,30 @@ test("while a call runs, the end of its output shows under the activity line", (
   const shown = container.querySelector(".activity-progress")!.textContent!;
   expect(shown.split(String.fromCharCode(10))).toEqual(["line 4", "line 5", "line 6", "line 7", "line 8", "line 9"]);
 });
+
+test("the element drawn while streaming is the one that stays after the commit", async () => {
+  const live = (text: string, extra: Partial<Item> = {}) => ({ key: "t1", role: "assistant" as const, parts: [{ type: "thinking" as const, text: "plan" }, { type: "text" as const, text }], ...extra });
+  const user = item("user", [{ type: "text", text: "hi" }]);
+  const streaming = buildTurns([user, live("Hel")], { running: true })[0]!;
+  const { container, rerender } = render(ResponseTurn, { turn: streaming, sessionId: "s1" });
+  const prose = container.querySelector(".prose")!;
+  const thought = container.querySelector(".thought")!;
+  await rerender({ turn: buildTurns([user, live("Hello")], { running: true })[0]!, sessionId: "s1" });
+  // Committed: Pi's entry id arrives, the key does not change, so nothing is drawn anew.
+  await rerender({ turn: buildTurns([user, live("Hello, world", { id: "e99" })], { running: false })[0]!, sessionId: "s1" });
+  expect(container.querySelector(".prose")).toBe(prose);
+  expect(prose.isConnected).toBe(true);
+  expect(prose.textContent).toContain("Hello, world");
+  expect(container.querySelector(".thought")).toBe(thought);
+});
+
+test("an activity that gains a call keeps its element", async () => {
+  const user = item("user", [{ type: "text", text: "go" }]);
+  const first = { key: "a1", role: "assistant" as const, parts: [{ type: "toolCall" as const, id: "c1", name: "read", args: { path: "a" } }] };
+  const second = { key: "a2", role: "assistant" as const, parts: [{ type: "toolCall" as const, id: "c2", name: "read", args: { path: "b" } }] };
+  const { container, rerender } = render(ResponseTurn, { turn: buildTurns([user, first], { running: true })[0]!, sessionId: "s1" });
+  const activity = container.querySelector("[data-purpose=activity]")!;
+  await rerender({ turn: buildTurns([user, first, second], { running: true })[0]!, sessionId: "s1" });
+  expect(container.querySelectorAll("[data-purpose=activity]")).toHaveLength(1);
+  expect(container.querySelector("[data-purpose=activity]")).toBe(activity);
+});
