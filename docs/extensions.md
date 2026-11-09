@@ -76,9 +76,25 @@ PiSpark owns each place's frame (chips and actions sit in a row, blocks around t
 
 - **Event shape:** `{ slot, component, props?, calls?, key? }`. `component` is a `file:` URL (a `URL` or its string) or absolute path of a `.svelte` file inside the extension's own folder. `key` tells several placements in one slot apart. New props for the same file update the mounted component in place.
 - **Calls:** `calls[name](data, { signal })` runs in the extension, in the server. A component reaches only the functions its own placement gave it, never the bus or another extension. Data and results are JSON of at most 64 KiB; a call is cancelled when the chat closes (its `signal` aborts) and times out after 30 s; a chat has at most 16 calls pending. A function that throws rejects the component's call with its message, and the chat is unaffected.
-- **Lifetime:** placements belong to the session. A reload or reopen starts empty, and the extension shows them again as it loads.
+- **Lifetime:** placements belong to the session. A reload, a reopen or a restart starts empty, and the extension shows them again as it loads (see [keeping state](#keeping-state)).
 - **Compiling:** the server compiles the file and what it imports (TypeScript, `.svelte`, `.svelte.ts` modules, npm packages from the extension's folder) with esbuild and Svelte's compiler, in runes mode. Each file compiles once per session and is served by content hash. Imports of `svelte` and its public subpaths resolve to the app's own instance (`extensions/shared-svelte.ts`), so components mount inside PiSpark's tree and use its theme tokens (`var(--interactive-text)` and so on).
 - **Failures:** a refused path or a compile error is a notice in the chat (with file and line). A component that throws while rendering is replaced by a short line; the rest of the chat keeps working.
+
+### Keeping state
+
+PiSpark keeps no copy of what a component showed: props are drawn from the extension's state, and that state lives where Pi keeps an extension's state, in the chat's session. Save it with `pi.appendEntry(customType, data)` when it changes (saved with the transcript, never sent to the model) and read it back on `session_start`, which Pi sends for a new chat and when a chat is resumed:
+
+```js
+let count = 0;
+pi.on("session_start", (_event, ctx) => {
+  const saved = ctx.sessionManager.getBranch().findLast((e) => e.type === "custom" && e.customType === "counter");
+  count = saved?.data?.count ?? 0;
+  show();
+});
+// When it changes: count++; pi.appendEntry("counter", { count }); show();
+```
+
+Because the entries are on the chat's branch, the state survives a restart, a reload or a chat being unloaded, and follows forks: a branch shows the state it had at that point. It works the same in terminal Pi. Each save is a line in the transcript, so save on a meaningful change, not many times a second. Pi writes a new chat's transcript once it has its first reply; state saved before that is kept only while the chat stays open. A preference that is not part of the chat (a collapsed panel) does not belong in the transcript; PiSpark has no store for that yet.
 
 Folder extensions only: a component file must live inside the extension's folder, so a single-file extension that wants a view becomes a folder (`extensions/<name>/index.ts`). More places (side panel tabs, Chat info menu items) can join the catalog under the same rule.
 

@@ -160,3 +160,37 @@ test("host.call over HTTP is a plain request and response: many calls never bloc
     await h.remove();
   }
 });
+
+test("an extension keeps its state in Pi's session: the counter survives a restart", async () => {
+  const h = await testHome("pispark-views-restart-");
+  const runtimes: SessionRuntime[] = [];
+  const runtime = () => {
+    const created = new SessionRuntime(h.configuration);
+    runtimes.push(created);
+    return created;
+  };
+  try {
+    await h.persona("default", { name: "Default" });
+    await addViewExtension(h.home, "default");
+    h.provider.automatic = true;
+    const counter = (on: SessionRuntime, id: string) =>
+      (on.session(id).extensions.views.find((view) => view.key === "counter")?.props as { count?: number } | undefined)?.count;
+    const first = runtime();
+    const chat = await first.create({ folder: await h.folder("work") });
+    // Pi writes the transcript once the chat has a reply.
+    await first.start(chat.id, "hello").completion;
+    for (let i = 0; i < 10; i++) await first.call(chat.id, "reply.above", "counter", "add", 1);
+    await eventually(() => counter(first, chat.id) === 10, 5000);
+    await first.shutdown();
+
+    const second = runtime();
+    await second.open(chat.id);
+    await eventually(() => counter(second, chat.id) === 10, 5000);
+    assert.equal(await second.call(chat.id, "reply.above", "counter", "add", 1), 11);
+    // The saved state is not a chat item: nothing draws "counter" entries.
+    assert.equal(second.items(chat.id, {}).items.some((item) => item.customType === "counter"), false);
+  } finally {
+    await Promise.allSettled(runtimes.map((r) => r.shutdown()));
+    await h.remove();
+  }
+});
