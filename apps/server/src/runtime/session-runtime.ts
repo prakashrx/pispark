@@ -20,6 +20,8 @@ import { deadline, RuntimeError, runtimeError, unsupported } from "./errors.js";
 import type { RuntimeErrorCode } from "./errors.js";
 import { ExtensionUI } from "../extensions/extension-ui.js";
 import { ExtensionRendering } from "../extensions/extension-render.js";
+import { ExtensionViews } from "../extensions/views.js";
+import type { Json } from "../stream-ops.js";
 import { SessionChanges } from "./observation.js";
 import type { SessionChange } from "./observation.js";
 import { ChatStorage, validateId } from "./storage.js";
@@ -103,6 +105,8 @@ interface HostedSession {
   setupChanged?: boolean;
   /** What extensions show through Pi's `ctx.ui`, and their own renderers. */
   ui?: ExtensionUI;
+  /** Components extensions placed in the chat's slots. */
+  views?: ExtensionViews;
   rendering?: ExtensionRendering;
   /** Pi's session projected as chat items. */
   items?: ItemProjector;
@@ -293,7 +297,10 @@ export class SessionRuntime {
         followUp: session.getFollowUpMessages().length,
       },
       error: hosted.error,
-      extensions: hosted.ui?.view() ?? { dialogs: [], statuses: [], widgets: [], notices: [] },
+      extensions: {
+        ...(hosted.ui?.view() ?? { dialogs: [], statuses: [], widgets: [], notices: [] }),
+        views: hosted.views?.view() ?? [],
+      },
     };
   }
   private projector(id: string): ItemProjector {
@@ -332,6 +339,12 @@ export class SessionRuntime {
       events.close();
       throw error;
     }
+  }
+  /** An extension component's event, emitted on the chat's Pi event bus for its extension to hear. */
+  emit(id: string, name: string, data?: Json): void {
+    const views = this.get(id).views;
+    if (!views) throw new RuntimeError("not-found");
+    views.emit(name, data);
   }
   /** Answer a question an extension asked through Pi's `ctx.ui`. */
   answer(id: string, dialogId: string, answer: string | boolean | null): void {
@@ -474,6 +487,19 @@ export class SessionRuntime {
       metadata.active = true;
       metadata.setup = setup.fingerprint;
       if (reopening) this.storage.write(metadata);
+      // Before extensions load: they may place components and raise notices while loading.
+      hosted.ui = new ExtensionUI({
+        changed: () => this.changed(hosted),
+        position: () => hosted.session?.messages.length ?? 0,
+        cwd,
+      });
+      hosted.views = new ExtensionViews(
+        setup.extensionPaths.map((path) => dirname(path)),
+        {
+          changed: () => this.changed(hosted),
+          failed: (message) => hosted.ui?.failed(message),
+        },
+      );
       const services = await createSessionServices({
         setup,
         cwd,
@@ -507,6 +533,7 @@ export class SessionRuntime {
           ownCleanup: (cleanup) => {
             hosted.disposeHost = cleanup;
           },
+          views: hosted.views,
         },
       });
       const thinkingLevel = setup.settings.thinking ?? "off";
@@ -571,13 +598,9 @@ export class SessionRuntime {
           hosted.error ??= "execution";
         this.changed(hosted);
       });
-      hosted.ui = new ExtensionUI({
-        changed: () => this.changed(hosted),
-        position: () => session.messages.length,
-        cwd,
-      });
       hosted.rendering = new ExtensionRendering(session, () => this.changed(hosted));
-      hosted.items = new ItemProjector(session, hosted.rendering);
+      const views = hosted.views;
+      hosted.items = new ItemProjector(session, hosted.rendering, (customType) => views.has(`entry:${customType}`));
       // Pi's mode for clients that are not a terminal: dialogs and notices work, terminal components don't.
       await session.bindExtensions({
         mode: "rpc",
@@ -886,6 +909,7 @@ export class SessionRuntime {
     hosted.disposeHost?.();
     hosted.disposeHost = undefined;
     hosted.ui?.close();
+    hosted.views?.close();
     let cleanupError: RuntimeErrorCode | undefined;
     const session = hosted.session;
     if (session) {

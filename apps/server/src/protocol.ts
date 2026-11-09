@@ -87,7 +87,22 @@ export type ExtensionDialog = {
   | { kind: "editor"; prefill?: string }
 );
 /** What extensions currently show through Pi's `ctx.ui`. */
+/**
+ * A Svelte component an extension placed in one of the chat's slots, with Pi's event bus:
+ * `pi.events.emit("pispark:view", { slot, key?, component?, props? })`.
+ */
+export interface ExtensionContribution {
+  /** `tool:<name>`, `entry:<customType>`, `above-reply`, `below-reply` or `header`. */
+  slot: string;
+  /** Tells several contributions to one slot apart. */
+  key: string;
+  /** The compiled component (content-addressed, so a changed file gets a new url). */
+  url: string;
+  props?: Json;
+}
 export interface ExtensionView {
+  /** Components extensions placed in the chat's slots. */
+  views: ExtensionContribution[];
   dialogs: ExtensionDialog[];
   statuses: { key: string; line: StyledLine }[];
   widgets: { key: string; placement: "above" | "below"; lines: StyledLine[] }[];
@@ -153,6 +168,8 @@ export type Command = { commandId: string } & (
       dialogId: string;
       value: string | boolean | null;
     }
+  /** An extension component's event, emitted on the chat's Pi event bus. */
+  | { type: "emit"; sessionId: string; name: string; data?: Json }
 );
 export interface Receipt {
   commandId: string;

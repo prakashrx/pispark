@@ -39,6 +39,8 @@ export type Segment =
   /** ... or an SVG a tool wrote, drawn from the markup in its arguments. */
   | { kind: "svg"; key: string; markup: string; alt: string; /** The markup was cut to fit, so it is not drawn. */ clipped?: boolean }
   | { kind: "notice"; key: string; notice: Notice }
+  /** A tool call drawn by the component its extension placed in the `tool:<name>` slot. */
+  | { kind: "view"; key: string; slot: string; call: ToolCall }
   | { kind: "stopped"; key: string; reason: "aborted" | "error" };
 
 /**

@@ -1,6 +1,7 @@
 <script lang="ts">
   import ExtensionQuestion from "./ExtensionQuestion.svelte";
   import StyledText from "./StyledText.svelte";
+  import ViewSlot from "./ViewSlot.svelte";
   import { useSessions } from "./session-client.svelte";
 
   /**
@@ -14,12 +15,14 @@
 </script>
 
 {#if view}
+  {#if placement === "below"}<ViewSlot slot="below-reply" />{/if}
   {#if widgets.length}
     <div class="extension-widgets" data-placement={placement}>
       {#each widgets as widget (widget.key)}<StyledText lines={widget.lines} />{/each}
     </div>
   {/if}
   {#if placement === "above"}
+    <ViewSlot slot="above-reply" />
     {#if view.dialogs.length}
       <div class="extension-questions">
         {#each view.dialogs as dialog (dialog.id)}

@@ -1,4 +1,5 @@
 import { getContext, setContext } from "svelte";
+import type { Json } from "../../../../server/src/stream-ops";
 import type {
   Catalog,
   Command,
@@ -309,6 +310,17 @@ export class SessionClient {
     if (initial && (Date.now() - draft.at > 30_000 || this.drafts[id])) return;
     this.draftRevisions.set(id, ++this.nextDraftRevision);
     this.drafts[id] = draft.text;
+  }
+  /** An extension component's event: raised on the open chat's Pi event bus for its extension. */
+  async emit(name: string, data?: unknown) {
+    const id = this.selected;
+    try {
+      await this.settled(
+        await this.submit({ type: "emit", sessionId: id, name, ...(data === undefined ? {} : { data: data as Json }) }),
+      );
+    } catch (error) {
+      this.recordError(error, id);
+    }
   }
   /** Answer a question an extension is waiting on; null dismisses it. */
   async answer(dialogId: string, value: string | boolean | null) {

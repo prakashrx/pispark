@@ -9,7 +9,7 @@ import { SessionHttp } from "../../src/session-http.js";
 import { createAppServer } from "../../src/server.js";
 import { localProviderSettings } from "./provider-settings.js";
 import { ProviderHttp } from "../../src/provider-http.js";
-import { addControlledExtension, writePersona } from "./home.js";
+import { addControlledExtension, addViewExtension, writePersona } from "./home.js";
 
 // Optional harness-owned persistent state; never a production configuration switch.
 const persistentRoot = process.argv[2];
@@ -46,6 +46,9 @@ if (!existsSync(join(home, "personas", "default", "persona.json"))) {
       "prompts/checklist.md": "---\ndescription: Run the checklist\n---\nRun the checklist on $1",
     },
   );
+  // An extension that places Svelte components in the chat's slots through Pi's bus.
+  await writePersona(home, "views", { name: "Extension views", description: "Components placed by an extension" });
+  await addViewExtension(home, "views");
 }
 const settingsFixture = await localProviderSettings(join(home, "providers"));
 // The local auth provider is signed in and the default, so chats can start without setup.

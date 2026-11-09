@@ -285,6 +285,11 @@ export class ExtensionUI {
     setToolsExpanded: () => {},
   };
 
+  /** Something about an extension PiSpark could not use, shown in the chat. */
+  failed(message: string) {
+    this.notice(message.slice(0, 1000), "error");
+  }
+
   /** A failing extension handler, shown instead of failing the chat. */
   extensionFailed(name: string, event: string, message: string) {
     this.notice(`The ${name} extension failed in ${event}: ${message.slice(0, 500)}`, "error");
@@ -347,7 +352,8 @@ export class ExtensionUI {
     return lines ? { [slot]: lines } : {};
   }
 
-  view(): ExtensionView {
+  /** What `ctx.ui` shows; the session adds the extensions' placed views. */
+  view(): Omit<ExtensionView, "views"> {
     return {
       dialogs: [...this.dialogs.values()].map(({ dialog }) => dialog),
       statuses: [...this.statuses].map(([key, text]) => ({ key, line: firstLine(text) })),

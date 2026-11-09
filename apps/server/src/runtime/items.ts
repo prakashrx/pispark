@@ -187,6 +187,8 @@ export class ItemProjector {
   constructor(
     private readonly session: AgentSession,
     private readonly rendering: ExtensionRendering,
+    /** Whether an extension placed a component for a custom entry type. */
+    private readonly entryView: (customType: string) => boolean = () => false,
   ) {}
 
   private get manager() {
@@ -262,7 +264,7 @@ export class ItemProjector {
       case "branch_summary":
         return true;
       case "custom":
-        return !!this.session.extensionRunner.getEntryRenderer(entry.customType);
+        return !!this.session.extensionRunner.getEntryRenderer(entry.customType) || this.entryView(entry.customType);
       default:
         return false;
     }
@@ -281,7 +283,18 @@ export class ItemProjector {
         return { id: entry.id, key: entry.id, role: "summary", parts: parts(entry.summary) };
       case "custom": {
         const body = this.rendering.entry(entry);
-        return body ? { id: entry.id, key: entry.id, role: "entry", customType: label(entry.customType), parts: [], rendered: { body } } : undefined;
+        const view = this.entryView(entry.customType);
+        if (!body && !view) return undefined;
+        return {
+          id: entry.id,
+          key: entry.id,
+          role: "entry",
+          customType: label(entry.customType),
+          parts: [],
+          // A web view draws the entry's own data; the terminal rendering is its fallback.
+          ...(view ? details(entry.data) : {}),
+          ...(body ? { rendered: { body } } : {}),
+        };
       }
       default:
         return undefined;

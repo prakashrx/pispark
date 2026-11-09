@@ -9,6 +9,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type {
+  EventBus,
   InputEvent,
   PromptTemplate,
   ResourceLoader,
@@ -94,6 +95,8 @@ export async function createSessionServices(options: {
   host: {
     setTitle: (title: string, signal: AbortSignal) => void;
     ownCleanup: (cleanup: () => void) => void;
+    /** Extension components placed with `pispark:view` events on the chat's bus. */
+    views: { bind: (bus: EventBus) => () => void };
   };
 }) {
   const { setup, cwd, agentDir, managed, fixed, admission, host } = options;
@@ -196,7 +199,12 @@ export async function createSessionServices(options: {
     ),
   );
   const eventBus = createEventBus();
-  const cleanupHost = bindHost(eventBus, host.setTitle);
+  const unbindTitle = bindHost(eventBus, host.setTitle);
+  const unbindViews = host.views.bind(eventBus);
+  const cleanupHost = () => {
+    unbindTitle();
+    unbindViews();
+  };
   host.ownCleanup(cleanupHost);
   let loadedExtensions;
   try {

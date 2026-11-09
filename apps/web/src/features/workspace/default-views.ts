@@ -7,6 +7,7 @@ import Stopped from "./segments/Stopped.svelte";
 import Summary from "./segments/Summary.svelte";
 import Text from "./segments/Text.svelte";
 import Thinking from "./segments/Thinking.svelte";
+import View from "./segments/View.svelte";
 import { registerSegmentView } from "./views.svelte";
 import "./tool-views";
 
@@ -24,3 +25,4 @@ registerSegmentView("image", Picture);
 registerSegmentView("svg", Picture);
 registerSegmentView("notice", Notice);
 registerSegmentView("stopped", Stopped);
+registerSegmentView("view", View);

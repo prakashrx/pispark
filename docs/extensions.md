@@ -32,6 +32,35 @@ Pi's terminal components are just `render(width)` → lines, so PiSpark calls an
 | `registerCommand` | Typed as `/name` in the reply box. |
 | Handler errors | A notice; the chat keeps working, as in Pi. |
 
+## Svelte components: an extension's own web views
+
+An extension can put its own Svelte components in the chat, from its normal `index.ts`, with one event on **Pi's own event bus**. There is no PiSpark API, manifest or second entry file. Terminal Pi has no listener for the event, so there it does nothing, and the extension's terminal rendering is used instead.
+
+```ts
+const file = (name) => new URL(name, import.meta.url).href;
+
+export default function (pi) {
+  pi.events.emit("pispark:view", { slot: "tool:deploy", component: file("./DeployResult.svelte") });
+  pi.events.emit("pispark:view", { slot: "above-reply", key: "progress", component: file("./Progress.svelte"), props: { step: 3, of: 7 } });
+  pi.events.on("deploy:rollback", (data) => { /* … then emit new props */ });
+}
+```
+
+| Slot | Where | The component gets |
+| --- | --- | --- |
+| `tool:<name>` | Under each call of that tool, in the message (it replaces the default diff and pictures; the call's words and opened row stay) | `call`: its args, status, and result with Pi's `details` |
+| `entry:<customType>` | Custom messages and entries of that type (entries are sent with their data) | `item`: the message or entry, its data as `details` |
+| `above-reply`, `below-reply` | Around the reply box | the props sent |
+| `header` | The top of the conversation | the props sent |
+
+- **Event shape:** `{ slot, key?, component?, props? }`. `component` is an absolute path or `file:` URL of a `.svelte` file inside the extension's own folder. Emitting again with the same slot and key replaces it, and new props for the same file update it in place. Leaving out `component` removes it. `props` is JSON of at most 64 KiB.
+- **Every component also gets `emit(name, data)`.** It raises `name` on the chat's Pi event bus, where the extension listens with `pi.events.on`. State flows down as props and events flow up. PiSpark's own `pispark:` channels are not open to components.
+- **Lifetime:** contributions belong to the session. A reload or reopen starts empty, and the extension places them again as it loads.
+- **Compiling:** the server compiles the file and what it imports (TypeScript, `.svelte`, `.svelte.ts` modules, npm packages from the extension's folder) with esbuild and Svelte's compiler, in runes mode. Each file compiles once per session and is served by content hash. Imports of `svelte` and its public subpaths resolve to the app's own instance (`extensions/shared-svelte.ts`), so components mount inside PiSpark's tree and use its theme tokens (`var(--interactive-text)` and so on).
+- **Failures:** a refused path or a compile error is a notice in the chat. A component that throws is replaced by a short line, and the rest of the chat keeps working.
+
+Folder extensions only: a component file must live inside the extension's folder, so a single-file extension that wants views becomes a folder (`extensions/<name>/index.ts`).
+
 ## Not yet
 
 - `ctx.ui.custom()` returns `undefined`, and `onTerminalInput`, `setEditorComponent` and theme switching are quiet no-ops, exactly as in Pi's own RPC mode. Extensions that need `custom()` check `ctx.mode === "tui"` and fall back (Pi's `custom-header` example only sets its header in `tui` mode, so it shows nothing here).
@@ -45,7 +74,7 @@ Copy some of Pi's own examples (`node_modules/@earendil-works/pi-coding-agent/ex
 
 ## Trust
 
-Extensions run in the server process with the user's permissions. Their text reaches the browser only as styled spans (links limited to http/https); no extension code runs in the browser.
+Extensions run in the server process with the user's permissions. Their terminal text reaches the browser only as styled spans (links limited to http/https). Their Svelte components run in the PiSpark page, as trusted as the extension's server code: only extensions the chat's persona enables are loaded, only files inside their folders are compiled, and nothing is claimed as isolated.
 
 ## Views: how the conversation is drawn, and how to replace a part of it
 

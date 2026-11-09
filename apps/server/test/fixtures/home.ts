@@ -1,5 +1,5 @@
 /** Test-only data roots: a temporary PISPARK_HOME, local folders and persona folders. */
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,13 @@ export async function writePersona(
     await writeFile(join(dir, path), content);
   }
   return dir;
+}
+
+export const viewExtension = fileURLToPath(new URL("./view-extension/", import.meta.url));
+
+/** Add the extension that places Svelte components through Pi's bus to a persona, as a folder. */
+export async function addViewExtension(home: string, id: string) {
+  await cp(viewExtension, join(home, "personas", id, "extensions", "views"), { recursive: true });
 }
 
 /** Add the controlled test extension to a persona folder. */

@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import Button from "../../lib/ui/Button.svelte";
   import { tick } from "svelte";
   import ResponseTurn from "./ResponseTurn.svelte";
   import { buildTurns } from "./chat-turns";
   import StyledText from "./StyledText.svelte";
   import WorkingFrames from "./WorkingFrames.svelte";
+  import ViewSlot from "./ViewSlot.svelte";
+  import { registerToolSlot } from "./extension-views";
   import ChatDetails from "./ChatDetails.svelte";
   import InlinePanel from "../../lib/ui/InlinePanel.svelte";
   import PersonaEditor from "../persona/PersonaEditor.svelte";
@@ -40,6 +43,18 @@
           ? chatStatus(chat.status, chat.interrupted, true)
           : (working?.message ?? chatStatus(chat?.status, chat?.interrupted)),
   );
+  // Tools an extension placed a component for draw their calls with it while this chat is shown.
+  const toolSlots = $derived(
+    [...new Set((snapshot?.extensions.views ?? []).filter((v) => v.slot.startsWith("tool:")).map((v) => v.slot.slice(5)))]
+      .sort()
+      .join("\n"),
+  );
+  $effect(() => {
+    const tools = toolSlots ? toolSlots.split("\n") : [];
+    // Registering reads the registry; it must not make this effect depend on it.
+    const disposers = untrack(() => tools.map(registerToolSlot));
+    return () => disposers.reverse().forEach((dispose) => dispose());
+  });
   // An extension's window title names the browser tab while this chat is open.
   $effect(() => {
     const title = snapshot?.extensions.title;
@@ -184,6 +199,7 @@
       </div>
     </header>
     {#if snapshot?.extensions.header}<StyledText class="extension-header" lines={snapshot.extensions.header} />{/if}
+    <ViewSlot slot="header" />
     {#if editingPersona && chat}<InlinePanel
         label="Persona for this chat"
         title="Persona for this chat"

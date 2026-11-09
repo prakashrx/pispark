@@ -16,6 +16,7 @@ import {
 import { PersonaHttp } from "./persona-http.js";
 import { validPersonaId } from "./personas/format.js";
 import { homedir } from "node:os";
+import { viewBundle } from "./extensions/view-compiler.js";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -53,6 +54,7 @@ function validate(value: unknown): Command {
   )
     throw new RuntimeError("invalid-input");
   if (c.type === "answer") return validAnswer(c);
+  if (c.type === "emit") return validEmit(c);
   const keys =
     c.type === "create"
       ? [
@@ -102,6 +104,21 @@ function validAnswer(c: Record<string, unknown>): Command {
   )
     throw new RuntimeError("invalid-input");
   // SAFETY: exact keys and every field validated above.
+  return c as unknown as Command;
+}
+/** An extension component's event: a name for Pi's bus and optional JSON data. */
+function validEmit(c: Record<string, unknown>): Command {
+  const keys = ["commandId", "type", "sessionId", "name", ...("data" in c ? ["data"] : [])];
+  if (
+    Object.keys(c).length !== keys.length ||
+    !keys.every((key) => key in c) ||
+    !uuid.test(String(c.sessionId)) ||
+    typeof c.name !== "string" ||
+    !/^[\w.:/-]{1,128}$/.test(c.name) ||
+    c.name.startsWith("pispark:")
+  )
+    throw new RuntimeError("invalid-input");
+  // SAFETY: exact keys and every field validated above; the body limit bounds `data`.
   return c as unknown as Command;
 }
 export async function body(
@@ -264,6 +281,9 @@ export class SessionHttp {
         case "answer":
           this.runtime.answer(command.sessionId, command.dialogId, command.value);
           break;
+        case "emit":
+          this.runtime.emit(command.sessionId, command.name, command.data);
+          break;
       }
       receipt.outcome ??= "completed";
     };
@@ -355,6 +375,20 @@ export class SessionHttp {
           receipt ? 200 : 404,
           receipt ?? { error: "unknown-receipt" },
         );
+      } else if (request.method === "GET" && /^\/api\/views\/[a-f0-9]{32}\.js$/.test(path) && !url.search) {
+        // An extension component, compiled and addressed by its content.
+        const code = viewBundle(path.slice("/api/views/".length, -".js".length));
+        if (!code) {
+          sendJson(response, 404, { error: "not-found" });
+          return;
+        }
+        response.writeHead(200, {
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Content-Length": Buffer.byteLength(code),
+          "Cache-Control": "private, max-age=31536000, immutable",
+          "X-Content-Type-Options": "nosniff",
+        });
+        response.end(code);
       } else {
         const one = /^\/api\/sessions\/([\w-]+)$/.exec(path);
         if (request.method === "GET" && one && uuid.test(one[1]!) && !url.search) {

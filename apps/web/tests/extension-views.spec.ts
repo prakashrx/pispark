@@ -1,0 +1,57 @@
+import { expect } from "@playwright/test";
+import { hostedTest as test } from "./isolated-host";
+
+// The "Extension views" persona loads an ordinary Pi extension that places its own Svelte components
+// in the chat's slots with Pi's event bus (apps/server/test/fixtures/view-extension).
+test("an extension's own Svelte components appear in the chat's slots, take events and follow the theme", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Persona: Default" }).click();
+  await page.getByRole("option", { name: "Extension views", exact: true }).click();
+  const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
+  await ask.fill('tool:shout:{"word":"hi"}');
+  await ask.press("Enter");
+
+  // header and above-reply: placed when the extension loaded, with the props it sent.
+  await expect(page.locator('[data-slot="header"]')).toHaveText("Fixture banner");
+  const counter = page.locator('[data-slot="above-reply"]');
+  await expect(counter.getByText("Count 0", { exact: true })).toBeVisible();
+
+  // tool:shout: the call is drawn by the extension's component, from Pi's details.
+  await expect(page.locator('[data-slot="tool:shout"]')).toHaveText("Shouted HI");
+
+  // An event from the component reaches the extension on Pi's bus; its new props arrive live,
+  // and the mounted component keeps its own state.
+  await counter.getByRole("button", { name: "Add one" }).click();
+  await expect(counter.getByText("Count 1", { exact: true })).toBeVisible();
+  await expect(counter.getByText("1 pressed here")).toBeVisible();
+
+  // entry:note: a custom entry drawn by the extension's component from the entry's own data.
+  const reply = page.getByRole("textbox", { name: "Reply to chat" });
+  await expect(page.getByRole("button", { name: "Send message" })).not.toHaveAttribute("aria-disabled", "true");
+  await reply.fill("/note saved");
+  await reply.press("Enter");
+  await expect(page.locator('[data-slot="entry:note"]')).toHaveText("Note: saved");
+
+  // Components style themselves with PiSpark's tokens, so they follow the theme.
+  const color = () => counter.locator(".counter").evaluate((node) => getComputedStyle(node).color);
+  const light = await color();
+  await page.evaluate(() => (document.documentElement.dataset.theme = "midnight"));
+  await expect.poll(color).not.toBe(light);
+
+  // Reopening the chat places them again from the extension, with fresh state.
+  await page.getByRole("button", { name: "Chat info", exact: true }).click();
+  await page.getByRole("button", { name: "Stop agent", exact: true }).click();
+  await page.getByRole("button", { name: "Reopen chat" }).click();
+  await expect(counter.getByText("Count 0", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-slot="tool:shout"]')).toHaveText("Shouted HI");
+  await expect(page.locator('[data-slot="entry:note"]')).toHaveText("Note: saved");
+
+  expect(errors).toEqual([]);
+});
