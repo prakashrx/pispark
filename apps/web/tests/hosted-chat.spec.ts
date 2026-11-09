@@ -3,6 +3,7 @@ import { hostedTest as test } from "./isolated-host";
 
 test("saved assistant Markdown stays inert and keeps normal formatting after reopen", async ({
   page,
+  request,
 }) => {
   await page.goto("/");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
@@ -18,9 +19,12 @@ test("saved assistant Markdown stays inert and keeps normal formatting after reo
     .filter({ has: page.locator("strong", { hasText: "safe bold" }) });
   for (const reopen of [false, true]) {
     if (reopen) {
-      await page.getByRole("button", { name: "Chat info", exact: true }).click();
-      await page.getByRole("button", { name: "Stop agent", exact: true }).click();
-      await page.getByRole("button", { name: "Reopen chat" }).click();
+      // Unloaded on the server, the chat opens again by itself.
+      const { sessions } = await (await request.get("/api/sessions")).json();
+      await request.post("/api/commands", {
+        data: { type: "stop", commandId: crypto.randomUUID(), sessionId: sessions.at(-1).id },
+      });
+      await page.reload();
     }
     await expect(prose).toBeVisible();
     await expect(
@@ -33,7 +37,7 @@ test("saved assistant Markdown stays inert and keeps normal formatting after reo
   }
 });
 
-test("blocked browser storage supports live replies and a peer can unload and reopen the chat", async ({
+test("blocked browser storage supports live replies and a chat unloaded by a peer opens again by itself", async ({
   page,
   request,
 }) => {
@@ -64,14 +68,12 @@ test("blocked browser storage supports live replies and a peer can unload and re
   await request.post("/api/commands", {
     data: { type: "stop", commandId: crypto.randomUUID(), sessionId: id },
   });
-  await expect(page.getByRole("button", { name: "Reopen chat" })).toBeVisible({
+  await expect(page.getByRole("img", { name: "Backend: Live" })).toBeVisible({
     timeout: 10_000,
   });
   await expect(
     page.getByRole("button", { name: "Send message" }),
-  ).toHaveAttribute("aria-disabled", "true");
-  await page.getByRole("button", { name: "Reopen chat" }).click();
-  await expect(page.getByRole("img", { name: "Backend: Live" })).toBeVisible();
+  ).not.toHaveAttribute("aria-disabled", "true");
   await expect(reply).toHaveValue("keep through reopen");
   await reply.press("Enter");
   await expect(

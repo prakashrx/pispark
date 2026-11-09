@@ -18,7 +18,8 @@ Every session gets a separate `ModelRuntime`, `SettingsManager`, `ResourceLoader
 
 | Method | Meaning |
 | --- | --- |
-| `create({ folder, model?, persona? })` | Reserve a live slot, check the absolute folder exists, resolve the persona (Default when omitted), choose the model, initialize/bind native extensions, return the session document. Unknown request fields are rejected. |
+| `create({ folder, model?, persona? })` | Load a new chat (above the backstop an idle chat unloads first), check the absolute folder exists, resolve the persona (Default when omitted), choose the model, initialize/bind native extensions, return the session document. Unknown request fields are rejected. |
+| `ensure(id)` | Load a chat that is not loaded, or wait for one that is loading; the HTTP layer calls it before every `start`. |
 | `open(id)` | Reopen a known chat's native history (or an empty session) with its persona resolved now. Never accepts a session-file path. Never prompts/replays tools. |
 | `reload(id)` | Stop an idle chat and open it again, so persona changes apply. Busy while running. |
 | `list()` | Stored metadata summaries, including empty/unloaded sessions and interrupted status. |
@@ -38,6 +39,10 @@ Start input goes through Pi's normal prompt handling: persona prompt templates e
 
 Failures use safe codes, not raw provider/extension stacks. Items and session documents never carry SDK error diagnostics or stacks. This is not a general DLP guarantee: trusted tools/extensions and model output can contain sensitive filesystem data. Native JSONL is private server-side data and may include raw provider errors; never serve it as an unauthenticated static asset.
 
+## Loading and unloading
+
+Nobody opens or stops chats by hand. A chat loads when a client shows it (`open`) or sends to it (`ensure` before `start`). A loaded chat that is idle, not shown by any client, has no open question and nothing queued unloads after `idleUnloadMs` (15 minutes); above `maxLiveSessions` (32) the least recently used such chat unloads first, and if none can, the new chat loads anyway. Extensions keep their state in Pi's session, so an unloaded chat comes back as it was. A client whose chat was unloaded under it (its live stream answers 410) opens it again by itself.
+
 ## Run slots
 
 At most `maxRunning` chats have an agent working at once: Settings → General → Chats working at once, saved in `<home>/settings.json` (1–32, default 8; `settings()` / `updateSettings()`). A changed limit applies at once: a higher one starts waiting prompts, a lower one lets running chats finish (`runtime/run-slots.ts`). Further prompts wait in order with status `queued` and `queued: true` in the summary; the session document carries the waiting `queuedText`. A run whose extension waits for a person (an open `ctx.ui` question) gives its slot to the next chat. When the question is answered or gives up, the run needs a slot to go on and goes ahead of prompts that have not started; meanwhile it reports `queued: true`. Cancelling or stopping a chat that waits for a slot ends the wait at once.
@@ -46,7 +51,7 @@ At most `maxRunning` chats have an agent working at once: Settings → General �
 
 Observers pull invalidations; SDK listeners never invoke subscribers, perform disk I/O, or copy/serialize transcripts. This matters because Pi emits `message_end` before native persistence. A slow observer retains **one latest invalidation**, not a growing token-event queue. Re-read the live document to render the complete current state, including partial output. Sequence gaps mean coalescing, not lost durable conversation. Sequence numbers are scoped to one live owner, not durable replay cursors; reopening/restarting begins a new observation lifetime. Closing an observer does not stop the session. Creating the live view and registering its subscription is synchronous and has no interleaving gap.
 
-Defaults: 8 live sessions (including starting/stopping), 16 observers per session, 8 pending native inputs, 64KiB UTF-8 input, 32 exact files per resource category, 64MiB maximum native file on open, 10-second operation/cleanup wait, 5-minute cooperative run deadline. Live-session and deadline limits are trusted host options. History has no disk quota or retention manager. The live document and items are bounded by the projection (see [protocol](session-protocol.md)).
+Defaults: 8 chats running at once (a setting), idle chats unloaded after 15 minutes, a backstop of 32 loaded chats above which idle ones unload early (never a refusal), 16 observers per session, 8 pending native inputs, 64KiB UTF-8 input, 32 exact files per resource category, 64MiB maximum native file on open, 10-second operation/cleanup wait, 5-minute cooperative run deadline. Live-session and deadline limits are trusted host options. History has no disk quota or retention manager. The live document and items are bounded by the projection (see [protocol](session-protocol.md)).
 
 Deadlines do not kill arbitrary JavaScript or tools. If an extension ignores cancellation or shutdown hangs, the operation reports timeout and **retains ownership/admission** until actual cleanup completes. CPU-blocking trusted code can stall every same-process session. Strong adversarial isolation would require another approved design. A session with execution/storage error rejects new starts; inspect it, stop and reopen deliberately rather than automatically retry side effects.
 

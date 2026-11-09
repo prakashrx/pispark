@@ -113,6 +113,8 @@ interface HostedSession {
   resuming?: () => void;
   /** The queued prompt was waiting when PiSpark stopped. */
   restored?: true;
+  /** When the chat was last used: shown, sent to, answered, called. Idle chats unload after a while. */
+  lastUsed: number;
 }
 
 /** "extensions/notes.ts" and "extensions/notes/index.ts" are both "notes". */
@@ -131,7 +133,10 @@ export class SessionRuntime {
   private readonly inputAdmission = new AsyncLocalStorage<{
     valid: () => boolean;
   }>();
+  /** Loaded chats above which idle ones unload early; never a refusal. */
   private readonly maxLive: number;
+  private readonly idleUnload: number;
+  private readonly sweeper: ReturnType<typeof setInterval>;
   /** Chats whose agent works now, and the ones waiting for a turn. */
   private readonly slots: RunSlots;
   private readonly settingsPath: string;
@@ -142,7 +147,8 @@ export class SessionRuntime {
     private readonly providers?: ProviderSettings,
     private readonly logger: SafeLogger = silentLogger,
   ) {
-    this.maxLive = configuration.maxLiveSessions ?? 8;
+    this.maxLive = configuration.maxLiveSessions ?? 32;
+    this.idleUnload = configuration.idleUnloadMs ?? 15 * 60_000;
     this.settingsPath = homePaths(configuration.home).settings;
     this.slots = new RunSlots(configuration.maxRunning ?? readSettings(this.settingsPath).maxRunning);
     this.timeout = configuration.operationTimeoutMs ?? 10_000;
@@ -162,6 +168,58 @@ export class SessionRuntime {
       logger,
     );
     this.unwatchPersonas = this.personas.onChange(() => this.checkSetups());
+    this.sweeper = setInterval(() => this.sweep(), Math.min(60_000, Math.max(1000, this.idleUnload / 4)));
+    this.sweeper.unref();
+  }
+
+  /**
+   * Whether a chat can be unloaded without anyone noticing: nothing runs, waits or is queued in it,
+   * no question is open, and nobody has it on screen. Its extensions' state is in Pi's session, so
+   * opening it again brings everything back.
+   */
+  private unloadable(hosted: HostedSession): boolean {
+    const id = hosted.metadata.id;
+    return (
+      (hosted.status === "idle" || hosted.status === "error") &&
+      !hosted.loading &&
+      !hosted.input &&
+      !hosted.queuedRun &&
+      hosted.observers.size === 0 &&
+      !hosted.ui?.asking &&
+      !this.slots.holds(id) &&
+      !this.slots.queued(id)
+    );
+  }
+  private touch(hosted: HostedSession): void {
+    hosted.lastUsed = Date.now();
+  }
+  /** Unloads chats that have been idle for a while. */
+  private sweep(): void {
+    if (!this.accepting) return;
+    const now = Date.now();
+    for (const [id, hosted] of this.live)
+      if (this.unloadable(hosted) && now - hosted.lastUsed >= this.idleUnload)
+        void this.stop(id).catch(() => {});
+  }
+  /** Above the backstop, idle chats unload first, least recently used first. Nobody is refused. */
+  private async makeRoom(): Promise<void> {
+    while (this.live.size >= this.maxLive) {
+      const idle = [...this.live.values()].filter((hosted) => this.unloadable(hosted));
+      if (!idle.length) return;
+      idle.sort((a, b) => a.lastUsed - b.lastUsed);
+      await this.stop(idle[0]!.metadata.id).catch(() => {});
+    }
+  }
+  /** Loads a chat that is not loaded (or waits for one that is loading), so it can be sent to. */
+  async ensure(id: string): Promise<void> {
+    validateId(id);
+    const hosted = this.live.get(id);
+    if (hosted?.stop) await hosted.stop.catch(() => {});
+    else if (hosted?.loading) {
+      await hosted.loading.catch(() => {});
+      if (this.live.has(id)) return;
+    } else if (hosted) return;
+    await this.open(id);
   }
 
   /** PiSpark's own settings. */
@@ -271,7 +329,6 @@ export class SessionRuntime {
   }
   private admit(): void {
     if (!this.accepting) throw new RuntimeError("closed");
-    if (this.live.size >= this.maxLive) throw new RuntimeError("limit");
   }
   /** Everything about a chat except its history: status, model, queue and what extensions show. */
   session(id: string): SessionDoc {
@@ -323,7 +380,11 @@ export class SessionRuntime {
     const hosted = this.get(id);
     if (hosted.observers.size >= 16) throw new RuntimeError("limit");
     const items = this.projector(id);
-    const events = new SessionChanges(() => hosted.observers.delete(events));
+    this.touch(hosted);
+    const events = new SessionChanges(() => {
+      hosted.observers.delete(events);
+      this.touch(hosted);
+    });
     hosted.observers.add(events);
     try {
       const view = new LiveView(id, {
@@ -339,13 +400,17 @@ export class SessionRuntime {
   }
   /** An extension component's `host.call`: a function of its own placement, and its result. */
   call(id: string, slot: string, key: string, name: string, data?: Json): Promise<Json | undefined> {
-    const views = this.get(id).views;
+    const hosted = this.get(id);
+    this.touch(hosted);
+    const views = hosted.views;
     if (!views) throw new RuntimeError("not-found");
     return views.call(slot, key, name, data);
   }
   /** Answer a question an extension asked through Pi's `ctx.ui`. */
   answer(id: string, dialogId: string, answer: string | boolean | null): void {
-    const ui = this.get(id).ui;
+    const hosted = this.get(id);
+    this.touch(hosted);
+    const ui = hosted.ui;
     if (!ui) throw new RuntimeError("not-found");
     ui.answer(dialogId, answer);
   }
@@ -356,6 +421,11 @@ export class SessionRuntime {
     persona?: string;
   }): Promise<SessionDoc> {
     this.admit();
+    // Only above the backstop is there anything to wait for; below it, admission stays immediate.
+    if (this.live.size >= this.maxLive) {
+      await this.makeRoom();
+      this.admit();
+    }
     if (
       !request ||
       typeof request.folder !== "string" ||
@@ -388,6 +458,11 @@ export class SessionRuntime {
     validateId(id);
     if (this.live.has(id)) throw new RuntimeError("owned");
     this.admit();
+    if (this.live.size >= this.maxLive) {
+      await this.makeRoom();
+      this.admit();
+      if (this.live.has(id)) throw new RuntimeError("owned");
+    }
     return this.load(this.storage.read(id), true);
   }
   /** Restart a chat's Pi session from its transcript, picking up persona changes. */
@@ -435,6 +510,7 @@ export class SessionRuntime {
       sequence: 0,
       observers: new Set(),
       running: new Map(),
+      lastUsed: Date.now(),
       extensionErrors: 0,
     };
     this.live.set(metadata.id, hosted); // Reserve admission before any async setup.
@@ -725,6 +801,7 @@ export class SessionRuntime {
     const hosted = this.get(id);
     if (hosted.status !== "idle" || hosted.input)
       throw new RuntimeError("busy");
+    this.touch(hosted);
     if (!this.slots.take(id)) return { completion: this.enqueue(hosted, text) };
     try {
       return { completion: this.begin(hosted, text) };
@@ -840,6 +917,7 @@ export class SessionRuntime {
         hosted.paused = false;
         this.slots.withdraw(id);
         this.slots.release(id);
+        this.touch(hosted);
         this.logger.event("session.settle", {
           sessionId: id,
           durationMs: Date.now() - started,
@@ -1022,6 +1100,7 @@ export class SessionRuntime {
   }
   async shutdown(): Promise<void> {
     this.accepting = false;
+    clearInterval(this.sweeper);
     this.unwatchPersonas();
     const results = await Promise.allSettled([
       this.personas.shutdown(),

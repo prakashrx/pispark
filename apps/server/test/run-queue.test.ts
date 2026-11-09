@@ -192,3 +192,46 @@ test("settings over HTTP: read, change, refuse a bad value", async () => {
     await h.remove();
   }
 });
+
+test("an idle chat nobody shows unloads after a while, and loads again when used; busy or shown chats stay", async () => {
+  const h = await testHome("pispark-queue-idle-");
+  await h.persona("default", { name: "Default" });
+  await addControlledExtension(h.home, "default");
+  const runtime = new SessionRuntime({ ...h.configuration, idleUnloadMs: 1000, maxLiveSessions: 3 });
+  const http = new SessionHttp(runtime);
+  const status = (id: string) => runtime.list().find((chat) => chat.id === id)?.status;
+  try {
+    h.provider.automatic = true;
+    const folder = await h.folder("work");
+    const [idle, shown, asking] = [await runtime.create({ folder }), await runtime.create({ folder }), await runtime.create({ folder })];
+    const watching = runtime.observeLive(shown.id);
+    // A fourth past a backstop of three: the least recently used idle chat unloads to make room.
+    const extra = await runtime.create({ folder });
+    assert.equal(status(idle.id), "unloaded");
+    assert.equal(status(shown.id), "idle", "a chat on screen stays");
+    await runtime.stop(extra.id);
+    await runtime.open(idle.id);
+    await runtime.start(idle.id, "hello").completion;
+    h.provider.automatic = false;
+    const run = runtime.start(asking.id, "ui-select");
+    await eventually(() => runtime.session(asking.id).extensions.dialogs.length === 1);
+
+    // After the idle time only the chat nobody uses unloads.
+    await eventually(() => status(idle.id) === "unloaded", 5000);
+    assert.equal(status(shown.id), "idle");
+    assert.equal(status(asking.id), "running");
+
+    // Sending to an unloaded chat loads it first (as the HTTP layer does for every start).
+    h.provider.automatic = true;
+    await runtime.ensure(idle.id);
+    assert.equal((await runtime.start(idle.id, "again").completion).outcome, "completed");
+    assert.match(JSON.stringify(runtime.items(idle.id, {}).items), /hello/, "its history is still there");
+
+    runtime.answer(asking.id, runtime.session(asking.id).extensions.dialogs[0]!.id, "one");
+    await run.completion;
+    watching.events.close();
+  } finally {
+    await http.shutdown();
+    await h.remove();
+  }
+});

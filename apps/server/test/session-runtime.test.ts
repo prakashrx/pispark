@@ -215,7 +215,7 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
   }
 });
 
-test("SessionRuntime: empty metadata, one live owner, admission and detached observer bounds", async () => {
+test("SessionRuntime: empty metadata, one live owner, a backstop that never refuses and detached observer bounds", async () => {
   const f = await fixture();
   const limited = new SessionRuntime({
     ...f.configuration,
@@ -226,10 +226,12 @@ test("SessionRuntime: empty metadata, one live owner, admission and detached obs
     const a = await f.create("a", limited);
     assert.equal(limited.list().length, 1);
     assert.equal(chatItems(limited, a.id).length, 0);
-    await assert.rejects(
-      f.create("b", limited),
-      hasCode("limit"),
-    );
+    // The backstop never refuses: with a on screen, b is loaded beside it.
+    const watching = limited.observeLive(a.id);
+    const beside = await f.create("b", limited);
+    assert.equal(limited.list().filter((chat) => chat.status !== "unloaded").length, 2);
+    await limited.stop(beside.id);
+    watching.events.close();
     await assert.rejects(limited.open(a.id), hasCode("owned"));
     const observations = Array.from({ length: 16 }, () =>
       limited.observeLive(a.id),

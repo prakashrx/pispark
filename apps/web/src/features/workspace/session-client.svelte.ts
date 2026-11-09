@@ -239,12 +239,8 @@ export class SessionClient {
       if (generation !== this.selection || this.disposed) return;
       this.observe(id);
     } catch (error) {
-      // Every open chat holds a slot on the host. Running out is not a lost connection.
-      const full = (error as Error).message.startsWith("limit");
-      this.recordError(full ? new Error("Too many chats are open. Stop one from its Chat info, then reopen this one.") : error, id);
-      if (generation === this.selection) {
-        this.connection = full ? "Unloaded" : "Disconnected";
-      }
+      this.recordError(error, id);
+      if (generation === this.selection) this.connection = "Disconnected";
     }
   }
   private observe(id: string) {
@@ -264,10 +260,16 @@ export class SessionClient {
           });
           if (response.status === 410) {
             if (source !== this.source || source.signal.aborted) return;
-            this.connection = "Unloaded";
-            const summary = this.sessions.find((session) => session.id === id);
-            if (summary) summary.status = "unloaded";
-            return;
+            // The server unloaded the chat while it was idle: load it again and carry on.
+            try {
+              await this.settled(await this.submit({ type: "open", sessionId: id }));
+            } catch (error) {
+              if (!(error instanceof Error && error.message.startsWith("owned"))) {
+                this.connection = "Unloaded";
+                return;
+              }
+            }
+            continue;
           }
           for await (const event of liveEvents(response)) {
             if (
@@ -334,7 +336,7 @@ export class SessionClient {
       signal: AbortSignal.any([this.controller.signal, AbortSignal.timeout(40_000)]),
     });
     const answer = (await response.json()) as CallResponse;
-    if (!response.ok) throw new Error(answer.detail ?? answer.error ?? "The call failed");
+    if (!response.ok || answer.error) throw new Error(answer.detail ?? answer.error ?? "The call failed");
     return answer.result;
   }
   /** Saves a settings change; rejects when the server refused it. */
@@ -370,22 +372,6 @@ export class SessionClient {
     } else {
       this.draftRevisions.delete(this.selected);
       delete this.drafts[this.selected];
-    }
-  }
-  async stop() {
-    const id = this.selected;
-    delete this.sessionErrors[id];
-    delete this.sessionErrorKinds[id];
-    try {
-      await this.settled(await this.submit({ type: "stop", sessionId: id }));
-      if (this.selected === id) {
-        this.source?.abort();
-        this.live.reset();
-        this.connection = "Unloaded";
-      }
-      await this.refresh();
-    } catch (error) {
-      this.recordError(error, id);
     }
   }
   reconnect() {

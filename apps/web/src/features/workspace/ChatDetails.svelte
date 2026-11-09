@@ -5,7 +5,7 @@
   import { useSessions } from "./session-client.svelte";
   /**
    * Facts about the open chat, anchored to an info button in the chat header so the
-   * conversation never moves. Stopping the agent lives here, next to its explanation.
+   * conversation never moves.
    */
   let { oneditpersona }: { oneditpersona?: () => void } = $props();
   const client = useSessions();
@@ -62,21 +62,6 @@
                 close();
                 oneditpersona();
               }}>Edit persona</Button
-            >
-          </div>{/if}
-        {#if snapshot}<div
-            class="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3"
-          >
-            <p class="text-xs text-muted-foreground">
-              Ends the running agent. The chat stays saved and can be reopened.
-            </p>
-            <Button
-              size="compact"
-              class="shrink-0 whitespace-nowrap"
-              onclick={() => {
-                close();
-                void client.stop();
-              }}>Stop agent</Button
             >
           </div>{/if}
       </section>

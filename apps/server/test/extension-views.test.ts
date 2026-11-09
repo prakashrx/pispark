@@ -140,7 +140,7 @@ test("host.call over HTTP is a plain request and response: many calls never bloc
     }
     // The extension's own error, and a function the placement does not have.
     const jam = await call({ slot: "reply.above", key: "counter", name: "jam" });
-    assert.equal(jam.status, 422);
+    assert.equal(jam.status, 200);
     assert.deepEqual(await jam.json(), { error: "extension", detail: "The counter is jammed" });
     assert.equal((await call({ slot: "chat.header", key: "", name: "add" })).status, 404);
     assert.equal((await call({ slot: "reply.above", key: "counter", name: "add", extra: 1 })).status, 400);

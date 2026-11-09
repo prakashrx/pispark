@@ -172,25 +172,3 @@ test("unknown initial create acceptance and settlement are explicit without an i
     client.dispose();
   }
 });
-
-test("a host with no free chat slots says so instead of reporting a lost connection", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (url: string) =>
-      new Response(
-        JSON.stringify(
-          url === "/api/commands"
-            ? { commandId: "c", state: "settled", outcome: "failed", error: "limit" }
-            : {},
-        ),
-        { status: url === "/api/commands" ? 202 : 200 },
-      ),
-    ),
-  );
-  const client = new SessionClient();
-  client.sessions = [{ id: "closed", status: "unloaded" } as never];
-  await client.select("closed");
-  expect(client.connection).toBe("Unloaded");
-  expect(client.sessionErrors.closed).toContain("Too many chats are open");
-  client.dispose();
-});

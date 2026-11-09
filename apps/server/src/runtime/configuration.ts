@@ -42,7 +42,10 @@ export interface RuntimeConfiguration {
   };
   /** Tests only: one keyless loopback model instead of Providers & models. */
   fixedModel?: { provider: () => Provider; id: string };
+  /** Loaded chats above which idle ones unload early (default 32); never a refusal. */
   maxLiveSessions?: number;
+  /** How long a chat stays loaded while idle and not on screen (default 15 minutes). */
+  idleUnloadMs?: number;
   /** How many chats may run at once; more prompts wait for a turn (default 8). */
   maxRunning?: number;
   /** How long an extension component's call may take (default 30 s). */

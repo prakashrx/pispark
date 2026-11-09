@@ -262,6 +262,8 @@ export class SessionHttp {
           await this.runtime.reload(command.sessionId);
           break;
         case "start": {
+          // A chat is loaded when it is used; nobody opens or stops chats by hand.
+          await this.runtime.ensure(command.sessionId);
           let run;
           try {
             run = this.runtime.start(command.sessionId, command.text);
@@ -464,8 +466,9 @@ export class SessionHttp {
       sendJson(response, 200, result === undefined ? {} : { result });
     } catch (error) {
       if (response.headersSent || response.destroyed) return;
-      const status = error instanceof RuntimeError && error.code === "not-found" ? 404 : error instanceof CallError ? 422 : 400;
-      sendJson(response, status, { error: failure(error), ...(error instanceof CallError ? { detail: error.detail } : {}) });
+      // The extension's own error is an answer like a result: the component shows it.
+      if (error instanceof CallError) sendJson(response, 200, { error: failure(error), detail: error.detail });
+      else sendJson(response, error instanceof RuntimeError && error.code === "not-found" ? 404 : 400, { error: failure(error) });
     }
   }
   /** An image part's bytes, or a chunk of a clipped text part (`?offset=`). */

@@ -3,8 +3,9 @@ import { hostedTest as test } from "./isolated-host";
 
 // The "Extension views" persona loads an ordinary Pi extension that places its own Svelte components
 // in the chat's slots with Pi's event bus (apps/server/test/fixtures/view-extension).
-test("an extension's own Svelte components appear in the chat's slots, answer calls and follow the theme", async ({
+test("an extension's own Svelte components appear in the chat's slots, answer calls, follow the theme and keep their state", async ({
   page,
+  request,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -56,11 +57,13 @@ test("an extension's own Svelte components appear in the chat's slots, answer ca
   await page.evaluate(() => (document.documentElement.dataset.theme = "midnight"));
   await expect.poll(color).not.toBe(light);
 
-  // Reopening the chat places them again from the extension, with fresh state.
-  await page.getByRole("button", { name: "Chat info", exact: true }).click();
-  await page.getByRole("button", { name: "Stop agent", exact: true }).click();
-  await page.getByRole("button", { name: "Reopen chat" }).click();
-  await expect(counter.getByText("Count 0", { exact: true })).toBeVisible();
+  // Unloaded on the server (as an idle chat would be), the chat opens again by itself; the
+  // extension places its components again, with the count it saved in Pi's session.
+  const { sessions } = await (await request.get("/api/sessions")).json();
+  const id = sessions.at(-1).id;
+  await request.post("/api/commands", { data: { type: "stop", commandId: crypto.randomUUID(), sessionId: id } });
+  await expect(page.getByRole("img", { name: "Backend: Live" })).toBeVisible({ timeout: 10_000 });
+  await expect(counter.getByText("Count 1", { exact: true })).toBeVisible();
   await expect(page.locator('[data-slot="tool:shout"]')).toHaveText("Shouted HI");
   await expect(page.locator('[data-slot="custom:note"]')).toHaveText("Note: saved");
 
