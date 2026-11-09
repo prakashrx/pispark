@@ -129,3 +129,52 @@ test("images are described in items and served as bytes with a sandboxing policy
     await h.remove();
   }
 });
+
+const PROGRESS = `
+export default function (pi) {
+  pi.registerTool({
+    name: "steps", label: "Steps", description: "Reports progress", parameters: { type: "object", properties: {} },
+    async execute(_id, _params, _signal, onUpdate) {
+      let output = "";
+      for (let i = 1; i <= 3; i++) {
+        output += "step " + i + "\\n";
+        onUpdate?.({ content: [{ type: "text", text: output }], details: { done: i } });
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      return { content: [{ type: "text", text: output + "finished" }], details: {} };
+    },
+  });
+}
+`;
+
+test("a running tool's progress streams in the live document and leaves when the call ends", async () => {
+  const h = await testHome("pispark-live-");
+  try {
+    await h.persona("default", { name: "Default" }, { "extensions/steps.mjs": PROGRESS });
+    h.provider.automatic = true;
+    const runtime = new SessionRuntime(h.configuration);
+    const chat = await runtime.create({ folder: await h.folder("work") });
+    const { view, events } = runtime.observeLive(chat.id);
+    const doc = (view.snapshot() as unknown as { doc: { [key: string]: Json } }).doc;
+    const seen: string[] = [];
+    const run = runtime.start(chat.id, "tool:steps:{}");
+    let done = false;
+    void run.completion.then(() => (done = true));
+    while (!done) {
+      const batch = view.next();
+      if (batch?.type === "ops") for (const op of batch.ops) if (op.op !== "commit") applyOp(doc, op);
+      const progress = Object.values(doc.progress as Record<string, { output: string; details?: Json }>);
+      if (progress[0] && !seen.includes(progress[0].output)) seen.push(progress[0].output);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    // Each step was visible while the tool ran, with its details.
+    assert.deepEqual(seen.slice(-3), ["step 1\n", "step 1\nstep 2\n", "step 1\nstep 2\nstep 3\n"]);
+    const batch = view.next();
+    if (batch?.type === "ops") for (const op of batch.ops) if (op.op !== "commit") applyOp(doc, op);
+    assert.deepEqual(doc.progress, {}, "nothing is left once the call ended");
+    events.close();
+    await runtime.shutdown();
+  } finally {
+    await h.remove();
+  }
+});

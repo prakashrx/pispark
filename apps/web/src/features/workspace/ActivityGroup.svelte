@@ -23,6 +23,9 @@
     const summary = summarizeCalls(calls);
     return [summary, failed ? `${failed} failed` : "", unfinished ? "didn’t finish" : ""].filter(Boolean).join(" · ");
   });
+  // While a call runs, the end of what it has output so far shows under the line.
+  const running = $derived(live ? calls.findLast((call) => call.status === "running" && call.progress?.output) : undefined);
+  const lastLines = $derived(running?.progress?.output.trimEnd().split("\n").slice(-6).join("\n") ?? "");
   const rowLabel = (call: ToolCall) => {
     const words = describeCall(call);
     const verb = call.status === "running" ? words.doing : words.done;
@@ -42,6 +45,7 @@
       <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
     </svg>
   </button>
+  {#if lastLines}<pre class="activity-progress">{lastLines}</pre>{/if}
   {#if open}
     <ul class="activity-list">
       {#each calls as call (call.id)}
@@ -123,6 +127,19 @@
   }
   .activity-chevron.open {
     transform: rotate(180deg);
+  }
+  .activity-progress {
+    align-self: stretch;
+    margin: 0 0 0 1.45rem;
+    padding: 0.375rem 0.625rem;
+    border-left: 2px solid var(--border);
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--muted-foreground);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   .activity-list {
     display: flex;

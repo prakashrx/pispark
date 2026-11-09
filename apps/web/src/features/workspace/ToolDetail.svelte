@@ -20,6 +20,7 @@
     {#if call.result.rendered.call}<StyledText lines={call.result.rendered.call} />{/if}
     {#if call.result.rendered.body}<StyledText lines={call.result.rendered.body} />{/if}
   {:else if result}<pre class="call-output">{result}</pre>
+  {:else if call.progress?.output}<pre class="call-output">{call.progress.output}</pre>
   {:else}<pre class="call-output">{JSON.stringify(call.args, null, 2)}</pre>{/if}
   {#if cut}<p class="call-cut">Cut to fit; this shows the start.</p>{/if}
 </div>

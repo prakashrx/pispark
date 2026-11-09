@@ -58,6 +58,7 @@
           running,
           notices: snapshot.extensions.notices,
           thinkingLabel: snapshot.extensions.thinkingLabel,
+          progress: client.live.doc?.progress,
         }) : [],
   );
 

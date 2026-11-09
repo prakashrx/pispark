@@ -10,7 +10,7 @@ const item = (id: string, text: string, role: Item["role"] = "assistant"): Item 
   parts: [{ type: "text", text }],
 });
 const page = (items: Item[], head: string | null, more = false): ItemsPage => ({ items, head, more });
-const snapshot = (head: string | null, tail: Item[] = []): LiveEvent => ({ type: "snapshot", sessionId: "s", head, doc: { session, tail } });
+const snapshot = (head: string | null, tail: Item[] = []): LiveEvent => ({ type: "snapshot", sessionId: "s", head, doc: { session, tail, progress: {} } });
 const ops = (seq: number, ...list: Extract<LiveEvent, { type: "ops" }>["ops"]): LiveEvent => ({ type: "ops", sessionId: "s", seq, ops: list });
 
 function chat(pages: Record<string, ItemsPage>) {

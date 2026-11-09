@@ -157,3 +157,11 @@ test("calls are described in words and grouped into one line", () => {
   expect(summarizeCalls([tc("grep", { pattern: "a" }), tc("ls", { path: "." }), tc("find", { pattern: "b" })])).toBe("Searched 3 times");
   expect(summarizeCalls([tc("bash")])).toBe("Ran 1 command");
 });
+
+test("a running call carries what it has output so far; a finished one does not", () => {
+  n = 0;
+  const items = [item("user", [text("go")]), item("assistant", [call("c1", "bash", { command: "make" }), call("c2", "bash")]), result("c2")];
+  const progress = { c1: { output: "compiling\n" }, c2: { output: "stale" } };
+  const segment = buildTurns(items, { running: true, progress })[0]!.segments[0]!;
+  expect(segment.kind === "activity" && segment.calls.map((c) => c.progress?.output)).toEqual(["compiling\n", undefined]);
+});

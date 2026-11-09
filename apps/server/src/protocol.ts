@@ -116,10 +116,17 @@ export interface SessionDoc extends SessionInfo {
   error?: string;
   extensions: ExtensionView;
 }
-/** The live document: session state and the in-flight items. Streams as `DocOp`s. */
+/** What a running tool has reported so far: the end of its output, and its details. */
+export interface ToolProgress {
+  output: string;
+  details?: Json;
+}
+/** The live document: session state, the in-flight items and running tools. Streams as `DocOp`s. */
 export interface LiveDoc {
   session: SessionDoc;
   tail: Item[];
+  /** Running tool calls by (opaque) call id. Pi reports them only as events, never in its state. */
+  progress: Record<string, ToolProgress>;
 }
 /** Starting points for Ask's folder picker. Any existing folder on the host is allowed. */
 export interface Catalog {

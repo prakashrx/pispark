@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, SessionEntry, SessionProjection } from "@earendil-works/pi-coding-agent";
 import type { ExtensionRendering } from "../extensions/extension-render.js";
-import type { Item, ItemPart, ItemsPage, PartPage } from "../protocol.js";
+import type { Item, ItemPart, ItemsPage, PartPage, ToolProgress } from "../protocol.js";
 import type { Json } from "../stream-ops.js";
 import { RuntimeError } from "./errors.js";
 
@@ -22,6 +22,10 @@ const ITEM_BYTES = 768 * 1024;
 const TAIL_BYTES = 768 * 1024;
 /** What text keeps when an item or the tail had to shrink. */
 const SHRUNK_TEXT = 16 * 1024;
+/** A running tool shows the end of its output; how many are shown at once. */
+const PROGRESS_OUTPUT = 8 * 1024;
+const PROGRESS_DETAILS = 8 * 1024;
+const MAX_RUNNING = 64;
 const MAX_ENTRIES = 256;
 const MAX_DEPTH = 12;
 const PAGE_BYTES = 256 * 1024;
@@ -136,6 +140,31 @@ function shrink(item: Item): Item {
   return { ...rest, parts, ...(dropped !== undefined ? { clipped: true as const } : {}) };
 }
 const size = (value: unknown) => JSON.stringify(value).length;
+/**
+ * What running tools reported so far (Pi's partial results, by raw call id), as the end of their
+ * text output and bounded details. Ids are made opaque the same way as a tool call's.
+ */
+export function progressOf(running: ReadonlyMap<string, unknown>): Record<string, ToolProgress> {
+  const out: Record<string, ToolProgress> = {};
+  for (const [id, partial] of [...running].slice(0, MAX_RUNNING)) {
+    const key = opaque(id);
+    if (!key) continue;
+    const raw = (partial ?? {}) as Raw;
+    const text = visible(raw.content)
+      .filter((part) => part.type === "text")
+      .map((part) => String(part.text ?? ""))
+      .join("\n");
+    let output = text.length > PROGRESS_OUTPUT ? text.slice(-PROGRESS_OUTPUT) : text;
+    // Never start with the second half of a surrogate pair.
+    if (/^[\uDC00-\uDFFF]/.test(output)) output = output.slice(1);
+    out[key] = {
+      output,
+      ...(raw.details === undefined ? {} : { details: bound(raw.details, { clipped: false, left: PROGRESS_DETAILS }) }),
+    };
+  }
+  return out;
+}
+
 /** What is in flight goes out whole in every snapshot, so all of it together stays bounded. */
 export const boundTail = (items: Item[]): Item[] => (size(items) > TAIL_BYTES ? items.map(shrink) : items);
 /** An item never outgrows what one frame can carry. */

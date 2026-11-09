@@ -3,7 +3,7 @@ import { chatTitle, toolChatTitle } from "./chat-title.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { ItemsPage, LiveDoc, PartPage, SessionDoc } from "../protocol.js";
-import { ItemProjector } from "./items.js";
+import { ItemProjector, progressOf } from "./items.js";
 import { LiveView } from "./live-view.js";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import {
@@ -104,6 +104,8 @@ interface HostedSession {
   rendering?: ExtensionRendering;
   /** Pi's session projected as chat items. */
   items?: ItemProjector;
+  /** Running tool calls and what they reported last (Pi's partial result), by call id. References only. */
+  running: Map<string, unknown>;
 }
 
 /** "extensions/notes.ts" and "extensions/notes/index.ts" are both "notes". */
@@ -318,7 +320,7 @@ export class SessionRuntime {
     hosted.observers.add(events);
     try {
       const view = new LiveView(id, {
-        doc: (): LiveDoc => ({ session: this.session(id), tail: items.tail() }),
+        doc: (): LiveDoc => ({ session: this.session(id), tail: items.tail(), progress: progressOf(hosted.running) }),
         head: () => items.head(),
         since: (after) => items.since(after),
       });
@@ -435,6 +437,7 @@ export class SessionRuntime {
       status: "starting",
       sequence: 0,
       observers: new Set(),
+      running: new Map(),
       extensionErrors: 0,
     };
     this.live.set(metadata.id, hosted); // Reserve admission before any async setup.
@@ -536,6 +539,15 @@ export class SessionRuntime {
         throw new RuntimeError("configuration");
       if (hosted.error) throw new RuntimeError(hosted.error);
       hosted.unsubscribe = session.subscribe((event) => {
+        // A running tool reports progress only as events. Keep the latest reference; it is
+        // projected when a client asks, never here. Calls nested inside another tool are not shown.
+        const tool = event as { type: string; toolCallId?: string; partialResult?: unknown; parentToolCallId?: string };
+        if (tool.toolCallId && !tool.parentToolCallId) {
+          if (tool.type === "tool_execution_start" || tool.type === "tool_execution_update")
+            hosted.running.set(tool.toolCallId, tool.partialResult);
+          else if (tool.type === "tool_execution_end") hosted.running.delete(tool.toolCallId);
+        }
+        if (event.type === "agent_settled") hosted.running.clear();
         if (event.type === "agent_start" && hosted.identity)
           hosted.identity.admissionClosed = false;
         if (event.type === "agent_settled" && hosted.identity)

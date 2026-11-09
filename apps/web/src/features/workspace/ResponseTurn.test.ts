@@ -75,3 +75,16 @@ test("an SVG whose markup was cut is not drawn half; the reason is given", () =>
   expect(container.querySelector("img")).toBeNull();
   expect(screen.getByText("big.svg is too large to draw here.")).toBeTruthy();
 });
+
+test("while a call runs, the end of its output shows under the activity line", () => {
+  const items = [
+    item("user", [{ type: "text", text: "build" }]),
+    item("assistant", [{ type: "toolCall", id: "b", name: "bash", args: { command: "make" } }]),
+  ];
+  const output = Array.from({ length: 10 }, (_, i) => `line ${i}`).join(String.fromCharCode(10));
+  const live = buildTurns(items, { running: true, progress: { b: { output } } })[0]!;
+  const { container } = render(ResponseTurn, { turn: live, sessionId: "s1" });
+  expect(screen.getByRole("button", { name: "Running make…" })).toBeTruthy();
+  const shown = container.querySelector(".activity-progress")!.textContent!;
+  expect(shown.split(String.fromCharCode(10))).toEqual(["line 4", "line 5", "line 6", "line 7", "line 8", "line 9"]);
+});

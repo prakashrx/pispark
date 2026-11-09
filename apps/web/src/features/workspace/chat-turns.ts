@@ -1,4 +1,4 @@
-import type { ExtensionView, Item, ItemPart } from "../../../../server/src/protocol";
+import type { ExtensionView, Item, ItemPart, ToolProgress } from "../../../../server/src/protocol";
 import type { Json } from "../../../../server/src/stream-ops";
 import { artifactsOf } from "./tool-views";
 
@@ -19,6 +19,8 @@ export interface ToolCall {
   result?: Item;
   /** Its arguments were cut to fit; what `args` holds is their start. */
   clipped?: true;
+  /** While it runs: the end of what it has output so far. */
+  progress?: ToolProgress;
 }
 
 /** One thing in a response, in the order it happened. */
@@ -73,7 +75,10 @@ export function clippedPart(item: Item): PartRef | undefined {
  * to their call, consecutive calls merge into one activity, and extension notices land where they
  * happened. `running` says the agent is still working on the last turn.
  */
-export function buildTurns(items: Item[], options: { running: boolean; notices?: Notice[]; thinkingLabel?: string }): Turn[] {
+export function buildTurns(
+  items: Item[],
+  options: { running: boolean; notices?: Notice[]; thinkingLabel?: string; progress?: Record<string, ToolProgress> },
+): Turn[] {
   const results = new Map<string, Item>();
   for (const item of items) if (item.role === "toolResult" && item.callId) results.set(item.callId, item);
   const notices = [...(options.notices ?? [])].sort((a, b) => a.after - b.after || a.at - b.at);
@@ -117,6 +122,7 @@ export function buildTurns(items: Item[], options: { running: boolean; notices?:
             result,
             status: result ? (result.isError ? "error" : "done") : options.running ? "running" : "unfinished",
             ...(part.clipped ? { clipped: true as const } : {}),
+            ...(!result && options.progress?.[part.id] ? { progress: options.progress[part.id] } : {}),
           };
           const last = turn.segments.at(-1);
           if (last?.kind === "activity") last.calls.push(call);
