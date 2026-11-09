@@ -235,3 +235,48 @@ test("an idle chat nobody shows unloads after a while, and loads again when used
     await h.remove();
   }
 });
+
+test("a prompt waiting when PiSpark stops is kept, and rejoins the queue when its chat is opened", async () => {
+  const h = await testHome("pispark-queue-restart-");
+  await h.persona("default", { name: "Default" });
+  const runtimes: SessionRuntime[] = [];
+  const make = () => {
+    const runtime = new SessionRuntime({ ...h.configuration, maxRunning: 1 });
+    runtimes.push(runtime);
+    return runtime;
+  };
+  try {
+    const folder = await h.folder("work");
+    const first = make();
+    const [a, b] = [await first.create({ folder }), await first.create({ folder })];
+    void first.start(a.id, "running").completion;
+    await eventually(() => h.provider.requests.length === 1);
+    void first.start(b.id, "waiting b").completion;
+    assert.equal(first.session(b.id).status, "queued");
+    // PiSpark stops while a runs and b waits.
+    await first.shutdown();
+
+    const second = make();
+    // Unloaded, the chat says its prompt is waiting.
+    assert.equal(second.list().find((chat) => chat.id === b.id)?.queued, true);
+    // With the one slot taken, opening it queues the prompt again, saying where it came from.
+    await second.open(a.id);
+    void second.start(a.id, "takes the slot").completion;
+    await eventually(() => h.provider.active === 1);
+    const reopened = await second.open(b.id);
+    assert.equal(reopened.status, "queued");
+    assert.equal(reopened.queuedText, "waiting b");
+    assert.equal(reopened.restored, true);
+    // When the slot frees, it runs.
+    h.provider.automatic = true;
+    for (const request of h.provider.requests) request.release();
+    await eventually(() => second.session(b.id).status === "idle");
+    assert.match(JSON.stringify(second.items(b.id, {}).items), /waiting b/);
+    assert.equal(JSON.parse(await readFile(join(h.home, "chats", b.id, "chat.json"), "utf8")).queued, undefined);
+  } finally {
+    h.provider.automatic = true;
+    for (const request of h.provider.requests) request.release();
+    await Promise.allSettled(runtimes.map((r) => r.shutdown()));
+    await h.remove();
+  }
+});

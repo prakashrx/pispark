@@ -290,7 +290,9 @@ export class SessionRuntime {
       },
       ...(hosted?.setupChanged ? { personaChanged: true } : {}),
       ...(hosted?.ui?.asking ? { waiting: true } : {}),
-      ...(hosted?.status === "queued" || this.slots.queued(metadata.id) ? { queued: true } : {}),
+      ...(hosted?.status === "queued" || this.slots.queued(metadata.id) || (!hosted && metadata.queued !== undefined)
+        ? { queued: true }
+        : {}),
     };
   }
   /** After any persona edit, flag open chats whose resolved setup no longer matches. */
@@ -730,6 +732,11 @@ export class SessionRuntime {
         personaId: metadata.persona,
         outcome: "completed",
       });
+      // A prompt that was waiting when PiSpark stopped rejoins the queue now that the chat is open.
+      if (reopening && metadata.queued !== undefined) {
+        this.restoreQueued(hosted, metadata.queued);
+        return this.session(metadata.id);
+      }
       return doc;
     };
     const operation = initialize().catch(async (error: unknown) => {
@@ -810,8 +817,19 @@ export class SessionRuntime {
       throw error;
     }
   }
-  private enqueue(hosted: HostedSession, text: string): Promise<RunResult> {
+  private restoreQueued(hosted: HostedSession, text: string): void {
     const id = hosted.metadata.id;
+    try {
+      const run = this.slots.take(id) ? this.begin(hosted, text) : this.enqueue(hosted, text, true);
+      void run.catch(() => {});
+    } catch {
+      // The prompt stays saved; it is offered again the next time the chat opens.
+      this.slots.release(id);
+    }
+  }
+  private enqueue(hosted: HostedSession, text: string, restored = false): Promise<RunResult> {
+    const id = hosted.metadata.id;
+    hosted.restored = restored ? true : undefined;
     const metadata = { ...hosted.metadata, queued: text };
     this.storage.write(metadata);
     hosted.metadata = metadata;
@@ -822,6 +840,7 @@ export class SessionRuntime {
       hosted.queuedRun = resolve;
       this.slots.wait(id, () => {
         hosted.queuedRun = undefined;
+        hosted.restored = undefined;
         hosted.status = "idle";
         try {
           resolve(this.begin(hosted, text));
@@ -850,6 +869,7 @@ export class SessionRuntime {
       hosted.metadata = metadata;
     }
     if (hosted.status === "queued") hosted.status = "idle";
+    hosted.restored = undefined;
     resolve?.({ outcome: "cancelled" });
     this.changed(hosted);
   }
