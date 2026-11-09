@@ -17,6 +17,8 @@ export interface ToolCall {
   /** The call is still being written, is running, finished, failed, or never got a result. */
   status: "running" | "done" | "error" | "unfinished";
   result?: Item;
+  /** Its arguments were cut to fit; what `args` holds is their start. */
+  clipped?: true;
 }
 
 /** One thing in a response, in the order it happened. */
@@ -29,11 +31,11 @@ export type Segment =
   | { kind: "custom"; key: string; item: Item }
   | { kind: "summary"; key: string; text: string }
   /** What a tool produced that is worth reading in the message itself: changes to a file ... */
-  | { kind: "diff"; key: string; path?: string; patch: string }
+  | { kind: "diff"; key: string; path?: string; patch: string; /** The patch was cut to fit. */ clipped?: boolean }
   /** ... an image a tool returned (its bytes are read by reference) ... */
   | { kind: "image"; key: string; itemId?: string; part: number; mimeType: string; bytes: number; alt: string }
   /** ... or an SVG a tool wrote, drawn from the markup in its arguments. */
-  | { kind: "svg"; key: string; markup: string; alt: string }
+  | { kind: "svg"; key: string; markup: string; alt: string; /** The markup was cut to fit, so it is not drawn. */ clipped?: boolean }
   | { kind: "notice"; key: string; notice: Notice }
   | { kind: "stopped"; key: string; reason: "aborted" | "error" };
 
@@ -114,6 +116,7 @@ export function buildTurns(items: Item[], options: { running: boolean; notices?:
             args: part.args,
             result,
             status: result ? (result.isError ? "error" : "done") : options.running ? "running" : "unfinished",
+            ...(part.clipped ? { clipped: true as const } : {}),
           };
           const last = turn.segments.at(-1);
           if (last?.kind === "activity") last.calls.push(call);

@@ -40,6 +40,8 @@ export interface Item {
   durationMs?: number;
   /** Pi's structured result for UIs (an edit's diff, an extension tool's payload); bounded. */
   details?: Json;
+  /** `details` (or, for an oversized item, its tool arguments and text) were cut to fit. */
+  clipped?: true;
   customType?: string;
   /** An extension's own rendering of this tool result, custom message or entry. */
   rendered?: { call?: StyledLine[]; body?: StyledLine[] };

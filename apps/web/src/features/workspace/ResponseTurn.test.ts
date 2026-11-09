@@ -50,3 +50,28 @@ test("pictures are drawn as images from the saved result or from the SVG a tool 
   expect(drawn!.getAttribute("alt")).toBe("icon.svg");
   expect(container.querySelector("svg script, script, [onload]")).toBeNull();
 });
+
+test("a very large change shows its start with a way to see all of it, and a cut one says so", async () => {
+  const many = ["--- big.ts", "+++ big.ts", "@@ -1,0 +1,900 @@", ...Array.from({ length: 900 }, (_, i) => `+line ${i}`), ""].join(String.fromCharCode(10));
+  const items = [
+    item("user", [{ type: "text", text: "go" }]),
+    item("assistant", [{ type: "toolCall", id: "big", name: "edit", args: { path: "big.ts" } }]),
+    item("toolResult", [{ type: "text", text: "ok" }], { callId: "big", toolName: "edit", details: { patch: many }, clipped: true }),
+  ];
+  const { container } = render(ResponseTurn, { turn: turn(items), sessionId: "s1" });
+  expect(container.querySelectorAll(".row")).toHaveLength(400);
+  expect(screen.getByRole("note").textContent).toContain("too large to send whole");
+  await fireEvent.click(screen.getByRole("button", { name: "Show all 900 lines" }));
+  expect(container.querySelectorAll(".row")).toHaveLength(900);
+});
+
+test("an SVG whose markup was cut is not drawn half; the reason is given", () => {
+  const items = [
+    item("user", [{ type: "text", text: "draw" }]),
+    item("assistant", [{ type: "toolCall", id: "w", name: "write", args: { path: "big.svg", content: "<svg xmlns='http://www.w3.org/2000/svg'><path d='M0 0" }, clipped: true }]),
+    item("toolResult", [{ type: "text", text: "Wrote" }], { callId: "w", toolName: "write" }),
+  ];
+  const { container } = render(ResponseTurn, { turn: turn(items), sessionId: "s1" });
+  expect(container.querySelector("img")).toBeNull();
+  expect(screen.getByText("big.svg is too large to draw here.")).toBeTruthy();
+});

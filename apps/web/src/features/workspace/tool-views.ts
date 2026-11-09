@@ -32,7 +32,8 @@ export function genericArtifacts(call: ToolCall): AnySegment[] {
   const out: AnySegment[] = [];
   const path = arg(call, "path");
   const patch = field(result.details, "patch");
-  if (typeof patch === "string" && patch.trim()) out.push({ kind: "diff", key: `diff.${call.id}`, patch, path });
+  if (typeof patch === "string" && patch.trim())
+    out.push({ kind: "diff", key: `diff.${call.id}`, patch, path, clipped: result.clipped === true });
   result.parts.forEach((part, index) => {
     if (part.type === "image")
       out.push({ kind: "image", key: `image.${call.id}.${index}`, itemId: result.id, part: index, mimeType: part.mimeType, bytes: part.bytes, alt: `Image from ${call.name}` });
@@ -65,7 +66,7 @@ registerToolView("write", {
     const markup = field(call.args, "content");
     // An SVG a tool wrote is drawn from what it wrote, once the write is done.
     if (call.status === "done" && path && /\.svg$/i.test(path) && typeof markup === "string" && markup.includes("<svg"))
-      out.push({ kind: "svg", key: `svg.${call.id}`, markup, alt: path });
+      out.push({ kind: "svg", key: `svg.${call.id}`, markup, alt: path, clipped: call.clipped === true });
     return out;
   },
 });

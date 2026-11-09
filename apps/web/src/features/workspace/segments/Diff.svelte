@@ -5,4 +5,4 @@
   let { segment }: { segment: Extract<Segment, { kind: "diff" }> } = $props();
 </script>
 
-<DiffView patch={segment.patch} path={segment.path} />
+<DiffView patch={segment.patch} path={segment.path} clipped={segment.clipped} />

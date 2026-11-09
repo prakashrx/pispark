@@ -10,8 +10,18 @@ import { RuntimeError } from "./errors.js";
 const PART_LIMIT = 128 * 1024;
 const ITEM_LIMIT = 192 * 1024;
 const MAX_PARTS = 64;
-/** Tool arguments and details: per string, per collection, nesting. */
+/** Tool arguments and details: per string, per collection, nesting, and in all. */
 const STRING_LIMIT = 32 * 1024;
+/** A patch or diff is what a person reads after an edit, so it may be much longer. */
+const DIFF_LIMIT = 256 * 1024;
+const ARGS_BUDGET = 256 * 1024;
+const DETAILS_BUDGET = 512 * 1024;
+/** One item, serialized, stays well inside a live frame or a history page. */
+const ITEM_BYTES = 768 * 1024;
+/** Everything in flight together, so a snapshot never outgrows a frame. */
+const TAIL_BYTES = 768 * 1024;
+/** What text keeps when an item or the tail had to shrink. */
+const SHRUNK_TEXT = 16 * 1024;
 const MAX_ENTRIES = 256;
 const MAX_DEPTH = 12;
 const PAGE_BYTES = 256 * 1024;
@@ -33,14 +43,24 @@ function clip(text: string, limit: number): string {
   return text.slice(0, end);
 }
 
-/** Pi's structured values for UIs, bounded: long strings, wide collections and deep nesting are cut. */
-function bound(value: unknown, flag: { clipped: boolean }, depth = 0): Json {
+/** How much of a structured value may still be sent, and whether anything was cut. */
+interface Bound {
+  clipped: boolean;
+  left: number;
+}
+/**
+ * Pi's structured values for UIs, bounded: long strings, wide collections, deep nesting and the
+ * total are cut, and `clipped` says so. The keys `patch` and `diff` at the top get a larger limit.
+ */
+function bound(value: unknown, flag: Bound, depth = 0, limit = STRING_LIMIT): Json {
   if (value === null || typeof value === "boolean") return value;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "string") {
-    if (value.length <= STRING_LIMIT) return value;
-    flag.clipped = true;
-    return clip(value, STRING_LIMIT);
+    const max = Math.max(0, Math.min(limit, flag.left));
+    const kept = value.length <= max ? value : clip(value, max);
+    if (kept !== value) flag.clipped = true;
+    flag.left -= kept.length;
+    return kept;
   }
   if (depth >= MAX_DEPTH) {
     flag.clipped = true;
@@ -53,7 +73,11 @@ function bound(value: unknown, flag: { clipped: boolean }, depth = 0): Json {
   if (typeof value === "object") {
     const entries = Object.entries(value as Raw).filter(([, item]) => item !== undefined);
     if (entries.length > MAX_ENTRIES) flag.clipped = true;
-    return Object.fromEntries(entries.slice(0, MAX_ENTRIES).map(([key, item]) => [key, bound(item, flag, depth + 1)]));
+    return Object.fromEntries(
+      entries
+        .slice(0, MAX_ENTRIES)
+        .map(([key, item]) => [key, bound(item, flag, depth + 1, depth === 0 && (key === "patch" || key === "diff") ? DIFF_LIMIT : STRING_LIMIT)]),
+    );
   }
   return null;
 }
@@ -68,10 +92,13 @@ function visible(content: unknown): Raw[] {
 
 function parts(content: unknown): ItemPart[] {
   let budget = ITEM_LIMIT;
+  // All of one message's tool arguments share one budget.
+  let argsLeft = ARGS_BUDGET;
   return visible(content).map((part): ItemPart => {
     if (part.type === "toolCall") {
-      const flag = { clipped: false };
+      const flag = { clipped: false, left: argsLeft };
       const args = bound(part.arguments ?? {}, flag);
+      argsLeft = flag.left;
       return { type: "toolCall", id: opaque(part.id) ?? "", name: label(part.name), args, ...(flag.clipped ? { clipped: true as const } : {}) };
     }
     if (part.type === "image") {
@@ -85,6 +112,34 @@ function parts(content: unknown): ItemPart[] {
     return text.length > limit ? { type, text: clip(text, limit), size: text.length } : { type, text };
   });
 }
+
+/** Structured details, bounded; the item says when they were cut. */
+function details(value: unknown): { details?: Json; clipped?: true } {
+  if (value === undefined) return {};
+  const flag = { clipped: false, left: DETAILS_BUDGET };
+  const bounded = bound(value, flag);
+  return { details: bounded, ...(flag.clipped ? { clipped: true as const } : {}) };
+}
+
+/**
+ * Makes an item smaller, saying so: its details go, its tool arguments go, and its text keeps
+ * only its start. The full text can still be read by reference once the item is saved.
+ */
+function shrink(item: Item): Item {
+  const parts = item.parts.map((part): ItemPart => {
+    if (part.type === "toolCall") return { ...part, args: {}, clipped: true };
+    if ((part.type === "text" || part.type === "thinking") && part.text.length > SHRUNK_TEXT)
+      return { ...part, text: clip(part.text, SHRUNK_TEXT), size: part.size ?? part.text.length };
+    return part;
+  });
+  const { details: dropped, ...rest } = item;
+  return { ...rest, parts, ...(dropped !== undefined ? { clipped: true as const } : {}) };
+}
+const size = (value: unknown) => JSON.stringify(value).length;
+/** What is in flight goes out whole in every snapshot, so all of it together stays bounded. */
+export const boundTail = (items: Item[]): Item[] => (size(items) > TAIL_BYTES ? items.map(shrink) : items);
+/** An item never outgrows what one frame can carry. */
+const fit = (item: Item): Item => (size(item) > ITEM_BYTES ? shrink(item) : item);
 
 /**
  * Projects Pi's session into the chat's items. Pi is the only store: history is read from its
@@ -145,11 +200,9 @@ export class ItemProjector {
     const extra = rendered ? { rendered } : {};
     if (role === "user") return { ...base, role, parts: parts(message.content) };
     if (role === "assistant")
-      return { ...base, role, parts: parts(message.content), ...(message.stopReason ? { stopReason: label(message.stopReason) } : {}) };
-    if (role === "toolResult") {
-      const flag = { clipped: false };
-      const details = message.details === undefined ? undefined : bound(message.details, flag);
-      return {
+      return fit({ ...base, role, parts: parts(message.content), ...(message.stopReason ? { stopReason: label(message.stopReason) } : {}) });
+    if (role === "toolResult")
+      return fit({
         ...base,
         role,
         parts: parts(message.content),
@@ -157,15 +210,12 @@ export class ItemProjector {
         ...(opaque(message.toolCallId) ? { callId: opaque(message.toolCallId)! } : {}),
         isError: message.isError === true,
         ...(typeof message.durationMs === "number" ? { durationMs: message.durationMs } : {}),
-        ...(details === undefined ? {} : { details }),
+        ...details(message.details),
         ...extra,
-      };
-    }
+      });
     if (role === "custom") {
       if (message.display === false) return undefined;
-      const flag = { clipped: false };
-      const details = message.details === undefined ? undefined : bound(message.details, flag);
-      return { ...base, role, parts: parts(message.content), customType: label(message.customType), ...(details === undefined ? {} : { details }), ...extra };
+      return fit({ ...base, role, parts: parts(message.content), customType: label(message.customType), ...details(message.details), ...extra });
     }
     if (role === "compactionSummary" || role === "branchSummary")
       return { ...base, role: "summary", parts: parts(String(message.summary ?? "")) };
@@ -286,7 +336,7 @@ export class ItemProjector {
         items.push(item);
       }
     } else this.streamKey = undefined;
-    return items;
+    return boundTail(items);
   }
 
   private raw(id: string): Raw | undefined {

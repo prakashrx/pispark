@@ -4,6 +4,9 @@
 
   /** What a call did, once opened: its extension's own rendering, else what it returned, else what it was asked. */
   let { call }: { call: ToolCall } = $props();
+  const cut = $derived(
+    call.clipped || call.result?.clipped || call.result?.parts.some((part) => part.type === "text" && part.size !== undefined),
+  );
   const result = $derived(
     call.result?.parts
       .map((part) => (part.type === "text" ? part.text : part.type === "image" ? `[${part.mimeType} image]` : ""))
@@ -18,11 +21,17 @@
     {#if call.result.rendered.body}<StyledText lines={call.result.rendered.body} />{/if}
   {:else if result}<pre class="call-output">{result}</pre>
   {:else}<pre class="call-output">{JSON.stringify(call.args, null, 2)}</pre>{/if}
+  {#if cut}<p class="call-cut">Cut to fit; this shows the start.</p>{/if}
 </div>
 
 <style>
   .call-detail {
     margin: 0.25rem 0 0.5rem;
+  }
+  .call-cut {
+    margin: 0.25rem 0 0;
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
   }
   .call-output {
     margin: 0;

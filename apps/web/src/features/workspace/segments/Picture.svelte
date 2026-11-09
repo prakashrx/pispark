@@ -6,7 +6,9 @@
   let { segment, sessionId }: { segment: Extract<Segment, { kind: "image" | "svg" }>; sessionId: string } = $props();
 </script>
 
-{#if segment.kind === "svg"}
+{#if segment.kind === "svg" && segment.clipped}
+  <p class="text-sm text-muted-foreground">{segment.alt} is too large to draw here.</p>
+{:else if segment.kind === "svg"}
   <ArtifactImage {sessionId} markup={segment.markup} alt={segment.alt} />
 {:else}
   <ArtifactImage {sessionId} itemId={segment.itemId} part={segment.part} mimeType={segment.mimeType} alt={segment.alt} />

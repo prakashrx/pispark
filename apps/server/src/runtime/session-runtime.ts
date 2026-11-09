@@ -245,15 +245,12 @@ export class SessionRuntime {
     if (!this.accepting) throw new RuntimeError("closed");
     if (this.live.size >= this.maxLive) throw new RuntimeError("limit");
   }
-  private publicCopy<T>(value: T, secret?: string): T {
+  /** A detached copy without provider error text, diagnostics or stacks. */
+  private publicCopy<T>(value: T): T {
     return JSON.parse(
-      JSON.stringify(value, (key, item: unknown) => {
-        if (key === "errorMessage" || key === "diagnostics" || key === "stack")
-          return undefined;
-        return typeof item === "string" && secret
-          ? item.split(secret).join("[redacted]")
-          : item;
-      }),
+      JSON.stringify(value, (key, item: unknown) =>
+        key === "errorMessage" || key === "diagnostics" || key === "stack" ? undefined : item,
+      ),
     ) as T;
   }
   snapshot(id: string): SessionSnapshot {
@@ -275,7 +272,6 @@ export class SessionRuntime {
         },
         error: hosted.error,
       },
-      undefined,
     );
   }
   /** Everything about a chat except its history: status, model, queue and what extensions show. */
