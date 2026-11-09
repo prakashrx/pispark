@@ -52,25 +52,9 @@
   const queued = $derived(
     (snapshot?.queue.steering ?? 0) + (snapshot?.queue.followUp ?? 0),
   );
-  const turns = $derived(
-    snapshot
-      ? visibleTurns(
-          snapshot.partial
-            ? [...snapshot.messages, snapshot.partial]
-            : snapshot.messages,
-        )
-      : [],
-  );
-  // Extension entries and notices, placed where they happened among the turns.
-  const placed = $derived(
-    placeAnchored(turns, [
-      ...(snapshot?.entries ?? []).map((entry) => ({ ...entry, kind: undefined })),
-      ...(snapshot?.extensions.notices ?? []),
-    ]),
-  );
-  const olderTurns = $derived(
-    client.older ? visibleTurns(client.older.messages) : [],
-  );
+  const turns = $derived(snapshot ? visibleTurns(snapshot.messages) : []);
+  // Extension notices, placed where they happened among the turns.
+  const placed = $derived(placeAnchored(turns, snapshot?.extensions.notices ?? []));
   const modelName = $derived(
     client.providers.catalog.providers
       .find((p) => p.id === snapshot?.model?.provider)
@@ -172,26 +156,10 @@
       {#if queued > 0}<p class="text-sm text-muted-foreground">
           {queued} messages queued
         </p>{/if}
-      {#if (client.older?.before ?? snapshot.before) > 0}<Button
+      {#if client.live.more}<Button
           class={button}
-          onclick={() => client.history()}>Load earlier messages</Button
+          onclick={() => client.loadEarlier()}>Load earlier messages</Button
         >{/if}
-      {#if client.older}<section
-          aria-label="Earlier message window"
-          class="flex flex-col gap-8"
-        >
-          <Button class={button} onclick={() => (client.older = undefined)}
-            >Back to latest</Button
-          >{#each olderTurns as turn}<NativeTurn
-              message={turn.message}
-              hidden={turn.hidden}
-            />{/each}
-        </section>{/if}
-      {#if snapshot.truncated || client.older?.truncated}<p
-          class="text-sm text-muted-foreground"
-        >
-          Some content isn’t shown in this view.
-        </p>{/if}
       <div class="flex flex-col gap-8">
         {#each turns as turn, index}
           {#each placed.before[index] ?? [] as item}<ExtensionBlock lines={item.lines} kind={item.kind} />{/each}

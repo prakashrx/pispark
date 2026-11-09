@@ -4,7 +4,7 @@ import {
   type SessionRuntime,
   RuntimeError,
 } from "./runtime/session-runtime.js";
-import type { Catalog, Command, Receipt, SnapshotEvent } from "./protocol.js";
+import type { Catalog, Command, LiveEvent, Receipt } from "./protocol.js";
 import type { ProviderHttp } from "./provider-http.js";
 import { validChoice } from "./runtime/provider-storage.js";
 import {
@@ -20,6 +20,12 @@ import { homedir } from "node:os";
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_FRAME = 256 * 1024;
+/** A live frame is a snapshot or one tick's operations; a history page may carry one large item. */
+const MAX_LIVE_FRAME = 1024 * 1024;
+const ITEMS_FRAME = 1024 * 1024;
+const MAX_IMAGE = 20 * 1024 * 1024;
+/** How long a batch waits so a burst of Pi events leaves as one frame. */
+const FLUSH_MS = 50;
 export function sendJson(
   response: ServerResponse,
   status: number,
@@ -350,34 +356,38 @@ export class SessionHttp {
           receipt ?? { error: "unknown-receipt" },
         );
       } else {
-        const detail = /^\/api\/sessions\/([\w-]+)\/messages\/(\d{1,9})\/([\w-]+)\/(\d{1,9})\/(\d{1,10})$/.exec(path);
-        if (request.method === "GET" && detail && !url.search) {
-          const [, id, index, key, part, offset] = detail;
-          if (!uuid.test(id!) || !uuid.test(key!)) throw new RuntimeError("invalid-input");
-          const page = this.runtime.messagePage(id!, Number(index), key!, Number(part), Number(offset));
-          sendJson(response, 200, page);
+        const one = /^\/api\/sessions\/([\w-]+)$/.exec(path);
+        if (request.method === "GET" && one && uuid.test(one[1]!) && !url.search) {
+          sendJson(response, 200, this.runtime.session(one[1]!));
           return;
         }
-        const match = /^\/api\/sessions\/([\w-]+)\/(events|window)$/.exec(path);
+        const match = /^\/api\/sessions\/([\w-]+)\/(live|items)(?:\/([\w-]{1,64})\/parts\/(\d{1,3}))?$/.exec(path);
         if (request.method !== "GET" || !match || !uuid.test(match[1]!)) {
           sendJson(response, 404, { error: "not-found" });
           return;
         }
-        const id = match[1]!;
-        if (match[2] === "events" && !url.search) {
+        const [, id, kind, itemId, part] = match;
+        if (kind === "live" && !url.search && !itemId) {
           if (this.streams.size >= 16) throw new RuntimeError("limit");
-          await this.observe(id, response);
-        } else if (
-          match[2] === "window" &&
-          [...url.searchParams.keys()].every((key) => key === "before")
-        ) {
-          const raw = url.searchParams.get("before");
-          if (raw !== null && !/^\d{1,9}$/.test(raw))
+          await this.observe(id!, response);
+        } else if (kind === "items" && itemId) {
+          await this.part(id!, itemId, Number(part), url.searchParams, response);
+        } else if (kind === "items" && !itemId) {
+          const query = url.searchParams;
+          const { before, after, limit } = Object.fromEntries(query);
+          const token = /^[\w-]{1,64}$/;
+          if (
+            [...query.keys()].some((key) => !["before", "after", "limit"].includes(key)) ||
+            (before !== undefined && (!token.test(before) || after !== undefined)) ||
+            (after !== undefined && !token.test(after)) ||
+            (limit !== undefined && !/^\d{1,3}$/.test(limit))
+          )
             throw new RuntimeError("invalid-input");
           sendJson(
             response,
             200,
-            this.runtime.window(id, raw === null ? undefined : Number(raw)),
+            this.runtime.items(id!, { before, after, limit: limit === undefined ? undefined : Number(limit) }),
+            ITEMS_FRAME,
           );
         } else sendJson(response, 400, { error: "invalid-input" });
       }
@@ -393,10 +403,31 @@ export class SessionHttp {
       this.requests--;
     }
   }
+  /** An image part's bytes, or a chunk of a clipped text part (`?offset=`). */
+  private async part(id: string, itemId: string, part: number, query: URLSearchParams, response: ServerResponse) {
+    const offset = query.get("offset");
+    if ([...query.keys()].some((key) => key !== "offset") || (offset !== null && !/^\d{1,9}$/.test(offset)))
+      throw new RuntimeError("invalid-input");
+    if (offset === null) {
+      const { mimeType, data } = this.runtime.image(id, itemId, part);
+      if (data.length > MAX_IMAGE) throw new RuntimeError("limit");
+      response.writeHead(200, {
+        "Content-Type": mimeType,
+        "Content-Length": data.length,
+        "Cache-Control": "private, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+        // An SVG is only ever drawn as an image; nothing in it may run or load.
+        "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+      });
+      response.end(data);
+      return;
+    }
+    sendJson(response, 200, this.runtime.text(id, itemId, part, Number(offset)));
+  }
   private async observe(id: string, response: ServerResponse) {
     let observation;
     try {
-      observation = this.runtime.observeWindow(id);
+      observation = this.runtime.observeLive(id);
     } catch (error) {
       if (!(error instanceof RuntimeError) || error.code !== "not-found") throw error;
       sendJson(response, 410, { error: "not-found" });
@@ -406,9 +437,12 @@ export class SessionHttp {
     const close = () => observation.events.close();
     response.once("close", close);
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const write = async (event: SnapshotEvent) => {
-      const frame = `event: snapshot\ndata: ${JSON.stringify(event)}\n\n`;
-      if (Buffer.byteLength(frame) > MAX_FRAME) throw new RuntimeError("limit");
+    const write = async (event: LiveEvent) => {
+      const frame = `event: ${event.type}
+data: ${JSON.stringify(event)}
+
+`;
+      if (Buffer.byteLength(frame) > MAX_LIVE_FRAME) throw new RuntimeError("limit");
       if (!response.write(frame)) {
         const controller = new AbortController();
         timer = setTimeout(() => {
@@ -422,7 +456,8 @@ export class SessionHttp {
         }
       }
     };
-    // Lifetime cap frees abandoned connections even if no further writes occur; clients resnapshot.
+    // Lifetime cap frees abandoned connections even if no further writes occur; a client reconnects,
+    // gets a fresh snapshot of the live document and fetches only the history it is missing.
     const lifetime = setTimeout(() => response.end(), 60_000);
     try {
       response.writeHead(200, {
@@ -430,32 +465,18 @@ export class SessionHttp {
         "Cache-Control": "no-store",
         "X-Accel-Buffering": "no",
       });
-      await write({
-        type: "snapshot",
-        boundary: "initial",
-        sessionId: id,
-        sequence: observation.snapshot.sequence,
-        snapshot: observation.snapshot,
-      });
-      let sequence = observation.snapshot.sequence;
-      for await (const event of observation.events) {
+      await write(observation.view.snapshot());
+      for await (const _ of observation.events) {
         if (response.destroyed || response.writableEnded) break;
-        if (event.sequence <= sequence) continue;
-        await new Promise((resolve) => setTimeout(resolve, 100)); // <=10 snapshots/sec, coalesced outside SDK listeners.
-        let snapshot;
+        // Pi emits many small events; wait briefly so a burst leaves as one batch.
+        await new Promise((resolve) => setTimeout(resolve, FLUSH_MS));
+        let batch;
         try {
-          snapshot = this.runtime.window(id);
+          batch = observation.view.next();
         } catch {
           break;
         } // stop/unload settlement remains in its receipt; reconnect must open explicitly.
-        sequence = snapshot.sequence;
-        await write({
-          type: "snapshot",
-          boundary: "update",
-          sessionId: id,
-          sequence,
-          snapshot,
-        });
+        if (batch) await write(batch);
       }
       response.end();
     } finally {

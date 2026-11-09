@@ -105,7 +105,7 @@ test("typed acceptance uncertainty retains reply draft and stays with originatin
   );
   const client = new SessionClient();
   client.selected = "origin";
-  client.snapshot = { status: "idle" } as NonNullable<typeof client.snapshot>;
+  client.live.doc = { session: { status: "idle" } as never, tail: [] };
   client.setDraft("Keep unsent text");
   await client.reply();
   expect(client.drafts.origin).toBe("Keep unsent text");

@@ -19,7 +19,7 @@ In development, Vite serves the UI on loopback port 5173 and proxies `/api` to p
 | --- | --- |
 | `GET /api/health` | `200` with `{ "status": "ok", "service": "pispark" }` |
 | Other methods on `/api/health` | `405`, with `Allow: GET` |
-| `/api/catalog`, `/api/sessions`, `/api/commands`, `/api/receipts/*`, session `/events` and `/window` | [Bounded session protocol](session-protocol.md), strict local Host/Origin validation |
+| `/api/catalog`, `/api/sessions`, `/api/commands`, `/api/receipts/*`, session `/live`, `/items` and parts | [Bounded session protocol](session-protocol.md), strict local Host/Origin validation |
 | `/api/providers` and `/api/providers/*` | Native provider catalog, default/refresh/logout and owner-capability sign-in bridge; same local security guard |
 | `/api/personas` and `/api/personas/*` | [Layered persona management](personas.md): list, read the resolved layers, create, revision-checked saves and item files; same guard |
 | Unknown `/api` routes | JSON `404`, never frontend HTML |
@@ -37,7 +37,7 @@ The entry point binds only literal loopback, logs its listening address and hand
 
 ## Internal runtime foundation
 
-The [session runtime](session-runtime.md) owns the data folder (`PISPARK_HOME`, default `~/.pispark`), concurrent native AgentSessions, bounded pull-based snapshot observation, cancellation, reload and graceful unload. Pi owns tools/model execution, native extension lifecycle and canonical JSONL context. Each chat folder holds a small `chat.json` and Pi's transcript; there is no parallel transcript database. Native extension loading is exact-path, with no ambient project/home resources or terminal Pi storage.
+The [session runtime](session-runtime.md) owns the data folder (`PISPARK_HOME`, default `~/.pispark`), concurrent native AgentSessions, bounded pull-based live observation (items by cursor plus operations on the in-flight tail), cancellation, reload and graceful unload. Pi owns tools/model execution, native extension lifecycle and canonical JSONL context. Each chat folder holds a small `chat.json` and Pi's transcript; there is no parallel transcript database. Native extension loading is exact-path, with no ambient project/home resources or terminal Pi storage.
 
 Every hosted session loads the ordinary built-in PiSpark integration extension; its first capability is a session-bound native title tool, not a public RPC framework. See [capability scope and lifetime](session-runtime.md#built-in-pispark-session-integration).
 

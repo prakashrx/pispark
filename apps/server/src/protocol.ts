@@ -1,5 +1,6 @@
 import type { ChatPersona } from "./persona-protocol.js";
-/** Client-independent v1 contract. No SDK objects, secrets, file paths, or durable event cursors. */
+import type { DocOp, Json } from "./stream-ops.js";
+/** Client-independent v2 contract. No SDK objects, secrets or file paths. */
 export interface SessionInfo {
   id: string;
   /** Working folder on the backend host. */
@@ -13,32 +14,46 @@ export interface SessionInfo {
   /** The persona changed since this session started; reload to apply. */
   personaChanged?: boolean;
 }
-export interface MessageRef {
-  index: number;
+/**
+ * One thing in the chat, projected from Pi's session: a message, a summary, or a custom entry.
+ * Content keeps Pi's shape; what is large travels by reference and is read on demand.
+ */
+export type ItemPart =
+  /** `size` is the full length when `text` was clipped. */
+  | { type: "text" | "thinking"; text: string; size?: number }
+  /** `args` are the parsed arguments (bounded); they grow while the model writes them. */
+  | { type: "toolCall"; id: string; name: string; args: Json; clipped?: true }
+  | { type: "image"; mimeType: string; bytes: number };
+export interface Item {
+  /** Pi's session entry id. Absent while the message is only in flight. */
+  id?: string;
+  /** Stable for the item's whole life, including through its commit to the session. */
   key: string;
-}
-export interface MessagePage {
-  text: string;
-  next?: { part: number; offset: number };
-}
-export interface MessagePart {
-  callId?: string;
-  type: string;
-  text: string;
-  name?: string;
-}
-export interface NativeMessage {
-  /** Position in Pi's context; notices and entries are placed by it. */
-  index?: number;
-  callId?: string;
-  detail?: MessageRef;
-  role: string;
-  parts: MessagePart[];
-  toolName?: string;
-  isError?: boolean;
+  role: "user" | "assistant" | "toolResult" | "custom" | "summary" | "entry";
+  /** Position in Pi's current context, when it has one; extension notices are placed by it. */
+  pos?: number;
+  parts: ItemPart[];
   stopReason?: string;
-  /** An extension's own rendering of this tool result or custom message. */
+  toolName?: string;
+  callId?: string;
+  isError?: boolean;
+  durationMs?: number;
+  /** Pi's structured result for UIs (an edit's diff, an extension tool's payload); bounded. */
+  details?: Json;
+  customType?: string;
+  /** An extension's own rendering of this tool result, custom message or entry. */
   rendered?: { call?: StyledLine[]; body?: StyledLine[] };
+}
+/** A page of finalized items, oldest first. `head` is the session's last entry id. */
+export interface ItemsPage {
+  items: Item[];
+  head: string | null;
+  more: boolean;
+}
+/** One chunk of a long text part. */
+export interface PartPage {
+  text: string;
+  next?: number;
 }
 /**
  * Text written for a terminal, as styled spans. Colors are PiSpark roles
@@ -92,27 +107,17 @@ export interface ExtensionView {
   /** Text an extension put into the reply box; apply once per id. */
   draft?: { id: string; text: string; at: number };
 }
-/** A custom session entry an extension renders, placed after `after` messages. */
-export interface RenderedEntry {
-  key: string;
-  after: number;
-  /** Epoch milliseconds, ordering it among notices at the same place. */
-  at: number;
-  lines: StyledLine[];
-}
-export interface SessionWindow extends SessionInfo {
-  sequence: number;
+/** Everything about a chat except its history: status, model, queue, and what extensions show. */
+export interface SessionDoc extends SessionInfo {
   model?: { provider: string; id: string };
-  messages: NativeMessage[];
-  partial?: NativeMessage;
-  /** Index in current native context, not a persistent history cursor. */
-  before: number;
-  total: number;
-  truncated: boolean;
   queue: { steering: number; followUp: number };
   error?: string;
   extensions: ExtensionView;
-  entries: RenderedEntry[];
+}
+/** The live document: session state and the in-flight items. Streams as `DocOp`s. */
+export interface LiveDoc {
+  session: SessionDoc;
+  tail: Item[];
 }
 /** Starting points for Ask's folder picker. Any existing folder on the host is allowed. */
 export interface Catalog {
@@ -145,13 +150,13 @@ export interface Receipt {
   outcome?: "completed" | "cancelled" | "failed" | "queued" | "handled";
   error?: string;
 }
-export interface SnapshotEvent {
-  type: "snapshot";
-  boundary: "initial" | "update";
-  sessionId: string;
-  sequence: number;
-  snapshot: SessionWindow;
-}
+/** Changes to the live document, applied in order; a `commit` moves persisted items into history. */
+export type LiveOp =
+  | DocOp
+  | { op: "commit"; after: string | null; head: string | null; items?: Item[] };
+export type LiveEvent =
+  | { type: "snapshot"; sessionId: string; head: string | null; doc: LiveDoc }
+  | { type: "ops"; sessionId: string; seq: number; ops: LiveOp[] };
 export interface ProtocolError {
   error: string;
   commandId?: string;

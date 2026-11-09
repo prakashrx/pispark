@@ -6,20 +6,34 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { request, type IncomingMessage, type ServerResponse } from "node:http";
-import { messagePage, messageWindow } from "../src/runtime/message-window.js";
+import { observeLive } from "./fixtures/live-client.js";
 import { SessionRuntime } from "../src/runtime/session-runtime.js";
 import { SessionHttp } from "../src/session-http.js";
 import { createAppServer } from "../src/server.js";
 import { bundledTransportPatched } from "../src/host-configuration.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
-import type { Receipt, SnapshotEvent } from "../src/protocol.js";
+import type { ItemsPage, PartPage, Receipt } from "../src/protocol.js";
 
-async function fixture(t: TestContext) {
+/** An ordinary Pi extension whose tool returns far more than a chat shows inline. */
+const BIG = `
+export default function (pi) {
+  pi.registerTool({
+    name: "big",
+    label: "Big",
+    description: "Returns a lot of text",
+    parameters: { type: "object", properties: {} },
+    async execute() {
+      return { content: [{ type: "text", text: "y".repeat(200000) }], details: { rows: Array.from({ length: 3000 }, (_, i) => i) } };
+    },
+  });
+}
+`;
+async function fixture(t: TestContext, extensions: Record<string, string> = {}) {
   const h = await testHome("pispark-http-");
   const root = h.root;
   const folders = { a: await h.folder("a"), b: await h.folder("b") };
-  await h.persona("default", { name: "Default" }, { "instructions/test.md": "test only" });
+  await h.persona("default", { name: "Default" }, { "instructions/test.md": "test only", ...extensions });
   const provider = h.provider;
   const configuration = h.configuration;
   const runtime = new SessionRuntime(configuration);
@@ -75,41 +89,7 @@ async function fixture(t: TestContext) {
     home: h.home,
   };
 }
-async function observe(base: string, id: string) {
-  const controller = new AbortController();
-  const response = await fetch(`${base}/api/sessions/${id}/events`, {
-    signal: controller.signal,
-  });
-  assert.equal(response.status, 200);
-  const events: SnapshotEvent[] = [];
-  const reader = response.body!.getReader();
-  let pending = "";
-  const decoder = new TextDecoder();
-  const reading = (async () => {
-    try {
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        pending += decoder.decode(value, { stream: true });
-        let end: number;
-        while ((end = pending.indexOf("\n\n")) >= 0) {
-          const frame = pending.slice(0, end);
-          pending = pending.slice(end + 2);
-          events.push(JSON.parse(frame.split("data: ")[1]!));
-        }
-      }
-    } catch {
-      /* explicit disconnect */
-    }
-  })();
-  return {
-    events,
-    close: async () => {
-      controller.abort();
-      await reading;
-    },
-  };
-}
+const observe = observeLive;
 
 test("SessionHttp: actual concurrent SDK execution, correlated acceptance/settlement, snapshot race, disconnect/cancel/queue isolation and restart history", async (t) => {
   const f = await fixture(t);
@@ -120,23 +100,25 @@ test("SessionHttp: actual concurrent SDK execution, correlated acceptance/settle
   const runB = await f.post({ type: "start", sessionId: b, text: "beta" });
   assert.equal(runA.state, "accepted");
   await eventually(() => f.provider.active === 2);
-  await eventually(() => stream.events.some((event) => event.snapshot.partial));
-  assert.equal(stream.events[0]!.boundary, "initial");
-  for (let i = 1; i < stream.events.length; i++)
-    assert(stream.events[i]!.sequence > stream.events[i - 1]!.sequence);
+  await eventually(() => stream.state.doc?.tail.some((item) => item.role === "assistant") === true);
+  assert.equal(stream.events[0]!.type, "snapshot");
+  // Operations arrive in consecutive order (the helper asserts it) and only the tail streams.
+  assert(stream.events.length > 1);
   await stream.close();
   assert.equal(f.provider.active, 2);
   const reconnected = await observe(f.base, a);
   await eventually(() => reconnected.events.length > 0);
-  assert.equal(reconnected.events[0]!.snapshot.status, "running");
-  assert(reconnected.events[0]!.snapshot.partial);
+  const initial = reconnected.events[0]!;
+  assert(initial.type === "snapshot");
+  assert.equal(initial.doc.session.status, "running");
+  assert(initial.doc.tail.some((item) => item.role === "assistant"));
   const queued = await f.settle(
     await f.post({ type: "follow-up", sessionId: a, text: "queued" }),
   );
   assert.equal(queued.outcome, "queued");
   await f.settle(await f.post({ type: "cancel", sessionId: a }));
   assert.equal((await f.settle(runA)).outcome, "cancelled");
-  assert.deepEqual(f.runtime.window(a).queue, { steering: 0, followUp: 0 });
+  assert.deepEqual(f.runtime.session(a).queue, { steering: 0, followUp: 0 });
   assert.equal(f.provider.active, 1);
   f.provider.requests[1]!.release();
   assert.equal((await f.settle(runB)).outcome, "completed");
@@ -144,7 +126,7 @@ test("SessionHttp: actual concurrent SDK execution, correlated acceptance/settle
   await f.http.shutdown();
   const reopened = new SessionRuntime(f.configuration);
   await reopened.open(b);
-  assert.match(JSON.stringify(reopened.window(b)), /local:beta/);
+  assert.match(JSON.stringify(reopened.items(b, {})), /local:beta/);
   assert.equal(f.provider.requests.length, 2);
   await reopened.shutdown();
 });
@@ -245,21 +227,62 @@ test("SessionHttp: strict Host/Origin/JSON/identity, explicit failures, receipts
   );
 });
 
-test("message pages redact credentials across cursor boundaries and keep emoji intact", () => {
-  const secret = "private-token";
-  const content = "x".repeat(8190) + secret + "tail";
-  const first = messagePage({ content }, secret, 0, 0);
-  assert.equal(first.text, "x".repeat(8190) + "[redacted]");
-  assert(first.next);
-  assert.equal(messagePage({ content }, secret, 0, first.next.offset).text, "tail");
-  assert.equal(messagePage({ content }, secret, 0, 8194).text, "[redacted]tail");
-  const emoji = { content: "x".repeat(8191) + "🌱" };
-  const initial = messagePage(emoji, undefined, 0, 0);
-  assert.equal(initial.next?.offset, 8191);
-  assert.equal(messagePage(emoji, undefined, 0, 8191).text, "🌱");
-  const budget = { remaining: 4, truncated: false };
-  messageWindow({ content: "x" }, "x", budget);
-  assert(budget.truncated);
+test("history is read from Pi's session: byte-bounded pages, cursors both ways, clipped text read in chunks", async (t) => {
+  const f = await fixture(t, { "extensions/big.mjs": BIG });
+  const id = await f.create("a");
+  f.provider.automatic = true;
+  await f.runtime.start(id, "tool:big:{}").completion;
+  for (const word of ["a", "b", "c"]) await f.runtime.start(id, word).completion;
+  const get = async <T>(query: string) => {
+    const response = await fetch(`${f.base}/api/sessions/${id}/items${query}`);
+    assert.equal(response.status, 200);
+    return (await response.json()) as T;
+  };
+  // Newest first by cursor: each page is bounded, nothing is dropped, ids are Pi's entry ids.
+  let page = await get<ItemsPage>("");
+  const newest = page;
+  assert(page.more && page.items.length >= 6 && page.items.length < 10, `${page.items.length} items, more=${page.more}`);
+  assert(JSON.stringify(page).length < 1024 * 1024);
+  const ids: string[] = [];
+  for (;;) {
+    ids.unshift(...page.items.map((item) => item.id!));
+    if (!page.more) break;
+    page = await get<ItemsPage>(`?before=${page.items[0]!.id}`);
+  }
+  assert.equal(ids.length, 10);
+  assert.equal(new Set(ids).size, 10);
+  // Forwards from any cursor reaches the same end.
+  let forward: string[] = [];
+  let after = ids[0]!;
+  for (;;) {
+    const next = await get<ItemsPage>(`?after=${after}`);
+    forward.push(...next.items.map((item) => item.id!));
+    if (!next.more) break;
+    after = next.items.at(-1)!.id!;
+  }
+  assert.deepEqual(forward, ids.slice(1));
+  assert.equal(newest.head, f.runtime.items(id, { limit: 1 }).head);
+  // An overlong part arrives clipped with its full size, and is read whole in chunks.
+  const result = (await get<ItemsPage>(`?after=${ids[1]}&limit=1`)).items[0]!;
+  assert.equal(result.role, "toolResult");
+  const part = result.parts[0]!;
+  assert(part.type === "text" && part.size === 200_000 && part.text.length === 128 * 1024);
+  // Pi's structured details are bounded, not dropped.
+  assert.deepEqual(Object.keys(result.details as object), ["rows"]);
+  assert.equal((result.details as { rows: unknown[] }).rows.length, 256);
+  let complete = "";
+  for (let offset: number | undefined = 0; offset !== undefined; ) {
+    const chunk: PartPage = await (await fetch(`${f.base}/api/sessions/${id}/items/${result.id}/parts/0?offset=${offset}`)).json();
+    assert(chunk.text.length <= 64 * 1024);
+    complete += chunk.text;
+    offset = chunk.next;
+  }
+  assert.equal(complete.length, part.size);
+  assert.equal(complete, "y".repeat(200_000));
+  // Bad input is refused, not guessed at.
+  for (const query of ["?before=a&after=b", "?limit=abc", "?other=1", "?before=missing"])
+    assert.equal((await fetch(`${f.base}/api/sessions/${id}/items${query}`)).status, 400, query);
+  assert.equal((await fetch(`${f.base}/api/sessions/${id}/items/${result.id}/parts/0?x=1`)).status, 400);
 });
 
 test("a bad metadata record is counted and a rejected new chat is never published", async (t) => {
@@ -284,42 +307,10 @@ test("a bad metadata record is counted and a rejected new chat is never publishe
   assert.equal(f.provider.requests.length, 0);
 });
 
-test("SessionHttp: bounded native windows, long stream/coalescing and blocked writable cleanup", async (t) => {
+test("SessionHttp: long stream/coalescing and blocked writable cleanup", async (t) => {
   const f = await fixture(t);
   const id = await f.create("a");
   f.provider.automatic = true;
-  for (let i = 0; i < 15; i++)
-    await f.runtime.start(id, "x".repeat(60_000)).completion;
-  const window = f.runtime.window(id);
-  // The text budget runs out before 20 messages: the window stops there instead of
-  // sending older messages with empty text, and "Load older" picks them up.
-  assert(window.messages.length > 0 && window.messages.length < 20);
-  assert.equal(window.before, window.total - window.messages.length);
-  assert(window.truncated);
-  assert(window.messages.every((m) => m.parts.some((p) => p.text)));
-  const newest = window.messages.at(-1)!;
-  assert.equal(newest.role, "assistant");
-  assert.match(newest.parts[0]!.text, /^local:/);
-  assert(window.messages.every((m) => m.role && m.parts.every((p) => p.type)));
-  assert(newest.detail);
-  const path = `${f.base}/api/sessions/${id}/messages/${newest.detail.index}/${newest.detail.key}`;
-  let cursor: { part: number; offset: number } | undefined = { part: 0, offset: 0 };
-  let complete = "";
-  while (cursor) {
-    const response: Response = await fetch(`${path}/${cursor.part}/${cursor.offset}`);
-    assert.equal(response.status, 200);
-    const page: import("../src/protocol.js").MessagePage = await response.json();
-    assert(page.text.length <= 8192);
-    complete += page.text;
-    cursor = page.next;
-  }
-  assert.equal(complete, "local:" + "x".repeat(60_000));
-  assert(Buffer.byteLength(JSON.stringify(window)) < 256 * 1024);
-  const older = (await (
-    await fetch(`${f.base}/api/sessions/${id}/window?before=${window.before}`)
-  ).json()) as { messages: unknown[]; before: number };
-  assert(older.messages.length > 0);
-  assert.equal(older.before, window.before - older.messages.length);
   // Deliberately non-draining socket boundary. Real SDK continues independently while one bounded frame waits.
   class Blocked extends EventEmitter {
     headersSent = false;
@@ -347,7 +338,7 @@ test("SessionHttp: bounded native windows, long stream/coalescing and blocked wr
   const response = new Blocked();
   // SAFETY: only these HTTP members are used by handle/observe; this is a deliberately blocked transport fixture.
   const requestFixture = {
-    url: `/api/sessions/${id}/events`,
+    url: `/api/sessions/${id}/live`,
     method: "GET",
     headers: { host: "127.0.0.1:1234" },
     socket: { localAddress: "127.0.0.1", localPort: 1234 },
@@ -367,7 +358,13 @@ test("SessionHttp: bounded native windows, long stream/coalescing and blocked wr
   // Observer was released, not the runtime. Reconnect returns current finalized state.
   const stream = await observe(f.base, id);
   await eventually(() => stream.events.length > 0);
-  assert.match(JSON.stringify(stream.events[0]), /local:burst49/);
+  // The snapshot is small (only what is in flight) and names the head; history is read by cursor.
+  const first = stream.events[0]!;
+  assert(first.type === "snapshot");
+  assert.equal(first.doc.tail.length, 0);
+  const history = f.runtime.items(id, { limit: 4 });
+  assert.equal(first.head, history.head);
+  assert.match(JSON.stringify(history), /local:burst49/);
   await stream.close();
 });
 
@@ -388,11 +385,15 @@ test("SessionHttp: real token burst is coalesced, bounded and terminal settlemen
       f.provider.requests[0]!.pushText("delta".repeat(10));
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  await eventually(() => f.runtime.window(id).truncated);
+  // The live text is clipped at the part limit; what streams past it is not resent.
+  await eventually(() => {
+    const text = stream.state.doc?.tail[0]?.parts[0];
+    return text?.type === "text" && (text.size ?? 0) > 0;
+  });
   const elapsed = performance.now() - start;
   assert(
-    stream.events.length < 20,
-    "10000 native events must not become10000 serialized frames",
+    stream.events.length < 40,
+    "10000 native events must not become 10000 serialized frames",
   );
   assert(
     stream.events.every(
@@ -401,7 +402,9 @@ test("SessionHttp: real token burst is coalesced, bounded and terminal settlemen
   );
   f.provider.requests[0]!.release();
   assert.equal((await f.settle(receipt)).outcome, "completed");
-  await eventually(() => stream.events.at(-1)?.snapshot.status === "idle");
+  await eventually(() => stream.state.doc?.session.status === "idle" && stream.state.committed.length >= 2);
+  // Deltas: the live text crossed the wire about once, not once per frame.
+  assert(stream.state.bytes < 400 * 1024, `${stream.state.bytes} bytes for a 128 KB answer`);
   console.log(
     JSON.stringify({
       probe: "10000-token-events",
@@ -423,7 +426,7 @@ test("SessionHttp: observer admission releases on disconnect, receipt expiry is 
     Array.from({ length: 16 }, () => observe(f.base, id)),
   );
   assert.equal(
-    (await fetch(`${f.base}/api/sessions/${id}/events`)).status,
+    (await fetch(`${f.base}/api/sessions/${id}/live`)).status,
     400,
   );
   await streams[0]!.close();

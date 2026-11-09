@@ -92,11 +92,11 @@ test("persona edits flag open chats as changed; reload applies them from the sam
     const chat = await f.runtime.create({ folder: f.folder, persona: "dev" });
     const other = await f.runtime.create({ folder: f.folder });
     await f.runtime.start(chat.id, "hello").completion;
-    assert.equal(f.runtime.window(chat.id).personaChanged, undefined);
+    assert.equal(f.runtime.session(chat.id).personaChanged, undefined);
     const file = f.runtime.personas.readFile({ persona: "dev" }, "instructions/a.md");
     f.runtime.personas.writeFile({ persona: "dev" }, "instructions/a.md", file.revision, "SECOND-VERSION");
-    assert.equal(f.runtime.window(chat.id).personaChanged, true);
-    assert.equal(f.runtime.window(other.id).personaChanged, undefined, "Default chats are unaffected");
+    assert.equal(f.runtime.session(chat.id).personaChanged, true);
+    assert.equal(f.runtime.session(other.id).personaChanged, undefined, "Default chats are unaffected");
     f.provider.automatic = false;
     const run = f.runtime.start(chat.id, "busy");
     await eventually(() => f.provider.active === 1);
@@ -126,7 +126,7 @@ test("an in-chat edit gives the chat its own layer; the persona itself is unchan
     const chat = await f.runtime.create({ folder: f.folder, persona: "dev" });
     f.runtime.personas.save({ chat: chat.id }, "", { base: ["dev"], off: ["skill:review"] });
     f.runtime.personas.writeFile({ chat: chat.id }, "instructions/extra.md", null, "CHAT-ONLY");
-    assert.equal(f.runtime.window(chat.id).personaChanged, true);
+    assert.equal(f.runtime.session(chat.id).personaChanged, true);
     await f.runtime.reload(chat.id);
     await f.runtime.start(chat.id, "go").completion;
     const request = f.provider.requests.at(-1)!;

@@ -143,7 +143,7 @@ for (const kind of ["modelOverrides", "models"] as const)
       (await f.settings.catalog()).providers.find((p) => p.id === provider),
       sessions.list(),
       sessions.snapshot(b.id),
-      sessions.window(b.id),
+      sessions.session(b.id),
     ]);
     assert.doesNotMatch(
       publicValues,

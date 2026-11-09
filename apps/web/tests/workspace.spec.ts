@@ -29,7 +29,7 @@ hostedTest("four source pages render locally without errors or external requests
   });
   page.on("requestfailed", (request) => {
     if (
-      !request.url().includes("/events") &&
+      !request.url().includes("/live") &&
       request.failure()?.errorText !== "net::ERR_ABORTED"
     )
       errors.push(`Request failed: ${request.url()}`);

@@ -79,7 +79,7 @@ test("blocked browser storage supports live replies and a peer can unload and re
   ).toBeVisible();
 });
 
-test("a clipped reply can be read through its final character", async ({
+test("a long reply is shown whole in the conversation, not clipped", async ({
   page,
 }) => {
   await page.goto("/");
@@ -89,15 +89,7 @@ test("a clipped reply can be read through its final character", async ({
   ).not.toHaveAttribute("aria-disabled", "true");
   await ask.fill("long reply " + "a".repeat(10000) + " END-OF-REPLY");
   await ask.press("Enter");
-  const readers = page.getByRole("button", { name: "Read full message" });
-  await expect(readers).toHaveCount(2);
-  await readers.last().focus();
-  await page.keyboard.press("Enter");
-  const reader = page.getByRole("region", { name: "Full message text" });
-  await expect(reader.locator("pre")).toContainText("local:long reply");
-  await reader.getByRole("button", { name: "Next page" }).click();
-  await expect(reader.locator("pre")).toContainText("END-OF-REPLY");
-  await expect(reader.locator("pre")).toBeFocused();
-  await reader.getByRole("button", { name: "Close full text" }).click();
-  await expect(readers.last()).toBeFocused();
+  // Both the question and the answer arrive complete: nothing needs a "read full message" step.
+  await expect(page.getByText(/^local:long reply a+ END-OF-REPLY$/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Read full message" })).toHaveCount(0);
 });

@@ -1,15 +1,16 @@
 import { getContext, setContext } from "svelte";
 import type {
   Catalog,
-  MessageRef,
-  MessagePage,
   Command,
+  PartPage,
   Receipt,
+  SessionDoc,
   SessionInfo,
-  SessionWindow,
 } from "../../../../server/src/protocol";
-export type { NativeMessage } from "../../../../server/src/protocol";
-import { snapshots } from "./snapshot-stream";
+export type { NativeMessage } from "./chat-view";
+import type { PartRef } from "./chat-view";
+import { LiveChat } from "./live-chat.svelte";
+import { liveEvents } from "./live-stream";
 import type { CommandUncertaintyKind } from "./chat-presentation";
 class CommandUncertainty extends Error {
   constructor(
@@ -38,8 +39,12 @@ export class SessionClient {
   catalogError = $state(false);
   sessions = $state<SessionInfo[]>([]);
   selected = $state("");
-  snapshot = $state<SessionWindow>();
-  older = $state<SessionWindow>();
+  /** The open chat: Pi's history by cursor plus the live document. */
+  readonly live = new LiveChat((path) => this.json(path));
+  /** The open chat as the conversation components draw it. */
+  get snapshot() {
+    return this.live.view;
+  }
   drafts = $state<Record<string, string>>({});
   connection = $state("Loading");
   error = $state("");
@@ -102,7 +107,7 @@ export class SessionClient {
         const { value, done } = await reader.read();
         if (done) break;
         size += value.byteLength;
-        if (size > 256 * 1024) throw new Error("Response limit");
+        if (size > 1024 * 1024) throw new Error("Response limit");
         text += decoder.decode(value, { stream: true });
       }
     } finally {
@@ -214,8 +219,7 @@ export class SessionClient {
   async select(id: string) {
     const generation = ++this.selection;
     this.source?.abort();
-    this.snapshot = undefined;
-    this.older = undefined;
+    this.live.reset();
     this.selected = id;
     this.connection = "Connecting";
     try {
@@ -239,9 +243,10 @@ export class SessionClient {
     this.source = source;
     void (async () => {
       while (!source.signal.aborted && !this.disposed) {
-        let sequence = -1;
         try {
-          const response = await fetch(`/api/sessions/${id}/events`, {
+          // History is read once; a reconnect only catches up on what the chat gained since.
+          if (!this.live.loaded) await this.live.load(id);
+          const response = await fetch(`/api/sessions/${id}/live`, {
             signal: AbortSignal.any([
               source.signal,
               AbortSignal.timeout(70_000),
@@ -254,53 +259,47 @@ export class SessionClient {
             if (summary) summary.status = "unloaded";
             return;
           }
-          for await (const value of snapshots(response)) {
+          for await (const event of liveEvents(response)) {
             if (
               source !== this.source ||
               id !== this.selected ||
               source.signal.aborted
             )
               return;
-            if (
-              value.type !== "snapshot" ||
-              value.sessionId !== id ||
-              value.snapshot.id !== id ||
-              !Number.isSafeInteger(value.sequence) ||
-              (sequence === -1 && value.boundary !== "initial")
-            )
-              throw new Error("Invalid snapshot");
-            if (value.sequence <= sequence) continue;
-            sequence = value.sequence;
-            this.snapshot = value.snapshot;
-            this.applyExtensionDraft(id, value.snapshot, value.boundary === "initial");
+            if (event.sessionId !== id) throw new Error("Invalid event");
+            if (!(await this.live.apply(id, event))) break;
+            const session = this.live.doc!.session;
+            this.applyExtensionDraft(id, session, event.type === "snapshot");
             this.connection = "Live";
-            this.sessions = this.sessions.map((s) =>
-              s.id === id
-                ? {
-                    ...s,
-                    title: value.snapshot.title,
-                    hasHistory: value.snapshot.hasHistory,
-                    status: value.snapshot.status,
-                    interrupted: value.snapshot.interrupted,
-                    persona: value.snapshot.persona,
-                    personaChanged: value.snapshot.personaChanged,
-                  }
-                : s,
-            );
+            this.track(id, session);
           }
         } catch {
-          /* Lost connection or bounded decoder rejection: reconnect from fresh snapshot, never resend commands. */
+          /* Lost connection or bounded decoder rejection: reconnect from a fresh snapshot, never resend commands. */
         }
         if (source.signal.aborted || this.disposed) return;
-        // Keep showing the last snapshot; the reply composer stays disabled until Live.
+        // Keep showing the last state; the reply composer stays disabled until Live.
         this.connection = "Reconnecting";
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     })();
   }
+  /** Keep the chat list's row in step with what the open chat reports. */
+  private track(id: string, session: SessionDoc) {
+    const row = this.sessions.find((s) => s.id === id);
+    const next = {
+      title: session.title,
+      hasHistory: session.hasHistory,
+      status: session.status,
+      interrupted: session.interrupted,
+      persona: session.persona,
+      personaChanged: session.personaChanged,
+    };
+    if (row && JSON.stringify(next) !== JSON.stringify({ title: row.title, hasHistory: row.hasHistory, status: row.status, interrupted: row.interrupted, persona: row.persona, personaChanged: row.personaChanged }))
+      this.sessions = this.sessions.map((s) => (s.id === id ? { ...s, ...next } : s));
+  }
   /** An extension called Pi's `setEditorText`: put its text in this chat's reply box. */
-  private applyExtensionDraft(id: string, snapshot: SessionWindow, initial: boolean) {
-    const draft = snapshot.extensions?.draft;
+  private applyExtensionDraft(id: string, session: SessionDoc, initial: boolean) {
+    const draft = session.extensions?.draft;
     if (!draft || this.extensionDrafts.get(id) === draft.id) return;
     this.extensionDrafts.set(id, draft.id);
     // When a chat is opened, only a fresh draft counts (a new chat's first run may set one);
@@ -344,7 +343,7 @@ export class SessionClient {
       await this.settled(await this.submit({ type: "stop", sessionId: id }));
       if (this.selected === id) {
         this.source?.abort();
-        this.snapshot = undefined;
+        this.live.reset();
         this.connection = "Unloaded";
       }
       await this.refresh();
@@ -472,18 +471,14 @@ export class SessionClient {
       this.recordError(error, id);
     }
   }
-  readMessage(ref: MessageRef, part: number, offset: number) {
-    return this.json<MessagePage>(`/api/sessions/${this.selected}/messages/${ref.index}/${ref.key}/${part}/${offset}`);
+  /** A chunk of a clipped part of a finalized item. */
+  readPart(ref: PartRef, offset: number) {
+    return this.json<PartPage>(`/api/sessions/${this.selected}/items/${ref.id}/parts/${ref.part}?offset=${offset}`);
   }
-  async history() {
+  async loadEarlier() {
     const id = this.selected;
     try {
-      const before = this.older?.before ?? this.snapshot?.before;
-      if (!before) return;
-      const value = await this.json<SessionWindow>(
-        `/api/sessions/${id}/window?before=${before}`,
-      );
-      if (id === this.selected) this.older = value;
+      await this.live.loadEarlier(id);
     } catch (error) {
       this.recordError(error, id);
     }

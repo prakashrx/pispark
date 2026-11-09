@@ -8,7 +8,7 @@ PiSpark is an open-source, self-hosted, web-native workspace being built on the 
 
 ## Status: local sessions, personas and native provider settings
 
-The shared shell, Ask, session sidebar and reply connect to independently hosted Pi SDK sessions through bounded HTTP commands and streamed snapshots, with native tools/history, concurrent execution, cancellation, stop/unload, reload and reconnect. No browser tab owns execution. There is no configuration file: start the server, sign in under Providers & models, and ask. Data lives in `PISPARK_HOME` (default `~/.pispark`), created on first start.
+The shared shell, Ask, session sidebar and reply connect to independently hosted Pi SDK sessions through bounded HTTP commands and a streamed live document, with native tools/history, concurrent execution, cancellation, stop/unload, reload and reconnect. No browser tab owns execution. There is no configuration file: start the server, sign in under Providers & models, and ask. Data lives in `PISPARK_HOME` (default `~/.pispark`), created on first start.
 
 See [setup, security gate and protocol](docs/session-protocol.md) and [runtime ownership](docs/session-runtime.md). External-provider activation requires a security-patched Node runtime; deterministic local tests prove actual SDK orchestration, not external auth/network compatibility. No external paid-provider validation or publication approval is claimed.
 

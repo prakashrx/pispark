@@ -147,7 +147,7 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
     page.getByRole("status").filter({ hasText: "Default saved" }),
   ).toBeVisible();
   expect(
-    (await (await request.get(`/api/sessions/${a}/window`)).json()).model.id,
+    (await (await request.get(`/api/sessions/${a}`)).json()).model.id,
   ).toBe("deterministic");
   await page.reload();
   await expect(
@@ -170,7 +170,7 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
     page.getByText(/Second local model.*unavailable, saved choice retained/),
   ).toBeVisible();
   expect(
-    (await (await request.get(`/api/sessions/${a}/window`)).json()).model.id,
+    (await (await request.get(`/api/sessions/${a}`)).json()).model.id,
   ).toBe("deterministic");
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([
     "pispark-session",

@@ -64,4 +64,4 @@
     {/if}
   </div>
 {/if}
-{#if message.detail}{#key message.detail.key}<MessageReader reference={message.detail} />{/key}{/if}
+{#if message.detail}{#key message.detail.id}<MessageReader reference={message.detail} />{/key}{/if}

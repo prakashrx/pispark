@@ -1,24 +1,22 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import type {
-    MessagePage,
-    MessageRef,
-  } from "../../../../server/src/protocol";
+  import type { PartPage } from "../../../../server/src/protocol";
   import Button from "../../lib/ui/Button.svelte";
+  import type { PartRef } from "./chat-view";
   import { useSessions } from "./session-client.svelte";
-  let { reference }: { reference: MessageRef } = $props();
+  let { reference }: { reference: PartRef } = $props();
   const client = useSessions();
-  let page = $state<MessagePage>();
+  let page = $state<PartPage>();
   let busy = $state(false);
   let error = $state("");
   const triggerId = $props.id();
   let text = $state<HTMLPreElement>();
-  async function read(part = 0, offset = 0) {
+  async function read(offset = 0) {
     if (busy) return;
     busy = true;
     error = "";
     try {
-      page = await client.readMessage(reference, part, offset);
+      page = await client.readPart(reference, offset);
       await tick();
       text?.focus();
     } catch {
@@ -32,10 +30,10 @@
 {#if page}
   <section aria-label="Full message text" class="space-y-2">
     <pre bind:this={text} tabindex="-1" class="full-text">{page.text}</pre>
-    {#if page.next}<Button
+    {#if page.next !== undefined}<Button
         class="conversation-action"
         disabled={busy}
-        onclick={() => read(page!.next!.part, page!.next!.offset)}
+        onclick={() => read(page!.next)}
         >Next page</Button
       >{/if}
     <Button

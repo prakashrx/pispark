@@ -62,18 +62,19 @@ test("extension renderers draw tool calls and results, custom messages and entri
     await runtime.start(chat.id, 'tool:shout:{"word":"hi"}').completion;
     await runtime.start(chat.id, "/note saved").completion;
     await runtime.start(chat.id, "/card shown").completion;
-    const window = runtime.window(chat.id);
-    const tool = window.messages.find((m) => m.role === "toolResult");
+    const { items, head } = runtime.items(chat.id, {});
+    const tool = items.find((m) => m.role === "toolResult");
     assert.deepEqual(tool?.rendered, {
       call: [[{ text: "shout ", bold: true }, { text: "hi", fg: "accent" }]],
       body: [[{ text: "HI", fg: "success" }]],
     });
-    assert.deepEqual(window.messages.map((m) => m.role), ["user", "assistant", "toolResult", "assistant", "custom"]);
-    const custom = window.messages.filter((m) => m.role === "custom");
-    assert.equal(custom.length, 1, "messages marked display: false stay hidden");
-    assert.deepEqual(custom[0]!.rendered?.body, [[{ text: "[card]", fg: "accent" }, { text: " shown" }]]);
-    // The entry sits where it was appended: after Pi's system message and the tool turn.
-    assert.deepEqual(window.entries.map((e) => [e.after, e.lines]), [[5, [[{ text: "note: saved", fg: "muted" }]]]]);
+    // Entries are items in the order Pi appended them; messages marked display: false stay hidden.
+    assert.deepEqual(items.map((m) => m.role), ["user", "assistant", "toolResult", "assistant", "entry", "custom"]);
+    const [entry, custom] = items.slice(-2);
+    assert.deepEqual(entry!.rendered?.body, [[{ text: "note: saved", fg: "muted" }]]);
+    assert.deepEqual(custom!.rendered?.body, [[{ text: "[card]", fg: "accent" }, { text: " shown" }]]);
+    assert.equal(typeof head, "string"); // the session's last entry, shown or not
+    assert(items.every((m) => m.id && m.key));
     await runtime.shutdown();
   } finally {
     await h.remove();

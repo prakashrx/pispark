@@ -1,12 +1,8 @@
-import {
-  sessionEntryToContextMessages,
-  type AgentSession,
-  type KeybindingHints,
-} from "@earendil-works/pi-coding-agent";
-import type { NativeMessage, RenderedEntry, StyledLine } from "../protocol.js";
+import type { AgentSession, KeybindingHints, SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { Item, StyledLine } from "../protocol.js";
 import { renderComponent, webTheme } from "./styled-text.js";
 
-type Rendered = NonNullable<NativeMessage["rendered"]>;
+type Rendered = NonNullable<Item["rendered"]>;
 interface ToolCallPart {
   type: "toolCall";
   id: string;
@@ -115,28 +111,16 @@ export class ExtensionRendering {
     return body ? { body } : undefined;
   }
 
-  /** Custom entries with a renderer, placed among messages in [from, to] as terminal Pi does. */
-  entries(from: number, to: number): RenderedEntry[] {
-    const runner = this.session.extensionRunner;
-    const entries: RenderedEntry[] = [];
-    let position = 0;
-    for (const entry of this.session.sessionManager.buildContextEntries()) {
-      if (entry.type !== "custom") {
-        position += sessionEntryToContextMessages(entry).length;
-        continue;
-      }
-      if (position < from || position > to) continue;
-      const renderer = runner.getEntryRenderer(entry.customType);
-      if (!renderer) continue;
-      if (!this.entryCache.has(entry.id))
-        this.entryCache.set(
-          entry.id,
-          renderComponent(() => renderer(entry as never, { ...hints, expanded: false }, webTheme)),
-        );
-      const lines = this.entryCache.get(entry.id);
-      if (lines)
-        entries.push({ key: entry.id, after: position, at: Date.parse(entry.timestamp) || 0, lines });
-    }
-    return entries;
+  /** A custom session entry with a registered renderer, as lines. Entries never change. */
+  entry(entry: SessionEntry): StyledLine[] | undefined {
+    if (entry.type !== "custom") return undefined;
+    const renderer = this.session.extensionRunner.getEntryRenderer(entry.customType);
+    if (!renderer) return undefined;
+    if (!this.entryCache.has(entry.id))
+      this.entryCache.set(
+        entry.id,
+        renderComponent(() => renderer(entry as never, { ...hints, expanded: false }, webTheme)),
+      );
+    return this.entryCache.get(entry.id);
   }
 }

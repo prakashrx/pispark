@@ -2,8 +2,9 @@ import { TITLE_TOOL } from "../extensions/host-protocol.js";
 import { chatTitle, toolChatTitle } from "./chat-title.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import type { SessionWindow } from "../protocol.js";
-import { messagePage, messageWindow } from "./message-window.js";
+import type { ItemsPage, LiveDoc, PartPage, SessionDoc } from "../protocol.js";
+import { ItemProjector } from "./items.js";
+import { LiveView } from "./live-view.js";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import {
   createAgentSession,
@@ -101,6 +102,8 @@ interface HostedSession {
   /** What extensions show through Pi's `ctx.ui`, and their own renderers. */
   ui?: ExtensionUI;
   rendering?: ExtensionRendering;
+  /** Pi's session projected as chat items. */
+  items?: ItemProjector;
 }
 
 /** "extensions/notes.ts" and "extensions/notes/index.ts" are both "notes". */
@@ -113,7 +116,6 @@ function extensionName(path: string): string {
 export class SessionRuntime {
   private readonly storage: ChatStorage;
   private readonly unwatchPersonas: () => void;
-  private readonly messageKeys = new WeakMap<object, string>();
   readonly personas: PersonaStore;
   private readonly live = new Map<string, HostedSession>();
   private accepting = true;
@@ -276,91 +278,65 @@ export class SessionRuntime {
       undefined,
     );
   }
-  /** Bounded native transcript window for clients; full canonical context remains Pi-owned. */
-  window(id: string, before?: number): SessionWindow {
+  /** Everything about a chat except its history: status, model, queue and what extensions show. */
+  session(id: string): SessionDoc {
     const hosted = this.get(id);
     const session = hosted.session!;
-    const messages = session.messages;
-    const end =
-      before === undefined
-        ? messages.length
-        : Math.min(before, messages.length);
-    if (!Number.isSafeInteger(end) || end < 0)
-      throw new RuntimeError("invalid-input");
-    let start = Math.max(0, end - 20);
-    const budget = { remaining: 24_000, truncated: false };
-    const partial =
-      before === undefined && session.state.streamingMessage
-        ? messageWindow(session.state.streamingMessage, undefined, budget)
-        : undefined;
-    const projected = [];
-    for (let index = end - 1; index >= start; index--) {
-      // Once the text budget is spent, older messages stay for "Load older" instead of arriving empty.
-      if (budget.remaining <= 0 && projected.length) {
-        start = index + 1;
-        budget.truncated = true;
-        break;
-      }
-      const message = messages[index]!;
-      // Pi's system prompt and custom messages marked not for display stay out, as in terminal Pi.
-      const { role, display } = message as { role?: string; display?: boolean };
-      if (role === "system" || display === false) continue;
-      const preview = messageWindow(message, undefined, budget, () => {
-        const key = this.messageKeys.get(message) ?? randomUUID();
-        this.messageKeys.set(message, key);
-        return { index, key };
-      });
-      const rendered = hosted.rendering?.message(message);
-      projected.push({ index, ...preview, ...(rendered ? { rendered } : {}) });
-    }
-    projected.reverse();
     return {
       ...this.summary(hosted.metadata, hosted),
-      sequence: hosted.sequence,
       model: session.model
         ? { provider: session.model.provider, id: session.model.id }
         : undefined,
-      messages: projected,
-      partial,
-      before: start,
-      total: messages.length,
-      truncated: budget.truncated,
       queue: {
         steering: session.getSteeringMessages().length,
         followUp: session.getFollowUpMessages().length,
       },
       error: hosted.error,
       extensions: hosted.ui?.view() ?? { dialogs: [], statuses: [], widgets: [], notices: [] },
-      entries: hosted.rendering?.entries(start, end) ?? [],
     };
+  }
+  private projector(id: string): ItemProjector {
+    const items = this.get(id).items;
+    if (!items) throw new RuntimeError("not-found");
+    return items;
+  }
+  /** Finalized items on the chat's active branch, read straight from Pi's session. */
+  items(id: string, options: { before?: string; after?: string; limit?: number }): ItemsPage {
+    return this.projector(id).page(options);
+  }
+  image(id: string, itemId: string, part: number) {
+    return this.projector(id).image(itemId, part);
+  }
+  text(id: string, itemId: string, part: number, offset: number): PartPage {
+    return this.projector(id).text(itemId, part, offset);
+  }
+  /** A connection's live view of the chat, and the invalidations that say when to ask it for more. */
+  observeLive(id: string): {
+    view: LiveView;
+    events: AsyncIterableIterator<SessionChange> & { close(): void };
+  } {
+    const hosted = this.get(id);
+    if (hosted.observers.size >= 16) throw new RuntimeError("limit");
+    const items = this.projector(id);
+    const events = new SessionChanges(() => hosted.observers.delete(events));
+    hosted.observers.add(events);
+    try {
+      const view = new LiveView(id, {
+        doc: (): LiveDoc => ({ session: this.session(id), tail: items.tail() }),
+        head: () => items.head(),
+        since: (after) => items.since(after),
+      });
+      return { view, events };
+    } catch (error) {
+      events.close();
+      throw error;
+    }
   }
   /** Answer a question an extension asked through Pi's `ctx.ui`. */
   answer(id: string, dialogId: string, answer: string | boolean | null): void {
     const ui = this.get(id).ui;
     if (!ui) throw new RuntimeError("not-found");
     ui.answer(dialogId, answer);
-  }
-  messagePage(id: string, index: number, key: string, part: number, offset: number) {
-    const hosted = this.get(id);
-    const message = hosted.session!.messages[index];
-    // A changed native context or reopened owner must never serve a different message.
-    if (!message || this.messageKeys.get(message) !== key) throw new RuntimeError("not-found");
-    return messagePage(message, undefined, part, offset);
-  }
-  observeWindow(id: string): {
-    snapshot: SessionWindow;
-    events: AsyncIterableIterator<SessionChange> & { close(): void };
-  } {
-    const hosted = this.get(id);
-    if (hosted.observers.size >= 16) throw new RuntimeError("limit");
-    const events = new SessionChanges(() => hosted.observers.delete(events));
-    hosted.observers.add(events);
-    try {
-      return { snapshot: this.window(id), events };
-    } catch (error) {
-      events.close();
-      throw error;
-    }
   }
   observe(id: string): {
     snapshot: SessionSnapshot;
@@ -590,6 +566,7 @@ export class SessionRuntime {
         cwd,
       });
       hosted.rendering = new ExtensionRendering(session, () => this.changed(hosted));
+      hosted.items = new ItemProjector(session, hosted.rendering);
       // Pi's mode for clients that are not a terminal: dialogs and notices work, terminal components don't.
       await session.bindExtensions({
         mode: "rpc",

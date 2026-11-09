@@ -23,7 +23,9 @@ Every session gets a separate `ModelRuntime`, `SettingsManager`, `ResourceLoader
 | `reload(id)` | Stop an idle chat and open it again, so persona changes apply. Busy while running. |
 | `list()` | Stored metadata summaries, including empty/unloaded sessions and interrupted status. |
 | `snapshot(id)` | Copy of live status, sequence, canonical native context, current messages, partial streaming output, queues and safe error code. |
-| `window(id, before?)` / `observeWindow(id)` | Bounded native content projection and atomic initial window+invalidation subscription for clients; no full-history serialization on tokens. |
+| `session(id)` | The chat's session document: status, model, queue, safe error and what extensions show; no history. |
+| `items(id, {before?, after?, limit?})` / `image(id, itemId, part)` / `text(id, itemId, part, offset)` | Finalized items on Pi's active branch read straight from the session, bounded by count and bytes; an image's bytes; a chunk of a clipped text part. Pi's entry ids are the cursors. |
+| `observeLive(id)` | A per-connection live view (the document of unpersisted items and session state, diffed into operations on each tick) plus the invalidation iterator that says when to ask it. |
 | `observe(id)` | Atomic initial snapshot plus async iterator of `{ sessionId, sequence, type: 'changed' }` invalidations. |
 | `start(id, text)` | Reserve the idle session and persist active marker before execution; returns `{ completion }`. Completion resolves to completed/cancelled/failed, not just command acceptance. |
 | `queue(id, text, 'steer' or 'follow-up')` | Native queued-input hooks/semantics; resolves queued/handled or rejects busy when cancelled/superseded. Only while running, one input admission in flight. |

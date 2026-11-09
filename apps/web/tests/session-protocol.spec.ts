@@ -73,7 +73,7 @@ test("real SDK via shared Ask/reply: streaming, native tools, cancellation, inde
   await expect(
     page.getByRole("button", { name: "Send message", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");
-  const peer = await (await request.get(`/api/sessions/${b}/window`)).json();
+  const peer = await (await request.get(`/api/sessions/${b}`)).json();
   expect(peer.status).toBe("running");
   await reply.fill("read:sample.txt");
   await reply.press("Enter");
@@ -547,10 +547,10 @@ for (const mode of ["ask", "reply"] as const) {
       await expect(input).toHaveValue(retained);
       await expect
         .poll(async () => {
-          const window = await (
-            await request.get(`/api/sessions/${sessionId}/window`)
+          const history = await (
+            await request.get(`/api/sessions/${sessionId}/items`)
           ).json();
-          return window.messages.filter(
+          return history.items.filter(
             (m: { role: string; parts: unknown }) =>
               m.role === "user" && JSON.stringify(m.parts).includes(text),
           ).length;
@@ -677,11 +677,11 @@ test("create polling loss with known receipt chat stays global, keeps displayed 
     await page.evaluate(() => localStorage.getItem("pispark-session")),
   ).toBe(oldId);
   expect(commands).toEqual(["create"]);
-  const window = await (
-    await request.get(`/api/sessions/${createdId}/window`)
+  const history = await (
+    await request.get(`/api/sessions/${createdId}/items`)
   ).json();
-  expect(window.messages).toEqual([]);
-  expect(window.total).toBe(0);
+  expect(history.items).toEqual([]);
+  expect(history.more).toBe(false);
   for (const width of [390, 1920]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
     await page.screenshot({

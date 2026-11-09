@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { NativeMessage } from "../../../../server/src/protocol";
+  import type { NativeMessage } from "./chat-view";
   import StyledText from "./StyledText.svelte";
   let {
     name,

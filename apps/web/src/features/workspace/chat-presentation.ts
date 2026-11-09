@@ -1,4 +1,5 @@
-import type { NativeMessage, SessionInfo } from "../../../../server/src/protocol";
+import type { SessionInfo } from "../../../../server/src/protocol";
+import type { NativeMessage } from "./chat-view";
 import { validChatTitle } from "../../../../server/src/runtime/chat-title";
 
 export type CommandUncertaintyKind =

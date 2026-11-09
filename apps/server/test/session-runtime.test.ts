@@ -336,11 +336,11 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
       (await f.history(a.id)).filter((e: { customType?: string }) => e.customType === "fixture-answer").map((e: { data: { value: unknown } }) => e.data.value);
     const ask = async (text: string, answer: string | boolean | null) => {
       const run = f.runtime.start(a.id, text);
-      await eventually(() => f.runtime.window(a.id).extensions.dialogs.length === 1);
-      const dialog = f.runtime.window(a.id).extensions.dialogs[0]!;
+      await eventually(() => f.runtime.session(a.id).extensions.dialogs.length === 1);
+      const dialog = f.runtime.session(a.id).extensions.dialogs[0]!;
       f.runtime.answer(a.id, dialog.id, answer);
       assert.equal((await run.completion).outcome, "completed");
-      assert.equal(f.runtime.window(a.id).extensions.dialogs.length, 0);
+      assert.equal(f.runtime.session(a.id).extensions.dialogs.length, 0);
       return dialog;
     };
     const confirm = await ask("ui-confirm", true);
@@ -351,20 +351,20 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
     await ask("ui-select", null);
     // Only a listed option, a yes/no for confirm, or text for input is accepted.
     const pending = f.runtime.start(a.id, "ui-select");
-    await eventually(() => f.runtime.window(a.id).extensions.dialogs.length === 1);
-    const open = f.runtime.window(a.id).extensions.dialogs[0]!;
+    await eventually(() => f.runtime.session(a.id).extensions.dialogs.length === 1);
+    const open = f.runtime.session(a.id).extensions.dialogs[0]!;
     assert.throws(() => f.runtime.answer(a.id, open.id, "three"), hasCode("invalid-input"));
     assert.throws(() => f.runtime.answer(a.id, "00000000-0000-4000-8000-000000000000", "one"), hasCode("not-found"));
     await f.runtime.cancel(a.id);
     assert.equal((await pending.completion).outcome, "cancelled");
-    assert.equal(f.runtime.window(a.id).extensions.dialogs.length, 0);
+    assert.equal(f.runtime.session(a.id).extensions.dialogs.length, 0);
     assert.equal((await f.runtime.start(a.id, "ui-timeout").completion).outcome, "completed");
     assert.equal((await f.runtime.start(a.id, "ui-custom").completion).outcome, "completed");
     assert.deepEqual(await answers(), [true, "two", "Ada", null, null, false, null]);
     // Notices, status, widgets and drafts are session state; a failing handler is a notice, not a failed chat.
     assert.equal((await f.runtime.start(a.id, "ui-show").completion).outcome, "completed");
     assert.equal((await f.runtime.start(a.id, "ui-fail").completion).outcome, "completed");
-    const view = f.runtime.window(a.id).extensions;
+    const view = f.runtime.session(a.id).extensions;
     assert.deepEqual(view.statuses, [{ key: "fixture", line: [{ text: "ready", fg: "accent" }] }]);
     assert.deepEqual(view.widgets, [{ key: "fixture", placement: "below", lines: [[{ text: "widget line" }]] }]);
     assert.equal(view.draft?.text, "drafted by fixture");
@@ -375,7 +375,7 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
     assert.equal(f.runtime.snapshot(a.id).error, undefined);
     // Working indicator, thinking label, window title, one header and footer; Pi's session name is the chat title.
     assert.equal((await f.runtime.start(a.id, "ui-chrome").completion).outcome, "completed");
-    const chrome = f.runtime.window(a.id);
+    const chrome = f.runtime.session(a.id);
     assert.deepEqual(chrome.extensions.working, {
       message: "Fixture working",
       frames: [[{ text: "*", fg: "accent" }], [{ text: "+" }]],
@@ -387,7 +387,7 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
     assert.match(chrome.extensions.footer![0]![0]!.text, /^branch:\S+ statuses:fixture$/);
     assert.equal(chrome.title, "Named by extension");
     assert.equal((await f.runtime.start(a.id, "ui-quiet").completion).outcome, "completed");
-    const quiet = f.runtime.window(a.id).extensions;
+    const quiet = f.runtime.session(a.id).extensions;
     assert.equal(quiet.working?.hidden, true);
     assert.equal(quiet.header, undefined);
     await f.runtime.stop(a.id);
@@ -1139,7 +1139,7 @@ test("SessionRuntime: first accepted title survives cancellation, queueing and r
       ["PRIVATE-TITLE first\tinput", "not the title"].join("\n"),
     );
     await eventually(() => f.provider.active === 1);
-    assert.equal(f.runtime.window(chat.id).title, "PRIVATE-TITLE first input");
+    assert.equal(f.runtime.session(chat.id).title, "PRIVATE-TITLE first input");
     assert.equal(f.runtime.list()[0]!.title, "PRIVATE-TITLE first input");
     await f.runtime.queue(chat.id, "PRIVATE-QUEUED", "follow-up");
     await f.runtime.cancel(chat.id);

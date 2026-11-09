@@ -171,9 +171,11 @@ test("keeps the mounted Ask and independent reply drafts across every route", as
             truncated: false,
           }),
         )
-      : url === "/api/sessions/open-chat/events"
-        ? new Promise<Response>(() => {})
-        : base(url, init),
+      : String(url).startsWith("/api/sessions/open-chat/items")
+        ? new Response(JSON.stringify({ items: [], head: null, more: false }))
+        : url === "/api/sessions/open-chat/live"
+          ? new Promise<Response>(() => {})
+          : base(url, init),
   );
   render(App);
   const ask = screen.getByRole("textbox", { name: /Ask anything/ });

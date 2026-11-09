@@ -1,9 +1,12 @@
-import type { SnapshotEvent } from "../../../../server/src/protocol";
+import type { LiveEvent } from "../../../../server/src/protocol";
+
+const FRAME_LIMIT = 1024 * 1024;
+const HEADS = ["event: snapshot\ndata: ", "event: ops\ndata: "];
 
 /** Pull-based SSE reader: one bounded incomplete frame, no accumulating browser event queue. */
-export async function* snapshots(
+export async function* liveEvents(
   response: Response,
-): AsyncGenerator<SnapshotEvent> {
+): AsyncGenerator<LiveEvent> {
   if (
     !response.ok ||
     !response.headers.get("content-type")?.startsWith("text/event-stream") ||
@@ -17,21 +20,19 @@ export async function* snapshots(
     for (;;) {
       const { value, done } = await reader.read();
       if (done) break;
-      if (value.byteLength > 256 * 1024)
+      if (value.byteLength > FRAME_LIMIT)
         throw new Error("Observation chunk limit");
       pending += decoder.decode(value, { stream: true });
       let end: number;
       while ((end = pending.indexOf("\n\n")) >= 0) {
-        if (end > 256 * 1024) throw new Error("Observation frame limit");
+        if (end > FRAME_LIMIT) throw new Error("Observation frame limit");
         const frame = pending.slice(0, end);
         pending = pending.slice(end + 2);
-        if (!frame.startsWith("event: snapshot\ndata: "))
-          throw new Error("Unexpected observation");
-        yield JSON.parse(
-          frame.slice("event: snapshot\ndata: ".length),
-        ) as SnapshotEvent;
+        const head = HEADS.find((prefix) => frame.startsWith(prefix));
+        if (!head) throw new Error("Unexpected observation");
+        yield JSON.parse(frame.slice(head.length)) as LiveEvent;
       }
-      if (pending.length > 256 * 1024)
+      if (pending.length > FRAME_LIMIT)
         throw new Error("Observation frame limit");
     }
   } finally {
