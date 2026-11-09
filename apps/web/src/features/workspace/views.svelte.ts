@@ -1,12 +1,11 @@
 import type { Component } from "svelte";
-import type { AnySegment, ToolCall } from "./chat-turns";
+import type { Segment, ToolCall } from "./chat-turns";
 
 /**
- * How the conversation is drawn is looked up, not written into the components: a kind of segment
- * has a view, and a tool has a view of what it did. PiSpark registers its own defaults through
- * the calls below, and a later registration for the same name wins until it is disposed, which
- * brings the previous one back. Components read the registry while rendering, so a registration
- * made after the chat is on screen redraws it.
+ * How PiSpark draws the conversation is looked up, not written into the components: a kind of
+ * segment has a view, and a tool has a view of what it did. PiSpark registers its own defaults
+ * through the calls below; a later registration for the same name wins until it is disposed. This
+ * is PiSpark's own; extensions take over a part of the chat by placing a component in its slot.
  */
 
 /** What a tool call is doing, in words: "Editing demo.ts", then "Edited demo.ts". */
@@ -27,13 +26,13 @@ export interface ToolView {
   /** That phrase for the calls of one group, lower case: "read 3 files". */
   summarize?(calls: ToolCall[]): string;
   /** Segments worth reading in the message itself rather than inside the activity: a diff, a picture. */
-  artifacts?(call: ToolCall): AnySegment[];
+  artifacts?(call: ToolCall): Segment[];
   /** The body of the call's row once it is opened. */
   detail?: Component<{ call: ToolCall }>;
 }
 
 /** What a view of one kind of segment is given. */
-export interface SegmentProps<S = AnySegment> {
+export interface SegmentProps<S = Segment> {
   segment: S;
   sessionId: string;
 }
@@ -68,7 +67,7 @@ const segments = new Views<SegmentView>();
 
 /** Registers how a tool's calls look. Returns a function that removes the registration. */
 export const registerToolView = (tool: string, view: ToolView) => tools.register(tool, view);
-/** Registers how a kind of segment looks. Extensions name their own kinds `name:kind`. */
+/** Registers how a kind of segment looks. */
 export const registerSegmentView = (kind: string, view: SegmentView) => segments.register(kind, view);
 /** Registers the view for tools that have none of their own. */
 export const registerGenericToolView = (view: ToolView) => tools.register(GENERIC, view);

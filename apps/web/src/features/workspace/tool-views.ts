@@ -1,11 +1,11 @@
 import type { Json } from "../../../../server/src/stream-ops";
-import type { AnySegment, ToolCall } from "./chat-turns";
+import type { Segment, ToolCall } from "./chat-turns";
 import { registerGenericToolView, registerToolView, resolveToolView, type CallWords, type ToolView } from "./views.svelte";
 
 /**
- * PiSpark's own views of tools: Pi's built-in ones by name, and a generic one for the rest. They
- * are registered through the same calls an extension uses for its tools, so none of the
- * conversation's code needs to know a tool by name.
+ * PiSpark's own views of tools: Pi's built-in ones by name, and a generic one for the rest, so none
+ * of the conversation's code needs to know a tool by name. Extensions draw their tools with a
+ * component in the `tool:<name>` slot instead (see extension-views.ts).
  */
 
 const text = (value: unknown): string | undefined =>
@@ -26,10 +26,10 @@ const named = (calls: ToolCall[]) => {
 };
 
 /** What any tool's finished call can put in the message: the changes it made, the pictures it returned. */
-export function genericArtifacts(call: ToolCall): AnySegment[] {
+export function genericArtifacts(call: ToolCall): Segment[] {
   const result = call.result;
   if (!result) return [];
-  const out: AnySegment[] = [];
+  const out: Segment[] = [];
   const path = arg(call, "path");
   const patch = field(result.details, "patch");
   if (typeof patch === "string" && patch.trim())
@@ -96,7 +96,7 @@ registerToolView("ls", { describe: words("Listing", "Listed", on), group: "searc
 export const describeCall = (call: ToolCall): CallWords => resolveToolView(call.name).describe(call);
 
 /** What a call puts in the message itself. A view that does not say gets the generic artifacts. */
-export function artifactsOf(call: ToolCall): AnySegment[] {
+export function artifactsOf(call: ToolCall): Segment[] {
   const view = resolveToolView(call.name);
   return view.artifacts ? view.artifacts(call) : genericArtifacts(call);
 }

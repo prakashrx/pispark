@@ -43,22 +43,11 @@ export type Segment =
   | { kind: "view"; key: string; slot: string; call: ToolCall }
   | { kind: "stopped"; key: string; reason: "aborted" | "error" };
 
-/**
- * A segment of a kind an extension defined (`name:kind`) and has a view registered for. The
- * rest of what it carries is its own business; PiSpark only places it.
- */
-export interface ViewSegment {
-  kind: `${string}:${string}`;
-  key: string;
-  [data: string]: unknown;
-}
-export type AnySegment = Segment | ViewSegment;
-
 /** Your message and everything the agent did and said in answer to it. */
 export interface Turn {
   key: string;
   user?: Item;
-  segments: AnySegment[];
+  segments: Segment[];
   /** The agent is still working on this turn. */
   running: boolean;
 }
@@ -96,7 +85,7 @@ export function buildTurns(
   let notice = 0;
 
   const current = (): Turn => turns.at(-1) ?? turns[turns.push({ key: "earlier", segments: [], running: false }) - 1]!;
-  const emit = (turn: Turn, segment: AnySegment) => turn.segments.push(segment);
+  const emit = (turn: Turn, segment: Segment) => turn.segments.push(segment);
   // A notice lands before the first item at or after its position. Called before a new turn starts,
   // so a notice ahead of your message ends the answer before it.
   const flush = (position: number | undefined) => {

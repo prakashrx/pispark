@@ -31,10 +31,9 @@ const turnWithHello = (details: unknown = { values: [1, 2, 3] }) =>
     { running: false },
   )[0]!;
 
-test("the defaults are registered through the same calls an extension uses, and unknown things have a fallback", () => {
+test("the defaults are registered, and unknown things have a fallback", () => {
   for (const kind of ["text", "thinking", "activity", "custom", "summary", "diff", "image", "svg", "notice", "stopped"])
     expect(resolveSegmentView(kind), kind).toBeTruthy();
-  expect(resolveSegmentView("charts:bar")).toBeUndefined();
   expect(resolveToolView("edit").describe({ id: "x", name: "edit", args: { path: "a/b.ts" }, status: "done" }).object).toBe("b.ts");
   // A tool nobody described is described by its name.
   expect(resolveToolView("unheard-of").describe({ id: "x", name: "unheard-of", args: {}, status: "done" })).toEqual({ doing: "Using unheard-of", done: "Used unheard-of" });
@@ -60,22 +59,6 @@ test("the newest registration wins, and disposing it brings the previous one bac
   expect(resolveSegmentView("diff")).toBe(original);
 });
 
-test("an extension's view of its own tool puts a segment of its own kind in the message", () => {
-  expect(turnWithHello().segments.map((s) => s.kind)).toEqual(["activity"]);
-  keep(registerToolView("hello", {
-    describe: (call) => ({ doing: "Greeting", done: "Greeted", object: String((call.args as { who: string }).who) }),
-    summarize: (calls) => `greeted ${calls.length}`,
-    artifacts: (call) => [{ kind: "charts:bar", key: `bar.${call.id}`, values: (call.result?.details as { values: number[] }).values }],
-  }));
-  keep(registerSegmentView("charts:bar", BarView as never));
-  const turn = turnWithHello();
-  expect(turn.segments.map((s) => s.kind)).toEqual(["activity", "charts:bar"]);
-  const { container } = render(ResponseTurn, { turn, sessionId: "s1" });
-  expect(screen.getByLabelText("Bars").textContent).toBe("1,2,3");
-  expect(screen.getByRole("button", { name: "Greeted 1" })).toBeTruthy();
-  expect(container.querySelectorAll("[data-purpose=activity]")).toHaveLength(1);
-});
-
 test("a view that does not say what it contributes still gets the generic diff and pictures", () => {
   keep(registerToolView("hello", { describe: () => ({ doing: "Greeting", done: "Greeted" }) }));
   const patch = ["--- a", "+++ a", "@@ -1 +1 @@", "-x", "+y", ""].join(String.fromCharCode(10));
@@ -83,19 +66,6 @@ test("a view that does not say what it contributes still gets the generic diff a
   expect(turn.segments.map((s) => s.kind)).toEqual(["activity", "diff"]);
   const call = (turn.segments[0] as { calls: Parameters<typeof artifactsOf>[0][] }).calls[0]!;
   expect(artifactsOf(call).map((s) => s.kind)).toEqual(["diff"]);
-});
-
-test("a view registered after the chat is on screen redraws it, and disposing removes it again", async () => {
-  const turn = buildTurns([item("user", [{ type: "text", text: "go" }]), item("assistant", [{ type: "text", text: "Here" }])], { running: false })[0]!;
-  turn.segments.push({ kind: "charts:bar", key: "late", values: [4, 5] });
-  render(ResponseTurn, { turn, sessionId: "s1" });
-  expect(screen.queryByLabelText("Bars")).toBeNull();
-  const dispose = registerSegmentView("charts:bar", BarView as never);
-  await tick();
-  expect(screen.getByLabelText("Bars").textContent).toBe("4,5");
-  dispose();
-  await tick();
-  expect(screen.queryByLabelText("Bars")).toBeNull();
 });
 
 test("a replacement view for a built-in kind takes over its segments", async () => {

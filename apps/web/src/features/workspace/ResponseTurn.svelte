@@ -9,8 +9,9 @@
   import { useSessions } from "./session-client.svelte";
 
   /**
-   * One turn: your message, then everything the agent did and said, in order. Each segment is
-   * drawn by the view registered for its kind, so this component knows no kind by name.
+   * One turn: your message, then everything the agent did and said, in order. Each segment is drawn
+   * by an extension's component when one is placed in its slot, else by the view registered for its
+   * kind, so this component knows no kind by name.
    */
   let { turn, sessionId }: { turn: Turn; sessionId: string } = $props();
   const client = useSessions();
