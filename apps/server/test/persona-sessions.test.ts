@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { SessionRuntime } from "../src/runtime/session-runtime.js";
 import { RuntimeError } from "../src/runtime/errors.js";
 import { DEFAULT_TOOLS } from "../src/personas/format.js";
-import { TITLE_TOOL } from "../src/extensions/host-protocol.js";
+import { TITLE_TOOL } from "../src/runtime/chat-title.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { localProviderSettings } from "./fixtures/provider-settings.js";
 import { testHome } from "./fixtures/home.js";

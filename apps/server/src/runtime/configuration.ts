@@ -2,7 +2,7 @@ import { realpath, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
-import { bindHost, TITLE_TOOL } from "../extensions/host-protocol.js";
+import { TITLE_TOOL } from "./chat-title.js";
 import {
   createEventBus,
   loadSkills,
@@ -95,8 +95,6 @@ export async function createSessionServices(options: {
     beforeProviderDispatch: () => void;
   };
   host: {
-    setTitle: (title: string, signal: AbortSignal) => void;
-    ownCleanup: (cleanup: () => void) => void;
     /** Extension components placed with `pispark:view` events on the chat's bus. */
     views: { bind: (bus: EventBus) => () => void };
   };
@@ -201,13 +199,8 @@ export async function createSessionServices(options: {
     ),
   );
   const eventBus = createEventBus();
-  const unbindTitle = bindHost(eventBus, host.setTitle);
+  // Before any extension loads, so none of its placements are missed.
   const unbindViews = host.views.bind(eventBus);
-  const cleanupHost = () => {
-    unbindTitle();
-    unbindViews();
-  };
-  host.ownCleanup(cleanupHost);
   let loadedExtensions;
   try {
     loadedExtensions = await loadExplicitExtensions(
@@ -225,7 +218,7 @@ export async function createSessionServices(options: {
       throw new RuntimeError("extension");
     }
   } catch (error) {
-    cleanupHost();
+    unbindViews();
     throw error;
   }
   // Last input handler: queued input from a run that already settled must not be appended.

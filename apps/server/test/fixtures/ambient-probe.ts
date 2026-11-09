@@ -29,7 +29,7 @@ const services = await createSessionServices({
   setup, cwd: join(root, 'cwd'), agentDir: join(root, 'agent'),
   fixed: { provider: provider.provider(), id: 'deterministic' },
   admission: { valid: () => true, beforeSettle: async () => {}, beforeProviderDispatch: () => {} },
-  host: { setTitle: () => {}, ownCleanup: () => {}, views: { bind: () => () => {} } },
+  host: { views: { bind: () => () => {} } },
 });
 await assert.rejects(services.modelRuntime.getAuth('anthropic'), /credentials/);
 assert.equal(services.settingsManager.getCacheWarmingMode(), 'off');

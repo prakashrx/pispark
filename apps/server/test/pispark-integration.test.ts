@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { getEventListeners } from "node:events";
 import { SafeLogger } from "../src/logger.js";
 import {
   mkdtemp,
@@ -13,18 +12,11 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createEventBus } from "@earendil-works/pi-coding-agent";
 import {
   SessionRuntime,
   type RuntimeConfiguration,
 } from "../src/runtime/session-runtime.js";
-import {
-  bindHost,
-  requestTitle,
-  HOST_REQUEST,
-  TITLE_TOOL,
-} from "../src/extensions/host-protocol.js";
-import { toolChatTitle } from "../src/runtime/chat-title.js";
+import { TITLE_TOOL, toolChatTitle } from "../src/runtime/chat-title.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
 import { chatItems, chatText } from "./fixtures/chat.js";
@@ -187,7 +179,7 @@ test("PiSpark integration: persist-first failure leaves current title and observ
     // The host's synchronous closure is exercised directly to isolate metadata effects from native stream events.
     const internal = f.runtime as unknown as {
       live: Map<string, { metadata: unknown }>;
-      setTitle: (host: unknown, title: string, signal: AbortSignal) => void;
+      setTitle: (host: unknown, title: string) => void;
     };
     const host = internal.live.get(a.id)!;
     const before = f.runtime.session(a.id);
@@ -197,11 +189,7 @@ test("PiSpark integration: persist-first failure leaves current title and observ
     try {
       assert.throws(
         () =>
-          internal.setTitle(
-            host,
-            "not committed",
-            new AbortController().signal,
-          ),
+          internal.setTitle(host, "not committed"),
         { code: "storage" },
       );
       assert.equal(f.runtime.session(a.id).title, before.title);
@@ -211,30 +199,21 @@ test("PiSpark integration: persist-first failure leaves current title and observ
       await rename(path + ".saved", path);
     }
     await f.runtime.cancel(a.id);
-    internal.setTitle(
-      host,
-      "Idle after cancellation",
-      new AbortController().signal,
-    );
+    internal.setTitle(host, "Idle after cancellation");
     assert.equal(f.runtime.session(a.id).title, "Idle after cancellation");
-    const aborted = new AbortController();
-    aborted.abort();
-    assert.throws(() => internal.setTitle(host, "aborted", aborted.signal), {
-      code: "closed",
-    });
     f.control.automatic = false;
     const run = f.runtime.start(a.id, "wait");
     await eventually(() => f.control.active === 1);
     const stopping = f.runtime.stop(a.id);
     assert.throws(
-      () => internal.setTitle(host, "stopping", new AbortController().signal),
+      () => internal.setTitle(host, "stopping"),
       { code: "closed" },
     );
     await stopping;
     await run.completion;
     await f.runtime.open(a.id);
     assert.throws(
-      () => internal.setTitle(host, "old owner", new AbortController().signal),
+      () => internal.setTitle(host, "old owner"),
       { code: "closed" },
     );
     assert.equal(f.runtime.session(a.id).title, "Idle after cancellation");
@@ -243,64 +222,7 @@ test("PiSpark integration: persist-first failure leaves current title and observ
   }
 });
 
-test("host protocol: acknowledged errors, abort, callback safety, disposal and bounded missing-host wait", async () => {
-  const bus = createEventBus();
-  let calls = 0;
-  const close = bindHost(bus, () => {
-    calls++;
-  });
-  const successfulSignal = new AbortController();
-  await requestTitle(bus, "fixture", successfulSignal.signal);
-  assert.equal(getEventListeners(successfulSignal.signal, "abort").length, 0);
-  assert.equal(calls, 1);
-  const abort = new AbortController();
-  abort.abort();
-  await assert.rejects(requestTitle(bus, "fixture", abort.signal), /aborted/);
-  assert.equal(calls, 1);
-  let invalid: unknown;
-  bus.emit(HOST_REQUEST, {
-    operation: "chat.set_title",
-    title: 12,
-    signal: new AbortController().signal,
-    settle: (reply: unknown) => (invalid = reply),
-  });
-  assert.deepEqual(invalid, { ok: false, error: "invalid-input" });
-  assert.equal(calls, 1);
-  bus.emit(HOST_REQUEST, {
-    operation: "anything",
-    settle: (reply: unknown) => (invalid = reply),
-  });
-  assert.deepEqual(invalid, { ok: false, error: "invalid-input" });
-  bus.emit(HOST_REQUEST, {
-    operation: "chat.set_title",
-    title: "fixture",
-    signal: new AbortController().signal,
-    settle: () => {
-      throw Error("private cause");
-    },
-  });
-  close();
-  close();
-  const controller = new AbortController();
-  const missing = requestTitle(bus, "fixture", controller.signal);
-  controller.abort();
-  await assert.rejects(missing, /aborted/);
-  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
-  const start = Date.now();
-  await assert.rejects(requestTitle(bus, "fixture"), /unavailable/);
-  assert(Date.now() - start >= 4900);
-  const failing = bindHost(bus, () => {
-    throw Object.assign(new Error("private title and path"), {
-      code: "storage",
-    });
-  });
-  await assert.rejects(requestTitle(bus, "fixture"), {
-    message: "PiSpark title update: storage",
-  });
-  failing();
-});
-
-test("PiSpark integration: actual native tool storage failure is sanitized and operational logs omit titles", async () => {
+test("PiSpark integration: a title that cannot be saved is said in the chat, and operational logs omit titles", async () => {
   const f = await fixture();
   const sensitive = "PRIVATE-TITLE-FIXTURE";
   try {
@@ -316,15 +238,11 @@ test("PiSpark integration: actual native tool storage failure is sanitized and o
     try {
       f.control.requests.at(-1)!.release();
       await eventually(() => f.control.requests.length === count + 2);
-      const result = chatItems(f.runtime, a.id).findLast((m) => m.role === "toolResult");
-      assert(result?.role === "toolResult" && result.isError);
-      assert(
-        JSON.stringify(result.parts).includes(
-          "PiSpark title update: storage",
-        ),
-      );
-      assert(!JSON.stringify(result.parts).includes(sensitive));
-      assert(!JSON.stringify(result.parts).includes(f.root));
+      // Pi named the session; saving it as the chat's title failed, and the chat says so.
+      const notices = JSON.stringify(f.runtime.session(a.id).extensions.notices);
+      assert.match(notices, /The chat title could not be saved/);
+      assert(!notices.includes(sensitive));
+      assert(!notices.includes(f.root));
       assert.equal(f.runtime.session(a.id).title, "prior name");
     } finally {
       await rm(path, { recursive: true });

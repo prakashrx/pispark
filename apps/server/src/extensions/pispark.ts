@@ -1,25 +1,26 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { requestTitle, TITLE_TOOL } from "./host-protocol.js";
+import { chatTitle, TITLE_TOOL } from "../runtime/chat-title.js";
 
-/** Ordinary native Pi extension, instantiated separately for every hosted session. */
+/**
+ * Ordinary native Pi extension, instantiated separately for every hosted session. Its title tool
+ * names the session with Pi's own `setSessionName`; the session's name is the chat title.
+ */
 export default function pispark(pi: ExtensionAPI): void {
-  const lifetime = new AbortController();
-  pi.on("session_shutdown", () => lifetime.abort());
   pi.registerTool({
     name: TITLE_TOOL,
     label: "Set chat title",
     description:
       "Give this chat a short, meaningful title when its purpose is clear. Update it only when the topic meaningfully changes.",
     parameters: Type.Object(
-      { title: Type.String() },
+      { title: Type.String({ maxLength: 4096 }) },
       { additionalProperties: false },
     ),
     async execute(_id, parameters, signal) {
-      const activeSignal = signal
-        ? AbortSignal.any([signal, lifetime.signal])
-        : lifetime.signal;
-      await requestTitle(pi.events, parameters.title, activeSignal);
+      if (signal?.aborted) throw new Error("Cancelled");
+      const title = typeof parameters.title === "string" && parameters.title.length <= 4096 ? chatTitle(parameters.title) : "";
+      if (!title) throw new Error("The title must contain printable text");
+      pi.setSessionName(title);
       return {
         content: [{ type: "text", text: "Chat title updated." }],
         details: undefined,

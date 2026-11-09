@@ -1,5 +1,8 @@
 import { RuntimeError } from "./errors.js";
 
+/** The built-in extension's title tool; no persona extension may register the same name. */
+export const TITLE_TOOL = "pispark_set_title";
+
 /** User content: never include titles in diagnostic logs. */
 export function chatTitle(input: string): string {
   const line =

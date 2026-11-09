@@ -1,4 +1,3 @@
-import { TITLE_TOOL } from "../extensions/host-protocol.js";
 import { chatTitle, toolChatTitle } from "./chat-title.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
@@ -87,7 +86,6 @@ interface HostedSession {
   cancel?: Promise<void>;
   stop?: Promise<void>;
   unsubscribe?: () => void;
-  disposeHost?: () => void;
   hostClosed?: boolean;
   loading?: Promise<SessionDoc>;
   extensionErrors: number;
@@ -478,13 +476,7 @@ export class SessionRuntime {
             await identity.input?.catch(() => {});
           },
         },
-        host: {
-          setTitle: (title, signal) => this.setTitle(hosted, title, signal),
-          ownCleanup: (cleanup) => {
-            hosted.disposeHost = cleanup;
-          },
-          views: hosted.views,
-        },
+        host: { views: hosted.views },
       });
       const thinkingLevel = setup.settings.thinking ?? "off";
       let session: AgentSession;
@@ -535,9 +527,11 @@ export class SessionRuntime {
         // Pi's session name is the chat title: an extension's pi.setSessionName renames the chat.
         if (event.type === "session_info_changed" && event.name)
           try {
-            this.setTitle(hosted, event.name, new AbortController().signal);
-          } catch {
-            /* A closing chat or an invalid name keeps the current title. */
+            this.setTitle(hosted, event.name);
+          } catch (error) {
+            // A closing chat or an invalid name keeps the current title; a failed save is said.
+            if (error instanceof RuntimeError && error.code === "storage")
+              hosted.ui?.failed("The chat title could not be saved.");
           }
         if (
           event.type === "message_end" &&
@@ -634,18 +628,13 @@ export class SessionRuntime {
       throw runtimeError(error, "configuration");
     }
   }
-  private setTitle(
-    hosted: HostedSession,
-    input: string,
-    signal: AbortSignal,
-  ): void {
+  private setTitle(hosted: HostedSession, input: string): void {
     if (
       !this.accepting ||
       hosted.hostClosed ||
       this.live.get(hosted.metadata.id) !== hosted ||
       !hosted.session ||
       !["idle", "running"].includes(hosted.status) ||
-      signal.aborted ||
       hosted.cancel ||
       (hosted.status === "running" && hosted.identity?.cancelled)
     )
@@ -856,8 +845,6 @@ export class SessionRuntime {
   private async disposeOwned(hosted: HostedSession): Promise<void> {
     hosted.status = "stopping";
     hosted.hostClosed = true;
-    hosted.disposeHost?.();
-    hosted.disposeHost = undefined;
     hosted.ui?.close();
     hosted.views?.close();
     let cleanupError: RuntimeErrorCode | undefined;
