@@ -230,9 +230,11 @@ export class SessionClient {
       if (generation !== this.selection || this.disposed) return;
       this.observe(id);
     } catch (error) {
-      this.recordError(error, id);
+      // Every open chat holds a slot on the host. Running out is not a lost connection.
+      const full = (error as Error).message.startsWith("limit");
+      this.recordError(full ? new Error("Too many chats are open. Stop one from its Chat info, then reopen this one.") : error, id);
       if (generation === this.selection) {
-        this.connection = "Disconnected";
+        this.connection = full ? "Unloaded" : "Disconnected";
       }
     }
   }
