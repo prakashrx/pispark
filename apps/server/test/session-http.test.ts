@@ -285,7 +285,7 @@ test("history is read from Pi's session: byte-bounded pages, cursors both ways, 
   assert.equal((await fetch(`${f.base}/api/sessions/${id}/items/${result.id}/parts/0?x=1`)).status, 400);
 });
 
-test("a bad metadata record is counted and a rejected new chat is never published", async (t) => {
+test("a bad metadata record is counted, a rejected new chat is never published, and sending loads an unloaded chat", async (t) => {
   const f = await fixture(t);
   const rejected = new SessionRuntime({
     ...f.configuration,
@@ -300,11 +300,13 @@ test("a bad metadata record is counted and a rejected new chat is never publishe
   const list = await (await fetch(f.base + "/api/sessions")).json();
   assert.equal(list.unreadable, 1);
   assert.deepEqual(list.sessions.map((s: { id: string }) => s.id), [id]);
-  await f.runtime.stop(id);
-  const fail = await f.post({ type: "start", sessionId: id, text: "never sent" });
-  assert.equal(fail.state, "settled");
-  assert.equal(fail.error, "not-found");
   assert.equal(f.provider.requests.length, 0);
+  // A start on an unloaded chat loads it first, then sends.
+  await f.runtime.stop(id);
+  f.provider.automatic = true;
+  const sent = await f.settle(await f.post({ type: "start", sessionId: id, text: "sent after unload" }));
+  assert.equal(sent.outcome, "completed");
+  assert.equal(f.provider.requests.length, 1);
 });
 
 test("SessionHttp: long stream/coalescing and blocked writable cleanup", async (t) => {
