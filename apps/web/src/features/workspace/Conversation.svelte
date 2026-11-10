@@ -34,8 +34,15 @@
   );
   // While running, an extension may relabel, re-animate or hide the working indicator.
   const working = $derived(chat?.status === "running" ? snapshot?.extensions.working : undefined);
+  // "Opening…" only when opening takes long enough to notice, so a quick switch shows nothing.
+  let slowOpening = $state(false);
+  $effect(() => {
+    if (!client.opening) return void (slowOpening = false);
+    const timer = setTimeout(() => (slowOpening = true), 300);
+    return () => clearTimeout(timer);
+  });
   const status = $derived(
-    client.connection === "Connecting" || client.connection === "Loading"
+    (client.opening && slowOpening) || client.connection === "Connecting" || client.connection === "Loading"
       ? "Opening…"
       : working?.hidden
         ? ""

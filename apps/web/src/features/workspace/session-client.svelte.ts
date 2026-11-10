@@ -12,7 +12,7 @@ import type {
   SessionInfo,
 } from "../../../../server/src/protocol";
 import type { PartRef } from "./chat-turns";
-import { LiveChat } from "./live-chat.svelte";
+import { LiveChat, type SavedChat } from "./live-chat.svelte";
 import { liveEvents } from "./live-stream";
 import type { CommandUncertaintyKind } from "./chat-presentation";
 class CommandUncertainty extends Error {
@@ -75,6 +75,8 @@ export class SessionClient {
   private extensionDrafts = new Map<string, string>();
   private nextDraftRevision = 0;
   busy = $state(false);
+  /** The selected chat has nothing to show yet: it is being opened. */
+  opening = $state(false);
   private source?: AbortController;
   private controller = new AbortController();
   private selection = 0;
@@ -227,9 +229,17 @@ export class SessionClient {
   async select(id: string) {
     const generation = ++this.selection;
     this.source?.abort();
+    // Keep what the chat on screen shows, and show the next one as it was last seen, if it was:
+    // switching chats never blanks the conversation. The live stream then brings it up to date.
+    const leaving = this.live.save();
+    if (leaving && this.selected) this.remember(this.selected, leaving);
     this.live.reset();
+    const saved = this.recent.get(id);
+    if (saved) this.live.restore(saved);
     this.selected = id;
-    this.connection = "Connecting";
+    // Switching chats is not a connection problem: only a chat with nothing to show yet is opening.
+    this.opening = !saved;
+    if (this.connection === "Unloaded") this.connection = "Connected";
     try {
       localStorage.setItem("pispark-session", id);
     } catch { /* In-memory selection still works. */ }
@@ -240,8 +250,18 @@ export class SessionClient {
       this.observe(id);
     } catch (error) {
       this.recordError(error, id);
-      if (generation === this.selection) this.connection = "Disconnected";
+      if (generation === this.selection) {
+        this.opening = false;
+        this.connection = "Disconnected";
+      }
     }
+  }
+  /** The last few chats as they were shown, newest last. */
+  private readonly recent = new Map<string, SavedChat>();
+  private remember(id: string, saved: SavedChat) {
+    this.recent.delete(id);
+    this.recent.set(id, saved);
+    while (this.recent.size > 8) this.recent.delete(this.recent.keys().next().value!);
   }
   private observe(id: string) {
     this.source?.abort();
@@ -282,6 +302,7 @@ export class SessionClient {
             if (!(await this.live.apply(id, event))) break;
             const session = this.live.doc!.session;
             this.applyExtensionDraft(id, session, event.type === "snapshot");
+            this.opening = false;
             this.connection = "Live";
             this.track(id, session);
           }

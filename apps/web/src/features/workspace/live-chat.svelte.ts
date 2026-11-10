@@ -14,6 +14,14 @@ type Get = <T>(path: string) => Promise<T>;
  * One open chat as the browser holds it: history read by cursor from Pi's session, plus the live
  * document (session state and the items in flight) kept current by the server's operations.
  */
+/** A chat as it was last shown. */
+export interface SavedChat {
+  doc: LiveDoc;
+  history: Item[];
+  more: boolean;
+  head: string | null;
+}
+
 export class LiveChat {
   doc = $state<LiveDoc>();
   /** Finalized items, oldest first. */
@@ -41,6 +49,20 @@ export class LiveChat {
     this.head = undefined;
     this.seq = 0;
   }
+  /** What the chat shows now, to show again at once when it is opened next. */
+  save(): SavedChat | undefined {
+    if (!this.doc || this.head === undefined) return undefined;
+    // References are enough: a chat that is not shown receives no more operations.
+    return { doc: this.doc, history: this.history, more: this.more, head: this.head };
+  }
+  /** Shows a saved chat; the live stream then brings it up to date from its head. */
+  restore(saved: SavedChat) {
+    this.doc = saved.doc;
+    this.history = saved.history;
+    this.more = saved.more;
+    this.head = saved.head;
+    this.seq = 0;
+  }
 
   /** The newest items. */
   async load(id: string) {
@@ -61,7 +83,14 @@ export class LiveChat {
     if (!this.head) return this.load(id);
     let cursor = this.head;
     for (;;) {
-      const page = await this.get<ItemsPage>(`/api/sessions/${id}/items?after=${cursor}&limit=100`);
+      let page: ItemsPage;
+      try {
+        page = await this.get<ItemsPage>(`/api/sessions/${id}/items?after=${cursor}&limit=100`);
+      } catch (error) {
+        // A saved head the chat no longer has (it was reloaded or moved branch): read it afresh.
+        if (cursor !== this.head) throw error;
+        return this.load(id);
+      }
       this.append(page.items);
       if (!page.more) {
         this.head = page.head;
