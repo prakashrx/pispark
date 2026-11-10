@@ -41,7 +41,7 @@ Types: `apps/server/src/protocol.ts`, `provider-protocol.ts` and `persona-protoc
 | `GET /api/receipts/:commandId` | Current accepted/settled receipt;404 `unknown-receipt` after expiry/restart or unknown ID |
 | `GET /api/sessions/:uuid` | The chat's session document: status, model, queue, error and what extensions show; no history |
 | `GET /api/sessions/:uuid/items?before=ID&limit=N` / `?after=ID` | Finalized items on Pi's active branch, oldest first, read straight from Pi's session; bounded by count and bytes; `head` is the session's last entry id, `more` says whether the page was cut |
-| `GET /api/sessions/:uuid/live` | SSE: one `snapshot` of the live document, then `ops` batches (see below) |
+| `GET /api/sessions/:uuid/live` | SSE: one `snapshot` of the live document, then `ops` batches (see below). A chat that is not loaded answers one `unloaded` event: open it, then reconnect |
 | `GET /api/sessions/:uuid/items/:id/parts/:n` | An image part's bytes, or with `?offset=` a chunk of a clipped text part |
 | `GET /api/settings` / `POST /api/settings {maxRunning}` | PiSpark's own settings, saved in `<home>/settings.json`: how many chats may have an agent working at once (1–32, default 8) |
 | `POST /api/sessions/:uuid/calls` | An extension component's `host.call` (see below) |

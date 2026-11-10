@@ -41,7 +41,7 @@ Failures use safe codes, not raw provider/extension stacks. Items and session do
 
 ## Loading and unloading
 
-Nobody opens or stops chats by hand. A chat loads when a client shows it (`open`) or sends to it (`ensure` before `start`). A loaded chat that is idle, not shown by any client, has no open question and nothing queued unloads after `idleUnloadMs` (15 minutes); above `maxLiveSessions` (32) the least recently used such chat unloads first, and if none can, the new chat loads anyway. Extensions keep their state in Pi's session, so an unloaded chat comes back as it was. A client whose chat was unloaded under it (its live stream answers 410) opens it again by itself.
+Nobody opens or stops chats by hand. A chat loads when a client shows it (`open`) or sends to it (`ensure` before `start`). A loaded chat that is idle, not shown by any client, has no open question and nothing queued unloads after `idleUnloadMs` (15 minutes); above `maxLiveSessions` (32) the least recently used such chat unloads first, and if none can, the new chat loads anyway. Extensions keep their state in Pi's session, so an unloaded chat comes back as it was. A client whose chat was unloaded under it (its live stream sends an `unloaded` event) opens it again by itself.
 
 ## Run slots
 

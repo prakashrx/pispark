@@ -278,7 +278,27 @@ export class SessionClient {
               AbortSignal.timeout(70_000),
             ]),
           });
-          if (response.status === 410) {
+          let unloaded = false;
+          for await (const event of liveEvents(response)) {
+            if (
+              source !== this.source ||
+              id !== this.selected ||
+              source.signal.aborted
+            )
+              return;
+            if (event.sessionId !== id) throw new Error("Invalid event");
+            if (event.type === "unloaded") {
+              unloaded = true;
+              break;
+            }
+            if (!(await this.live.apply(id, event))) break;
+            const session = this.live.doc!.session;
+            this.applyExtensionDraft(id, session, event.type === "snapshot");
+            this.opening = false;
+            this.connection = "Live";
+            this.track(id, session);
+          }
+          if (unloaded) {
             if (source !== this.source || source.signal.aborted) return;
             // The server unloaded the chat while it was idle: load it again and carry on.
             try {
@@ -290,21 +310,6 @@ export class SessionClient {
               }
             }
             continue;
-          }
-          for await (const event of liveEvents(response)) {
-            if (
-              source !== this.source ||
-              id !== this.selected ||
-              source.signal.aborted
-            )
-              return;
-            if (event.sessionId !== id) throw new Error("Invalid event");
-            if (!(await this.live.apply(id, event))) break;
-            const session = this.live.doc!.session;
-            this.applyExtensionDraft(id, session, event.type === "snapshot");
-            this.opening = false;
-            this.connection = "Live";
-            this.track(id, session);
           }
         } catch {
           /* Lost connection or bounded decoder rejection: reconnect from a fresh snapshot, never resend commands. */

@@ -212,7 +212,9 @@ export type LiveOp =
   | { op: "commit"; after: string | null; head: string | null; items?: Item[] };
 export type LiveEvent =
   | { type: "snapshot"; sessionId: string; head: string | null; doc: LiveDoc }
-  | { type: "ops"; sessionId: string; seq: number; ops: LiveOp[] };
+  | { type: "ops"; sessionId: string; seq: number; ops: LiveOp[] }
+  /** The chat is not loaded (it unloaded while idle): open it, then reconnect. */
+  | { type: "unloaded"; sessionId: string };
 export interface ProtocolError {
   error: string;
   commandId?: string;

@@ -36,7 +36,7 @@ export async function observeLive(base: string, id: string) {
           if (event.type === "snapshot") {
             state.doc = event.doc;
             state.head = event.head;
-          } else {
+          } else if (event.type === "ops") {
             assert(previous, "operations before a snapshot");
             assert.equal(event.seq, previous.type === "snapshot" ? 1 : (previous as { seq: number }).seq + 1);
             for (const op of event.ops) {

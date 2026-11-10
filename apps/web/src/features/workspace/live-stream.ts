@@ -1,7 +1,7 @@
 import type { LiveEvent } from "../../../../server/src/protocol";
 
 const FRAME_LIMIT = 1024 * 1024;
-const HEADS = ["event: snapshot\ndata: ", "event: ops\ndata: "];
+const HEADS = ["event: snapshot\ndata: ", "event: ops\ndata: ", "event: unloaded\ndata: "];
 
 /** Pull-based SSE reader: one bounded incomplete frame, no accumulating browser event queue. */
 export async function* liveEvents(

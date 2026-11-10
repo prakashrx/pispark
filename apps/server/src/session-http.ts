@@ -498,7 +498,12 @@ export class SessionHttp {
       observation = this.runtime.observeLive(id);
     } catch (error) {
       if (!(error instanceof RuntimeError) || error.code !== "not-found") throw error;
-      sendJson(response, 410, { error: "not-found" });
+      // Not an error: chats unload when idle. The client opens it again and reconnects.
+      response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store" });
+      response.end(`event: unloaded
+data: ${JSON.stringify({ type: "unloaded", sessionId: id } satisfies LiveEvent)}
+
+`);
       return;
     }
     this.streams.add(response);

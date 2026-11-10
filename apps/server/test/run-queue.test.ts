@@ -281,3 +281,27 @@ test("a prompt waiting when PiSpark stops is kept, and rejoins the queue when it
     await h.remove();
   }
 });
+
+test("the live stream of a chat that is not loaded says so as an event, not an error", async () => {
+  const h = await testHome("pispark-queue-unloaded-");
+  const runtime = new SessionRuntime(h.configuration);
+  const http = new SessionHttp(runtime);
+  const server = createAppServer({ sessions: http });
+  try {
+    await h.persona("default", { name: "Default" });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const chat = await runtime.create({ folder: await h.folder("work") });
+    await runtime.stop(chat.id);
+    const response = await fetch(`${base}/api/sessions/${chat.id}/live`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/);
+    assert.equal(await response.text(), `event: unloaded\ndata: {"type":"unloaded","sessionId":"${chat.id}"}\n\n`);
+  } finally {
+    await http.shutdown();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await h.remove();
+  }
+});

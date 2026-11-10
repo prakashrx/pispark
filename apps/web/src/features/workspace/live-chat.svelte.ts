@@ -113,7 +113,7 @@ export class LiveChat {
       if (event.head !== this.head) await this.catchUp(id);
       return true;
     }
-    if (!this.doc || event.seq !== this.seq + 1) return false;
+    if (event.type !== "ops" || !this.doc || event.seq !== this.seq + 1) return false;
     this.seq = event.seq;
     for (const op of event.ops) {
       if (op.op === "commit") {
