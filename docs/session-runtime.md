@@ -6,7 +6,7 @@ This is a **client-independent runtime**, now owned by the local HTTP entry poin
 
 ## Entry point and ownership
 
-`apps/server/src/runtime/session-runtime.ts` exports `SessionRuntime`, configuration types and safe `RuntimeError` codes.
+`apps/server/src/runtime/session-runtime.ts` exports `SessionRuntime`, configuration types and safe `RuntimeError` codes. It holds the chats: which are loaded, the run slots, idle unloading and settings. Each loaded chat is a `Chat` (`runtime/chat.ts`), which owns its Pi session, what its extensions show, and its lifecycle: `starting → idle ⇄ (queued →) running → cancelling → idle | error`, and from any state `stopping → stopped`.
 
 Construct one owner with a `RuntimeConfiguration` whose only required field is `home`, the data folder. Chats live in `<home>/chats`, personas in `<home>/personas`, providers in `<home>/providers`. Tests may also pass `fixedModel` (a keyless loopback provider) and `providerSettings` (extra native providers, a models file); production never sets them.
 

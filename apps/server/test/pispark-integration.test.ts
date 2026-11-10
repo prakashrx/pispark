@@ -176,12 +176,10 @@ test("PiSpark integration: persist-first failure leaves current title and observ
   try {
     const a = await f.runtime.create({ folder: f.cwd });
     await f.runtime.start(a.id, "existing fixture").completion;
-    // The host's synchronous closure is exercised directly to isolate metadata effects from native stream events.
-    const internal = f.runtime as unknown as {
-      live: Map<string, { metadata: unknown }>;
-      setTitle: (host: unknown, title: string) => void;
-    };
+    // The chat's own title step is exercised directly to isolate metadata effects from native stream events.
+    const internal = f.runtime as unknown as { live: Map<string, { setTitle: (title: string) => void }> };
     const host = internal.live.get(a.id)!;
+    const setTitle = (owner: typeof host, title: string) => owner.setTitle(title);
     const before = f.runtime.session(a.id);
     const path = join(f.chats, a.id, "chat.json");
     await rename(path, path + ".saved");
@@ -189,7 +187,7 @@ test("PiSpark integration: persist-first failure leaves current title and observ
     try {
       assert.throws(
         () =>
-          internal.setTitle(host, "not committed"),
+          setTitle(host, "not committed"),
         { code: "storage" },
       );
       assert.equal(f.runtime.session(a.id).title, before.title);
@@ -199,21 +197,21 @@ test("PiSpark integration: persist-first failure leaves current title and observ
       await rename(path + ".saved", path);
     }
     await f.runtime.cancel(a.id);
-    internal.setTitle(host, "Idle after cancellation");
+    setTitle(host, "Idle after cancellation");
     assert.equal(f.runtime.session(a.id).title, "Idle after cancellation");
     f.control.automatic = false;
     const run = f.runtime.start(a.id, "wait");
     await eventually(() => f.control.active === 1);
     const stopping = f.runtime.stop(a.id);
     assert.throws(
-      () => internal.setTitle(host, "stopping"),
+      () => setTitle(host, "stopping"),
       { code: "closed" },
     );
     await stopping;
     await run.completion;
     await f.runtime.open(a.id);
     assert.throws(
-      () => internal.setTitle(host, "old owner"),
+      () => setTitle(host, "old owner"),
       { code: "closed" },
     );
     assert.equal(f.runtime.session(a.id).title, "Idle after cancellation");
