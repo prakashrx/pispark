@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-The root dev command starts both workspaces and stops the other when either exits. Alternatively run `npm run dev -w @pispark/server` and `npm run dev -w @pispark/web` in separate terminals. Open the Vite URL, not the backend URL, for hot reload.
+The root dev command starts both workspaces and stops the other when either exits. Alternatively run `npm run dev -w @pispark/server` and `npm run dev -w @pispark/web` in separate terminals. Open the Vite URL, not the backend URL, for hot reload. The backend restarts when a file under `apps/server/src` is edited (`apps/server/dev.mjs`); a file that is only read, as Pi reads the built-in extension for each chat, does not count.
 
 ## Commands
 
