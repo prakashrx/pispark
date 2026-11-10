@@ -117,14 +117,23 @@ export class ExtensionUI {
     },
   ) {}
 
-  private readonly changed = coalesce(() => this.host.changed(), 100);
+  private readonly notify = coalesce(() => this.host.changed(), 100);
+  /**
+   * What `view()` last returned. The chat's document is read on every streaming update, so widgets,
+   * header and footer are rendered (and the git branch read) only after something changed.
+   */
+  private lastView?: Omit<ExtensionView, "views">;
+  private readonly changed = () => {
+    this.lastView = undefined;
+    this.notify();
+  };
 
   /** What Pi gives footer factories: statuses, the git branch and how many providers are usable. */
   private readonly footerData: ReadonlyFooterDataProvider = {
     getGitBranch: () => gitBranch(this.host.cwd),
     getExtensionStatuses: () => new Map(this.statuses),
     getAvailableProviderCount: () => 1,
-    // Footers re-render with every update, so they always read the current branch.
+    // A footer re-renders after each change, reading the branch then.
     onBranchChange: () => () => {},
   };
 
@@ -362,6 +371,9 @@ export class ExtensionUI {
 
   /** What `ctx.ui` shows; the session adds the extensions' placed views. */
   view(): Omit<ExtensionView, "views"> {
+    return (this.lastView ??= this.render());
+  }
+  private render(): Omit<ExtensionView, "views"> {
     return {
       dialogs: [...this.dialogs.values()].map(({ dialog }) => dialog),
       statuses: [...this.statuses].map(([key, text]) => ({ key, line: firstLine(text) })),

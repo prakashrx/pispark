@@ -165,6 +165,11 @@ export class Chat {
   get ready(): boolean {
     return !!this.session && !!this.items;
   }
+  /** Pi has written the chat's transcript; once it has, it always has. */
+  get hasHistory(): boolean {
+    return (this.historySeen ||= this.host.storage.hasHistory(this.id));
+  }
+  private historySeen = false;
   get asking(): boolean {
     return !!this.ui?.asking;
   }

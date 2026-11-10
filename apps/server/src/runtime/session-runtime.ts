@@ -42,6 +42,12 @@ export class SessionRuntime {
   private readonly slots: RunSlots;
   private readonly settingsPath: string;
   private readonly timeout: number;
+  /**
+   * Persona names and which chats have their own layer. A loaded chat's document is read on every
+   * streaming update, so these are read from disk once and again only after a persona change.
+   */
+  private personaNames?: Map<string, string>;
+  private readonly layered = new Map<string, boolean>();
 
   constructor(
     private readonly configuration: RuntimeConfiguration,
@@ -59,7 +65,11 @@ export class SessionRuntime {
       throw new RuntimeError("configuration");
     this.storage = new ChatStorage(paths.chats);
     this.personas = new PersonaStore(paths.personas, paths.chats, (chatId) => this.storage.read(chatId).persona, logger);
-    this.unwatchPersonas = this.personas.onChange(() => this.checkSetups());
+    this.unwatchPersonas = this.personas.onChange(() => {
+      this.personaNames = undefined;
+      this.layered.clear();
+      this.checkSetups();
+    });
     this.sweeper = setInterval(() => this.sweep(), Math.min(60_000, Math.max(1000, this.idleUnload / 4)));
     this.sweeper.unref();
     this.host = {
@@ -76,6 +86,7 @@ export class SessionRuntime {
       summary: (chat) => this.summary(chat.metadata, chat),
       released: (chat) => {
         if (this.live.get(chat.id) === chat) this.live.delete(chat.id);
+        this.layered.delete(chat.id);
         if (!chat.published) this.storage.discardUnpublished(chat.id);
       },
     };
@@ -96,8 +107,7 @@ export class SessionRuntime {
     return this.settings();
   }
   list(): SessionSummary[] {
-    const names = new Map(this.personas.list().map((p) => [p.id, p.name]));
-    return this.storage.list().map((metadata) => this.summary(metadata, this.live.get(metadata.id), names));
+    return this.storage.list().map((metadata) => this.summary(metadata, this.live.get(metadata.id)));
   }
   get unreadableSessions(): number {
     return this.storage.unreadable;
@@ -113,16 +123,18 @@ export class SessionRuntime {
     return folders;
   }
   private summary(metadata: ChatMetadata, chat?: Chat, names?: Map<string, string>): SessionSummary {
+    let layered = this.layered.get(metadata.id);
+    if (layered === undefined) this.layered.set(metadata.id, (layered = this.personas.exists({ chat: metadata.id })));
     const persona: ChatPersona = {
       id: metadata.persona,
-      name: names?.get(metadata.persona) ?? this.personaName(metadata.persona),
-      layered: this.personas.exists({ chat: metadata.id }),
+      name: (names ?? this.names()).get(metadata.persona) ?? metadata.persona,
+      layered,
     };
     return {
       id: metadata.id,
       folder: metadata.cwd,
       createdAt: metadata.createdAt,
-      hasHistory: this.storage.hasHistory(metadata.id),
+      hasHistory: chat ? chat.hasHistory : this.storage.hasHistory(metadata.id),
       ...(metadata.title ? { title: metadata.title } : {}),
       status: chat?.status ?? "unloaded",
       interrupted: metadata.interrupted || (!chat && metadata.active),
@@ -132,12 +144,8 @@ export class SessionRuntime {
       ...(chat?.waitingForSlot || (!chat && metadata.queued !== undefined) ? { queued: true } : {}),
     };
   }
-  private personaName(id: string): string {
-    try {
-      return this.personas.read({ persona: id }).definition.name ?? id;
-    } catch {
-      return id;
-    }
+  private names(): Map<string, string> {
+    return (this.personaNames ??= new Map(this.personas.list().map((p) => [p.id, p.name])));
   }
   /** The chat's own layer once it has one, else the persona it started with. */
   private target(metadata: ChatMetadata): PersonaTarget {
