@@ -827,10 +827,17 @@ export class SessionRuntime {
       this.slots.release(id);
     }
   }
+  /** An empty, never-started chat is named after its first message until the agent names it. */
+  private firstTitle(hosted: HostedSession, metadata: ChatMetadata, text: string): void {
+    if (!metadata.title && !this.storage.hasHistory(metadata.id) && !hosted.session!.messages.length)
+      metadata.title = chatTitle(text) || "New chat";
+  }
   private enqueue(hosted: HostedSession, text: string, restored = false): Promise<RunResult> {
     const id = hosted.metadata.id;
     hosted.restored = restored ? true : undefined;
     const metadata = { ...hosted.metadata, queued: text };
+    // A waiting first message already names the chat, so the list can tell queued chats apart.
+    this.firstTitle(hosted, metadata, text);
     this.storage.write(metadata);
     hosted.metadata = metadata;
     hosted.status = "queued";
@@ -878,12 +885,7 @@ export class SessionRuntime {
     const started = Date.now();
     const { queued: _queued, ...current } = hosted.metadata;
     const metadata = { ...current, active: true, interrupted: false };
-    if (
-      !metadata.title &&
-      !this.storage.hasHistory(id) &&
-      !hosted.session!.messages.length
-    )
-      metadata.title = chatTitle(text) || "New chat";
+    this.firstTitle(hosted, metadata, text);
     this.storage.write(metadata); // Before any model/tool side effects.
     hosted.metadata = metadata;
     hosted.status = "running";

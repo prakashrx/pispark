@@ -46,6 +46,7 @@ test("past the limit a prompt waits for a turn, in order, saved with its chat; c
       assert.equal(f.runtime.session(id).queued, true);
     }
     assert.equal((await f.saved(b.id)).queued, "second", "a waiting prompt is saved with its chat");
+    assert.equal(f.runtime.session(b.id).title, "second", "and already names the chat");
     assert.equal(f.runtime.list().find((chat) => chat.id === c.id)?.queued, true);
     assert.equal(f.provider.requests.length, 1, "nothing else reached the model");
 
