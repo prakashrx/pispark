@@ -85,8 +85,6 @@ export interface ChatHost {
 interface Run {
   cancelled: boolean;
   settled: boolean;
-  /** Cancelled before the provider was called: Pi's empty error message is not a failure. */
-  abortedBeforeDispatch?: boolean;
   /** Settling: no new steer or follow-up may join this run. */
   admissionClosed?: boolean;
 }
@@ -352,7 +350,6 @@ export class Chat {
         beforeProviderDispatch: () => {
           // Pi still calls the provider once after a cancel that arrived while it prepared the run.
           if (this.run?.cancelled || this.status === "stopping") {
-            if (this.run) this.run.abortedBeforeDispatch = true;
             // Native ModelRuntime.lazyStream converts setup exceptions to a settled event stream.
             throw new DOMException("The operation was aborted.", "AbortError");
           }
@@ -449,7 +446,9 @@ export class Chat {
         // A closing chat or an invalid name keeps the current title; a failed save is said.
         if (error instanceof RuntimeError && error.code === "storage") this.ui?.failed("The chat title could not be saved.");
       }
-    if (event.type === "message_end" && event.message.role === "assistant" && event.message.stopReason === "error" && !this.run?.abortedBeforeDispatch)
+    // A provider error is a failed run, unless the run was cancelled: then it is the cancel's result
+    // (Pi records an error message for a run aborted before it reached the provider).
+    if (event.type === "message_end" && event.message.role === "assistant" && event.message.stopReason === "error" && !this.run?.cancelled)
       this.error ??= "execution";
     this.changed();
   }
@@ -574,19 +573,9 @@ export class Chat {
     }, host.runTimeout);
     this.runDone = (async (): Promise<RunResult> => {
       try {
-        await session.prompt(text, {
-          // The persona's prompts work as /commands, as in terminal Pi.
-          expandPromptTemplates: true,
-          source: "rpc",
-          // Pinned Pi 1.5.0 INTERNAL typed callback: after native preflight resets
-          // its abort flag, before agent_start (awaited before provider dispatch).
-          preflightResult: (result) => {
-            if (result === "started" && run.cancelled) {
-              run.abortedBeforeDispatch = true;
-              void session.abort().catch(() => {});
-            }
-          },
-        });
+        // The persona's prompts work as /commands, as in terminal Pi. A cancel that arrives while Pi
+        // prepares the run is caught where the provider would be called (beforeProviderDispatch).
+        await session.prompt(text, { expandPromptTemplates: true, source: "rpc" });
         await session.waitForIdle();
         return this.error ? { outcome: "failed", error: this.error } : { outcome: run.cancelled ? "cancelled" : "completed" };
       } catch (error) {
@@ -594,7 +583,6 @@ export class Chat {
         return { outcome: "failed", error: this.error };
       } finally {
         run.settled = true;
-        run.abortedBeforeDispatch = false;
         clearTimeout(timer);
         this.metadata.active = !!this.error;
         this.metadata.interrupted ||= !!this.error;
