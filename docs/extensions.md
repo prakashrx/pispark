@@ -60,7 +60,7 @@ export default function (pi) {
 
 **One rule:** a slot is the name of something PiSpark draws. Components placed in a slot are drawn there instead of PiSpark's default, in the order they were placed; with none placed, the default shows. Show or update by emitting again; remove by leaving out `component`.
 
-**One component shape:** every component gets `data` (what that place draws, when it has something), `host` and the props the extension sent. `host.call(name, data)` runs a function its own placement gave it and resolves with the result, or rejects with the extension's error. `host.file(path)` is the address of a file in the folder its placement named.
+**One component shape:** every component gets `session` (the chat it is part of, see [the session](#the-session-a-component-is-given)), `data` (what that place draws, when it has something), `host` and the props the extension sent. `host.call(name, data)` runs a function its own placement gave it and resolves with the result, or rejects with the extension's error. `host.file(path)` is the address of a file in the folder its placement named.
 
 | Slot | Where | `data` | Pi's terminal equivalent |
 | --- | --- | --- | --- |
@@ -83,11 +83,33 @@ PiSpark owns each place's frame (chips and actions sit in a row, blocks around t
 - **Compiling:** the server compiles the file and what it imports (TypeScript, `.svelte`, `.svelte.ts` modules, npm packages from the extension's folder) with esbuild and Svelte's compiler, in runes mode. Each file compiles once per session and is served by content hash. Imports of `svelte` and its public subpaths resolve to the app's own instance (`contract/shared-svelte.ts`), so components mount inside PiSpark's tree and use its theme tokens (`var(--interactive-text)` and so on).
 - **Failures:** a refused path or a compile error is a notice in the chat (with file and line). A component that throws while rendering is replaced by a short line; the rest of the chat keeps working.
 
-### A page for a chat
+### The session a component is given
+
+A chat has one session object in the browser, and everything that draws the chat is given it: PiSpark's own conversation and reply box, and every extension component. It is live: a component that reads it redraws when it changes.
+
+| Member | What it is |
+| --- | --- |
+| `id` | The chat's id |
+| `doc` | The chat's state, or `undefined` until it arrives: `status` (`idle`, `running`, `queued`, `cancelling`, `error`), `title`, `model`, `waiting` (an extension's question is open), `queued` (it waits for a turn), `queue`, `error`, and `extensions` (open questions in `dialogs`, statuses, widgets, notices, placed views) |
+| `items` | The chat's items, oldest first, including the message being written. Each has a stable `key`, a `role` (`user`, `assistant`, `toolResult`, `custom`, `summary`, `entry`) and `parts` (`text`, `thinking`, `toolCall`, `image`) |
+| `more`, `loadEarlier()` | Older items exist; read the next ones in |
+| `progress` | What running tools have reported so far, by call id |
+| `connection` | `Live` while the chat is followed |
+| `draft`, `setDraft(text)` | The unsent reply, kept while other chats are shown |
+| `send(text?)` | Sends the text (or the draft) to an idle chat; resolves to whether it was accepted |
+| `stop()` | Stops the run, or takes a waiting message off the queue |
+| `answer(dialogId, value)` | Answers an extension's question; `null` dismisses it |
+| `error` | What went wrong with the last thing asked of the chat |
+
+The shapes are the ones the server sends (`apps/server/src/contract/protocol.ts`: `SessionDoc`, `Item`). `host.call` and `host.file` stay on `host`, because they reach only what the component's own placement gave it.
+
+### A frontend for a chat
+
+A chat has a frontend: what shows it and lets a person act on it. PiSpark's own is the conversation and the reply box. An extension supplies another by placing a component in `chat.page`. Both are given the same session and nothing else, so an extension's frontend can be a page that hardly shows the conversation, or a different chat altogether (the test fixture `apps/server/test/fixtures/frontend-extension` is a chat drawn as a plain log with its own input, built from `session` alone).
 
 A component in `chat.page` takes the whole chat area: the chat's header stays, and the conversation and the reply box step aside. A **Page / Chat** switch in the header shows the conversation again, with everything the agent did, and the switch is remembered per chat while the app is open. While the page shows and an extension's question is open, the header says the chat is waiting and offers the conversation. Removing the placement brings the conversation back.
 
-The page is an ordinary component: `props` for what it shows, `calls` for what it can do (for example `pi.sendUserMessage(...)` to have the agent work; the chat then shows as working and can be stopped, like a run you started), `files` for what it reads. PiSpark gives it the area's full width and height and scrolls it when it is taller; the layout inside is the extension's. A page that keeps its data in files in the chat's working folder can watch them and emit the view again when the agent changes them.
+The frontend is an ordinary component: `session` for the chat itself, `props` for what its extension wants it to show, `calls` for what it can do (for example `pi.sendUserMessage(...)` to have the agent work; the chat then shows as working and can be stopped, like a run you started), `files` for what it reads. PiSpark gives it the area's full width and height and scrolls it when it is taller; the layout inside is the extension's. A page that keeps its data in files in the chat's working folder can watch them and emit the view again when the agent changes them.
 
 The page shows once its component has compiled, so a chat opens on the conversation for a moment first.
 

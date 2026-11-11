@@ -36,6 +36,13 @@ export async function addViewExtension(home: string, id: string) {
   await cp(viewExtension, join(home, "personas", id, "extensions", "views"), { recursive: true });
 }
 
+export const frontendExtension = fileURLToPath(new URL("./frontend-extension/", import.meta.url));
+
+/** Add the extension that supplies its own frontend for the chat to a persona, as a folder. */
+export async function addFrontendExtension(home: string, id: string) {
+  await cp(frontendExtension, join(home, "personas", id, "extensions", "frontend"), { recursive: true });
+}
+
 /** Add the controlled test extension to a persona folder. */
 export async function addControlledExtension(home: string, id: string) {
   const dir = join(home, "personas", id, "extensions");
