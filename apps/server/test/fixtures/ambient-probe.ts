@@ -28,7 +28,7 @@ const setup: Setup = { layers: [], items: [], tools: [], settings: {}, instructi
 const services = await createSessionServices({
   setup, cwd: join(root, 'cwd'), agentDir: join(root, 'agent'),
   fixed: { provider: provider.provider(), id: 'deterministic' },
-  admission: { valid: () => true, beforeSettle: async () => {}, beforeProviderDispatch: () => {} },
+  admission: { valid: () => true, beforeRun: async () => {}, beforeSettle: async () => {}, beforeProviderDispatch: () => {} },
   host: { views: { bind: () => () => {} } },
 });
 await assert.rejects(services.modelRuntime.getAuth('anthropic'), /credentials/);

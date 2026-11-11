@@ -33,7 +33,9 @@ Every session gets a separate `ModelRuntime`, `SettingsManager`, `ResourceLoader
 | `stop(id)` | Stop admissions, abort/drain, await native `session_shutdown`, flush settings, dispose, release owner. History remains. |
 | `shutdown()` | Stop new sessions/inputs and drain all live sessions, including pending initialization. |
 
-Steer and follow-up input belongs to the run it was sent to (see adaptation 3 below). Extension-originated inputs are not host RPC admissions. A stalled trusted hook retains ownership until it actually returns; deadlines still report timeout.
+Steer and follow-up input belongs to the run it was sent to (see adaptation 3 below). Extension-originated inputs are not host RPC admissions.
+
+**A run Pi starts by itself is a run like any other.** An extension's `pi.sendUserMessage`, or a custom message that starts a turn, makes Pi run the agent without a `start`. A host handler on Pi's `before_agent_start` adopts it: the chat is saved as active and shown as `running`, it can be cancelled, it is bounded by the run deadline and it holds a run slot. Past the limit it waits for its slot there (Pi counts as busy meanwhile) and reports `queued: true`. Pi's `agent_settled` ends it. Not handled: an extension starting a run while the chat's own prompt waits for a slot (`queued`), or while the chat is in `error`; that run goes on as Pi started it, untracked. A stalled trusted hook retains ownership until it actually returns; deadlines still report timeout.
 
 Start input goes through Pi's normal prompt handling: persona prompt templates expand as `/commands` and extension commands run, as in terminal Pi. Native command-context new/switch/fork/tree/reload operations throw unsupported. Resource expansion requested by extensions also throws; additional resources require host admission. Native extension hooks, tools, bus events and lifecycle remain available. No arbitrary EventBus channel is exposed to clients.
 

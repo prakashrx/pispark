@@ -87,7 +87,7 @@ PiSpark owns each place's frame (chips and actions sit in a row, blocks around t
 
 A component in `chat.page` takes the whole chat area: the chat's header stays, and the conversation and the reply box step aside. A **Page / Chat** switch in the header shows the conversation again, with everything the agent did, and the switch is remembered per chat while the app is open. While the page shows and an extension's question is open, the header says the chat is waiting and offers the conversation. Removing the placement brings the conversation back.
 
-The page is an ordinary component: `props` for what it shows, `calls` for what it can do (for example `pi.sendUserMessage(...)` to have the agent work), `files` for what it reads. PiSpark gives it the area's full width and height and scrolls it when it is taller; the layout inside is the extension's. A page that keeps its data in files in the chat's working folder can watch them and emit the view again when the agent changes them.
+The page is an ordinary component: `props` for what it shows, `calls` for what it can do (for example `pi.sendUserMessage(...)` to have the agent work; the chat then shows as working and can be stopped, like a run you started), `files` for what it reads. PiSpark gives it the area's full width and height and scrolls it when it is taller; the layout inside is the extension's. A page that keeps its data in files in the chat's working folder can watch them and emit the view again when the agent changes them.
 
 The page shows once its component has compiled, so a chat opens on the conversation for a moment first.
 

@@ -62,6 +62,15 @@ export default function (pi) {
       placeOutside: () => show(pi, { slot: "reply.below", component: file("../Outside.svelte") }),
       placeBroken: () => show(pi, { slot: "reply.below", key: "broken", component: file("./Broken.svelte") }),
       placeNowhere: () => show(pi, { slot: "side.panel", component: file("./Chip.svelte") }),
+      // The extension has the agent work: a user message, or a custom message that starts a turn.
+      ask: (text) => {
+        pi.sendUserMessage(text);
+        return true;
+      },
+      nudge: (text) => {
+        pi.sendMessage({ customType: "nudge", content: text, display: true }, { triggerTurn: true });
+        return true;
+      },
       placePage: () => page(true),
       removePage: () => page(false),
     },

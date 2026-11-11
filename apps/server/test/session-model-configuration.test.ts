@@ -485,7 +485,7 @@ test("createSessionServices: independently mutable managed runtimes share only e
       cwd: root,
       agentDir,
       managed: selected,
-      admission: { valid: () => true, beforeSettle: async () => {}, beforeProviderDispatch: () => {} },
+      admission: { valid: () => true, beforeRun: async () => {}, beforeSettle: async () => {}, beforeProviderDispatch: () => {} },
       host: { views: { bind: () => () => {} } },
     });
   const a = await services(join(root, "agent-a"));

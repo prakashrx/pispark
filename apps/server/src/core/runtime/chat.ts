@@ -138,6 +138,8 @@ export class Chat {
   /** The current (or last) run and its completion. */
   private run?: Run;
   private runDone?: Promise<RunResult>;
+  /** Ends a run Pi started by itself (see `adopt`). */
+  private settleAdopted?: () => void;
   /** Steer or follow-up input being prepared. */
   private input?: Promise<unknown>;
   private cancelling?: Promise<void>;
@@ -362,6 +364,7 @@ export class Chat {
       fixed,
       admission: {
         valid: () => inputAdmission.getStore()?.valid() ?? true,
+        beforeRun: () => this.adopt(),
         beforeProviderDispatch: () => {
           // Pi still calls the provider once after a cancel that arrived while it prepared the run.
           if (this.run?.cancelled || this.status === "stopping") {
@@ -453,6 +456,12 @@ export class Chat {
     if (event.type === "agent_settled") this.running.clear();
     if (event.type === "agent_start" && this.run) this.run.admissionClosed = false;
     if (event.type === "agent_settled" && this.run) this.run.settled = true;
+    // A run Pi started by itself ends here; one PiSpark started ends where it was sent.
+    if (event.type === "agent_settled" && this.settleAdopted) {
+      const settle = this.settleAdopted;
+      this.settleAdopted = undefined;
+      settle();
+    }
     // Pi's session name is the chat title: an extension's pi.setSessionName renames the chat.
     if (event.type === "session_info_changed" && event.name)
       try {
@@ -566,62 +575,102 @@ export class Chat {
     resolve?.({ outcome: "cancelled" });
     this.changed();
   }
-  /** Runs a prompt; the chat holds a run slot. */
-  private begin(text: string): Promise<RunResult> {
+  /**
+   * The chat starts working: saved as active before any model or tool side effect, shown as
+   * running, bounded by the run deadline. `settle` ends the run, once.
+   */
+  private mark(text?: string): { run: Run; settle: () => RunResult } {
     const { host } = this;
-    const session = this.loaded().session;
     const started = Date.now();
     const { queued: _queued, ...current } = this.metadata;
     const metadata = { ...current, active: true, interrupted: false };
-    this.firstTitle(metadata, text);
-    host.storage.write(metadata); // Before any model/tool side effects.
+    if (text !== undefined) this.firstTitle(metadata, text);
+    host.storage.write(metadata);
     this.metadata = metadata;
     this.status = "running";
     host.logger.event("session.start", { sessionId: this.id, outcome: "completed" });
     this.error = undefined;
     const run: Run = { cancelled: false, settled: false };
     this.run = run;
+    this.touch();
     this.changed();
     const timer = setTimeout(() => {
       this.error = "timeout";
       void this.cancel().catch(() => {});
     }, host.runTimeout);
+    const settle = (): RunResult => {
+      run.settled = true;
+      clearTimeout(timer);
+      this.metadata.active = !!this.error;
+      this.metadata.interrupted ||= !!this.error;
+      try {
+        host.storage.write(this.metadata);
+      } catch {
+        this.error = "storage";
+        this.metadata.active = true;
+      }
+      if (this.status === "running") this.status = this.error ? "error" : "idle";
+      this.paused = false;
+      host.slots.withdraw(this.id);
+      host.slots.release(this.id);
+      this.touch();
+      host.logger.event("session.settle", {
+        sessionId: this.id,
+        durationMs: Date.now() - started,
+        outcome: this.error ? "failed" : run.cancelled ? "cancelled" : "completed",
+        code: this.error,
+      });
+      this.changed();
+      return this.error ? { outcome: "failed", error: this.error } : { outcome: run.cancelled ? "cancelled" : "completed" };
+    };
+    return { run, settle };
+  }
+  /** Runs a prompt; the chat holds a run slot. */
+  private begin(text: string): Promise<RunResult> {
+    const session = this.loaded().session;
+    const { settle } = this.mark(text);
     this.runDone = (async (): Promise<RunResult> => {
       try {
         // The persona's prompts work as /commands, as in terminal Pi. A cancel that arrives while Pi
         // prepares the run is caught where the provider would be called (beforeProviderDispatch).
         await session.prompt(text, { expandPromptTemplates: true, source: "rpc" });
         await session.waitForIdle();
-        return this.error ? { outcome: "failed", error: this.error } : { outcome: run.cancelled ? "cancelled" : "completed" };
       } catch (error) {
         this.error = runtimeError(error, "execution").code;
-        return { outcome: "failed", error: this.error };
-      } finally {
-        run.settled = true;
-        clearTimeout(timer);
-        this.metadata.active = !!this.error;
-        this.metadata.interrupted ||= !!this.error;
-        try {
-          host.storage.write(this.metadata);
-        } catch {
-          this.error = "storage";
-          this.metadata.active = true;
-        }
-        if (this.status === "running") this.status = this.error ? "error" : "idle";
-        this.paused = false;
-        host.slots.withdraw(this.id);
-        host.slots.release(this.id);
-        this.touch();
-        host.logger.event("session.settle", {
-          sessionId: this.id,
-          durationMs: Date.now() - started,
-          outcome: this.error ? "failed" : run.cancelled ? "cancelled" : "completed",
-          code: this.error,
-        });
-        this.changed();
       }
-    })().then((result) => (this.error ? { outcome: "failed", error: this.error } : result));
+      return settle();
+    })();
     return this.runDone;
+  }
+  /**
+   * A run Pi starts by itself (an extension's `pi.sendUserMessage`, or a custom message that
+   * starts a turn) is a run like any other: shown as running, saved as active, stoppable, and
+   * holding a run slot. Pi calls this before the agent starts and counts as busy meanwhile, so
+   * past the limit the run waits here for its slot. Pi's `agent_settled` ends it.
+   */
+  private async adopt(): Promise<void> {
+    // A prompt PiSpark sent is already a run. A chat that is closing or failed takes none.
+    if (this.status !== "idle" || this.closed || !this.session || !this.host.accepting()) return;
+    let marked: ReturnType<Chat["mark"]>;
+    try {
+      marked = this.mark();
+    } catch {
+      // The chat could not be saved as active; the run goes on as Pi started it.
+      this.ui?.failed("The chat could not be saved before an extension's run.");
+      return;
+    }
+    this.runDone = new Promise<RunResult>((resolve) => (this.settleAdopted = () => resolve(marked.settle())));
+    if (this.host.slots.take(this.id)) return;
+    await new Promise<void>((go) => {
+      // Cancelling or stopping lets it through without a slot (`wake`); it is then aborted.
+      this.resuming = () => {
+        this.resuming = undefined;
+        go();
+        this.changed();
+      };
+      this.host.slots.wait(this.id, this.resuming);
+      this.changed();
+    });
   }
   /** Waiting for a person, the run gives its slot to the next chat. */
   private pause(): void {

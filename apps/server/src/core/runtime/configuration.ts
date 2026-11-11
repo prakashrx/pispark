@@ -101,6 +101,8 @@ export async function createSessionServices(options: {
   fixed?: { provider: Provider; id: string };
   admission: {
     valid: () => boolean;
+    /** Before every agent run, whoever started it; the run starts when this resolves. */
+    beforeRun: () => Promise<void>;
     beforeSettle: () => Promise<void>;
     beforeProviderDispatch: () => void;
   };
@@ -247,6 +249,8 @@ export async function createSessionServices(options: {
               : { action: "continue" },
         ],
       ],
+      // Returns nothing, so the system prompt other handlers chained stays as it is.
+      ["before_agent_start", [async () => void (await admission.beforeRun())]],
       ["agent_before_settle", [admission.beforeSettle]],
     ]),
     tools: new Map(),
