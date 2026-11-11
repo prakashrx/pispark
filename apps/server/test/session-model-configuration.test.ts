@@ -4,24 +4,24 @@ import { mkdtemp, readFile, writeFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { localProviderSettings } from "./fixtures/provider-settings.js";
-import { SessionRuntime } from "../src/runtime/session-runtime.js";
+import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 
 import {
   registerApiProvider,
   resetApiProviders,
 } from "@earendil-works/pi-ai/compat";
-import { ProviderSettings } from "../src/runtime/provider-settings.js";
+import { ProviderSettings } from "../src/core/runtime/provider-settings.js";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import { AuthProviderControl } from "./fixtures/provider-settings.js";
 import { LocalProviderControl, eventually } from "./fixtures/local-provider.js";
 import {
   nativeModelRuntime,
   guardModelDispatch,
-} from "../src/runtime/native-model-runtime.js";
+} from "../src/core/runtime/native-model-runtime.js";
 
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { Setup } from "../src/personas/resolve.js";
-import { createSessionServices } from "../src/runtime/configuration.js";
+import type { Setup } from "../src/core/personas/resolve.js";
+import { createSessionServices } from "../src/core/runtime/configuration.js";
 
 const provider = "pispark-local-test";
 for (const kind of ["modelOverrides", "models"] as const)

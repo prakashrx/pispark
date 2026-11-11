@@ -5,10 +5,10 @@ import test from "node:test";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
-import { compileView, viewBundle } from "../src/extensions/view-compiler.js";
-import { SessionRuntime } from "../src/runtime/session-runtime.js";
-import { SessionHttp } from "../src/session-http.js";
-import { createAppServer } from "../src/server.js";
+import { compileView, viewBundle } from "../src/core/extensions/view-compiler.js";
+import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
+import { SessionHttp } from "../src/http/session-http.js";
+import { createAppServer } from "../src/http/server.js";
 import { addViewExtension, testHome, viewExtension } from "./fixtures/home.js";
 import { noticeText } from "./fixtures/chat.js";
 

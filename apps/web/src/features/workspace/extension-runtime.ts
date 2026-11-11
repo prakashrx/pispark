@@ -8,7 +8,7 @@ import * as easing from "svelte/easing";
 import * as motion from "svelte/motion";
 import * as reactivity from "svelte/reactivity";
 import * as events from "svelte/events";
-import type { SHARED_SVELTE } from "../../../../server/src/extensions/shared-svelte";
+import type { SHARED_SVELTE } from "../../../../server/src/contract/shared-svelte";
 
 /**
  * The app's own Svelte, shared with extension components (the server compiles their `svelte`

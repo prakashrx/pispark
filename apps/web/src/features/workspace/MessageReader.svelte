@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import type { PartPage } from "../../../../server/src/protocol";
+  import type { PartPage } from "../../../../server/src/contract/protocol";
   import Button from "../../lib/ui/Button.svelte";
   import type { PartRef } from "./chat-turns";
   import { useSessions } from "./session-client.svelte";

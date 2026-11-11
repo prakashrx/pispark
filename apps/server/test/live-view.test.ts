@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SessionRuntime } from "../src/runtime/session-runtime.js";
-import type { Item, LiveOp } from "../src/protocol.js";
-import { applyOp } from "../src/stream-ops.js";
-import type { Json } from "../src/stream-ops.js";
+import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
+import type { Item, LiveOp } from "../src/contract/protocol.js";
+import { applyOp } from "../src/contract/stream-ops.js";
+import type { Json } from "../src/contract/stream-ops.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { StyledLine, StyledSpan } from "../../../../server/src/protocol";
+  import type { StyledLine, StyledSpan } from "../../../../server/src/contract/protocol";
 
   /** Text an extension wrote for a terminal, drawn with this theme's colors. */
   let { lines, class: className = "" }: { lines: StyledLine[]; class?: string } = $props();

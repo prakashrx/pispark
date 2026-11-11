@@ -7,13 +7,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { request, type IncomingMessage, type ServerResponse } from "node:http";
 import { observeLive } from "./fixtures/live-client.js";
-import { SessionRuntime, type RuntimeConfiguration } from "../src/runtime/session-runtime.js";
-import { SessionHttp } from "../src/session-http.js";
-import { createAppServer } from "../src/server.js";
-import { bundledTransportPatched } from "../src/host-configuration.js";
+import { SessionRuntime, type RuntimeConfiguration } from "../src/core/runtime/session-runtime.js";
+import { SessionHttp } from "../src/http/session-http.js";
+import { createAppServer } from "../src/http/server.js";
+import { bundledTransportPatched } from "../src/core/runtime/transport-gate.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
-import type { ItemsPage, PartPage, Receipt } from "../src/protocol.js";
+import type { ItemsPage, PartPage, Receipt } from "../src/contract/protocol.js";
 
 /** An ordinary Pi extension whose tool returns far more than a chat shows inline. */
 const BIG = `

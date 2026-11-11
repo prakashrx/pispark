@@ -16,7 +16,7 @@
     PersonaDefinition,
     PersonaTarget,
     ThinkingLevel,
-  } from "../../../../server/src/persona-protocol";
+  } from "../../../../server/src/contract/persona-protocol";
   let {
     target,
     embedded = false,

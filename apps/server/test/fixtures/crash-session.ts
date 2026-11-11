@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { SessionRuntime } from "../../src/runtime/session-runtime.js";
+import { SessionRuntime } from "../../src/core/runtime/session-runtime.js";
 import { LocalProviderControl, eventually } from "./local-provider.js";
 import { inFlight } from "./chat.js";
 

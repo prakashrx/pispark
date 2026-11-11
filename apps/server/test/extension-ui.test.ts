@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { styledLines, tidy, webTheme } from "../src/extensions/styled-text.js";
-import { SessionRuntime } from "../src/runtime/session-runtime.js";
+import { styledLines, tidy, webTheme } from "../src/core/extensions/styled-text.js";
+import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { testHome } from "./fixtures/home.js";
 
 test("styled text: Pi theme colors become PiSpark roles; raw colors, links and layout survive", () => {

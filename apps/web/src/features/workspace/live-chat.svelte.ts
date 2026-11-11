@@ -3,9 +3,9 @@ import type {
   ItemsPage,
   LiveDoc,
   LiveEvent,
-} from "../../../../server/src/protocol";
-import { applyOp } from "../../../../server/src/stream-ops";
-import type { Json } from "../../../../server/src/stream-ops";
+} from "../../../../server/src/contract/protocol";
+import { applyOp } from "../../../../server/src/contract/stream-ops";
+import type { Json } from "../../../../server/src/contract/stream-ops";
 
 const PAGE = 40;
 type Get = <T>(path: string) => Promise<T>;

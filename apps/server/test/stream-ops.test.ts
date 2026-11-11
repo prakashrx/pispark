@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyOp, diffOps, type DocOp, type Json } from "../src/stream-ops.js";
+import { applyOp, diffOps, type DocOp, type Json } from "../src/contract/stream-ops.js";
 
 const apply = (doc: { [key: string]: Json }, ops: DocOp[]) => {
   for (const op of ops) applyOp(doc, op);

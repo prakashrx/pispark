@@ -7,7 +7,7 @@
   import SettingsPage from "../../../lib/ui/SettingsPage.svelte";
   import ProviderRow from "./ProviderRow.svelte";
   import { useSessions } from "../../workspace/session-client.svelte";
-  import { providerErrorMessages } from "../../../../../server/src/provider-protocol";
+  import { providerErrorMessages } from "../../../../../server/src/contract/provider-protocol";
   const client = useSessions().providers;
   let query = $state("");
   let filter = $state("all");

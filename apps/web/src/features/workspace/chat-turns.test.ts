@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import type { Item, ItemPart } from "../../../../server/src/protocol";
+import type { Item, ItemPart } from "../../../../server/src/contract/protocol";
 import { buildTurns, clippedPart, itemText } from "./chat-turns";
 import { describeCall, summarizeCalls } from "./tool-views";
 import { slotOf } from "./extension-views";

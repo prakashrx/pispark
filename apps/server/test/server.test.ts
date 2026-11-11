@@ -5,7 +5,7 @@ import { request, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
-import { createAppServer } from "../src/server.js";
+import { createAppServer } from "../src/http/server.js";
 
 async function listen(t: TestContext, server: Server): Promise<string> {
   server.listen(0, "127.0.0.1");

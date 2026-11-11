@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import type { Item, ItemsPage, LiveEvent, SessionDoc } from "../../../../server/src/protocol";
+import type { Item, ItemsPage, LiveEvent, SessionDoc } from "../../../../server/src/contract/protocol";
 import { LiveChat } from "./live-chat.svelte";
 
 const session = { id: "s", status: "running" } as unknown as SessionDoc;

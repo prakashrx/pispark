@@ -1,5 +1,5 @@
-import { NOTICE_ENTRY, type Item, type StyledLine } from "../../src/protocol.js";
-import type { SessionRuntime } from "../../src/runtime/session-runtime.js";
+import { NOTICE_ENTRY, type Item, type StyledLine } from "../../src/contract/protocol.js";
+import type { SessionRuntime } from "../../src/core/runtime/session-runtime.js";
 
 /** Everything a chat holds, as a client sees it: saved items, then what is still in flight. */
 export const chatItems = (runtime: SessionRuntime, id: string): Item[] => [

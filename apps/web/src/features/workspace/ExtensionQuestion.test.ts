@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { expect, test, vi } from "vitest";
-import type { ExtensionDialog } from "../../../../server/src/protocol";
+import type { ExtensionDialog } from "../../../../server/src/contract/protocol";
 import ExtensionQuestion from "./ExtensionQuestion.svelte";
 
 const ask = (dialog: ExtensionDialog) => {

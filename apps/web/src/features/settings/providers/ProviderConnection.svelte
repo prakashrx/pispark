@@ -3,7 +3,7 @@
   import Button from "../../../lib/ui/Button.svelte";
   import AuthPrompt from "./AuthPrompt.svelte";
   import { AuthClient } from "../provider-client.svelte";
-  import { providerErrorMessages } from "../../../../../server/src/provider-protocol";
+  import { providerErrorMessages } from "../../../../../server/src/contract/provider-protocol";
   import type { ProviderInfo } from "./types";
   let {
     provider,

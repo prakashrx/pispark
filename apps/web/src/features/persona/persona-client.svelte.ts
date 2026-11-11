@@ -7,7 +7,7 @@ import {
   type PersonaTarget,
   type PersonaView,
   type ResolvedItem,
-} from "../../../../server/src/persona-protocol";
+} from "../../../../server/src/contract/persona-protocol";
 import { personaError } from "./persona-presentation";
 
 export async function personaRequest<T>(

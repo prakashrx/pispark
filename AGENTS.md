@@ -42,6 +42,7 @@ Start with real agent execution and session interaction, then resource compositi
 
 ## Engineering, tracking, and delivery
 
+- **Keep the server's three zones apart** ([architecture](docs/architecture.md#three-zones-in-the-server)): `contract/` imports nothing, `core/` imports only `contract/`, `http/` imports both, and the web imports only `contract/`. Put nothing in the core that only makes sense for one client's screen or one domain. `boundaries.test.ts` enforces the imports; the rest is review.
 - Read existing code first. Prefer small explicit modules and reusable concrete behavior over giant components, catch-all services, generic factories, speculative abstractions, or unnecessary dependencies.
 - Maintain accurate implemented-state docs; link product direction to VISION.md instead of creating another vision document.
 - When `.work/` records exist, read/update relevant goals, tasks, checkpoints, and evidence. Use descriptive kebab-case names; preserve historical decisions as history, not current authority. Plans stay high-level.

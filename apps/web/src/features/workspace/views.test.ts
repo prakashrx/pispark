@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, expect, test } from "vitest";
-import type { Item } from "../../../../server/src/protocol";
+import type { Item } from "../../../../server/src/contract/protocol";
 import { buildTurns } from "./chat-turns";
 import ResponseTurn from "./ResponseTurn.svelte";
 import { artifactsOf } from "./tool-views";

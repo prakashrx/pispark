@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { test, type TestContext } from "node:test";
-import { createAppServer } from "../src/server.js";
-import { SessionRuntime } from "../src/runtime/session-runtime.js";
-import { SessionHttp } from "../src/session-http.js";
-import { SafeLogger } from "../src/logger.js";
-import type { PersonaSummary, PersonaView } from "../src/persona-protocol.js";
+import { createAppServer } from "../src/http/server.js";
+import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
+import { SessionHttp } from "../src/http/session-http.js";
+import { SafeLogger } from "../src/core/logger.js";
+import type { PersonaSummary, PersonaView } from "../src/contract/persona-protocol.js";
 import { testHome } from "./fixtures/home.js";
 
 async function fixture(t: TestContext) {

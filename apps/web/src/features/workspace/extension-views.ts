@@ -1,5 +1,5 @@
 import type { Component } from "svelte";
-import type { ExtensionContribution, ExtensionView } from "../../../../server/src/protocol";
+import type { ExtensionContribution, ExtensionView } from "../../../../server/src/contract/protocol";
 import type { Segment } from "./chat-turns";
 
 /**

@@ -8,7 +8,7 @@
   import type {
     ItemType,
     ResolvedItem,
-  } from "../../../../server/src/persona-protocol";
+  } from "../../../../server/src/contract/persona-protocol";
   import {
     ITEM_LABELS,
     originLabel,

@@ -1,5 +1,5 @@
-import type { SessionInfo } from "../../../../server/src/protocol";
-import { validChatTitle } from "../../../../server/src/runtime/chat-title";
+import type { SessionInfo } from "../../../../server/src/contract/protocol";
+import { validChatTitle } from "../../../../server/src/contract/chat-title";
 
 export type CommandUncertaintyKind =
   | "acceptance-unknown"

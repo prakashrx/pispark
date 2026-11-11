@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { SessionRuntime } from '../../src/runtime/session-runtime.js';
+import { SessionRuntime } from '../../src/core/runtime/session-runtime.js';
 import { LocalProviderControl } from './local-provider.js';
-import { createSessionServices } from '../../src/runtime/configuration.js';
+import { createSessionServices } from '../../src/core/runtime/configuration.js';
 import { createAgentSession, SessionManager } from '@earendil-works/pi-coding-agent';
-import { ExtensionUI } from '../../src/extensions/extension-ui.js';
-import { unsupported } from '../../src/runtime/errors.js';
-import type { Setup } from '../../src/personas/resolve.js';
+import { ExtensionUI } from '../../src/core/extensions/extension-ui.js';
+import { unsupported } from '../../src/core/runtime/errors.js';
+import type { Setup } from '../../src/core/personas/resolve.js';
 
 // HOME/USERPROFILE/PI_CODING_AGENT_DIR point at a planted terminal Pi setup; none of it may load.
 const root = process.argv[2]!;

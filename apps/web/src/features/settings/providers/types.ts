@@ -1,1 +1,1 @@
-export type { ProviderInfo } from "../../../../../server/src/provider-protocol";
+export type { ProviderInfo } from "../../../../../server/src/contract/provider-protocol";

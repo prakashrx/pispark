@@ -5,10 +5,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
-import { SessionRuntime } from "../src/runtime/session-runtime.js";
-import { SessionHttp } from "../src/session-http.js";
-import { ProviderHttp } from "../src/provider-http.js";
-import { createAppServer } from "../src/server.js";
+import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
+import { SessionHttp } from "../src/http/session-http.js";
+import { ProviderHttp } from "../src/http/provider-http.js";
+import { createAppServer } from "../src/http/server.js";
 import { localProviderSettings } from "./fixtures/provider-settings.js";
 
 async function host(t: { after: (fn: () => unknown) => void }) {

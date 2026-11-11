@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Item } from "../src/protocol.js";
-import { boundTail } from "../src/runtime/items.js";
-import { SessionRuntime } from "../src/runtime/session-runtime.js";
+import type { Item } from "../src/contract/protocol.js";
+import { boundTail } from "../src/core/runtime/items.js";
+import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { testHome } from "./fixtures/home.js";
 
 /** Ordinary Pi extension tools whose results are larger than the chat sends whole. */

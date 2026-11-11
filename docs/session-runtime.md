@@ -6,7 +6,7 @@ This is a **client-independent runtime**, now owned by the local HTTP entry poin
 
 ## Entry point and ownership
 
-`apps/server/src/runtime/session-runtime.ts` exports `SessionRuntime`, configuration types and safe `RuntimeError` codes. It holds the chats: which are loaded, the run slots, idle unloading and settings. Each loaded chat is a `Chat` (`runtime/chat.ts`), which owns its Pi session, what its extensions show, and its lifecycle: `starting → idle ⇄ (queued →) running → cancelling → idle | error`, and from any state `stopping → stopped`.
+`apps/server/src/core/runtime/session-runtime.ts` exports `SessionRuntime`, configuration types and safe `RuntimeError` codes. It holds the chats: which are loaded, the run slots, idle unloading and settings. Each loaded chat is a `Chat` (`runtime/chat.ts`), which owns its Pi session, what its extensions show, and its lifecycle: `starting → idle ⇄ (queued →) running → cancelling → idle | error`, and from any state `stopping → stopped`.
 
 Construct one owner with a `RuntimeConfiguration` whose only required field is `home`, the data folder. Chats live in `<home>/chats`, personas in `<home>/personas`, providers in `<home>/providers`. Tests may also pass `fixedModel` (a keyless loopback provider) and `providerSettings` (extra native providers, a models file); production never sets them.
 
@@ -79,7 +79,7 @@ Extensions get Pi's `rpc` mode with a real UI context; see [extensions](extensio
 
 ## Built-in PiSpark session integration
 
-Every created/reopened hosted session, with or without a persona, loads `src/extensions/pispark.ts` first through the existing explicit native module loader (source `.ts`, compiled `.js`). It is an ordinary Pi extension, not a persona resource, title-only framework or terminal installation. A persona extension that registers the reserved `pispark_set_title` tool fails session setup instead of silently shadowing it.
+Every created/reopened hosted session, with or without a persona, loads `src/core/extensions/pispark.ts` first through the existing explicit native module loader (source `.ts`, compiled `.js`). It is an ordinary Pi extension, not a persona resource, title-only framework or terminal installation. A persona extension that registers the reserved `pispark_set_title` tool fails session setup instead of silently shadowing it.
 
 The native tool accepts only `title:string` and asks for a short meaningful name when the topic is clear or meaningfully changes. A structured `before_agent_start` addition preserves existing prompts and advertises guidance only while the tool is active. The active tool list is the persona's enabled built-in tools plus every tool loaded extensions register (this one included), minus tools the persona switched off. A persona with no built-in tools still gets the title tool. The resolved list applies on every start and reopen. Trusted extensions can subsequently change tools/prompts; there is no forced-tool policy or sandbox.
 

@@ -1,4 +1,4 @@
-import type { LiveEvent } from "../../../../server/src/protocol";
+import type { LiveEvent } from "../../../../server/src/contract/protocol";
 
 const FRAME_LIMIT = 1024 * 1024;
 const HEADS = ["event: snapshot\ndata: ", "event: ops\ndata: ", "event: unloaded\ndata: "];

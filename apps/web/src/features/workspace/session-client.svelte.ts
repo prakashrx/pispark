@@ -1,5 +1,5 @@
 import { getContext, setContext } from "svelte";
-import type { Json } from "../../../../server/src/stream-ops";
+import type { Json } from "../../../../server/src/contract/stream-ops";
 import type {
   CallRequest,
   CallResponse,
@@ -10,7 +10,7 @@ import type {
   Receipt,
   SessionDoc,
   SessionInfo,
-} from "../../../../server/src/protocol";
+} from "../../../../server/src/contract/protocol";
 import type { PartRef } from "./chat-turns";
 import { LiveChat, type SavedChat } from "./live-chat.svelte";
 import { liveEvents } from "./live-stream";
@@ -24,7 +24,7 @@ class CommandUncertainty extends Error {
   }
 }
 import { ProviderClient } from "../settings/provider-client.svelte";
-import type { ModelChoice } from "../../../../server/src/provider-protocol";
+import type { ModelChoice } from "../../../../server/src/contract/provider-protocol";
 import { PersonaClient } from "../persona/persona-client.svelte";
 const context = Symbol("session-client");
 type InputCommand = Command extends infer C

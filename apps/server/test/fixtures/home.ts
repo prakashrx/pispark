@@ -3,8 +3,9 @@ import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { RuntimeConfiguration } from "../../src/runtime/configuration.js";
-import type { PersonaDefinition } from "../../src/persona-protocol.js";
+import type { RuntimeConfiguration } from "../../src/core/runtime/configuration.js";
+import type { PersonaDefinition } from "../../src/contract/persona-protocol.js";
+import { WORKSPACE_PLACES } from "../../src/http/workspace-places.js";
 import { LocalProviderControl } from "./local-provider.js";
 
 export const controlledExtension = fileURLToPath(
@@ -49,6 +50,7 @@ export async function testHome(prefix = "pispark-test-") {
   const provider = new LocalProviderControl();
   const configuration: RuntimeConfiguration = {
     home,
+    places: WORKSPACE_PLACES,
     fixedModel: { provider: provider.provider, id: "deterministic" },
   };
   /** A working folder under the test root. */

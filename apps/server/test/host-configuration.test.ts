@@ -6,8 +6,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bundledTransportPatched } from "../src/host-configuration.js";
-import { lockHome, prepareHome, resolveHome } from "../src/home.js";
+import { bundledTransportPatched } from "../src/core/runtime/transport-gate.js";
+import { WORKSPACE_PLACES } from "../src/http/workspace-places.js";
+import { lockHome, prepareHome, resolveHome } from "../src/core/home.js";
 
 test("PISPARK_HOME: default ~/.pispark, ~ expansion, absolute paths only", () => {
   assert.equal(resolveHome(undefined), join(homedir(), ".pispark"));
@@ -45,7 +46,7 @@ test("startup: transport gate, first-start Default persona, public bind refusal"
   });
   assert.notEqual(bind.status, 0);
   assert.match(bind.stderr, /HOST must be literal loopback/);
-  const source = new URL("../src/host-configuration.ts", import.meta.url).href;
+  const source = new URL("../src/http/host-configuration.ts", import.meta.url).href;
   const probe = spawnSync(
     process.execPath,
     [
@@ -59,7 +60,7 @@ test("startup: transport gate, first-start Default persona, public bind refusal"
   );
   if (bundledTransportPatched(process.versions.undici)) {
     assert.equal(probe.status, 0, probe.stderr);
-    assert.deepEqual(JSON.parse(probe.stdout), { home: root });
+    assert.deepEqual(JSON.parse(probe.stdout), { home: root, places: [...WORKSPACE_PLACES] });
   } else {
     assert.notEqual(probe.status, 0);
     assert.match(probe.stderr, /Native providers disabled/);

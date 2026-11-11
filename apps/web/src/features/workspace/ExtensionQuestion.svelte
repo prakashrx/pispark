@@ -3,7 +3,7 @@
   import Button from "../../lib/ui/Button.svelte";
   import Input from "../../lib/ui/Input.svelte";
   import Textarea from "../../lib/ui/Textarea.svelte";
-  import type { ExtensionDialog } from "../../../../server/src/protocol";
+  import type { ExtensionDialog } from "../../../../server/src/contract/protocol";
   import PromptFrame from "./PromptFrame.svelte";
   import SelectPrompt from "./SelectPrompt.svelte";
 

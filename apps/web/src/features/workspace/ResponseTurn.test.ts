@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { expect, test } from "vitest";
-import type { Item } from "../../../../server/src/protocol";
+import type { Item } from "../../../../server/src/contract/protocol";
 import { buildTurns } from "./chat-turns";
 import ResponseTurn from "./ResponseTurn.svelte";
 

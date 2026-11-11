@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import type { Item, LiveDoc, LiveEvent } from "../../src/protocol.js";
-import { applyOp } from "../../src/stream-ops.js";
-import type { Json } from "../../src/stream-ops.js";
+import type { Item, LiveDoc, LiveEvent } from "../../src/contract/protocol.js";
+import { applyOp } from "../../src/contract/stream-ops.js";
+import type { Json } from "../../src/contract/stream-ops.js";
 
 /** A minimal browser stand-in: reads `/live`, applies operations in order and keeps what it learned. */
 export async function observeLive(base: string, id: string) {

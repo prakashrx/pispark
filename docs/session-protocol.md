@@ -31,7 +31,7 @@ Development: `npm run dev` admits the exact Vite origin `http://127.0.0.1:5173` 
 
 ## Version1 wire contract
 
-Types: `apps/server/src/protocol.ts`, `provider-protocol.ts` and `persona-protocol.ts`. Persona management has its [own bounded operation table](personas.md#http-management). Browser-independent HTTP JSON plus SSE; no arbitrary extension EventBus, tool, credential-read, resource-loading or native-file RPC.
+Types: `apps/server/src/contract/protocol.ts`, `provider-protocol.ts` and `persona-protocol.ts`. Persona management has its [own bounded operation table](personas.md#http-management). Browser-independent HTTP JSON plus SSE; no arbitrary extension EventBus, tool, credential-read, resource-loading or native-file RPC.
 
 | Endpoint | Meaning |
 | --- | --- |

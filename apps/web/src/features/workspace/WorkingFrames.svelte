@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { StyledLine } from "../../../../server/src/protocol";
+  import type { StyledLine } from "../../../../server/src/contract/protocol";
   import StyledText from "./StyledText.svelte";
 
   /** An extension's working indicator: its frames, cycled at its interval (Pi's default 80ms). */

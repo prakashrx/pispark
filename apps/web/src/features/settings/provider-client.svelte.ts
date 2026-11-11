@@ -2,8 +2,8 @@ import type {
   ProviderCatalog,
   ModelChoice,
   AuthView,
-} from "../../../../server/src/provider-protocol";
-import { providerErrorMessages } from "../../../../server/src/provider-protocol";
+} from "../../../../server/src/contract/provider-protocol";
+import { providerErrorMessages } from "../../../../server/src/contract/provider-protocol";
 export async function providerRequest<T>(
   path: string,
   value?: unknown,

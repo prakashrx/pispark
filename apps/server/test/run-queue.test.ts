@@ -4,9 +4,9 @@ import { join } from "node:path";
 import test from "node:test";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
-import { SessionHttp } from "../src/session-http.js";
-import { createAppServer } from "../src/server.js";
-import { SessionRuntime } from "../src/runtime/session-runtime.js";
+import { SessionHttp } from "../src/http/session-http.js";
+import { createAppServer } from "../src/http/server.js";
+import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { addControlledExtension, testHome } from "./fixtures/home.js";
 import { eventually } from "./fixtures/local-provider.js";
 

@@ -3,7 +3,7 @@
   import Selector from "../../../lib/ui/Selector.svelte";
   import Input from "../../../lib/ui/Input.svelte";
   import Button from "../../../lib/ui/Button.svelte";
-  import type { AuthPromptView } from "../../../../../server/src/provider-protocol";
+  import type { AuthPromptView } from "../../../../../server/src/contract/provider-protocol";
 
   let {
     prompt,

@@ -1,4 +1,4 @@
-import { SafeLogger } from "../src/logger.js";
+import { SafeLogger } from "../src/core/logger.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -18,9 +18,9 @@ import { once } from "node:events";
 import {
   SessionRuntime,
   RuntimeError,
-} from "../src/runtime/session-runtime.js";
+} from "../src/core/runtime/session-runtime.js";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { assertPiBoundary } from "../src/runtime/pi-boundary.js";
+import { assertPiBoundary } from "../src/core/runtime/pi-boundary.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { addControlledExtension, testHome } from "./fixtures/home.js";
 import { chatItems, chatNotices, chatText, inFlight } from "./fixtures/chat.js";

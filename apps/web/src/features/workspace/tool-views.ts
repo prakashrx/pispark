@@ -1,4 +1,4 @@
-import type { Json } from "../../../../server/src/stream-ops";
+import type { Json } from "../../../../server/src/contract/stream-ops";
 import type { Segment, ToolCall } from "./chat-turns";
 import { registerGenericToolView, registerToolView, resolveToolView, type CallWords, type ToolView } from "./views.svelte";
 

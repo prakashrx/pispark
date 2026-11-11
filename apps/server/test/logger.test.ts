@@ -6,7 +6,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { correlated, SafeLogger } from "../src/logger.js";
+import { correlated, SafeLogger } from "../src/core/logger.js";
 
 test("logger projects only allowlisted fields and preserves independent async correlation", async () => {
   const lines: string[] = [];
@@ -118,7 +118,7 @@ for (const closeFallback of [false, true]) {
   test(`console logger survives a closed output pipe${closeFallback ? " and closed fallback pipe" : ""}`, async (t) => {
     const home = await mkdtemp(join(tmpdir(), "pispark-console-log-"));
     t.after(() => rm(home, { recursive: true, force: true }));
-    const source = new URL("../src/logger.js", import.meta.url).href;
+    const source = new URL("../src/core/logger.js", import.meta.url).href;
     const script = `import{SafeLogger}from${JSON.stringify(source)};const logger=new SafeLogger();setTimeout(()=>logger.event('host.start'),100);setTimeout(async()=>{await logger.close();process.exit(0)},250);`;
     const child = spawn(
       process.execPath,

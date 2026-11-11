@@ -4,11 +4,12 @@ import { existsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SessionRuntime } from "../../src/runtime/session-runtime.js";
-import { SessionHttp } from "../../src/session-http.js";
-import { createAppServer } from "../../src/server.js";
+import { SessionRuntime } from "../../src/core/runtime/session-runtime.js";
+import { SessionHttp } from "../../src/http/session-http.js";
+import { createAppServer } from "../../src/http/server.js";
 import { localProviderSettings } from "./provider-settings.js";
-import { ProviderHttp } from "../../src/provider-http.js";
+import { ProviderHttp } from "../../src/http/provider-http.js";
+import { WORKSPACE_PLACES } from "../../src/http/workspace-places.js";
 import { addControlledExtension, addViewExtension, writePersona } from "./home.js";
 
 // Optional harness-owned persistent state; never a production configuration switch.
@@ -61,7 +62,7 @@ await settingsFixture.settings.setDefault({
   provider: "pispark-local-test",
   id: "deterministic",
 });
-const runtime = new SessionRuntime({ home }, settingsFixture.settings);
+const runtime = new SessionRuntime({ home, places: WORKSPACE_PLACES }, settingsFixture.settings);
 const sessions = new SessionHttp(
   runtime,
   process.env.PISPARK_DEV_ORIGIN,

@@ -1,5 +1,5 @@
-import { NOTICE_ENTRY, type ExtensionView, type Item, type ItemPart, type StyledLine, type ToolProgress } from "../../../../server/src/protocol";
-import type { Json } from "../../../../server/src/stream-ops";
+import { NOTICE_ENTRY, type ExtensionView, type Item, type ItemPart, type StyledLine, type ToolProgress } from "../../../../server/src/contract/protocol";
+import type { Json } from "../../../../server/src/contract/stream-ops";
 import { artifactsOf } from "./tool-views";
 
 /** A clipped part of a finalized item, read on demand. */

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SafeLogger } from "../src/logger.js";
+import { SafeLogger } from "../src/core/logger.js";
 import {
   mkdtemp,
   mkdir,
@@ -15,8 +15,8 @@ import { join } from "node:path";
 import {
   SessionRuntime,
   type RuntimeConfiguration,
-} from "../src/runtime/session-runtime.js";
-import { TITLE_TOOL, toolChatTitle } from "../src/runtime/chat-title.js";
+} from "../src/core/runtime/session-runtime.js";
+import { TITLE_TOOL, toolChatTitle } from "../src/core/runtime/chat-title.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
 import { chatItems, chatNotices, chatText } from "./fixtures/chat.js";

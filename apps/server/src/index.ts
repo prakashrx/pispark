@@ -1,13 +1,13 @@
 import { existsSync } from "node:fs";
-import { SafeLogger } from "./logger.js";
+import { SafeLogger } from "./core/logger.js";
 import { fileURLToPath } from "node:url";
-import { createAppServer } from "./server.js";
-import { hostConfiguration } from "./host-configuration.js";
-import { lockHome, prepareHome } from "./home.js";
-import { SessionRuntime } from "./runtime/session-runtime.js";
-import { SessionHttp } from "./session-http.js";
-import { ProviderSettings } from "./runtime/provider-settings.js";
-import { ProviderHttp } from "./provider-http.js";
+import { createAppServer } from "./http/server.js";
+import { hostConfiguration } from "./http/host-configuration.js";
+import { lockHome, prepareHome } from "./core/home.js";
+import { SessionRuntime } from "./core/runtime/session-runtime.js";
+import { SessionHttp } from "./http/session-http.js";
+import { ProviderSettings } from "./core/runtime/provider-settings.js";
+import { ProviderHttp } from "./http/provider-http.js";
 
 const host = process.env.HOST ?? "127.0.0.1";
 if (!["127.0.0.1", "::1"].includes(host))

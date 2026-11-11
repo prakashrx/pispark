@@ -3,19 +3,19 @@ import { test } from "node:test";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { PersonaStore } from "../src/personas/store.js";
+import { PersonaStore } from "../src/core/personas/store.js";
 import {
   checkCycles,
   resolveSetup,
   viewPersona,
-} from "../src/personas/resolve.js";
+} from "../src/core/personas/resolve.js";
 import {
   DEFAULT_TOOLS,
   frontmatter,
   PersonaError,
   slug,
   validateDefinition,
-} from "../src/personas/format.js";
+} from "../src/core/personas/format.js";
 import { testHome } from "./fixtures/home.js";
 
 const code = (expected: string) => (error: unknown) =>

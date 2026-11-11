@@ -2,7 +2,7 @@ import type {
   ItemType,
   LayerRef,
   ResolvedItem,
-} from "../../../../server/src/persona-protocol";
+} from "../../../../server/src/contract/persona-protocol";
 
 const messages: Record<string, string> = {
   "invalid-input": "That request wasn’t valid.",

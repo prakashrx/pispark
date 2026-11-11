@@ -6,12 +6,26 @@
 
 Two npm workspaces, with no shared package or framework layer:
 
-- **`apps/server`**: Node's native HTTP server, written in TypeScript. `src/server.ts` creates a testable server; `src/index.ts` owns configuration, listening, and signal handling. `src/runtime/session-runtime.ts` adds an independently constructible session owner backed by pinned Pi SDK 1.5.0; the HTTP entry point owns its startup and shutdown via `SessionHttp`.
+- **`apps/server`**: Node's native HTTP server, written in TypeScript. `src/http/server.ts` creates a testable server; `src/index.ts` owns configuration, listening, and signal handling. `src/core/runtime/session-runtime.ts` adds an independently constructible session owner backed by pinned Pi SDK 1.5.0; the HTTP entry point owns its startup and shutdown via `SessionHttp`.
 - **`apps/web`**: Svelte 5 components compiled by Vite with local Tailwind CSS. `App.svelte` owns hash navigation; `routes.ts` and `RouteOutlet.svelte` map the four explicit routes (`#/workspace`, `#/settings`, `#/persona`, `#/sources`), plus the provider settings subroute `#/providers`. One `lib/layout/AppShell.svelte` owns the common sidebar frame and persistent global Ask. Generic typed controls live in `lib/ui`; feature components live in `features/workspace`, `settings`, `persona`, and `sources`; General shows read-only workspace configuration plus appearance preferences, and Sources marks connections unavailable. Provider sign-in, model browsing and disconnect happen inline in expandable provider rows. Settings and persona editing use an in-page `InlinePanel` (initial focus, Escape, focus return) instead of modal dialogs; item edits use its `editor` variant inside the item's own row (prompt text, files, reference settings, skill folders) and the persona name/description is edited in the page header. Chat info is a `Popover` on the chat header; the generic `Modal` primitive remains available but unused by first-party routes. The reply composer appears only while a chat is open; when one is, the global Ask recedes visually until focused or holding a draft. A small context-owned session client adapter owns transport, selected session and drafts. There is no router dependency or global state framework; browser storage holds only the selected UUID and the appearance preference.
 
 **Themes.** `lib/theme/themes.css` defines each theme as a neutral RGB ramp (`--n-0` page surface … `--n-950` strongest text), a sidebar surface and an accent; every semantic token (`--background`, `--muted-foreground`, `--interactive`, status tints, shadows) derives from those, and Tailwind's `zinc`/`gray`/`neutral`/`white` utilities map onto the same ramp so existing components follow the active theme. `lib/theme/themes.ts` names the themes (Daylight, Paper, Mist; Midnight, Ocean, Ember; plus System), font stacks and text sizes; `appearance.svelte.ts` stores the browser-local choice under `pispark.appearance` and applies `data-theme`, `--font-sans`, `--font-reading` and the root font size before the first render. Fonts are system stacks; none are bundled.
 
 In development, Vite serves the UI on loopback port 5173 and proxies `/api` to port 3000. In production, the compiled Node entry serves `apps/web/dist` relative to its own module location, not the working directory.
+
+### Three zones in the server
+
+`apps/server/src` is three folders with one direction of imports. `apps/server/test/boundaries.test.ts` fails when an import crosses the wrong way.
+
+| Zone | What it is | May import |
+| --- | --- | --- |
+| `contract/` | The types and pure functions a client may use: the session, persona and provider protocols, the live document's operations, chat title rules, the Svelte modules shared with extension components | nothing else |
+| `core/` | The hosting layer: `runtime/` (chats, run slots, storage, providers), `personas/`, `extensions/`, the data folder and the logger. No HTTP, no browser, nothing about how a client draws a chat | `contract` |
+| `http/` | The local server for the workspace: routes, static files, the host's configuration and the names of the places the workspace's chat UI offers to extensions | `core`, `contract` |
+
+`index.ts` wires them. `apps/web` imports the server only through `contract/`.
+
+**What belongs in the core:** something an app with no conversation on screen would still need (sessions, personas, run slots, calls). How a conversation looks (turn grouping, tool wording, slot names, Ask) is the workspace's. The core knows "chat", "persona", "extension", "slot" and "call", and no tool name except Pi's own.
 
 ### HTTP surface
 
@@ -47,9 +61,9 @@ Real-SDK tests use a deterministic local provider, including two simultaneous se
 
 ## Persona and observability foundation
 
-Concrete modules under `src/personas` own the strict `persona.json` format, persona and chat-layer folders, and the single resolution rule (Default → flattened parents → persona → chat layer; later layers win). The resolved setup feeds Pi's own ResourceLoader, settings and tool list; SessionManager remains the sole canonical transcript owner. Chats read personas live and compare a setup fingerprint to flag changes. Feature components in `features/persona` compose generic `lib/ui` controls; controls own appearance and keyboard behavior, never domain requests. `src/logger.ts` projects an allowlist into a serialized bounded sink, without credential/content/native-cause serialization. See [personas](personas.md).
+Concrete modules under `src/core/personas` own the strict `persona.json` format, persona and chat-layer folders, and the single resolution rule (Default → flattened parents → persona → chat layer; later layers win). The resolved setup feeds Pi's own ResourceLoader, settings and tool list; SessionManager remains the sole canonical transcript owner. Chats read personas live and compare a setup fingerprint to flag changes. Feature components in `features/persona` compose generic `lib/ui` controls; controls own appearance and keyboard behavior, never domain requests. `src/core/logger.ts` projects an allowlist into a serialized bounded sink, without credential/content/native-cause serialization. See [personas](personas.md).
 
-`src/extensions` holds PiSpark's side of Pi extensions: the built-in title extension, the per-chat `ExtensionUIContext` (Pi's `rpc` mode: questions, notices, statuses, widgets, editor text), the role theme and terminal-text-to-spans conversion, and running extensions' own renderers without a terminal. The web draws that state around the reply box and in the conversation. See [extensions](extensions.md).
+`src/core/extensions` holds PiSpark's side of Pi extensions: the built-in title extension, the per-chat `ExtensionUIContext` (Pi's `rpc` mode: questions, notices, statuses, widgets, editor text), the role theme and terminal-text-to-spans conversion, and running extensions' own renderers without a terminal. The web draws that state around the reply box and in the conversation. See [extensions](extensions.md).
 
 ## Next phase: follow the vision, then propose the smallest design
 

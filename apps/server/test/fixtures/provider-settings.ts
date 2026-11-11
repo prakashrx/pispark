@@ -10,9 +10,9 @@ import { LocalProviderControl } from "./local-provider.js";
 import {
   providerStores,
   ModelDefaults,
-} from "../../src/runtime/provider-storage.js";
-import { nativeModelRuntime } from "../../src/runtime/native-model-runtime.js";
-import { ProviderSettings } from "../../src/runtime/provider-settings.js";
+} from "../../src/core/runtime/provider-storage.js";
+import { nativeModelRuntime } from "../../src/core/runtime/native-model-runtime.js";
+import { ProviderSettings } from "../../src/core/runtime/provider-settings.js";
 export class AuthProviderControl extends LocalProviderControl {
   syncFails = false;
   refreshes = 0;

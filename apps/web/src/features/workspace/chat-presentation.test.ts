@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { chatName, chatStatus, commandUncertainty, folderName } from "./chat-presentation";
-import type { SessionInfo } from "../../../../server/src/protocol";
+import type { SessionInfo } from "../../../../server/src/contract/protocol";
 const chat: SessionInfo = {
   id: "private-uuid",
   createdAt: "2026-01-02T03:04:00Z",

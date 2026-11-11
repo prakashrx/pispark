@@ -3,11 +3,11 @@ import { test } from "node:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { chatTitle, validChatTitle } from "../src/runtime/chat-title.js";
+import { chatTitle, validChatTitle } from "../src/contract/chat-title.js";
 import {
   ChatStorage,
   type ChatMetadata,
-} from "../src/runtime/storage.js";
+} from "../src/core/runtime/storage.js";
 
 test("chat titles take only the first nonempty line, normalize controls and bound Unicode code points", () => {
   assert.equal(

@@ -6,17 +6,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
-import { ProviderAuth, safeAuthUrl } from "../src/runtime/provider-auth.js";
-import { ProviderSettings } from "../src/runtime/provider-settings.js";
+import { ProviderAuth, safeAuthUrl } from "../src/core/runtime/provider-auth.js";
+import { ProviderSettings } from "../src/core/runtime/provider-settings.js";
 import {
   nativeModelRuntime,
   requireSupportedTransport,
-} from "../src/runtime/native-model-runtime.js";
-import { ModelDefaults } from "../src/runtime/provider-storage.js";
+} from "../src/core/runtime/native-model-runtime.js";
+import { ModelDefaults } from "../src/core/runtime/provider-storage.js";
 import { localProviderSettings } from "./fixtures/provider-settings.js";
 import { eventually } from "./fixtures/local-provider.js";
-import { SessionRuntime } from "../src/runtime/session-runtime.js";
-import { bundledTransportPatched } from "../src/host-configuration.js";
+import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
+import { bundledTransportPatched } from "../src/core/runtime/transport-gate.js";
 
 async function fixture(t: { after: (fn: () => unknown) => void }) {
   const root = await mkdtemp(join(tmpdir(), "pispark-provider-"));
