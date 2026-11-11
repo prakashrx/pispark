@@ -263,22 +263,32 @@ export class ChatSession {
           const response = await fetch(`/api/sessions/${id}/live`, {
             signal: AbortSignal.any([source.signal, AbortSignal.timeout(70_000)]),
           });
-          let unloaded = false;
+          let end: "closed" | "unloaded" | "resync" = "closed";
+          let received = false;
           for await (const event of liveEvents(response)) {
             if (source !== this.source || source.signal.aborted) return;
             if (event.sessionId !== id) throw new Error("Invalid event");
             if (event.type === "unloaded") {
-              unloaded = true;
+              end = "unloaded";
               break;
             }
-            if (!(await this.live.apply(id, event))) break;
+            if (!(await this.live.apply(id, event))) {
+              end = "resync";
+              break;
+            }
+            received = true;
             const session = this.live.doc!.session;
             this.applyExtensionDraft(session, event.type === "snapshot");
             this.opening = false;
             this.connection = "Live";
             this.host.changed(session);
           }
-          if (unloaded) {
+          // The server ends every live stream after a while on purpose: follow on at once, still Live.
+          if (end === "closed" && received) {
+            if (source !== this.source || source.signal.aborted) return;
+            continue;
+          }
+          if (end === "unloaded") {
             if (source !== this.source || source.signal.aborted) return;
             // The server unloaded the chat while it was idle: load it again and carry on.
             try {
