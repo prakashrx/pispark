@@ -1,21 +1,22 @@
 <script lang="ts">
   import { contributionsFor, loadView } from "./extension-views";
-  import { useSessions } from "./session-client.svelte";
+  import { useChat } from "./session-client.svelte";
 
   /**
    * One of the chat's contribution points: draws what extensions placed here, in the order they
-   * placed it. Every component gets the same three things: `data` (what this place draws, when it
-   * has something: a tool call, a custom item), `host` (whose `call(name, data)` runs a function its
-   * own placement gave it, and whose `file(path)` is the address of a file in the folder that
-   * placement named) and the props its extension sent. PiSpark owns the frame around them.
+   * placed it. Every component gets the same things: `session` (the chat it is part of: its state,
+   * its items as they stream, and send, stop and answer), `data` (what this place draws, when it has
+   * something: a tool call, a custom item), `host` (whose `call(name, data)` runs a function its own
+   * placement gave it, and whose `file(path)` is the address of a file in the folder that placement
+   * named) and the props its extension sent. PiSpark owns the frame around them.
    */
   let { slot, data }: { slot: string; data?: unknown } = $props();
-  const client = useSessions();
-  const contributions = $derived(contributionsFor(client.snapshot?.extensions, slot));
+  const chat = useChat();
+  const contributions = $derived(contributionsFor(chat.doc?.extensions, slot));
   // One host per placement: it can reach only that placement's functions.
   const hostFor = (key: string) => ({
-    call: (name: string, payload?: unknown) => client.call(slot, key, name, payload),
-    file: (path: string) => client.fileUrl(slot, key, path),
+    call: (name: string, payload?: unknown) => chat.call(slot, key, name, payload),
+    file: (path: string) => chat.fileUrl(slot, key, path),
   });
   const propsOf = (props: unknown): Record<string, unknown> =>
     props && typeof props === "object" && !Array.isArray(props)
@@ -29,7 +30,7 @@
   <div class="extension-view" data-slot={slot}>
     {#await loadView(contribution.url) then View}
       <svelte:boundary>
-        <View {...propsOf(contribution.props)} {data} host={hostFor(contribution.key)} />
+        <View {...propsOf(contribution.props)} {data} session={chat} host={hostFor(contribution.key)} />
         {#snippet failed()}<span class="extension-view-failed" role="status">This extension view stopped working.</span>{/snippet}
       </svelte:boundary>
     {:catch}

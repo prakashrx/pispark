@@ -2,17 +2,16 @@
   import Popover from "../../lib/ui/Popover.svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
-  import { useSessions } from "./session-client.svelte";
+  import { useChat, useSessions } from "./session-client.svelte";
   /**
    * Facts about the open chat, anchored to an info button in the chat header so the
    * conversation never moves.
    */
   let { oneditpersona }: { oneditpersona?: () => void } = $props();
   const client = useSessions();
-  const snapshot = $derived(client.snapshot);
-  const chat = $derived(
-    snapshot ?? client.sessions.find((s) => s.id === client.selected),
-  );
+  const session = useChat();
+  const snapshot = $derived(session.doc);
+  const chat = $derived(session.info);
   const model = $derived(snapshot?.model);
   const modelName = $derived(
     client.providers.catalog.providers

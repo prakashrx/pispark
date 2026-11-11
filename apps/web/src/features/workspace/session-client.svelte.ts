@@ -1,39 +1,20 @@
 import { getContext, setContext } from "svelte";
-import type { Json } from "../../../../server/src/contract/stream-ops";
-import type {
-  CallRequest,
-  CallResponse,
-  Catalog,
-  HostSettings,
-  Command,
-  PartPage,
-  Receipt,
-  SessionDoc,
-  SessionInfo,
-} from "../../../../server/src/contract/protocol";
-import type { PartRef } from "./chat-turns";
-import { LiveChat, type SavedChat } from "./live-chat.svelte";
-import { liveEvents } from "./live-stream";
-import type { CommandUncertaintyKind } from "./chat-presentation";
-class CommandUncertainty extends Error {
-  constructor(
-    readonly kind: CommandUncertaintyKind,
-    detail: string,
-  ) {
-    super(detail);
-  }
-}
-import { ProviderClient } from "../settings/provider-client.svelte";
+import type { Catalog, HostSettings, SessionDoc, SessionInfo } from "../../../../server/src/contract/protocol";
 import type { ModelChoice } from "../../../../server/src/contract/provider-protocol";
+import type { CommandUncertaintyKind } from "./chat-presentation";
+import { ChatSession } from "./chat-session.svelte";
+import { CommandUncertainty, Transport } from "./transport";
+import { ProviderClient } from "../settings/provider-client.svelte";
 import { PersonaClient } from "../persona/persona-client.svelte";
 const context = Symbol("session-client");
-type InputCommand = Command extends infer C
-  ? C extends Command
-    ? Omit<C, "commandId">
-    : never
-  : never;
 
-/** Transport is confined here; components consume state/actions and never persist canonical messages. */
+/** How many chats stay in memory as they were last shown, so opening one again shows it at once. */
+const KEPT = 8;
+
+/**
+ * The app around the chats: the chat list, which chat is open, starting a new one, and PiSpark's
+ * settings. Each chat that has been opened is a `ChatSession`, which owns everything about it.
+ */
 export class SessionClient {
   readonly providers = new ProviderClient();
   readonly personas = new PersonaClient();
@@ -43,51 +24,34 @@ export class SessionClient {
   catalogLoading = $state(true);
   catalogError = $state(false);
   sessions = $state<SessionInfo[]>([]);
-  selected = $state("");
-  /** The open chat: Pi's history by cursor plus the live document. */
-  readonly live = new LiveChat((path) => this.json(path));
-  /** The open chat's session document: status, model, queue and what extensions show. */
-  get snapshot() {
-    return this.live.doc?.session;
+  /** The open chat. */
+  current = $state<ChatSession>();
+  get selected(): string {
+    return this.current?.id ?? "";
   }
-  drafts = $state<Record<string, string>>({});
-  connection = $state("Loading");
+  /** The server as a whole: "Loading", "Connected" or "Disconnected". */
+  private backend = $state("Loading");
+  /** What the shell shows: the open chat's connection once the server is reached. */
+  get connection(): string {
+    return this.backend === "Connected" && this.current ? this.current.connection : this.backend;
+  }
   error = $state("");
   errorKind = $state<CommandUncertaintyKind>();
   listNotice = $state("");
-  sessionErrors = $state<Record<string, string>>({});
-  sessionErrorKinds = $state<
-    Record<string, CommandUncertaintyKind | undefined>
-  >({});
-  private recordError(error: unknown, id?: string) {
-    const detail = (error as Error).message;
-    const kind = error instanceof CommandUncertainty ? error.kind : undefined;
-    if (id) {
-      this.sessionErrors[id] = detail;
-      this.sessionErrorKinds[id] = kind;
-    } else {
-      this.error = detail;
-      this.errorKind = kind;
-    }
+  /** A new chat is being created. */
+  private asking = $state(false);
+  /** Something is being sent; the composers wait. */
+  get busy(): boolean {
+    return this.asking || !!this.current?.sending;
   }
-  private draftRevisions = new Map<string, number>();
-  /** The last extension draft each chat applied, so each one fills the reply box once. */
-  private extensionDrafts = new Map<string, string>();
-  private nextDraftRevision = 0;
-  busy = $state(false);
-  /** The selected chat has nothing to show yet: it is being opened. */
-  opening = $state(false);
-  private source?: AbortController;
-  private controller = new AbortController();
-  private selection = 0;
+  private readonly transport = new Transport();
+  /** Chats that have been opened, least recently shown first. */
+  private readonly opened = new Map<string, ChatSession>();
   private disposed = false;
   private refreshTimer?: ReturnType<typeof setInterval>;
   private refreshing = false;
   private mounting = false;
-  private offline = () => {
-    this.source?.abort();
-    this.connection = "Reconnecting";
-  };
+  private offline = () => this.current?.offline();
   private online = () => this.reconnect();
   private beforeUnload = (event: BeforeUnloadEvent) => {
     if (this.personas.unsaved) {
@@ -95,39 +59,15 @@ export class SessionClient {
       event.returnValue = "";
     }
   };
-  private async json<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(path, {
-      ...init,
-      signal: AbortSignal.any([
-        this.controller.signal,
-        AbortSignal.timeout(12_000),
-      ]),
-    });
-    // The host bounds every response. Refuse unexpectedly large payloads before JSON parsing too.
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("No server response");
-    let text = "";
-    let size = 0;
-    const decoder = new TextDecoder();
-    try {
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        size += value.byteLength;
-        if (size > 1024 * 1024) throw new Error("Response limit");
-        text += decoder.decode(value, { stream: true });
-      }
-    } finally {
-      await reader.cancel();
-    }
-    const result = JSON.parse(text + decoder.decode());
-    if (!response.ok) throw new Error(result.error ?? "Request failed");
-    return result as T;
+  private fail(error: unknown) {
+    this.error = (error as Error).message;
+    this.errorKind = error instanceof CommandUncertainty ? error.kind : undefined;
   }
+
   async mount() {
     if (this.mounting || this.disposed) return;
     this.mounting = true;
-    this.connection = "Loading";
+    this.backend = "Loading";
     this.error = "";
     this.errorKind = undefined;
     void this.providers.refresh();
@@ -138,13 +78,14 @@ export class SessionClient {
     this.catalogLoading = true;
     this.catalogError = false;
     try {
-      this.catalog = await this.json<Catalog>("/api/catalog");
-      void this.json<HostSettings>("/api/settings")
+      this.catalog = await this.transport.json<Catalog>("/api/catalog");
+      void this.transport
+        .json<HostSettings>("/api/settings")
         .then((settings) => (this.settings = settings))
         .catch(() => {});
       this.catalogLoading = false;
       await this.refresh();
-      this.connection = "Connected";
+      this.backend = "Connected";
       this.refreshTimer ??= setInterval(() => {
         if (this.refreshing || this.disposed) return;
         this.refreshing = true;
@@ -158,12 +99,11 @@ export class SessionClient {
       try {
         stored = localStorage.getItem("pispark-session");
       } catch { /* Selection is optional when browser storage is unavailable. */ }
-      const session =
-        this.sessions.find((s) => s.id === stored) ?? this.sessions.at(-1);
+      const session = this.sessions.find((s) => s.id === stored) ?? this.sessions.at(-1);
       if (session) await this.select(session.id);
     } catch {
       if (!this.disposed) {
-        this.connection = "Disconnected";
+        this.backend = "Disconnected";
         this.error = "Backend unavailable. Drafts have not been sent.";
         this.errorKind = undefined;
         this.catalogError = this.catalogLoading;
@@ -174,12 +114,16 @@ export class SessionClient {
     }
   }
   async refresh() {
-    const result = await this.json<{
+    const result = await this.transport.json<{
       sessions: SessionInfo[];
       truncated: boolean;
       unreadable?: number;
     }>("/api/sessions");
     this.sessions = result.sessions;
+    for (const row of result.sessions) {
+      const chat = this.opened.get(row.id);
+      if (chat) chat.row = row;
+    }
     this.listNotice = result.truncated
       ? "Showing your latest 256 chats. Older chats are still saved."
       : "";
@@ -187,139 +131,40 @@ export class SessionClient {
       this.listNotice = [this.listNotice, `${result.unreadable} chat records could not be read.`].filter(Boolean).join(" ");
     }
   }
-  private async submit(command: InputCommand): Promise<Receipt> {
-    const commandId = crypto.randomUUID();
-    try {
-      return await this.json<Receipt>("/api/commands", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...command, commandId }),
+
+  /** The chat's session object, kept from when it was last open or made now. */
+  session(id: string): ChatSession {
+    let chat = this.opened.get(id);
+    if (!chat) {
+      chat = new ChatSession(id, this.transport, {
+        changed: (session) => this.track(id, session),
+        refresh: () => this.refresh(),
+        roomForDraft: () => [...this.opened.values()].filter((other) => other.draft).length < 32,
+        notice: (message) => {
+          this.error = message;
+          this.errorKind = undefined;
+        },
       });
-    } catch (error) {
-      throw new CommandUncertainty(
-        "acceptance-unknown",
-        `Command ${commandId}: ${(error as Error).message}. Acceptance unknown; inspect session before sending again.`,
-      );
     }
-  }
-  private async settled(receipt: Receipt): Promise<Receipt> {
-    const until = Date.now() + 310_000;
-    while (receipt.state === "accepted") {
-      try {
-        if (this.disposed) throw new Error("Client closed");
-        if (Date.now() > until)
-          throw new Error(
-            `Settlement unknown for ${receipt.commandId}; do not automatically retry.`,
-          );
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        receipt = await this.json<Receipt>(
-          `/api/receipts/${receipt.commandId}`,
-        );
-      } catch (error) {
-        throw new CommandUncertainty(
-          "settlement-unknown",
-          `${(error as Error).message}${receipt.sessionId ? ` (chat ${receipt.sessionId})` : ""}`,
-        );
-      }
+    // Most recently used last. A chat with an unsent draft is never dropped.
+    this.opened.delete(id);
+    this.opened.set(id, chat);
+    for (const [other, kept] of this.opened) {
+      if (this.opened.size <= KEPT) break;
+      if (kept !== this.current && kept !== chat && !kept.draft) this.opened.delete(other);
     }
-    if (receipt.error)
-      throw new Error(`${receipt.error} (${receipt.commandId})`);
-    return receipt;
+    chat.row = this.sessions.find((s) => s.id === id) ?? chat.row;
+    return chat;
   }
+  /** Opens a chat: it shows at once as it was last seen, and the live stream brings it up to date. */
   async select(id: string) {
-    const generation = ++this.selection;
-    this.source?.abort();
-    // Keep what the chat on screen shows, and show the next one as it was last seen, if it was:
-    // switching chats never blanks the conversation. The live stream then brings it up to date.
-    const leaving = this.live.save();
-    if (leaving && this.selected) this.remember(this.selected, leaving);
-    this.live.reset();
-    const saved = this.recent.get(id);
-    if (saved) this.live.restore(saved);
-    this.selected = id;
-    // Switching chats is not a connection problem: only a chat with nothing to show yet is opening.
-    this.opening = !saved;
-    if (this.connection === "Unloaded") this.connection = "Connected";
+    const chat = this.session(id);
+    if (this.current !== chat) this.current?.hide();
+    this.current = chat;
     try {
       localStorage.setItem("pispark-session", id);
     } catch { /* In-memory selection still works. */ }
-    try {
-      if (this.sessions.find((s) => s.id === id)?.status === "unloaded")
-        await this.settled(await this.submit({ type: "open", sessionId: id }));
-      if (generation !== this.selection || this.disposed) return;
-      this.observe(id);
-    } catch (error) {
-      this.recordError(error, id);
-      if (generation === this.selection) {
-        this.opening = false;
-        this.connection = "Disconnected";
-      }
-    }
-  }
-  /** The last few chats as they were shown, newest last. */
-  private readonly recent = new Map<string, SavedChat>();
-  private remember(id: string, saved: SavedChat) {
-    this.recent.delete(id);
-    this.recent.set(id, saved);
-    while (this.recent.size > 8) this.recent.delete(this.recent.keys().next().value!);
-  }
-  private observe(id: string) {
-    this.source?.abort();
-    const source = new AbortController();
-    this.source = source;
-    void (async () => {
-      while (!source.signal.aborted && !this.disposed) {
-        try {
-          // History is read once; a reconnect only catches up on what the chat gained since.
-          if (!this.live.loaded) await this.live.load(id);
-          const response = await fetch(`/api/sessions/${id}/live`, {
-            signal: AbortSignal.any([
-              source.signal,
-              AbortSignal.timeout(70_000),
-            ]),
-          });
-          let unloaded = false;
-          for await (const event of liveEvents(response)) {
-            if (
-              source !== this.source ||
-              id !== this.selected ||
-              source.signal.aborted
-            )
-              return;
-            if (event.sessionId !== id) throw new Error("Invalid event");
-            if (event.type === "unloaded") {
-              unloaded = true;
-              break;
-            }
-            if (!(await this.live.apply(id, event))) break;
-            const session = this.live.doc!.session;
-            this.applyExtensionDraft(id, session, event.type === "snapshot");
-            this.opening = false;
-            this.connection = "Live";
-            this.track(id, session);
-          }
-          if (unloaded) {
-            if (source !== this.source || source.signal.aborted) return;
-            // The server unloaded the chat while it was idle: load it again and carry on.
-            try {
-              await this.settled(await this.submit({ type: "open", sessionId: id }));
-            } catch (error) {
-              if (!(error instanceof Error && error.message.startsWith("owned"))) {
-                this.connection = "Unloaded";
-                return;
-              }
-            }
-            continue;
-          }
-        } catch {
-          /* Lost connection or bounded decoder rejection: reconnect from a fresh snapshot, never resend commands. */
-        }
-        if (source.signal.aborted || this.disposed) return;
-        // Keep showing the last state; the reply composer stays disabled until Live.
-        this.connection = "Reconnecting";
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      }
-    })();
+    await chat.show();
   }
   /** Keep the chat list's row in step with what the open chat reports. */
   private track(id: string, session: SessionDoc) {
@@ -337,122 +182,19 @@ export class SessionClient {
     if (row && JSON.stringify(next) !== JSON.stringify({ title: row.title, hasHistory: row.hasHistory, status: row.status, interrupted: row.interrupted, persona: row.persona, personaChanged: row.personaChanged, waiting: row.waiting, queued: row.queued }))
       this.sessions = this.sessions.map((s) => (s.id === id ? { ...s, ...next } : s));
   }
-  /** An extension called Pi's `setEditorText`: put its text in this chat's reply box. */
-  private applyExtensionDraft(id: string, session: SessionDoc, initial: boolean) {
-    const draft = session.extensions?.draft;
-    if (!draft || this.extensionDrafts.get(id) === draft.id) return;
-    this.extensionDrafts.set(id, draft.id);
-    // When a chat is opened, only a fresh draft counts (a new chat's first run may set one);
-    // an older one was meant for an earlier view, and a typed reply always wins.
-    if (initial && (Date.now() - draft.at > 30_000 || this.drafts[id])) return;
-    this.draftRevisions.set(id, ++this.nextDraftRevision);
-    this.drafts[id] = draft.text;
-  }
-  /**
-   * An extension component's `host.call(name, data)`: runs a function its own placement gave it
-   * and resolves with the result, or rejects with the extension's own message. The component
-   * decides what to show; nothing is reported to the chat.
-   */
-  async call(slot: string, key: string, name: string, data?: unknown): Promise<unknown> {
-    const request: CallRequest = { slot, key, name, ...(data === undefined ? {} : { data: data as Json }) };
-    const response = await fetch(`/api/sessions/${this.selected}/calls`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
-      signal: AbortSignal.any([this.controller.signal, AbortSignal.timeout(40_000)]),
-    });
-    const answer = (await response.json()) as CallResponse;
-    if (!response.ok || answer.error) throw new Error(answer.detail ?? answer.error ?? "The call failed");
-    return answer.result;
-  }
-  /**
-   * An extension component's `host.file(path)`: the address of a file in the folder its own
-   * placement named, for an `<img>`, a `fetch` or a link.
-   */
-  fileUrl(slot: string, key: string, path: string): string {
-    return `/api/sessions/${this.selected}/files?${new URLSearchParams({ slot, key, path })}`;
-  }
-  /** Chats where the person chose to see the conversation instead of the extension's page. */
-  private conversationShown = $state<Record<string, boolean>>({});
-  /** An extension placed a page for the open chat (the `chat.page` slot). */
-  get hasPage(): boolean {
-    return !!this.snapshot?.extensions.views.some((view) => view.slot === "chat.page");
-  }
-  /** The page is what the chat area shows; the conversation is one click away. */
-  get showingPage(): boolean {
-    return this.hasPage && !this.conversationShown[this.selected];
-  }
-  showPage(page: boolean) {
-    if (this.selected) this.conversationShown[this.selected] = !page;
-  }
   /** Saves a settings change; rejects when the server refused it. */
   async saveSettings(settings: HostSettings): Promise<void> {
-    this.settings = await this.json<HostSettings>("/api/settings", {
+    this.settings = await this.transport.json<HostSettings>("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings),
     });
   }
-  /** Answer a question an extension is waiting on; null dismisses it. */
-  async answer(dialogId: string, value: string | boolean | null) {
-    const id = this.selected;
-    try {
-      await this.settled(await this.submit({ type: "answer", sessionId: id, dialogId, value }));
-    } catch (error) {
-      this.recordError(error, id);
-    }
-  }
-  setDraft(text: string) {
-    if (
-      !Object.hasOwn(this.drafts, this.selected) &&
-      Object.values(this.drafts).filter(Boolean).length >= 32
-    ) {
-      this.errorKind = undefined;
-      this.error =
-        "Draft limit: clear an existing draft before starting another.";
-      return;
-    }
-    if (text) {
-      this.draftRevisions.set(this.selected, ++this.nextDraftRevision);
-      this.drafts[this.selected] = text.slice(0, 65536);
-    } else {
-      this.draftRevisions.delete(this.selected);
-      delete this.drafts[this.selected];
-    }
-  }
   reconnect() {
-    if (!this.selected) {
-      void this.mount();
-      return;
-    }
-    const id = this.selected;
-    void this.refresh()
-      .then(() => {
-        if (!this.disposed && this.selected === id) return this.select(id);
-      })
-      .catch(() => {
-        this.connection = "Disconnected";
-        this.error = "Reconnect failed. No prompt was resent.";
-        this.errorKind = undefined;
-      });
+    if (this.current) void this.current.reconnect();
+    else void this.mount();
   }
-  /** Restart the open chat's Pi session so persona changes apply. The transcript is kept. */
-  async reload() {
-    const id = this.selected;
-    if (!id) return;
-    delete this.sessionErrors[id];
-    delete this.sessionErrorKinds[id];
-    try {
-      this.source?.abort();
-      this.connection = "Connecting";
-      await this.settled(await this.submit({ type: "reload", sessionId: id }));
-      await this.refresh();
-      if (this.selected === id && !this.disposed) this.observe(id);
-    } catch (error) {
-      this.recordError(error, id);
-      if (this.selected === id) this.observe(id);
-    }
-  }
+  /** Starts a new chat with a first message. */
   async ask(
     text: string,
     folder: string,
@@ -460,107 +202,49 @@ export class SessionClient {
     persona?: string,
   ): Promise<boolean> {
     if (this.busy || !text.trim() || !folder.trim()) return false;
-    this.busy = true;
+    this.asking = true;
     this.error = "";
     this.errorKind = undefined;
     let id: string | undefined;
     try {
-      const created = await this.settled(
-        await this.submit({
-          type: "create",
-          folder: folder.trim(),
-          ...(model ? { model } : {}),
-          ...(persona ? { persona } : {}),
-        }),
-      );
+      const created = await this.transport.run({
+        type: "create",
+        folder: folder.trim(),
+        ...(model ? { model } : {}),
+        ...(persona ? { persona } : {}),
+      });
       id = created.sessionId!;
       await this.refresh();
       // New recent folders for the picker.
-      void this.json<Catalog>("/api/catalog")
+      void this.transport
+        .json<Catalog>("/api/catalog")
         .then((catalog) => (this.catalog = catalog))
         .catch(() => {});
       await this.select(id);
-      const receipt = await this.submit({
-        type: "start",
-        sessionId: created.sessionId!,
-        text,
+      const receipt = await this.transport.submit({ type: "start", sessionId: id, text });
+      if (receipt.error) throw new Error(`${receipt.error} (${receipt.commandId})`);
+      const chat = this.session(id);
+      void this.transport.settled(receipt).catch((error) => {
+        if (!this.disposed) chat.fail(error);
       });
-      if (receipt.error)
-        throw new Error(`${receipt.error} (${receipt.commandId})`);
-      this.watch(receipt);
       window.location.hash = "/workspace";
       return true;
     } catch (error) {
-      this.recordError(error, id);
-      if (!id) this.error = `New session: ${this.error}`;
+      if (id) this.session(id).fail(error);
+      else {
+        this.fail(error);
+        this.error = `New session: ${this.error}`;
+      }
       return false;
     } finally {
-      this.busy = false;
-    }
-  }
-  async reply(): Promise<void> {
-    const id = this.selected;
-    const text = this.drafts[id] ?? "";
-    const revision = this.draftRevisions.get(id) ?? 0;
-    if (this.busy || !id || !text.trim() || this.snapshot?.status !== "idle")
-      return;
-    this.busy = true;
-    delete this.sessionErrors[id];
-    delete this.sessionErrorKinds[id];
-    try {
-      const receipt = await this.submit({ type: "start", sessionId: id, text });
-      if (receipt.error)
-        throw new Error(`${receipt.error} (${receipt.commandId})`);
-      if ((this.draftRevisions.get(id) ?? 0) === revision) {
-        delete this.drafts[id];
-        this.draftRevisions.delete(id);
-      }
-      this.watch(receipt);
-    } catch (error) {
-      this.recordError(error, id);
-    } finally {
-      this.busy = false;
-    }
-  }
-  private watch(receipt: Receipt) {
-    void this.settled(receipt).catch((error) => {
-      if (!this.disposed) {
-        this.recordError(error, receipt.sessionId);
-      }
-    });
-  }
-  async cancel() {
-    const id = this.selected;
-    if (!id) return;
-    delete this.sessionErrors[id];
-    delete this.sessionErrorKinds[id];
-    try {
-      await this.settled(await this.submit({ type: "cancel", sessionId: id }));
-    } catch (error) {
-      this.recordError(error, id);
-    }
-  }
-  /** A chunk of a clipped part of a finalized item. */
-  readPart(ref: PartRef, offset: number) {
-    return this.json<PartPage>(`/api/sessions/${this.selected}/items/${ref.id}/parts/${ref.part}?offset=${offset}`);
-  }
-  /** Reads the next older items in; `false` when that failed. */
-  async loadEarlier(): Promise<boolean> {
-    const id = this.selected;
-    try {
-      await this.live.loadEarlier(id);
-      return true;
-    } catch (error) {
-      this.recordError(error, id);
-      return false;
+      this.asking = false;
     }
   }
   dispose() {
     this.providers.dispose();
     this.disposed = true;
-    this.selection++;
-    this.source?.abort();
-    this.controller.abort();
+    for (const chat of this.opened.values()) chat.hide();
+    this.transport.close();
     clearInterval(this.refreshTimer);
     window.removeEventListener("beforeunload", this.beforeUnload);
     window.removeEventListener("offline", this.offline);
@@ -574,4 +258,15 @@ export function provideSessions() {
 }
 export function useSessions(): SessionClient {
   return getContext(context);
+}
+
+const chatContext = Symbol("chat-session");
+/** Gives one chat to everything that draws it. */
+export function provideChat(chat: ChatSession) {
+  setContext(chatContext, chat);
+  return chat;
+}
+/** The chat this component is drawing. */
+export function useChat(): ChatSession {
+  return getContext(chatContext);
 }

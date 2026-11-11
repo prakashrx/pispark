@@ -1,8 +1,7 @@
 <script lang="ts">
   import type { Page } from "./routes";
-  import Conversation from "./features/workspace/Conversation.svelte";
-  import Composer from "./features/workspace/Composer.svelte";
-  import ReplyExtensions from "./features/workspace/ReplyExtensions.svelte";
+  import ChatArea from "./features/workspace/ChatArea.svelte";
+  import NoChat from "./features/workspace/NoChat.svelte";
   import ProvidersPage from "./features/settings/providers/ProvidersPage.svelte";
   import GeneralSettings from "./features/settings/GeneralSettings.svelte";
   import PersonaPage from "./features/persona/PersonaPage.svelte";
@@ -18,14 +17,8 @@
     : "route-content flex-1 flex flex-col min-h-0 text-foreground"}
 >
   {#if page === "workspace"}
-    <Conversation />
-    {#if sessions.selected && !sessions.showingPage}<footer class="reply-dock px-6 pb-5 pt-2 flex flex-col items-center w-full z-10">
-      <div class="w-full max-w-3xl relative">
-        <ReplyExtensions placement="above" />
-        <Composer mode="reply" />
-        <ReplyExtensions placement="below" />
-      </div>
-    </footer>{/if}
+    <!-- Each chat gets its own host, so nothing of one chat's view leaks into the next. -->
+    {#if sessions.current}{#key sessions.current.id}<ChatArea chat={sessions.current} />{/key}{:else}<NoChat />{/if}
   {:else if page === "providers"}
     <ProvidersPage />
   {:else if page === "settings"}
@@ -37,9 +30,3 @@
   {/if}
 </div>
 
-<style>
-  .reply-dock {
-    background: linear-gradient(to bottom, transparent, var(--background) 1.25rem);
-    margin-top: -1.25rem;
-  }
-</style>

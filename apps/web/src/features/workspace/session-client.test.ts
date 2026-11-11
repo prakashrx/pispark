@@ -86,7 +86,6 @@ test("successful truncated lists have a separate notice and later nontruncated r
     "Showing your latest 256 chats. Older chats are still saved.",
   );
   expect(client.error).toBe("unrelated operation");
-  expect(client.drafts).toEqual({});
   truncated = false;
   await client.refresh();
   expect(client.listNotice).toBe("");
@@ -104,15 +103,14 @@ test("typed acceptance uncertainty retains reply draft and stays with originatin
     }),
   );
   const client = new SessionClient();
-  client.selected = "origin";
-  client.live.doc = { session: { status: "idle" } as never, tail: [], progress: {} };
-  client.setDraft("Keep unsent text");
-  await client.reply();
-  expect(client.drafts.origin).toBe("Keep unsent text");
-  expect(client.sessionErrorKinds.origin).toBe("acceptance-unknown");
-  expect(client.sessionErrors.origin).toContain("lost after acceptance");
-  client.selected = "another";
-  expect(client.sessionErrors.another).toBeUndefined();
+  const origin = client.session("origin");
+  origin.live.doc = { session: { status: "idle" } as never, tail: [], progress: {} };
+  origin.setDraft("Keep unsent text");
+  expect(await origin.send()).toBe(false);
+  expect(origin.draft).toBe("Keep unsent text");
+  expect(origin.errorKind).toBe("acceptance-unknown");
+  expect(origin.error).toContain("lost after acceptance");
+  expect(client.session("another").error).toBe("");
   expect(commands).toBe(1);
   client.dispose();
 });
@@ -131,10 +129,10 @@ test("accepted receipt polling loss is settlement uncertainty, not acceptance fa
   });
   vi.stubGlobal("fetch", calls);
   const client = new SessionClient();
-  client.selected = "origin";
-  await client.cancel();
-  expect(client.sessionErrorKinds.origin).toBe("settlement-unknown");
-  expect(client.sessionErrors.origin).toBe(
+  const origin = client.session("origin");
+  await origin.stop();
+  expect(origin.errorKind).toBe("settlement-unknown");
+  expect(origin.error).toBe(
     "receipt connection lost (chat origin)",
   );
   expect(

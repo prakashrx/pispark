@@ -14,14 +14,6 @@ type Get = <T>(path: string) => Promise<T>;
  * One open chat as the browser holds it: history read by cursor from Pi's session, plus the live
  * document (session state and the items in flight) kept current by the server's operations.
  */
-/** A chat as it was last shown. */
-export interface SavedChat {
-  doc: LiveDoc;
-  history: Item[];
-  more: boolean;
-  head: string | null;
-}
-
 export class LiveChat {
   doc = $state<LiveDoc>();
   /** Finalized items, oldest first. */
@@ -49,21 +41,6 @@ export class LiveChat {
     this.head = undefined;
     this.seq = 0;
   }
-  /** What the chat shows now, to show again at once when it is opened next. */
-  save(): SavedChat | undefined {
-    if (!this.doc || this.head === undefined) return undefined;
-    // References are enough: a chat that is not shown receives no more operations.
-    return { doc: this.doc, history: this.history, more: this.more, head: this.head };
-  }
-  /** Shows a saved chat; the live stream then brings it up to date from its head. */
-  restore(saved: SavedChat) {
-    this.doc = saved.doc;
-    this.history = saved.history;
-    this.more = saved.more;
-    this.head = saved.head;
-    this.seq = 0;
-  }
-
   /** The newest items. */
   async load(id: string) {
     const page = await this.get<ItemsPage>(`/api/sessions/${id}/items?limit=${PAGE}`);

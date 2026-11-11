@@ -9,10 +9,7 @@
     commandUncertainty,
   } from "../../features/workspace/chat-presentation";
   const sessions = useSessions();
-  const displayedChat = $derived(
-    sessions.snapshot ??
-      sessions.sessions.find((s) => s.id === sessions.selected),
-  );
+  const displayedChat = $derived(sessions.current?.info);
   const backend = $derived(
     ["Connected", "Live", "Unloaded"].includes(sessions.connection)
       ? "ok"
@@ -138,22 +135,22 @@
           <p>{sessions.error}</p>
         </details>
       </div>{/if}
-    {#if sessions.sessionErrors[sessions.selected]}<div
+    {#if sessions.current?.error}<div
         role="alert"
         class="notice break-words" data-tone="danger"
       >
         <p>
-          {chatName(sessions.sessions.find((s) => s.id === sessions.selected))}:
+          {chatName(displayedChat)}:
           <span
             >{commandUncertainty(
-              sessions.sessionErrorKinds[sessions.selected],
+              sessions.current.errorKind,
               true,
             ) || "Something went wrong. Reopen this chat to try again."}</span
           >
         </p>
         <details class="mt-1">
           <summary>Details</summary>
-          <p>{sessions.sessionErrors[sessions.selected]}</p>
+          <p>{sessions.current.error}</p>
         </details>
       </div>{/if}
     {@render children()}

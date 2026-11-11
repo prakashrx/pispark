@@ -1,82 +1,30 @@
 <script lang="ts">
   import Button from "../../lib/ui/Button.svelte";
   import { tick } from "svelte";
+  import ChatHeader from "./ChatHeader.svelte";
   import ResponseTurn from "./ResponseTurn.svelte";
   import { buildTurns } from "./chat-turns";
-  import StyledText from "./StyledText.svelte";
-  import WorkingFrames from "./WorkingFrames.svelte";
-  import ViewSlot from "./ViewSlot.svelte";
   import UserTurn from "./UserTurn.svelte";
   import { placedSlots } from "./extension-views";
-  import ChatDetails from "./ChatDetails.svelte";
-  import InlinePanel from "../../lib/ui/InlinePanel.svelte";
-  import Segmented from "../../lib/ui/Segmented.svelte";
-  import PersonaEditor from "../persona/PersonaEditor.svelte";
-  import {
-    chatName,
-    chatStatus,
-    chatStarted,
-    folderName,
-  } from "./chat-presentation";
-  import { useSessions } from "./session-client.svelte";
-  const client = useSessions();
-  // Editing the persona inside a chat edits this chat's own layer; closing applies it.
-  let editingPersona = $state(false);
-  async function closePersona() {
-    editingPersona = false;
-    // The Personas page shares the editor; give it back its list, not this chat's layer.
-    client.personas.collection();
-    if (client.snapshot?.personaChanged && client.snapshot.status === "idle")
-      await client.reload();
-  }
-  const snapshot = $derived(client.snapshot);
-  const chat = $derived(
-    snapshot ?? client.sessions.find((s) => s.id === client.selected),
-  );
-  // While running, an extension may relabel, re-animate or hide the working indicator.
-  const working = $derived(chat?.status === "running" ? snapshot?.extensions.working : undefined);
-  // "Opening…" only when opening takes long enough to notice, so a quick switch shows nothing.
-  let slowOpening = $state(false);
-  $effect(() => {
-    if (!client.opening) return void (slowOpening = false);
-    const timer = setTimeout(() => (slowOpening = true), 300);
-    return () => clearTimeout(timer);
-  });
-  const status = $derived(
-    (client.opening && slowOpening) || client.connection === "Connecting" || client.connection === "Loading"
-      ? "Opening…"
-      : working?.hidden
-        ? ""
-        : chat?.waiting && chat.status === "running"
-          ? chatStatus(chat.status, chat.interrupted, true)
-          : chat?.queued
-            ? chatStatus(chat.status, chat.interrupted, false, true)
-            : (working?.message ?? chatStatus(chat?.status, chat?.interrupted)),
-  );
-  const placed = $derived(placedSlots(snapshot?.extensions));
-  // An extension's window title names the browser tab while this chat is open.
-  $effect(() => {
-    const title = snapshot?.extensions.title;
-    if (!title) return;
-    const previous = document.title;
-    document.title = title;
-    return () => {
-      document.title = previous;
-    };
-  });
-  const queued = $derived(
-    (snapshot?.queue.steering ?? 0) + (snapshot?.queue.followUp ?? 0),
-  );
-  const running = $derived(["running", "cancelling"].includes(snapshot?.status ?? ""));
+  import { useChat } from "./session-client.svelte";
+
+  /** PiSpark's own conversation: the chat's items as turns, in one continuous scroll. */
+  const chat = useChat();
+  const doc = $derived(chat.doc);
+  const placed = $derived(placedSlots(doc?.extensions));
+  const queued = $derived((doc?.queue.steering ?? 0) + (doc?.queue.followUp ?? 0));
+  const running = $derived(["running", "cancelling"].includes(doc?.status ?? ""));
   // The chat as turns of ordered segments; extension notices land where they happened.
   const turns = $derived(
-    snapshot ? buildTurns(client.live.items, {
+    doc
+      ? buildTurns(chat.items, {
           running,
-          notices: snapshot.extensions.notices,
-          thinkingLabel: snapshot.extensions.thinkingLabel,
-          progress: client.live.doc?.progress,
+          notices: doc.extensions.notices,
+          thinkingLabel: doc.extensions.thinkingLabel,
+          progress: chat.progress,
           placed: (slot) => placed.has(slot),
-        }) : [],
+        })
+      : [],
   );
 
   // One continuous scroll: older items are read in above as you reach the top, the view stays
@@ -92,15 +40,15 @@
   const atBottom = () =>
     !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
   async function earlier() {
-    if (loadingEarlier || !client.live.more || !scroller) return;
+    if (loadingEarlier || !chat.more || !scroller) return;
     loadingEarlier = true;
     const fromBottom = scroller.scrollHeight - scroller.scrollTop;
-    earlierFailed = !(await client.loadEarlier());
+    earlierFailed = !(await chat.loadEarlier());
     await tick();
     if (scroller) scroller.scrollTop = scroller.scrollHeight - fromBottom;
     loadingEarlier = false;
     // Still at the top (the older page did not fill the view): keep reading.
-    if (scroller && scroller.scrollTop < 40 && client.live.more && !earlierFailed) void earlier();
+    if (scroller && scroller.scrollTop < 40 && chat.more && !earlierFailed) void earlier();
   }
   $effect(() => {
     if (!scroller || !top) return;
@@ -112,12 +60,6 @@
     );
     watcher.observe(top);
     return () => watcher.disconnect();
-  });
-  // A different chat starts at its end.
-  $effect(() => {
-    client.selected;
-    following = true;
-    earlierFailed = false;
   });
   function toBottom() {
     if (!scroller) return;
@@ -144,143 +86,25 @@
     following = true;
     toBottom();
   }
-  const modelName = $derived(
-    client.providers.catalog.providers
-      .find((p) => p.id === snapshot?.model?.provider)
-      ?.models.find((m) => m.id === snapshot?.model?.id)?.name,
-  );
   const button = "conversation-action";
 </script>
 
-<!-- The chat's header and notices, above the conversation or above an extension's page. -->
-{#snippet head()}
-    <header class="pb-5 border-b border-[var(--border)]">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-3 flex-wrap">
-            <h1
-              class="text-2xl font-semibold tracking-tight text-foreground break-words"
-            >
-              {chat ? chatName(chat) : "New chat"}
-            </h1>
-            {#if status}<span role="status" class="chat-status" class:custom-indicator={!!working?.frames}
-                >{#if working?.frames}<WorkingFrames frames={working.frames} intervalMs={working.intervalMs} />{/if}{status}</span
-              >{/if}
-            <ViewSlot slot="chat.title" />
-          </div>
-          {#if chat}<p class="text-sm text-muted-foreground mt-1.5">
-              {[
-                chat.persona
-                  ? chat.persona.layered
-                    ? `${chat.persona.name} (edited here)`
-                    : chat.persona.name
-                  : undefined,
-                folderName(chat.folder),
-                modelName,
-                chatStarted(chat),
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>{:else}<p class="text-sm text-muted-foreground mt-1.5">
-              Ask anything in the bar above to start a chat.
-            </p>{/if}
-        </div>
-        {#if client.hasPage}<Segmented
-            label="Show"
-            options={[
-              { value: "page", label: "Page" },
-              { value: "chat", label: "Chat" },
-            ]}
-            value={client.showingPage ? "page" : "chat"}
-            onchange={(value) => client.showPage(value === "page")}
-          />{/if}
-        {#if snapshot && ["running", "cancelling"].includes(snapshot.status)}<Button
-            class={button}
-            aria-label="Stop response"
-            onclick={() => client.cancel()}>Stop</Button
-          >{:else if snapshot?.status === "queued"}<Button
-            class={button}
-            aria-label="Cancel queued message"
-            onclick={() => client.cancel()}>Cancel</Button
-          >{/if}
-        <ChatDetails oneditpersona={() => (editingPersona = true)} />
-      </div>
-    </header>
-    {#if snapshot?.extensions.header}<StyledText class="extension-header" lines={snapshot.extensions.header} />{/if}
-    <ViewSlot slot="chat.header" />
-    {#if editingPersona && chat}<InlinePanel
-        label="Persona for this chat"
-        title="Persona for this chat"
-        help="Changes apply to this chat only. Closing reloads the chat with them; your messages stay."
-        size="wide"
-        onclose={() => void closePersona()}
-      >
-        <PersonaEditor target={{ chat: chat.id }} embedded />
-      </InlinePanel>{/if}
-    {#if snapshot?.personaChanged && !editingPersona}<p
-        role="status"
-        class="conversation-notice flex flex-wrap items-center gap-3"
-      >
-        <span class="flex-1">The persona changed. Reload to apply it; your messages stay.</span>
-        <Button
-          class={button}
-          unavailable={snapshot.status === "idle" ? undefined : "Wait for the reply to finish"}
-          onclick={() => client.reload()}>Reload chat</Button
-        >
-      </p>{/if}
-    {#if chat && client.connection === "Disconnected"}<p
-        role="alert"
-        class="conversation-notice"
-      >
-        Connection lost. Your chat may still be running. <Button
-          class={button}
-          onclick={() => client.reconnect()}>Reconnect</Button
-        >
-      </p>
-    {:else if chat && client.connection === "Unloaded"}<p role="status" class="conversation-notice">
-        This chat couldn’t be opened. <Button class={button} onclick={() => client.reconnect()}>Try again</Button>
-      </p>
-    {:else if chat && client.connection === "Reconnecting"}<p
-        role="status"
-        class="conversation-notice"
-      >
-        Reconnecting…
-      </p>{/if}
-    {#if snapshot?.interrupted}<p role="status" class="conversation-notice">
-        This chat was interrupted. Your saved messages are still here.
-      </p>{/if}
-    {#if snapshot?.error}<p role="alert" class="conversation-notice">
-        Something went wrong. Reopen this chat to try again.
-      </p>{/if}
-    {#if client.showingPage && chat?.waiting}<p role="status" class="conversation-notice flex flex-wrap items-center gap-3">
-        <span class="flex-1">This chat is waiting for your answer.</span>
-        <Button class={button} onclick={() => client.showPage(false)}>Show chat</Button>
-      </p>{/if}
-{/snippet}
-
 <main
   id="workspace"
-  aria-label={client.showingPage ? "Chat page" : "Chat conversation"}
-  class={client.showingPage
-    ? "conversation flex-1 min-h-0 overflow-hidden flex flex-col items-center"
-    : "conversation flex-1 overflow-y-auto px-6 pt-8 pb-6 flex flex-col items-center"}
+  aria-label="Chat conversation"
+  class="conversation flex-1 overflow-y-auto px-6 pt-8 pb-6 flex flex-col items-center"
   bind:this={scroller}
   {onscroll}
 >
-  {#if client.showingPage}
-    <!-- An extension's page takes the chat area; the conversation is the other half of the switch. -->
-    <div class="w-full max-w-3xl flex flex-col gap-8 px-6 pt-8 pb-5">{@render head()}</div>
-    <div class="chat-page"><ViewSlot slot="chat.page" /></div>
-  {:else}
   <div class="w-full max-w-3xl flex flex-col gap-8" bind:this={column}>
-    {@render head()}
-    {#if snapshot}
+    <ChatHeader />
+    {#if doc}
       {#if queued > 0}<p class="text-sm text-muted-foreground">
           {queued} messages queued
         </p>{/if}
       <div bind:this={top} aria-hidden="true"></div>
       {#if loadingEarlier}<p role="status" class="text-sm text-muted-foreground">Loading earlier messages…</p>
-      {:else if client.live.more && earlierFailed}<Button
+      {:else if chat.more && earlierFailed}<Button
           class={button}
           onclick={() => {
             earlierFailed = false;
@@ -289,12 +113,12 @@
         >{/if}
       <div class="flex flex-col gap-8">
         {#each turns as turn (turn.key)}
-          <ResponseTurn {turn} sessionId={client.selected} />
+          <ResponseTurn {turn} sessionId={chat.id} />
         {/each}
-        {#if snapshot.status === "queued" && snapshot.queuedText}<div class="queued-turn">
-            <UserTurn text={snapshot.queuedText} />
+        {#if doc.status === "queued" && doc.queuedText}<div class="queued-turn">
+            <UserTurn text={doc.queuedText} />
             <p role="status" class="queued-note">
-              {snapshot.restored ? "Queued from before PiSpark restarted." : "Queued."} Starts when another chat finishes.
+              {doc.restored ? "Queued from before PiSpark restarted." : "Queued."} Starts when another chat finishes.
             </p>
           </div>{/if}
       </div>
@@ -304,21 +128,12 @@
         <Button class={button} onclick={jumpToLatest}>Jump to latest</Button>
       </div>{/if}
   </div>
-  {/if}
 </main>
 
 <style>
   /* Prepending older items must not move what you are reading; the position is restored by hand. */
   .conversation {
     overflow-anchor: none;
-  }
-  .chat-page {
-    flex: 1;
-    min-height: 0;
-    width: 100%;
-    overflow: auto;
-    display: flex;
-    flex-direction: column;
   }
   .queued-turn {
     display: flex;
@@ -341,43 +156,5 @@
   }
   .jump :global(.ui-button) {
     pointer-events: auto;
-  }
-  .chat-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.15rem 0.625rem;
-    border-radius: var(--radius-full);
-    background: var(--interactive-muted);
-    color: var(--interactive-text);
-    font-size: 0.8125rem;
-    font-weight: 500;
-  }
-  .chat-status.custom-indicator::before {
-    display: none;
-  }
-  :global(.styled-text.extension-header) {
-    color: var(--muted-foreground);
-  }
-  .chat-status::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-  .conversation-notice {
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-md);
-    background: var(--muted);
-    color: var(--foreground);
-    font-size: 0.9375rem;
-  }
-  :global(.ui-button.conversation-action) {
-    align-self: flex-start;
-    border-radius: var(--radius-full);
-    padding: 0.4rem 0.9rem;
-    font-size: 0.875rem;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   }
 </style>

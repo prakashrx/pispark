@@ -3,9 +3,9 @@
   import type { PartPage } from "../../../../server/src/contract/protocol";
   import Button from "../../lib/ui/Button.svelte";
   import type { PartRef } from "./chat-turns";
-  import { useSessions } from "./session-client.svelte";
+  import { useChat } from "./session-client.svelte";
   let { reference }: { reference: PartRef } = $props();
-  const client = useSessions();
+  const chat = useChat();
   let page = $state<PartPage>();
   let busy = $state(false);
   let error = $state("");
@@ -16,7 +16,7 @@
     busy = true;
     error = "";
     try {
-      page = await client.readPart(reference, offset);
+      page = await chat.readPart(reference, offset);
       await tick();
       text?.focus();
     } catch {

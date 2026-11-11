@@ -6,7 +6,7 @@
   import { resolveSegmentView } from "./views.svelte";
   import ViewSlot from "./ViewSlot.svelte";
   import { placedSlots, slotOf } from "./extension-views";
-  import { useSessions } from "./session-client.svelte";
+  import { useChat } from "./session-client.svelte";
 
   /**
    * One turn: your message, then everything the agent did and said, in order. Each segment is drawn
@@ -14,9 +14,9 @@
    * kind, so this component knows no kind by name.
    */
   let { turn, sessionId }: { turn: Turn; sessionId: string } = $props();
-  const client = useSessions();
+  const chat = useChat();
   // What extensions placed components for; such a part is drawn by them instead of PiSpark's view.
-  const placed = $derived(placedSlots(client.snapshot?.extensions));
+  const placed = $derived(placedSlots(chat.doc?.extensions));
   // Text cut at its limit ends where the cut was, not mid-word as if it were whole.
   const ellipsis = (text: string, cut: boolean) => (cut ? `${text.trimEnd()}…` : text);
 </script>
