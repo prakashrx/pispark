@@ -275,6 +275,13 @@ export class Chat {
     if (!this.views) throw new RuntimeError("not-found");
     return this.views.call(slot, key, name, data);
   }
+  /** An extension component's `host.file`: a file in the folder its own placement named. */
+  file(slot: string, key: string, path: string): string {
+    this.loaded();
+    this.touch();
+    if (!this.views) throw new RuntimeError("not-found");
+    return this.views.file(slot, key, path);
+  }
   /** Answer a question an extension asked through Pi's `ctx.ui`. */
   answer(dialogId: string, answer: string | boolean | null): void {
     this.loaded();

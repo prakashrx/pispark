@@ -328,6 +328,10 @@ export class SessionRuntime {
   call(id: string, slot: string, key: string, name: string, data?: Json): Promise<Json | undefined> {
     return this.get(id).call(slot, key, name, data);
   }
+  /** An extension component's `host.file`: the path of a file in the folder its own placement named. */
+  file(id: string, slot: string, key: string, path: string): string {
+    return this.get(id).file(slot, key, path);
+  }
   /** Answer a question an extension asked through Pi's `ctx.ui`. */
   answer(id: string, dialogId: string, answer: string | boolean | null): void {
     this.get(id).answer(dialogId, answer);

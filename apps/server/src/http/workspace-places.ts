@@ -6,6 +6,8 @@
 export const WORKSPACE_PLACES = [
   "chat.title",
   "chat.header",
+  // The whole chat area, in place of the conversation (which stays one click away).
+  "chat.page",
   "reply.above",
   "reply.below",
   "reply.actions",

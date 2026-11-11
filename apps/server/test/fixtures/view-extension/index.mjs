@@ -61,8 +61,15 @@ export default function (pi) {
       removeCounter: () => show(pi, { slot: "reply.above", key: "counter" }),
       placeOutside: () => show(pi, { slot: "reply.below", component: file("../Outside.svelte") }),
       placeBroken: () => show(pi, { slot: "reply.below", key: "broken", component: file("./Broken.svelte") }),
+      placeNowhere: () => show(pi, { slot: "side.panel", component: file("./Chip.svelte") }),
+      placePage: () => page(true),
+      removePage: () => page(false),
     },
   });
+  // A page takes the chat area. It imports a static file and reads a data file from `files`.
+  const page = (on) =>
+    show(pi, on ? { slot: "chat.page", component: file("./Page.svelte"), props: { title: "Fixture page" }, files: file("./data/") } : { slot: "chat.page" });
+  pi.registerCommand("page", { handler: async (args) => page(args.trim() !== "off") });
   show(pi, { slot: "tool:shout", component: file("./Shout.svelte") });
   show(pi, { slot: "custom:note", component: file("./Note.svelte") });
 

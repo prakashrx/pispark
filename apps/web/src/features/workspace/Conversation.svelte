@@ -10,6 +10,7 @@
   import { placedSlots } from "./extension-views";
   import ChatDetails from "./ChatDetails.svelte";
   import InlinePanel from "../../lib/ui/InlinePanel.svelte";
+  import Segmented from "../../lib/ui/Segmented.svelte";
   import PersonaEditor from "../persona/PersonaEditor.svelte";
   import {
     chatName,
@@ -151,14 +152,8 @@
   const button = "conversation-action";
 </script>
 
-<main
-  id="workspace"
-  aria-label="Chat conversation"
-  class="conversation flex-1 overflow-y-auto px-6 pt-8 pb-6 flex flex-col items-center"
-  bind:this={scroller}
-  {onscroll}
->
-  <div class="w-full max-w-3xl flex flex-col gap-8" bind:this={column}>
+<!-- The chat's header and notices, above the conversation or above an extension's page. -->
+{#snippet head()}
     <header class="pb-5 border-b border-[var(--border)]">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0 flex-1">
@@ -190,6 +185,15 @@
               Ask anything in the bar above to start a chat.
             </p>{/if}
         </div>
+        {#if client.hasPage}<Segmented
+            label="Show"
+            options={[
+              { value: "page", label: "Page" },
+              { value: "chat", label: "Chat" },
+            ]}
+            value={client.showingPage ? "page" : "chat"}
+            onchange={(value) => client.showPage(value === "page")}
+          />{/if}
         {#if snapshot && ["running", "cancelling"].includes(snapshot.status)}<Button
             class={button}
             aria-label="Stop response"
@@ -248,6 +252,28 @@
     {#if snapshot?.error}<p role="alert" class="conversation-notice">
         Something went wrong. Reopen this chat to try again.
       </p>{/if}
+    {#if client.showingPage && chat?.waiting}<p role="status" class="conversation-notice flex flex-wrap items-center gap-3">
+        <span class="flex-1">This chat is waiting for your answer.</span>
+        <Button class={button} onclick={() => client.showPage(false)}>Show chat</Button>
+      </p>{/if}
+{/snippet}
+
+<main
+  id="workspace"
+  aria-label={client.showingPage ? "Chat page" : "Chat conversation"}
+  class={client.showingPage
+    ? "conversation flex-1 min-h-0 overflow-hidden flex flex-col items-center"
+    : "conversation flex-1 overflow-y-auto px-6 pt-8 pb-6 flex flex-col items-center"}
+  bind:this={scroller}
+  {onscroll}
+>
+  {#if client.showingPage}
+    <!-- An extension's page takes the chat area; the conversation is the other half of the switch. -->
+    <div class="w-full max-w-3xl flex flex-col gap-8 px-6 pt-8 pb-5">{@render head()}</div>
+    <div class="chat-page"><ViewSlot slot="chat.page" /></div>
+  {:else}
+  <div class="w-full max-w-3xl flex flex-col gap-8" bind:this={column}>
+    {@render head()}
     {#if snapshot}
       {#if queued > 0}<p class="text-sm text-muted-foreground">
           {queued} messages queued
@@ -278,12 +304,21 @@
         <Button class={button} onclick={jumpToLatest}>Jump to latest</Button>
       </div>{/if}
   </div>
+  {/if}
 </main>
 
 <style>
   /* Prepending older items must not move what you are reading; the position is restored by hand. */
   .conversation {
     overflow-anchor: none;
+  }
+  .chat-page {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
   }
   .queued-turn {
     display: flex;

@@ -19,7 +19,7 @@
 >
   {#if page === "workspace"}
     <Conversation />
-    {#if sessions.selected}<footer class="reply-dock px-6 pb-5 pt-2 flex flex-col items-center w-full z-10">
+    {#if sessions.selected && !sessions.showingPage}<footer class="reply-dock px-6 pb-5 pt-2 flex flex-col items-center w-full z-10">
       <div class="w-full max-w-3xl relative">
         <ReplyExtensions placement="above" />
         <Composer mode="reply" />

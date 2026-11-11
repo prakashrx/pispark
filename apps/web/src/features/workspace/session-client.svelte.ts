@@ -365,6 +365,26 @@ export class SessionClient {
     if (!response.ok || answer.error) throw new Error(answer.detail ?? answer.error ?? "The call failed");
     return answer.result;
   }
+  /**
+   * An extension component's `host.file(path)`: the address of a file in the folder its own
+   * placement named, for an `<img>`, a `fetch` or a link.
+   */
+  fileUrl(slot: string, key: string, path: string): string {
+    return `/api/sessions/${this.selected}/files?${new URLSearchParams({ slot, key, path })}`;
+  }
+  /** Chats where the person chose to see the conversation instead of the extension's page. */
+  private conversationShown = $state<Record<string, boolean>>({});
+  /** An extension placed a page for the open chat (the `chat.page` slot). */
+  get hasPage(): boolean {
+    return !!this.snapshot?.extensions.views.some((view) => view.slot === "chat.page");
+  }
+  /** The page is what the chat area shows; the conversation is one click away. */
+  get showingPage(): boolean {
+    return this.hasPage && !this.conversationShown[this.selected];
+  }
+  showPage(page: boolean) {
+    if (this.selected) this.conversationShown[this.selected] = !page;
+  }
   /** Saves a settings change; rejects when the server refused it. */
   async saveSettings(settings: HostSettings): Promise<void> {
     this.settings = await this.json<HostSettings>("/api/settings", {

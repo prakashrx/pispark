@@ -60,12 +60,13 @@ export default function (pi) {
 
 **One rule:** a slot is the name of something PiSpark draws. Components placed in a slot are drawn there instead of PiSpark's default, in the order they were placed; with none placed, the default shows. Show or update by emitting again; remove by leaving out `component`.
 
-**One component shape:** every component gets `data` (what that place draws, when it has something), `host` (whose `call(name, data)` runs a function its own placement gave it and resolves with the result, or rejects with the extension's error) and the props the extension sent.
+**One component shape:** every component gets `data` (what that place draws, when it has something), `host` and the props the extension sent. `host.call(name, data)` runs a function its own placement gave it and resolves with the result, or rejects with the extension's error. `host.file(path)` is the address of a file in the folder its placement named.
 
 | Slot | Where | `data` | Pi's terminal equivalent |
 | --- | --- | --- | --- |
 | `tool:<name>` | Each call of that tool (the component is the whole call: PiSpark draws no activity line, opened row, diff or pictures for it) | the call: args, status, progress, result with Pi's `details` | `renderResult`, `registerToolRenderer` |
 | `custom:<customType>` | Custom messages and entries of that type (entries are sent with their data) | the message or entry, its data as `details` | `registerMessageRenderer`, `registerEntryRenderer` |
+| `chat.page` | The whole chat area, in place of the conversation (see [a page](#a-page-for-a-chat)) | — | — |
 | `chat.title` | Small things beside the chat title (chips) | — | — |
 | `chat.header` | Under the chat header | — | `setHeader` |
 | `reply.above`, `reply.below` | Above and below the reply box | — | `setWidget` above or below the editor |
@@ -74,11 +75,21 @@ export default function (pi) {
 
 PiSpark owns each place's frame (chips and actions sit in a row, blocks around the reply box are spaced like widgets), and the extension owns what is inside. Thinking, answer text, summaries and notices are PiSpark's own, as they are Pi's in the terminal.
 
-- **Event shape:** `{ slot, component, props?, calls?, key? }`. `component` is a `file:` URL (a `URL` or its string) or absolute path of a `.svelte` file inside the extension's own folder. `key` tells several placements in one slot apart. New props for the same file update the mounted component in place.
+- **Event shape:** `{ slot, component, props?, calls?, files?, key? }`. `component` is a `file:` URL (a `URL` or its string) or absolute path of a `.svelte` file inside the extension's own folder. `key` tells several placements in one slot apart. New props for the same file update the mounted component in place.
 - **Calls:** `calls[name](data, { signal })` runs in the extension, in the server. A component reaches only the functions its own placement gave it, never the bus or another extension. Data and results are JSON of at most 64 KiB; a call is cancelled when the chat closes (its `signal` aborts) and times out after 30 s; a chat has at most 16 calls pending. A function that throws rejects the component's call with its message, and the chat is unaffected.
+- **Files:** `files` is a folder (a `file:` URL or absolute path) the component may read from, for example the chat's working folder or a data folder of the extension. `host.file("photos/1.jpg")` gives an address for an `<img>`, a `fetch` or a link; it reads the file as it is now. Only files inside that folder are served (at most 64 MiB each), as inert data: nothing in them runs. A placement that names no folder can read none.
+- **Static files:** a component imports an image, font, sound, video or PDF of its extension (`import logo from "./logo.svg"`) and gets its address. The file must be inside the extension's folder and at most 8 MiB. JSON and text imports are bundled into the component. Global `.css` imports are not supported; a component's `<style>` is.
 - **Lifetime:** placements belong to the session. A reload, a reopen or a restart starts empty, and the extension shows them again as it loads (see [keeping state](#keeping-state)).
 - **Compiling:** the server compiles the file and what it imports (TypeScript, `.svelte`, `.svelte.ts` modules, npm packages from the extension's folder) with esbuild and Svelte's compiler, in runes mode. Each file compiles once per session and is served by content hash. Imports of `svelte` and its public subpaths resolve to the app's own instance (`contract/shared-svelte.ts`), so components mount inside PiSpark's tree and use its theme tokens (`var(--interactive-text)` and so on).
 - **Failures:** a refused path or a compile error is a notice in the chat (with file and line). A component that throws while rendering is replaced by a short line; the rest of the chat keeps working.
+
+### A page for a chat
+
+A component in `chat.page` takes the whole chat area: the chat's header stays, and the conversation and the reply box step aside. A **Page / Chat** switch in the header shows the conversation again, with everything the agent did, and the switch is remembered per chat while the app is open. While the page shows and an extension's question is open, the header says the chat is waiting and offers the conversation. Removing the placement brings the conversation back.
+
+The page is an ordinary component: `props` for what it shows, `calls` for what it can do (for example `pi.sendUserMessage(...)` to have the agent work), `files` for what it reads. PiSpark gives it the area's full width and height and scrolls it when it is taller; the layout inside is the extension's. A page that keeps its data in files in the chat's working folder can watch them and emit the view again when the agent changes them.
+
+The page shows once its component has compiled, so a chat opens on the conversation for a moment first.
 
 ### Keeping state
 
@@ -97,6 +108,8 @@ pi.on("session_start", (_event, ctx) => {
 Because the entries are on the chat's branch, the state survives a restart, a reload or a chat being unloaded, and follows forks: a branch shows the state it had at that point. It works the same in terminal Pi. Each save is a line in the transcript, so save on a meaningful change, not many times a second. Pi writes a new chat's transcript once it has its first reply; state saved before that is kept only while the chat stays open. A preference that is not part of the chat (a collapsed panel) does not belong in the transcript; PiSpark has no store for that yet.
 
 Folder extensions only: a component file must live inside the extension's folder, so a single-file extension that wants a view becomes a folder (`extensions/<name>/index.ts`). More places (side panel tabs, Chat info menu items) can join the catalog under the same rule.
+
+The places in the table are the workspace's (`apps/server/src/http/workspace-places.ts`). The core knows only the content slots (`tool:`, `custom:`) and the places its host names; a slot that is neither is refused with a notice.
 
 ## Not yet
 

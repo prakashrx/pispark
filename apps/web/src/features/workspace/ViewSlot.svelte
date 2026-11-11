@@ -6,7 +6,8 @@
    * One of the chat's contribution points: draws what extensions placed here, in the order they
    * placed it. Every component gets the same three things: `data` (what this place draws, when it
    * has something: a tool call, a custom item), `host` (whose `call(name, data)` runs a function its
-   * own placement gave it) and the props its extension sent. PiSpark owns the frame around them.
+   * own placement gave it, and whose `file(path)` is the address of a file in the folder that
+   * placement named) and the props its extension sent. PiSpark owns the frame around them.
    */
   let { slot, data }: { slot: string; data?: unknown } = $props();
   const client = useSessions();
@@ -14,6 +15,7 @@
   // One host per placement: it can reach only that placement's functions.
   const hostFor = (key: string) => ({
     call: (name: string, payload?: unknown) => client.call(slot, key, name, payload),
+    file: (path: string) => client.fileUrl(slot, key, path),
   });
   const propsOf = (props: unknown): Record<string, unknown> =>
     props && typeof props === "object" && !Array.isArray(props)
@@ -39,6 +41,12 @@
 <style>
   .extension-view {
     min-width: 0;
+  }
+  /* The page fills the chat area and grows past it; what is inside is the extension's. */
+  .extension-view[data-slot="chat.page"] {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
   }
   /* Small things in a row: chips beside the chat title, actions beside Send. */
   .extension-view[data-slot="chat.title"],

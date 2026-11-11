@@ -21,7 +21,7 @@ const eventually = async (check: () => boolean, ms = 10_000) => {
 };
 
 test("view compiler: one browser module on the page's shared Svelte, addressed by content", async () => {
-  const hash = await compileView(join(viewExtension, "Counter.svelte"));
+  const hash = await compileView(join(viewExtension, "Counter.svelte"), viewExtension);
   const code = viewBundle(hash)!;
   assert.match(hash, /^[a-f0-9]{32}$/);
   // Child components are bundled in; Svelte itself comes from the page.
@@ -29,8 +29,8 @@ test("view compiler: one browser module on the page's shared Svelte, addressed b
   assert.match(code, /__pisparkSvelte\["svelte\/internal\/client"\]/);
   assert.doesNotMatch(code, /from\s*["']svelte/);
   assert.match(code, /export\s*\{[^}]*default/);
-  assert.equal(await compileView(join(viewExtension, "Counter.svelte")), hash, "same source, same address");
-  await assert.rejects(compileView(join(viewExtension, "Broken.svelte")), /Broken\.svelte|Expected|Unexpected/);
+  assert.equal(await compileView(join(viewExtension, "Counter.svelte"), viewExtension), hash, "same source, same address");
+  await assert.rejects(compileView(join(viewExtension, "Broken.svelte"), viewExtension), /Broken\.svelte|Expected|Unexpected/);
 });
 
 test("extensions show components with Pi's bus: slots, props, calls back, entries with data, failures", async () => {
@@ -102,6 +102,9 @@ test("extensions show components with Pi's bus: slots, props, calls back, entrie
     await runtime.call(chat.id, "chat.header", "", "placeBroken");
     await eventually(() => notices().some((n) => /Broken\.svelte could not be compiled/.test(n)));
     assert.equal(views().some((v) => v.key === "broken"), false);
+    // A slot is a content slot or a place this host's client offers; anything else is refused.
+    await runtime.call(chat.id, "chat.header", "", "placeNowhere");
+    await eventually(() => notices().some((n) => /unknown slot side\.panel/.test(n)));
     assert.equal(runtime.session(chat.id).error, undefined);
 
     await runtime.shutdown();
@@ -145,6 +148,35 @@ test("host.call over HTTP is a plain request and response: many calls never bloc
     assert.equal((await call({ slot: "chat.header", key: "", name: "add" })).status, 404);
     assert.equal((await call({ slot: "reply.above", key: "counter", name: "add", extra: 1 })).status, 400);
 
+    // A page: its component imports a static file of the extension (it gets an address) and reads
+    // files from the folder its placement named, and nothing outside it.
+    await runtime.call(chat.id, "chat.header", "", "placePage");
+    await eventually(() => runtime.session(chat.id).extensions.views.some((v) => v.slot === "chat.page"));
+    const pageView = runtime.session(chat.id).extensions.views.find((v) => v.slot === "chat.page")!;
+    const bundle = await (await fetch(`${base}${pageView.url}`)).text();
+    const assetUrl = /\/api\/views\/assets\/[a-f0-9]{32}\.svg/.exec(bundle)![0];
+    const asset = await fetch(`${base}${assetUrl}`);
+    assert.equal(asset.status, 200);
+    assert.equal(asset.headers.get("content-type"), "image/svg+xml");
+    assert.match(asset.headers.get("content-security-policy")!, /sandbox/);
+    assert.match(await asset.text(), /<svg/);
+    assert.equal((await fetch(`${base}/api/views/assets/${"0".repeat(32)}.svg`)).status, 404);
+    const file = (query: Record<string, string>) =>
+      fetch(`${base}/api/sessions/${chat.id}/files?${new URLSearchParams(query)}`);
+    const items = await file({ slot: "chat.page", key: "", path: "items.json" });
+    assert.equal(items.status, 200);
+    assert.equal(items.headers.get("cache-control"), "no-store");
+    assert.match(items.headers.get("content-security-policy")!, /sandbox/);
+    assert.deepEqual(await items.json(), { items: ["First listing", "Second listing"] });
+    // Outside the folder, the folder itself, a placement that named no folder, an unknown query.
+    assert.equal((await file({ slot: "chat.page", key: "", path: "../index.mjs" })).status, 404);
+    assert.equal((await file({ slot: "chat.page", key: "", path: "." })).status, 404);
+    assert.equal((await file({ slot: "reply.above", key: "counter", path: "items.json" })).status, 404);
+    assert.equal((await file({ slot: "chat.page", key: "", path: "items.json", extra: "1" })).status, 400);
+    await runtime.call(chat.id, "chat.header", "", "removePage");
+    assert.equal(runtime.session(chat.id).extensions.views.some((v) => v.slot === "chat.page"), false);
+    assert.equal((await file({ slot: "chat.page", key: "", path: "items.json" })).status, 404);
+
     // Sending a message still works.
     const response = await fetch(`${base}/api/commands`, {
       method: "POST",
@@ -158,6 +190,22 @@ test("host.call over HTTP is a plain request and response: many calls never bloc
     await http.shutdown();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    await h.remove();
+  }
+});
+
+test("a host that names no places offers only the content slots", async () => {
+  const h = await testHome("pispark-views-places-");
+  try {
+    await h.persona("default", { name: "Default" });
+    await addViewExtension(h.home, "default");
+    const runtime = new SessionRuntime({ ...h.configuration, places: undefined });
+    const chat = await runtime.create({ folder: await h.folder("work") });
+    await eventually(() => runtime.session(chat.id).extensions.views.length === 2);
+    assert.deepEqual(runtime.session(chat.id).extensions.views.map((v) => v.slot).sort(), ["custom:note", "tool:shout"]);
+    assert.ok(noticeText(runtime, chat.id).some((n) => /unknown slot reply\.above/.test(n)));
+    await runtime.shutdown();
+  } finally {
     await h.remove();
   }
 });

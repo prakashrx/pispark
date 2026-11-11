@@ -17,7 +17,11 @@ import {
 import { PersonaHttp } from "./persona-http.js";
 import { validPersonaId } from "../core/personas/format.js";
 import { homedir } from "node:os";
-import { viewBundle } from "../core/extensions/view-compiler.js";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { extname } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { ASSET_TYPES, viewAsset, viewBundle } from "../core/extensions/view-compiler.js";
 import { CallError } from "../core/extensions/views.js";
 
 const uuid =
@@ -27,6 +31,21 @@ const MAX_FRAME = 256 * 1024;
 const MAX_LIVE_FRAME = 1024 * 1024;
 const ITEMS_FRAME = 1024 * 1024;
 const MAX_IMAGE = 20 * 1024 * 1024;
+/** The largest file an extension component may read through `host.file`. */
+const MAX_FILE = 64 * 1024 * 1024;
+/** What a file an extension component reads is served as; anything else is plain bytes. */
+const FILE_TYPES: Readonly<Record<string, string>> = {
+  ...ASSET_TYPES,
+  ".json": "application/json",
+  ".txt": "text/plain; charset=utf-8",
+  ".md": "text/plain; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8",
+};
+/** Files reach the page as data: nothing in them may run or load, whatever they contain. */
+const INERT = {
+  "X-Content-Type-Options": "nosniff",
+  "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+};
 /** How long a batch waits so a burst of Pi events leaves as one frame. */
 const FLUSH_MS = 50;
 export function sendJson(
@@ -403,7 +422,26 @@ export class SessionHttp {
           "X-Content-Type-Options": "nosniff",
         });
         response.end(code);
+      } else if (request.method === "GET" && /^\/api\/views\/assets\/[a-f0-9]{32}\.[a-z0-9]{2,5}$/.test(path) && !url.search) {
+        // A static file an extension component imported, addressed by its content.
+        const asset = await viewAsset(path.slice("/api/views/assets/".length));
+        if (!asset) {
+          sendJson(response, 404, { error: "not-found" });
+          return;
+        }
+        response.writeHead(200, {
+          "Content-Type": asset.type,
+          "Content-Length": asset.data.length,
+          "Cache-Control": "private, max-age=31536000, immutable",
+          ...INERT,
+        });
+        response.end(asset.data);
       } else {
+        const files = /^\/api\/sessions\/([\w-]+)\/files$/.exec(path);
+        if (request.method === "GET" && files && uuid.test(files[1]!)) {
+          await this.file(files[1]!, url.searchParams, response);
+          return;
+        }
         const calls = /^\/api\/sessions\/([\w-]+)\/calls$/.exec(path);
         if (request.method === "POST" && calls && uuid.test(calls[1]!) && !url.search) {
           await this.call(calls[1]!, validCall(await body(request)), response);
@@ -472,6 +510,40 @@ export class SessionHttp {
     }
   }
   /** An image part's bytes, or a chunk of a clipped text part (`?offset=`). */
+  /**
+   * An extension component's `host.file(path)`: a file in the folder its own placement named, as
+   * it is now. Served as inert data.
+   */
+  private async file(id: string, query: URLSearchParams, response: ServerResponse) {
+    const { slot, key, path } = Object.fromEntries(query);
+    if (
+      [...query.keys()].some((name) => !["slot", "key", "path"].includes(name)) ||
+      slot === undefined ||
+      key === undefined ||
+      path === undefined
+    )
+      throw new RuntimeError("invalid-input");
+    let file: string;
+    let size: number;
+    try {
+      file = this.runtime.file(id, slot, key, path);
+      size = (await stat(file)).size;
+    } catch (error) {
+      if (error instanceof RuntimeError && error.code !== "not-found") throw error;
+      sendJson(response, 404, { error: "not-found" });
+      return;
+    }
+    if (size > MAX_FILE) throw new RuntimeError("limit");
+    response.writeHead(200, {
+      "Content-Type": FILE_TYPES[extname(file).toLowerCase()] ?? "application/octet-stream",
+      "Content-Length": size,
+      "Cache-Control": "no-store",
+      ...INERT,
+    });
+    if (!size) return void response.end();
+    // A file that changes or goes away while it is read ends the response; nothing else is affected.
+    await pipeline(createReadStream(file, { end: size - 1 }), response).catch(() => response.destroy());
+  }
   private async part(id: string, itemId: string, part: number, query: URLSearchParams, response: ServerResponse) {
     const offset = query.get("offset");
     if ([...query.keys()].some((key) => key !== "offset") || (offset !== null && !/^\d{1,9}$/.test(offset)))
@@ -483,9 +555,8 @@ export class SessionHttp {
         "Content-Type": mimeType,
         "Content-Length": data.length,
         "Cache-Control": "private, max-age=31536000, immutable",
-        "X-Content-Type-Options": "nosniff",
         // An SVG is only ever drawn as an image; nothing in it may run or load.
-        "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+        ...INERT,
       });
       response.end(data);
       return;

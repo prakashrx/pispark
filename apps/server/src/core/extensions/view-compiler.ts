@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { basename, dirname } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { basename, dirname, extname, isAbsolute, relative } from "node:path";
 import { build, transform, type Plugin } from "esbuild";
 import { compile, compileModule } from "svelte/compiler";
 import { SHARED_SVELTE } from "../../contract/shared-svelte.js";
@@ -8,11 +8,77 @@ import { SHARED_SVELTE } from "../../contract/shared-svelte.js";
 /**
  * Turns an extension's Svelte component (and what it imports) into one browser module. Imports of
  * `svelte` resolve to the app's own Svelte instance, which the page shares as `globalThis.__pisparkSvelte`,
- * so an extension's component mounts inside PiSpark's tree like PiSpark's own.
+ * so an extension's component mounts inside PiSpark's tree like PiSpark's own. Images, fonts and
+ * other static files a component imports become URLs served from `/api/views/assets/`.
  */
 
 const MAX_BUNDLE = 2 * 1024 * 1024;
 const MAX_BUNDLES = 256;
+const MAX_ASSET = 8 * 1024 * 1024;
+const MAX_ASSETS = 1024;
+
+/** The static files a component may import, and what each is served as. */
+export const ASSET_TYPES: Readonly<Record<string, string>> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".pdf": "application/pdf",
+};
+const ASSET_FILTER = new RegExp(`\\.(${Object.keys(ASSET_TYPES).map((ext) => ext.slice(1)).join("|")})$`, "i");
+const sha = (data: Buffer | string) => createHash("sha256").update(data).digest("hex").slice(0, 32);
+
+/** Imported static files by content hash: where each is, so it is read when it is asked for. */
+const assets = new Map<string, string>();
+
+/** A static file a compiled component imported: its path and type, when it is still what was compiled. */
+export async function viewAsset(name: string): Promise<{ data: Buffer; type: string } | undefined> {
+  const extension = extname(name).toLowerCase();
+  const hash = name.slice(0, -extension.length);
+  const path = assets.get(hash);
+  const type = ASSET_TYPES[extension];
+  if (!path || !type || extname(path).toLowerCase() !== extension) return undefined;
+  try {
+    const data = await readFile(path);
+    return sha(data) === hash ? { data, type } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** `import logo from "./logo.png"` gives the component a URL; only files inside its extension's folder. */
+const assetFiles = (root: string): Plugin => ({
+  name: "pispark-asset-files",
+  setup(build) {
+    build.onLoad({ filter: ASSET_FILTER }, async (args) => {
+      const real = await realpath(args.path);
+      const rel = relative(root, real);
+      if (!rel || rel.startsWith("..") || isAbsolute(rel))
+        return { errors: [{ text: `${basename(args.path)} is outside the extension's folder` }] };
+      const data = await readFile(real);
+      if (data.length > MAX_ASSET) return { errors: [{ text: `${basename(args.path)} is too large to load` }] };
+      const hash = sha(data);
+      assets.delete(hash);
+      assets.set(hash, real);
+      while (assets.size > MAX_ASSETS) assets.delete(assets.keys().next().value!);
+      const url = `/api/views/assets/${hash}${extname(real).toLowerCase()}`;
+      return { contents: `export default ${JSON.stringify(url)};`, loader: "js" };
+    });
+  },
+});
 
 const sharedSvelte: Plugin = {
   name: "pispark-shared-svelte",
@@ -76,7 +142,7 @@ const bundles = new Map<string, string>();
 export const viewBundle = (hash: string): string | undefined => bundles.get(hash);
 
 /** Compiles a component file; the result is addressed by its content, so it can be cached forever. */
-export async function compileView(file: string): Promise<string> {
+export async function compileView(file: string, root: string): Promise<string> {
   let output: string;
   try {
     const result = await build({
@@ -87,7 +153,7 @@ export async function compileView(file: string): Promise<string> {
       platform: "browser",
       target: "es2022",
       logLevel: "silent",
-      plugins: [sharedSvelte, svelteFiles],
+      plugins: [sharedSvelte, svelteFiles, assetFiles(root)],
     });
     output = result.outputFiles[0]!.text;
   } catch (error) {
@@ -98,7 +164,7 @@ export async function compileView(file: string): Promise<string> {
     throw new Error(`${at}${first.text}`);
   }
   if (output.length > MAX_BUNDLE) throw new Error("The component is too large to load");
-  const hash = createHash("sha256").update(output).digest("hex").slice(0, 32);
+  const hash = sha(output);
   bundles.delete(hash);
   bundles.set(hash, output);
   // Keep the most recently compiled; an evicted one is compiled again when a chat reopens.

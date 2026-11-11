@@ -1,5 +1,5 @@
-import { realpathSync } from "node:fs";
-import { isAbsolute, relative } from "node:path";
+import { realpathSync, statSync } from "node:fs";
+import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EventBus } from "@earendil-works/pi-coding-agent";
 import type { ExtensionContribution } from "../../contract/protocol.js";
@@ -31,6 +31,8 @@ interface Placed {
   file: string;
   props?: Json;
   calls: Record<string, Call>;
+  /** A folder whose files the component may read (`host.file(path)`). */
+  files?: string;
   /** Set once the component compiled. */
   url?: string;
 }
@@ -67,9 +69,9 @@ function calls(value: unknown): Record<string, Call> {
 
 /**
  * One chat's extension components. An extension shows one with an event on Pi's bus, giving it
- * props and the functions it may call; terminal Pi, with no listener, ignores the event. A
- * component must be a `.svelte` file inside the folder of an extension the chat loads, and it can
- * only reach the functions its own placement gave it.
+ * props, the functions it may call and, if it wants, a folder of files it may read; terminal Pi,
+ * with no listener, ignores the event. A component must be a `.svelte` file inside the folder of
+ * an extension the chat loads, and it can only reach what its own placement gave it.
  */
 export class ExtensionViews {
   private readonly placed = new Map<string, Placed>();
@@ -112,11 +114,18 @@ export class ExtensionViews {
     });
   }
 
-  private file(component: unknown): string {
-    const text = component instanceof URL ? component.href : component;
-    if (typeof text !== "string" || text.length > 4096) throw new Error("component must be a file URL or path");
+  /** An absolute path, from a `file:` URL (a `URL` or its string) or a path. */
+  private path(value: unknown, what: string): string {
+    const text = value instanceof URL ? value.href : value;
+    if (typeof text !== "string" || text.length > 4096) throw new Error(`${what} must be a file URL or path`);
     const path = text.startsWith("file:") ? fileURLToPath(text) : text;
-    if (!isAbsolute(path) || !path.endsWith(".svelte")) throw new Error("component must be an absolute path to a .svelte file");
+    if (!isAbsolute(path)) throw new Error(`${what} must be an absolute path`);
+    return path;
+  }
+  /** The component's real path and the extension folder it is in. */
+  private componentFile(component: unknown): { file: string; root: string } {
+    const path = this.path(component, "component");
+    if (!path.endsWith(".svelte")) throw new Error("component must be an absolute path to a .svelte file");
     let real: string;
     try {
       real = realpathSync.native(path);
@@ -127,14 +136,27 @@ export class ExtensionViews {
       const rel = relative(root, real);
       return rel && !rel.startsWith("..") && !isAbsolute(rel);
     };
-    if (!this.roots.some(inside)) throw new Error(`${path} is not inside an extension this chat loads`);
-    return real;
+    const root = this.roots.find(inside);
+    if (!root) throw new Error(`${path} is not inside an extension this chat loads`);
+    return { file: real, root };
+  }
+  /** The folder a placement lets its component read files from. */
+  private folder(files: unknown): string | undefined {
+    if (files === undefined || files === null) return undefined;
+    const path = this.path(files, "files");
+    try {
+      const real = realpathSync.native(path);
+      if (statSync(real).isDirectory()) return real;
+    } catch {
+      /* Reported below. */
+    }
+    throw new Error(`files must be an existing folder: ${path}`);
   }
 
   private place(data: unknown) {
     if (this.closed) return;
-    if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("expected { slot, component, props?, calls?, key? }");
-    const { slot, key = "", component, props, calls: given, ...rest } = data as Record<string, unknown>;
+    if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("expected { slot, component, props?, calls?, files?, key? }");
+    const { slot, key = "", component, props, calls: given, files, ...rest } = data as Record<string, unknown>;
     if (Object.keys(rest).length) throw new Error(`unknown field ${Object.keys(rest)[0]}`);
     if (typeof slot !== "string" || !(CONTENT_SLOT.test(slot) || this.places.has(slot))) throw new Error(`unknown slot ${String(slot)}`);
     if (typeof key !== "string" || !KEY.test(key)) throw new Error("key must be a short name");
@@ -144,7 +166,7 @@ export class ExtensionViews {
       if (this.placed.delete(id)) this.host.changed();
       return;
     }
-    const file = this.file(component);
+    const { file, root } = this.componentFile(component);
     if (!this.placed.has(id) && this.placed.size >= MAX_CONTRIBUTIONS) throw new Error("too many views");
     const previous = this.placed.get(id);
     const entry: Placed = {
@@ -153,6 +175,7 @@ export class ExtensionViews {
       file,
       props: json(props, "props"),
       calls: calls(given),
+      files: this.folder(files),
       // New props for the same file show at once; the compiled component is reused.
       url: previous?.file === file ? previous.url : undefined,
     };
@@ -161,7 +184,7 @@ export class ExtensionViews {
     if (entry.url) return;
     // Each file compiles once per session; a reopened chat compiles it again, so edits show.
     let compiling = this.compiled.get(file);
-    if (!compiling) this.compiled.set(file, (compiling = compileView(file)));
+    if (!compiling) this.compiled.set(file, (compiling = compileView(file, root)));
     compiling.then(
       (hash) => {
         if (this.closed || this.placed.get(id) !== entry) return;
@@ -224,6 +247,24 @@ export class ExtensionViews {
       clearTimeout(timer);
       this.running.delete(controller);
     }
+  }
+
+  /**
+   * A component's `host.file(path)`: the real path of a file inside the folder its own placement
+   * named. Nothing outside that folder, and nothing when the placement named none.
+   */
+  file(slot: string, key: string, path: string): string {
+    const root = this.placed.get(`${slot}\u0000${key}`)?.files;
+    if (this.closed || !root || typeof path !== "string" || !path || path.length > 1024 || path.includes("\0"))
+      throw new RuntimeError("not-found");
+    try {
+      const real = realpathSync.native(resolve(root, path));
+      const rel = relative(root, real);
+      if (rel && !rel.startsWith("..") && !isAbsolute(rel) && statSync(real).isFile()) return real;
+    } catch {
+      /* Not there. */
+    }
+    throw new RuntimeError("not-found");
   }
 
   /** What the browser mounts: compiled contributions, in the order they were placed. */

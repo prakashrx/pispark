@@ -69,3 +69,65 @@ test("an extension's own Svelte components appear in the chat's slots, answer ca
 
   expect(errors).toEqual([]);
 });
+
+test("an extension's page takes the chat area, loads its own image and data file, and the conversation stays one click away", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Persona: Default" }).click();
+  await page.getByRole("option", { name: "Extension views", exact: true }).click();
+  const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
+  await ask.fill("hello");
+  await ask.press("Enter");
+  const reply = page.getByRole("textbox", { name: "Reply to chat" });
+  await expect(page.getByRole("button", { name: "Send message" })).not.toHaveAttribute("aria-disabled", "true");
+  // No page yet: no switch.
+  const show = page.getByRole("radiogroup", { name: "Show" });
+  await expect(show).toHaveCount(0);
+
+  // The extension places a page: it takes the chat area, and the reply box steps aside.
+  await reply.fill("/page");
+  await reply.press("Enter");
+  const area = page.locator('[data-slot="chat.page"]');
+  await expect(area.getByRole("heading", { name: "Fixture page" })).toBeVisible();
+  await expect(reply).toHaveCount(0);
+  await expect(page.getByRole("main", { name: "Chat page" })).toBeVisible();
+  // A file the component imported, and a data file from the folder its placement named.
+  const mark = area.getByRole("img", { name: "Fixture mark" });
+  await expect.poll(() => mark.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  await expect(area.getByRole("listitem")).toHaveText(["First listing", "Second listing"]);
+  // The page has the whole width of the chat area, not the conversation's column.
+  const main = (await page.getByRole("main").boundingBox())!;
+  expect((await area.boundingBox())!.width).toBeGreaterThan(main.width - 2);
+  // The chat's header stays: its title, the extension's chip and the switch.
+  await expect(page.locator('[data-slot="chat.title"]')).toHaveText("fixture chip");
+
+  // The conversation is the other half of the switch, by mouse and by keyboard.
+  await expect(show.getByRole("radio", { name: "Page" })).toBeChecked();
+  await show.getByText("Chat", { exact: true }).click();
+  await expect(area).toHaveCount(0);
+  await expect(reply).toBeVisible();
+  await expect(page.getByRole("main", { name: "Chat conversation" })).toBeVisible();
+  await show.getByRole("radio", { name: "Chat" }).focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(area.getByRole("heading", { name: "Fixture page" })).toBeVisible();
+
+  // The choice belongs to the chat: it is still the page after visiting another screen.
+  await page.goto("/#/settings");
+  await page.goto("/#/workspace");
+  await expect(area.getByRole("heading", { name: "Fixture page" })).toBeVisible();
+
+  // When the extension removes its page, the conversation and the reply box are back.
+  await show.getByText("Chat", { exact: true }).click();
+  await reply.fill("/page off");
+  await reply.press("Enter");
+  await expect(show).toHaveCount(0);
+  await expect(reply).toBeVisible();
+
+  expect(errors).toEqual([]);
+});
