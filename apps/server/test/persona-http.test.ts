@@ -169,4 +169,9 @@ test("persona HTTP: a working folder is refused when it is not there, then liste
   await f.ok("save", { target: { persona: id }, expectedRevision: view.revision, definition: { ...view.definition, folder } });
   assert.equal((await f.ok<PersonaView>("read", { target: { persona: id } })).folder, folder);
   assert.equal((await f.list()).find((persona) => persona.id === id)!.folder, folder);
+  // A home view is saved and listed the same way.
+  const current = await f.ok<PersonaView>("read", { target: { persona: id } });
+  await f.ok("save", { target: { persona: id }, expectedRevision: current.revision, definition: { ...current.definition, home: "desk" } });
+  assert.equal((await f.ok<PersonaView>("read", { target: { persona: id } })).home, "desk");
+  assert.equal((await f.list()).find((persona) => persona.id === id)!.home, "desk");
 });

@@ -98,11 +98,12 @@
       </div>
       {#if info}<p class="text-sm text-muted-foreground mt-1.5">
           {[
-            info.persona
-              ? info.persona.layered
-                ? `${info.persona.name} (edited here)`
-                : info.persona.name
-              : undefined,
+            // Not said twice when the session goes by its app's name.
+            info.persona?.layered
+              ? `${info.persona.name} (edited here)`
+              : info.persona && info.persona.name !== chatName(info)
+                ? info.persona.name
+                : undefined,
             folderName(info.folder),
             modelName,
             chatStarted(info),

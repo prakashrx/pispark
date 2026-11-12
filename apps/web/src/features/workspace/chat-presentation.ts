@@ -24,6 +24,8 @@ export function folderName(path: string): string {
 export function chatName(chat?: SessionInfo): string {
   if (!chat) return "This chat";
   if (validChatTitle(chat.title)) return chat.title;
+  // An app's session goes by the app's name until it has a title of its own.
+  if (chat.persona?.home) return chat.persona.name;
   if (chat.hasHistory === false) return "New chat";
   return "Untitled chat";
 }
@@ -35,6 +37,24 @@ export function chatStatus(status?: string, interrupted = false, waiting = false
   if (status === "starting") return "Opening…";
   if (interrupted || status === "error") return "Needs attention";
   return "";
+}
+/** A session's state in words, for the mark beside its name; empty when there is nothing to say. */
+export const sessionStatus = (session: SessionInfo) =>
+  chatStatus(session.status, session.interrupted, session.waiting, session.queued);
+/** Of several sessions' states, the one a person most needs to see. */
+export function foremostStatus(statuses: string[]): string {
+  return (
+    ["Needs attention", "Waiting for you", "Working…", "Queued", "Opening…", "Stopping…"].find((status) =>
+      statuses.includes(status),
+    ) ?? ""
+  );
+}
+/** When a session started, short enough for a list: "12 Nov, 9:34 pm". */
+export function sessionStarted(session: SessionInfo): string {
+  const date = new Date(session.createdAt);
+  return Number.isNaN(date.getTime())
+    ? ""
+    : date.toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }
 
 export function chatStarted(chat: SessionInfo): string {

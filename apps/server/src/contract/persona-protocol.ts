@@ -39,6 +39,11 @@ export interface PersonaDefinition {
    * Inherited like the settings: the nearest layer that names one wins.
    */
   folder?: string;
+  /**
+   * The key of the `session.view` its sessions open on, which makes it an app persona: opened
+   * rather than chatted with. Inherited like the folder.
+   */
+  home?: string;
 }
 
 /** A persona by ID, or the layer a chat owns after an in-chat edit. */
@@ -57,6 +62,8 @@ export interface PersonaSummary {
   base: string[];
   /** The folder it works in, its own or a parent's: Ask uses it instead of asking for one. */
   folder?: string;
+  /** The view its sessions open on, its own or a parent's: an app persona has one. */
+  home?: string;
   builtIn: boolean;
   /** False when persona.json can't be read or resolved; `error` says why. */
   valid: boolean;
@@ -96,8 +103,9 @@ export interface PersonaView {
   items: ResolvedItem[];
   tools: ResolvedTool[];
   settings: { model?: string; thinking?: ThinkingLevel };
-  /** The folder it resolves to, its own or a parent's. */
+  /** The folder and the home view it resolves to, its own or a parent's. */
   folder?: string;
+  home?: string;
   /** Set when the setup can't be resolved, e.g. a missing parent or a cycle. */
   error?: string;
   detail?: string;
@@ -114,4 +122,6 @@ export interface ChatPersona {
   name: string;
   /** True once the chat has its own layer on top of the persona. */
   layered: boolean;
+  /** An app persona's home view: the one this session shows first. */
+  home?: string;
 }

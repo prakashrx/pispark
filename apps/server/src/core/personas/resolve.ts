@@ -42,6 +42,8 @@ export interface Setup {
   settings: PersonaDefinition["settings"] & {};
   /** The folder the persona works in, when it is a project persona. */
   folder?: string;
+  /** The view an app persona's sessions open on. For clients: Pi has no use for it. */
+  home?: string;
   instructions: { name: string; text: string }[];
   skillDirs: string[];
   prompts: {
@@ -112,16 +114,23 @@ export function resolveLayers(
   return [first, ...ordered];
 }
 
-/** The folder a persona works in: the nearest layer that names one. */
-const folderIn = (layers: Layer[]) => layers.findLast((layer) => layer.definition.folder)?.definition.folder;
-export const folderOf = (store: PersonaStore, target: PersonaTarget) => folderIn(resolveLayers(store, target));
+/**
+ * What binds a persona: the folder it works in (a project persona) and the view its sessions open
+ * on (an app persona). For each, the nearest layer that names one.
+ */
+function bound(layers: Layer[]): { folder?: string; home?: string } {
+  const nearest = (key: "folder" | "home") => layers.findLast((layer) => layer.definition[key])?.definition[key];
+  const folder = nearest("folder");
+  const home = nearest("home");
+  return { ...(folder ? { folder } : {}), ...(home ? { home } : {}) };
+}
+export const bindingOf = (store: PersonaStore, target: PersonaTarget) => bound(resolveLayers(store, target));
 
-/** Every persona, each with the folder it works in. */
+/** Every persona, each with its folder and home view. */
 export function listPersonas(store: PersonaStore): PersonaSummary[] {
   return store.list().map((summary) => {
     try {
-      const folder = summary.valid ? folderOf(store, { persona: summary.id }) : undefined;
-      return folder ? { ...summary, folder } : summary;
+      return summary.valid ? { ...summary, ...bindingOf(store, { persona: summary.id }) } : summary;
     } catch {
       // A missing parent or a cycle: the persona's own view says so.
       return summary;
@@ -219,7 +228,7 @@ export function resolveSetup(
       : target;
   const layers = resolveLayers(store, effective);
   const { entries, tools, settings } = fold(store, layers);
-  const folder = folderIn(layers);
+  const { folder, home } = bound(layers);
   const active = [...entries.values()].filter((e) => e.resolved.on);
   const of = (type: ItemType) => active.filter((e) => e.item.type === type);
   const instructions = of("instructions").map((e) => ({
@@ -271,6 +280,7 @@ export function resolveSetup(
     tools: toolList,
     settings,
     ...(folder ? { folder } : {}),
+    ...(home ? { home } : {}),
     instructions,
     skillDirs,
     prompts,
@@ -299,6 +309,7 @@ export function viewPersona(
       tools: setup.tools,
       settings: setup.settings,
       ...(setup.folder ? { folder: setup.folder } : {}),
+      ...(setup.home ? { home: setup.home } : {}),
     };
   } catch (error) {
     if (!(error instanceof PersonaError)) throw error;

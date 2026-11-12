@@ -171,19 +171,22 @@ export class ChatSession {
   get views(): ExtensionContribution[] {
     return contributionsFor(this.doc?.extensions, "session.view");
   }
-  /** The key of the view that shows; none while the conversation does. */
+  /**
+   * The key of the view that shows; none while the conversation does. It is the person's choice
+   * for this session and, until they make one, the home view of an app persona.
+   */
   get shownView(): string | undefined {
-    return this.views.some((view) => view.key === this.chosenView) ? this.chosenView : undefined;
+    const key = this.chosenView ?? this.info?.persona?.home;
+    return key && this.views.some((view) => view.key === key) ? key : undefined;
   }
   /**
    * Shows a view, or the conversation (no key). The choice is kept for this session in the
    * browser: a view that is not offered yet shows once it is.
    */
   showView(key?: string) {
-    this.chosenView = key;
+    this.chosenView = key ?? "";
     try {
-      if (key) localStorage.setItem(viewChoice(this.id), key);
-      else localStorage.removeItem(viewChoice(this.id));
+      localStorage.setItem(viewChoice(this.id), this.chosenView);
     } catch {
       /* The choice lasts for this visit when browser storage is unavailable. */
     }
@@ -195,6 +198,7 @@ export class ChatSession {
   row = $state<SessionInfo>();
   /** The chat's history and live document, as the server's operations keep them. */
   readonly live: LiveChat;
+  /** The view the person chose: "" is the conversation, unset is no choice yet. */
   private chosenView = $state<string>();
   /** How often each view had asked to be shown when last looked; unset until the session shows. */
   private asked?: Map<string, number>;

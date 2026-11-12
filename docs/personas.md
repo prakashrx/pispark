@@ -30,7 +30,7 @@
 - **Switches** use `type:name`: `instruction:`, `skill:`, `prompt:`, `extension:`, `mcp:` and `tool:`. `off` turns an inherited item or a tool off; `on` turns one back on (or turns a tool on).
 - **Customizing** an inherited item means adding one with the same name; the later layer wins.
 - `persona.json` is strict: unknown keys, malformed switches and `"default"` in `base` are refused, so typos never silently do nothing.
-- `"folder"` makes it a [project persona](#project-personas).
+- `"folder"` makes it a [project persona](#project-personas); `"home"` makes it an [app persona](#app-personas).
 - **MCP servers** are part of the format and resolution, but are **not connected to chats yet**; the editor says so.
 
 ## Default and layering
@@ -59,6 +59,18 @@ Cycles and a missing parent are reported (`cycle`, `missing-parent`); at most 16
 - Changing the folder affects new sessions only. Giving a persona a folder, or taking it away, changes what its sessions read, so open chats are flagged as changed.
 - Paths belong to one machine: a project persona is local to its host.
 
+## App personas
+
+`"home": "desk"` in `persona.json` names the view the persona's sessions open on: the `key` of a [`session.view`](extensions.md#views-of-a-session) one of its extensions offers. A persona with a home view, its own or one a parent names, is an **app persona**: it is opened rather than chatted with.
+
+- **In the sidebar.** App personas have their own **Apps** section above the chats. A row opens the app: its newest session or, with none, a new one, made with no first message. The row unfolds to the app's sessions and **New session**. A mark on the row says when one of its sessions is working, waiting for you, queued or needs attention. An app's sessions are not listed among the chats.
+- **The home view shows first** in each of the app's sessions. Once a person chooses a view in a session, the conversation included, that choice is kept for the session. If no extension offers a view with that key, the conversation shows.
+- **Where it works.** An app with a `folder` works there (a project app). An app without one has its own folder, `<data folder>/apps/<persona id>/`, made when it is first opened; no `AGENTS.md` is read from it. Started from Ask, an app without a `folder` works in the folder chosen there.
+- **Names.** PiSpark does not name an app's sessions. One with no title goes by the app's name in the header and by when it started in the app's list; a first message, the title tool or `pi.setSessionName` names it as for any chat.
+- **Inherited** like `folder`, and with the same limits: Default and a chat's own layer name none. It is a short key (`A-Z a-z 0-9 _ . : -`, at most 64 characters). It is no part of the setup fingerprint: the agent is the same.
+
+There is no app object, manifest or store: an app is a persona with a home view.
+
 ## Chats use personas live
 
 A chat records only which persona it uses; nothing is copied. When its Pi session starts, the chat stores a fingerprint of the resolved setup. After any persona change, open chats whose resolved setup differs show **"The persona changed. Reload to apply it"**; **Reload chat** restarts the Pi session from the same transcript. Changes never apply in the middle of a run. The fingerprint covers every file of a skill folder and of an extension folder (`extensions/<name>/`: its code, helpers and Svelte components); a single-file extension is that file. Edits made outside PiSpark, in an editor, count too: the server watches the personas folder. A reload compiles changed components again.
@@ -75,6 +87,7 @@ Personas lists every persona, Default first. The editor shows, for one layer:
 - **Instructions, Skills, Commands, Extensions:** every resolved item with where it comes from ("Added here", "From Writer"), whether a layer switched it, and an on/off switch. Items in this layer can be edited or removed; inherited ones can be viewed and **customized here** (copied into this layer). New instructions, skills and commands start from a template.
 - **Tools:** Pi's built-in tools and extension tools with on/off switches and which layer set them.
 - **Model:** a preferred model and thinking level.
+- **App:** the key of the home view of an app persona, or "Inherited" with the parent's. The editor cannot list views: they exist only while a session runs. Not shown for Default or a chat's own layer.
 - **Working folder:** the folder of a project persona, chosen as in Ask (recent folders, home, or a path), or "Inherited" with the parent's folder. Not shown for Default or a chat's own layer.
 - **Advanced:** where the persona is stored, the layer order and the raw `persona.json`; delete (not Default, not a persona another one builds on).
 
@@ -86,8 +99,8 @@ All endpoints use the shared loopback Host/Origin/Fetch Metadata guard and exact
 
 | Endpoint | Body → result |
 | --- | --- |
-| `GET /api/personas` | → `{personas: PersonaSummary[]}`, Default first; each has `folder` when it is a project persona |
-| `POST /api/personas/read` | `{target}` → `PersonaView` (definition, revision, layers, resolved items and tools, settings and folder; `error` when unresolvable) |
+| `GET /api/personas` | → `{personas: PersonaSummary[]}`, Default first; each has `folder` when it is a project persona and `home` when it is an app persona |
+| `POST /api/personas/read` | `{target}` → `PersonaView` (definition, revision, layers, resolved items and tools, settings, folder and home; `error` when unresolvable) |
 | `POST /api/personas/create` | `{name, description?, base?}` → `{id, revision}` |
 | `POST /api/personas/save` | `{target, expectedRevision, definition}` → `{revision}`; `""` creates a chat's layer |
 | `POST /api/personas/delete` | `{id}` |

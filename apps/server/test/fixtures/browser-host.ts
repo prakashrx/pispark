@@ -53,6 +53,9 @@ if (!existsSync(join(home, "personas", "default", "persona.json"))) {
   // An extension whose one component is its own frontend for the chat.
   await writePersona(home, "frontend", { name: "Custom frontend", description: "A chat frontend supplied by an extension" });
   await addFrontendExtension(home, "frontend");
+  // An app persona: opened from the sidebar, its sessions show the Log view first.
+  await writePersona(home, "log-app", { name: "Log app", description: "An app that opens on its Log view", home: "log" });
+  await addFrontendExtension(home, "log-app");
 }
 const settingsFixture = await localProviderSettings(join(home, "providers"));
 // The local auth provider is signed in and the default, so chats can start without setup.

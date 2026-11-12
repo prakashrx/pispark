@@ -5,8 +5,8 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PersonaStore } from "../src/core/personas/store.js";
 import {
+  bindingOf,
   checkCycles,
-  folderOf,
   listPersonas,
   resolveSetup,
   viewPersona,
@@ -254,7 +254,7 @@ test("a working folder: absolute, inherited from the nearest layer, not for Defa
   assert.equal(setup("role").folder, undefined);
   assert.equal(setup("project").folder, project);
   assert.equal(viewPersona(s, { persona: "reviewer" }).folder, project);
-  assert.equal(folderOf(s, { persona: "moved" }), other);
+  assert.equal(bindingOf(s, { persona: "moved" }).folder, other);
   assert.deepEqual(
     listPersonas(s).map((summary) => [summary.id, summary.folder]),
     [["default", undefined], ["moved", other], ["project", project], ["reviewer", project], ["role", undefined]],
@@ -274,4 +274,28 @@ test("a working folder: absolute, inherited from the nearest layer, not for Defa
   // Every persona builds on Default, so it names none.
   const base = s.read({ persona: "default" });
   assert.throws(() => s.save({ persona: "default" }, base.revision, { ...base.definition, folder: project }), code("invalid-definition"));
+});
+
+test("a home view: a view key, inherited from the nearest layer, not for Default or a chat's own layer, and no part of the setup", async (t) => {
+  const { store: s, persona, remove } = await store();
+  t.after(remove);
+  for (const bad of [{ name: "A", home: "two words" }, { name: "A", home: "" }, { name: "A", home: 3 }, { name: "A", home: "x".repeat(65) }])
+    assert.throws(() => validateDefinition(bad), code("invalid-definition"));
+  assert.throws(() => validateDefinition({ base: ["dev"], home: "desk" }, { chatLayer: true }), code("invalid-definition"));
+
+  await persona("role", { name: "Role" });
+  await persona("app", { name: "App", base: ["role"], home: "desk" });
+  await persona("variant", { name: "Variant", base: ["app"] });
+  await persona("other", { name: "Other", base: ["app"], home: "board" });
+  assert.deepEqual(bindingOf(s, { persona: "role" }), {});
+  assert.deepEqual(bindingOf(s, { persona: "variant" }), { home: "desk" });
+  assert.equal(viewPersona(s, { persona: "other" }).home, "board");
+  assert.deepEqual(
+    listPersonas(s).map((summary) => [summary.id, summary.home]),
+    [["default", undefined], ["app", "desk"], ["other", "board"], ["role", undefined], ["variant", "desk"]],
+  );
+  // Which view shows first is the client's business: the agent's setup is the same.
+  assert.equal(resolveSetup(s, { persona: "app" }).fingerprint, resolveSetup(s, { persona: "role" }).fingerprint);
+  const base = s.read({ persona: "default" });
+  assert.throws(() => s.save({ persona: "default" }, base.revision, { ...base.definition, home: "desk" }), code("invalid-definition"));
 });

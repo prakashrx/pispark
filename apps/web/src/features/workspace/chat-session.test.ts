@@ -52,8 +52,11 @@ test("a live stream the server ends on purpose is followed on at once, and the c
   }
 });
 
-/** A chat on screen whose live stream the test feeds: each `offer` is the session's views now. */
-function followed(id: string) {
+/**
+ * A chat on screen whose live stream the test feeds: each `offer` is the session's views now.
+ * `home` makes it the session of an app persona with that home view.
+ */
+function followed(id: string, home?: string) {
   let feed!: ReadableStreamDefaultController<Uint8Array>;
   vi.stubGlobal(
     "fetch",
@@ -79,6 +82,7 @@ function followed(id: string) {
           id,
           status: "idle",
           title,
+          ...(home ? { persona: { id: "app", name: "App", layered: false, home } } : {}),
           extensions: {
             views: views.map((view) => {
               const [key, attention] = view.split(":");
@@ -132,10 +136,10 @@ test("a session opens on the conversation; the view a person chose is remembered
     expect(again.chat.shownView).toBeUndefined();
     await again.offer("desk", "log");
     expect(again.chat.shownView).toBe("log");
-    // Choosing the conversation forgets the view.
+    // Choosing the conversation is a choice too, and is kept.
     again.chat.showView();
     expect(again.chat.shownView).toBeUndefined();
-    expect(localStorage.getItem("pispark:view:views-1")).toBeNull();
+    expect(localStorage.getItem("pispark:view:views-1")).toBe("");
   } finally {
     again.close();
   }
@@ -184,5 +188,33 @@ test("a view that asks to be shown is shown once, while the session is on screen
     expect(chat.shownView).toBe("desk");
   } finally {
     close();
+  }
+});
+
+test("an app's session opens on its home view until the person chooses another, the conversation included", async () => {
+  localStorage.clear();
+  const first = followed("app-1", "desk");
+  try {
+    await first.chat.show();
+    // Nothing offers the home view yet: the conversation shows, and nothing is made up.
+    await first.offer("log");
+    expect(first.chat.shownView).toBeUndefined();
+    await first.offer("log", "desk");
+    expect(first.chat.shownView).toBe("desk");
+    first.chat.showView();
+    expect(first.chat.shownView).toBeUndefined();
+  } finally {
+    first.close();
+  }
+  // Opened again: the person chose the conversation, so the home view does not come back by itself.
+  const again = followed("app-1", "desk");
+  try {
+    await again.chat.show();
+    await again.offer("log", "desk");
+    expect(again.chat.shownView).toBeUndefined();
+    again.chat.showView("log");
+    expect(again.chat.shownView).toBe("log");
+  } finally {
+    again.close();
   }
 });

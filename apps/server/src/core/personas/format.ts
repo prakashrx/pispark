@@ -55,6 +55,8 @@ export const digest = (value: string | Buffer) =>
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/;
+/** The key an extension gives a view it offers. */
+const VIEW_KEY = /^[\w.:-]{1,64}$/;
 export const validItemName = (name: unknown): name is string =>
   typeof name === "string" && NAME.test(name) && !name.endsWith(".");
 export const validPersonaId = (id: unknown): id is string =>
@@ -112,9 +114,10 @@ export function validateDefinition(
   value: unknown,
   {
     chatLayer = false,
-    // Not Default, which every persona builds on, nor a chat's own layer: its folder is already fixed.
-    folder = !chatLayer,
-  }: { chatLayer?: boolean; folder?: boolean } = {},
+    // A folder and a home view: not for Default, which every persona builds on, nor for a chat's
+    // own layer, whose session already has both.
+    binds = !chatLayer,
+  }: { chatLayer?: boolean; binds?: boolean } = {},
 ): PersonaDefinition {
   if (!plainObject(value)) return fail("invalid-definition", 400, "object");
   const allowed = [
@@ -125,7 +128,7 @@ export function validateDefinition(
     "off",
     "mcpServers",
     "settings",
-    ...(folder ? ["folder"] : []),
+    ...(binds ? ["folder", "home"] : []),
   ];
   const unknown = Object.keys(value).find((key) => !allowed.includes(key));
   if (unknown) fail("invalid-definition", 400, unknown);
@@ -134,6 +137,8 @@ export function validateDefinition(
   text(value.folder, 4096);
   if (value.folder !== undefined && !isAbsolute(value.folder as string))
     fail("invalid-definition", 400, "folder");
+  if (value.home !== undefined && (typeof value.home !== "string" || !VIEW_KEY.test(value.home)))
+    fail("invalid-definition", 400, "home");
   if (value.base !== undefined) {
     if (
       !Array.isArray(value.base) ||

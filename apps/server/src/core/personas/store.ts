@@ -76,10 +76,10 @@ const readText = (path: string): string => {
   return buffer.toString("utf8");
 };
 
-/** What a layer's persona.json may hold: Default and a chat's own layer name no working folder. */
+/** What a layer's persona.json may hold: Default and a chat's own layer name no folder and no home view. */
 const rules = (target: PersonaTarget) => ({
   chatLayer: "chat" in target,
-  folder: "persona" in target && target.persona !== DEFAULT_PERSONA,
+  binds: "persona" in target && target.persona !== DEFAULT_PERSONA,
 });
 const isFolder = (path: string): boolean => {
   try {

@@ -129,6 +129,18 @@
       return next;
     });
   }
+  let home = $state("");
+  $effect(() => {
+    home = definition?.home ?? "";
+  });
+  function setHome() {
+    const key = home.trim();
+    void client.updateDefinition((d) => {
+      const next: PersonaDefinition = { ...d, home: key };
+      if (!key) delete next.home;
+      return next;
+    });
+  }
   function setFolder(folder: string) {
     if (folder === (definition?.folder ?? "")) return;
     void client.updateDefinition((d) => {
@@ -302,6 +314,29 @@
         {#if view.folder && !definition?.folder}<p class="text-xs text-muted-foreground mt-2 break-all">
             Inherited: {view.folder}
           </p>{/if}
+      </Section>
+    {/if}
+    {#if !isDefault && !isChat}
+      <Section
+        title="App"
+        description="An app is opened from the sidebar and shows one of its extensions’ views first."
+        layout="split"
+        class="border-b border-[var(--border)] pb-6"
+      >
+        <form
+          class="flex items-center gap-2 max-w-md"
+          aria-label="Home view"
+          onsubmit={(event) => {
+            event.preventDefault();
+            setHome();
+          }}
+        >
+          <Input label="Home view" placeholder="The view’s key, for example desk" maxlength={64} bind:value={home} />
+          <Button type="submit" unavailable={home.trim() === (definition?.home ?? "") ? "Nothing to save" : undefined}
+            >Save</Button
+          >
+        </form>
+        {#if view.home && !definition?.home}<p class="text-xs text-muted-foreground mt-2">Inherited: {view.home}</p>{/if}
       </Section>
     {/if}
     <Section title="Advanced" description="How this persona is stored." layout="split">

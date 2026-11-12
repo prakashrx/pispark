@@ -15,6 +15,8 @@ export interface HomePaths {
   root: string;
   chats: string;
   personas: string;
+  /** `apps/<persona id>/`: the place of an app persona that has no folder of its own. */
+  apps: string;
   providers: string;
   logs: string;
   /** PiSpark's own settings file. */
@@ -27,6 +29,7 @@ export function homePaths(root: string): HomePaths {
     root: base,
     chats: join(base, "chats"),
     personas: join(base, "personas"),
+    apps: join(base, "apps"),
     providers: join(base, "providers"),
     logs: join(base, "logs"),
     settings: join(base, "settings.json"),

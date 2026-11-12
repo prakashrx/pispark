@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { isAbsolute } from "node:path";
+import { mkdirSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import type { Provider } from "@earendil-works/pi-ai";
 import type { HostSettings, ItemsPage, LiveDoc, PartPage, SessionDoc } from "../../contract/protocol.js";
 import type { ModelChoice } from "../../contract/provider-protocol.js";
-import type { ChatPersona, PersonaTarget } from "../../contract/persona-protocol.js";
+import type { ChatPersona, PersonaSummary, PersonaTarget } from "../../contract/persona-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { homePaths } from "../home.js";
 import { PersonaStore } from "../personas/store.js";
-import { folderOf, resolveSetup, type Setup } from "../personas/resolve.js";
+import { bindingOf, listPersonas, resolveSetup, type Setup } from "../personas/resolve.js";
 import { DEFAULT_PERSONA, validPersonaId } from "../personas/format.js";
 import type { Json } from "../../contract/stream-ops.js";
 import { Chat, validateText, type ChatHost, type RunHandle, type SessionSummary } from "./chat.js";
@@ -43,10 +44,11 @@ export class SessionRuntime {
   private readonly settingsPath: string;
   private readonly timeout: number;
   /**
-   * Persona names and which chats have their own layer. A loaded chat's document is read on every
+   * What a chat says of its persona (name, home view) and which chats have their own layer. A loaded chat's document is read on every
    * streaming update, so these are read from disk once and again only after a persona change.
    */
-  private personaNames?: Map<string, string>;
+  private known?: Map<string, PersonaSummary>;
+  private readonly appsDir: string;
   private readonly layered = new Map<string, boolean>();
 
   constructor(
@@ -58,6 +60,7 @@ export class SessionRuntime {
     this.maxLive = configuration.maxLiveSessions ?? 32;
     this.idleUnload = configuration.idleUnloadMs ?? 15 * 60_000;
     this.settingsPath = paths.settings;
+    this.appsDir = paths.apps;
     this.slots = new RunSlots(configuration.maxRunning ?? readSettings(this.settingsPath).maxRunning);
     this.timeout = configuration.operationTimeoutMs ?? 10_000;
     const runTimeout = configuration.runTimeoutMs ?? 300_000;
@@ -66,7 +69,7 @@ export class SessionRuntime {
     this.storage = new ChatStorage(paths.chats);
     this.personas = new PersonaStore(paths.personas, paths.chats, (chatId) => this.storage.read(chatId).persona, logger);
     this.unwatchPersonas = this.personas.onChange(() => {
-      this.personaNames = undefined;
+      this.known = undefined;
       this.layered.clear();
       this.checkSetups();
     });
@@ -123,13 +126,15 @@ export class SessionRuntime {
       }
     return folders;
   }
-  private summary(metadata: ChatMetadata, chat?: Chat, names?: Map<string, string>): SessionSummary {
+  private summary(metadata: ChatMetadata, chat?: Chat): SessionSummary {
     let layered = this.layered.get(metadata.id);
     if (layered === undefined) this.layered.set(metadata.id, (layered = this.personas.exists({ chat: metadata.id })));
+    const known = (this.known ??= new Map(listPersonas(this.personas).map((p) => [p.id, p]))).get(metadata.persona);
     const persona: ChatPersona = {
       id: metadata.persona,
-      name: (names ?? this.names()).get(metadata.persona) ?? metadata.persona,
+      name: known?.name ?? metadata.persona,
       layered,
+      ...(known?.home ? { home: known.home } : {}),
     };
     return {
       id: metadata.id,
@@ -144,9 +149,6 @@ export class SessionRuntime {
       ...(chat?.asking ? { waiting: true } : {}),
       ...(chat?.waitingForSlot || (!chat && metadata.queued !== undefined) ? { queued: true } : {}),
     };
-  }
-  private names(): Map<string, string> {
-    return (this.personaNames ??= new Map(this.personas.list().map((p) => [p.id, p.name])));
   }
   /** The chat's own layer once it has one, else the persona it started with. */
   private target(metadata: ChatMetadata): PersonaTarget {
@@ -214,7 +216,10 @@ export class SessionRuntime {
     this.live.set(metadata.id, chat); // Reserve the chat before any async setup.
     return chat.load();
   }
-  /** A new session in the folder given, or in its persona's own when that is a project persona. */
+  /**
+   * A new session in the folder given, or in its persona's own place: a project persona's folder,
+   * or an app persona's folder under the data root.
+   */
   async create(request: { folder?: string; model?: ModelChoice; persona?: string }): Promise<SessionDoc> {
     this.admit();
     // Only above the backstop is there anything to wait for; below it, admission stays immediate.
@@ -228,15 +233,16 @@ export class SessionRuntime {
     const persona = request.persona ?? DEFAULT_PERSONA;
     if (!validPersonaId(persona)) throw new RuntimeError("invalid-input");
     if (!this.personas.exists({ persona })) throw new RuntimeError("persona");
-    let bound: string | undefined;
+    let bound: ReturnType<typeof bindingOf>;
     try {
-      bound = folderOf(this.personas, { persona });
+      bound = bindingOf(this.personas, { persona });
     } catch {
       throw new RuntimeError("persona");
     }
-    // A project persona decides the folder; nobody else may. Any other persona is given one.
-    const folder = bound ?? request.folder;
-    if ((bound && request.folder !== undefined) || typeof folder !== "string" || !isAbsolute(folder) || folder.length > 4096)
+    // A project persona decides the folder; nobody else may. An app without one has its own place
+    // unless it is given another. Any other persona is given a folder.
+    const folder = bound.folder ?? request.folder ?? (bound.home ? this.appFolder(persona) : undefined);
+    if ((bound.folder && request.folder !== undefined) || typeof folder !== "string" || !isAbsolute(folder) || folder.length > 4096)
       throw new RuntimeError("invalid-input");
     // The folder is checked and made canonical during setup, after the chat is reserved.
     return this.load(
@@ -252,6 +258,15 @@ export class SessionRuntime {
       },
       false,
     );
+  }
+  private appFolder(persona: string): string {
+    const dir = join(this.appsDir, persona);
+    try {
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+    } catch {
+      throw new RuntimeError("storage");
+    }
+    return dir;
   }
   async open(id: string): Promise<SessionDoc> {
     validateId(id);

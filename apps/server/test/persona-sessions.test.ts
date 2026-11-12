@@ -223,3 +223,28 @@ test("a project persona works in its own folder and reads its AGENTS.md; other p
     await f.cleanup();
   }
 });
+
+test("an app persona's session says its home view and, given no folder, starts in the app's own folder under the data root", async () => {
+  const f = await fixture();
+  try {
+    await f.persona("app", { name: "App", home: "desk" });
+    await f.persona("project-app", { name: "Project app", base: ["app"], folder: f.folder });
+    const opened = await f.runtime.create({ persona: "app" });
+    assert.equal(opened.folder, await realpath(join(f.home, "apps", "app")));
+    assert.deepEqual(opened.persona, { id: "app", name: "App", layered: false, home: "desk" });
+    assert.equal(f.runtime.list().find((session) => session.id === opened.id)!.persona.home, "desk");
+    // No message was sent, and the session is kept all the same: it opens again after it unloads.
+    await f.runtime.stop(opened.id);
+    assert.equal((await f.runtime.open(opened.id)).persona.home, "desk");
+    // Started from Ask in another folder, it works there.
+    assert.equal((await f.runtime.create({ persona: "app", folder: f.folder })).folder, await realpath(f.folder));
+    // A project app lives in its project's folder.
+    const project = await f.runtime.create({ persona: "project-app" });
+    assert.equal(project.folder, await realpath(f.folder));
+    assert.equal(project.persona.home, "desk");
+    // A persona that is neither still needs a folder.
+    assert.equal(f.runtime.session(await f.runtime.create({ folder: f.folder }).then((doc) => doc.id)).persona.home, undefined);
+  } finally {
+    await f.cleanup();
+  }
+});

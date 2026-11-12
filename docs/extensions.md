@@ -125,8 +125,8 @@ An offer does not take the session over. The person chooses what shows:
 | --- | --- |
 | Offer | `key` and `title` are required: the key is a short name, the title is plain text of 1 to 40 characters. Emitting again with the same key updates the offer in place; leaving out `component` removes it. A session has at most 6 offers. A refused offer is a notice. |
 | Switch | When at least one view is offered, the chat header has a **Show** switch: **Conversation** first, then the offers in the order first made. |
-| Default | A session opens on the conversation. |
-| Remembered | The view a person chose is kept for that session in the browser. If it is not offered yet when the session opens, it shows once it is. |
+| Default | A session opens on the conversation. A session of an [app persona](personas.md#app-personas) opens on the persona's home view instead, once it is offered. |
+| Remembered | The view a person chose, the conversation included, is kept for that session in the browser. If it is not offered yet when the session opens, it shows once it is. |
 | Attention | An offer with `attention: true` asks to be shown, for example when a person runs the extension's command. If the person is looking at the session, the view shows, once per request; they can switch back. Requests made while nobody was looking are not replayed. |
 | While a view shows | It has the area under the chat header, at full width, and scrolls when it is taller; the conversation and the reply box step aside. If an extension's question is open, the header says the chat is waiting and offers the conversation. |
 | Removal | When the view that shows is removed, the conversation shows again. |

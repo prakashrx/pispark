@@ -241,6 +241,34 @@ export class SessionClient {
       this.asking = false;
     }
   }
+  /** The sessions of an app persona, newest first. */
+  appSessions(persona: string): SessionInfo[] {
+    return this.sessions
+      .filter((session) => session.persona?.id === persona)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+  /**
+   * Opens an app persona: its newest session or, with none (or when a fresh one is asked for), a
+   * new one in the app's own place. No message is sent; the session shows the app's home view.
+   */
+  async openApp(persona: string, fresh = false): Promise<void> {
+    const newest = fresh ? undefined : this.appSessions(persona)[0];
+    if (newest) return this.select(newest.id);
+    if (this.busy) return;
+    this.asking = true;
+    this.error = "";
+    this.errorKind = undefined;
+    try {
+      const created = await this.transport.run({ type: "create", persona });
+      await this.refresh();
+      await this.select(created.sessionId!);
+    } catch (error) {
+      this.fail(error);
+      this.error = `New session: ${this.error}`;
+    } finally {
+      this.asking = false;
+    }
+  }
   dispose() {
     this.providers.dispose();
     this.disposed = true;

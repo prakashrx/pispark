@@ -1,8 +1,13 @@
 <script lang="ts">
-    import Icon from "../../lib/ui/Icon.svelte";
+  import Icon from "../../lib/ui/Icon.svelte";
+  import AppEntry from "./AppEntry.svelte";
+  import SessionMark from "./SessionMark.svelte";
   import { useSessions } from "./session-client.svelte";
-  import { chatName, chatStatus } from "./chat-presentation";
+  import { chatName, sessionStatus } from "./chat-presentation";
   const client = useSessions();
+  // App personas are opened from their own section, and their sessions are listed there.
+  const apps = $derived(client.personas.items.filter((persona) => persona.valid && persona.home));
+  const chats = $derived(client.sessions.filter((session) => !session.persona?.home));
 
   function groupByDate(sessions: typeof client.sessions) {
     const now = new Date();
@@ -33,47 +38,50 @@
     ].filter(g => g.items.length > 0);
   }
 
-  const groups = $derived(groupByDate(client.sessions));
+  const groups = $derived(groupByDate(chats));
 </script>
 
 <div class="workspace flex-1 min-h-0 flex flex-col justify-between">
   <div class="flex flex-col h-full overflow-hidden">
-    <nav aria-label="Chats" class="flex-1 overflow-y-auto px-3 pt-1 pb-3 space-y-3">
-      {#if client.sessions.length === 0}
-        <p class="px-3 py-3 text-sm text-muted-foreground">No chats yet.</p>
-      {:else}
-        {#each groups as group}
-          <div>
-            <p class="px-3 pt-2 pb-1.5 text-xs font-medium text-subtle">{group.label}</p>
-            <div class="space-y-px">
-              {#each group.items as session (session.id)}
-                {@const status = chatStatus(session.status, session.interrupted, session.waiting, session.queued)}
-                <a
-                  href="#/workspace"
-                  onclick={() => client.select(session.id)}
-                  aria-current={session.id === client.selected ? "page" : undefined}
-                  class="nav-item"
-                >
-                  <span class="min-w-0 flex-1">
-                    <span class="block truncate">{chatName(session)}</span>
-                    {#if session.persona?.name}
-                      <span class="block truncate text-xs text-subtle mt-0.5">{session.persona.name}</span>
-                    {/if}
-                  </span>
-                  {#if status}
-                    <!-- Shape carries the meaning (spinner vs alert) and the text is announced; color only reinforces it. -->
-                    <span class="chat-status" data-tone={status === "Needs attention" ? "warning" : status === "Waiting for you" || status === "Queued" ? "waiting" : "active"} title={status}>
-                      {#if status === "Needs attention"}<Icon name="alert" class="h-4 w-4" />{:else if status === "Waiting for you"}<Icon name="help" class="h-4 w-4" />{:else if status === "Queued"}<Icon name="clock" class="h-4 w-4" />{:else}<span class="chat-spinner" aria-hidden="true"></span>{/if}
-                      <span class="sr-only">{status}</span>
-                    </span>
-                  {/if}
-                </a>
-              {/each}
-            </div>
+    <div class="flex-1 overflow-y-auto px-3 pt-1 pb-3 space-y-3">
+      {#if apps.length}
+        <nav aria-label="Apps">
+          <p class="px-3 pt-2 pb-1.5 text-xs font-medium text-subtle">Apps</p>
+          <div class="space-y-px">
+            {#each apps as app (app.id)}<AppEntry {app} />{/each}
           </div>
-        {/each}
+        </nav>
       {/if}
-    </nav>
+      <nav aria-label="Chats" class="space-y-3">
+        {#if chats.length === 0}
+          <p class="px-3 py-3 text-sm text-muted-foreground">No chats yet.</p>
+        {:else}
+          {#each groups as group}
+            <div>
+              <p class="px-3 pt-2 pb-1.5 text-xs font-medium text-subtle">{group.label}</p>
+              <div class="space-y-px">
+                {#each group.items as session (session.id)}
+                  <a
+                    href="#/workspace"
+                    onclick={() => client.select(session.id)}
+                    aria-current={session.id === client.selected ? "page" : undefined}
+                    class="nav-item"
+                  >
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate">{chatName(session)}</span>
+                      {#if session.persona?.name}
+                        <span class="block truncate text-xs text-subtle mt-0.5">{session.persona.name}</span>
+                      {/if}
+                    </span>
+                    <SessionMark status={sessionStatus(session)} />
+                  </a>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        {/if}
+      </nav>
+    </div>
   </div>
 
   <div class="px-3 py-2.5" style="border-top:1px solid var(--sidebar-border)">
@@ -83,43 +91,3 @@
     </a>
   </div>
 </div>
-
-<style>
-  .chat-status {
-    flex-shrink: 0;
-    display: inline-grid;
-    place-items: center;
-    width: 1.25rem;
-    height: 1.25rem;
-  }
-  .chat-status[data-tone="warning"] {
-    color: var(--warning-foreground);
-  }
-  .chat-status[data-tone="waiting"] {
-    color: var(--interactive-text);
-  }
-  .chat-status[data-tone="active"] {
-    color: var(--interactive-text);
-  }
-  .chat-spinner {
-    width: 0.75rem;
-    height: 0.75rem;
-    border-radius: 50%;
-    border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
-    border-top-color: currentColor;
-    animation: chat-spin 0.9s linear infinite;
-  }
-  @keyframes chat-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .chat-spinner {
-      animation: none;
-      border-color: currentColor;
-      width: 0.5rem;
-      height: 0.5rem;
-    }
-  }
-</style>
