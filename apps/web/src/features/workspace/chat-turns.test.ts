@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { Item, ItemPart } from "../../../../server/src/contract/protocol";
 import { buildTurns, clippedPart, itemText } from "./chat-turns";
 import { describeCall, summarizeCalls } from "./tool-views";
-import { slotOf } from "./extension-views";
+import { pointOf } from "./extension-views";
 
 let n = 0;
 const item = (role: Item["role"], parts: ItemPart[], extra: Partial<Item> = {}): Item => ({
@@ -167,7 +167,7 @@ test("a running call carries what it has output so far; a finished one does not"
   expect(segment.kind === "activity" && segment.calls.map((c) => c.progress?.output)).toEqual(["compiling\n", undefined]);
 });
 
-test("a tool an extension placed a component for is drawn by it alone; custom items map to their slot", () => {
+test("a tool an extension placed a component for is drawn by it alone; custom items map to their point", () => {
   n = 0;
   const details = { patch: ["--- a.ts", "+++ a.ts", "@@ -1 +1 @@", "-a", "+b", ""].join(String.fromCharCode(10)) };
   const items = [
@@ -178,13 +178,13 @@ test("a tool an extension placed a component for is drawn by it alone; custom it
   ];
   const plain = buildTurns(items, { running: false });
   expect(plain[0]!.segments.map((s) => s.kind)).toEqual(["activity", "diff", "custom"]);
-  const placed = buildTurns(items, { running: false, placed: (slot) => slot === "tool:edit" });
+  const placed = buildTurns(items, { running: false, placed: (point) => point === "item.tool:edit" });
   // The component is the whole call: no activity line, no default diff.
   expect(placed[0]!.segments.map((s) => s.kind)).toEqual(["view", "custom"]);
   const [view, custom] = placed[0]!.segments;
-  expect(slotOf(view!)).toEqual({ slot: "tool:edit", data: expect.objectContaining({ name: "edit", status: "done" }) });
-  expect(slotOf(custom!)).toEqual({ slot: "custom:note", data: expect.objectContaining({ customType: "note" }) });
-  expect(slotOf(plain[0]!.segments[0]!)).toBeUndefined();
+  expect(pointOf(view!)).toEqual({ point: "item.tool:edit", data: expect.objectContaining({ name: "edit", status: "done" }) });
+  expect(pointOf(custom!)).toEqual({ point: "item.custom:note", data: expect.objectContaining({ customType: "note" }) });
+  expect(pointOf(plain[0]!.segments[0]!)).toBeUndefined();
 });
 
 test("a notice kept in the chat's history is a notice where it happened", () => {

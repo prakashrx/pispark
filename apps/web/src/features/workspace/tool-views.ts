@@ -5,7 +5,7 @@ import { registerGenericToolView, registerToolView, resolveToolView, type CallWo
 /**
  * PiSpark's own views of tools: Pi's built-in ones by name, and a generic one for the rest, so none
  * of the conversation's code needs to know a tool by name. Extensions draw their tools with a
- * component in the `tool:<name>` slot instead (see extension-views.ts).
+ * component at `item.tool:<name>` instead (see extension-views.ts).
  */
 
 const text = (value: unknown): string | undefined =>

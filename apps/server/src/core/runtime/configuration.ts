@@ -49,10 +49,10 @@ export interface RuntimeConfiguration {
   /** How many chats may run at once; more prompts wait for a turn (default 8). */
   maxRunning?: number;
   /**
-   * The places where the client draws extension components (the workspace's are in
-   * `http/workspace-places.ts`). Content slots (`tool:`, `custom:`) need no entry here.
+   * The contribution points the client draws, besides the items of a session's history (the
+   * workspace's are in `http/workspace-points.ts`). `item.tool:` and `item.custom:` need no entry.
    */
-  places?: readonly string[];
+  points?: readonly string[];
   /** How long an extension component's call may take (default 30 s). */
   callTimeoutMs?: number;
   operationTimeoutMs?: number;

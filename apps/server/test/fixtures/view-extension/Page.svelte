@@ -23,6 +23,7 @@
     {#each items as item (item)}<li>{item}</li>{/each}
   </ul>
   {#if failed}<p role="alert">{failed}</p>{/if}
+  <button type="button" onclick={() => host.call("remove")}>Remove this page</button>
 </section>
 
 <style>

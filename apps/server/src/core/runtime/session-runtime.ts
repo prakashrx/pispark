@@ -79,7 +79,7 @@ export class SessionRuntime {
       timeout: this.timeout,
       runTimeout,
       callTimeout: configuration.callTimeoutMs,
-      places: configuration.places,
+      points: configuration.points,
       accepting: () => this.accepting,
       holds: (chat) => this.live.get(chat.id) === chat,
       setup: (metadata) => resolveSetup(this.personas, this.target(metadata)),
@@ -325,12 +325,12 @@ export class SessionRuntime {
     return this.get(id).observe();
   }
   /** An extension component's `host.call`: a function of its own placement, and its result. */
-  call(id: string, slot: string, key: string, name: string, data?: Json): Promise<Json | undefined> {
-    return this.get(id).call(slot, key, name, data);
+  call(id: string, point: string, key: string, name: string, data?: Json): Promise<Json | undefined> {
+    return this.get(id).call(point, key, name, data);
   }
   /** An extension component's `host.file`: the path of a file in the folder its own placement named. */
-  file(id: string, slot: string, key: string, path: string): string {
-    return this.get(id).file(slot, key, path);
+  file(id: string, point: string, key: string, path: string): string {
+    return this.get(id).file(point, key, path);
   }
   /** Answer a question an extension asked through Pi's `ctx.ui`. */
   answer(id: string, dialogId: string, answer: string | boolean | null): void {

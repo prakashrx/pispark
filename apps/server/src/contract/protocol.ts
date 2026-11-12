@@ -96,20 +96,24 @@ export type ExtensionDialog = {
 );
 /** What extensions currently show through Pi's `ctx.ui`. */
 /**
- * A Svelte component an extension placed in one of the chat's slots, with Pi's event bus:
- * `pi.events.emit("pispark:view", { slot, key?, component?, props? })`.
+ * A Svelte component an extension contributed to one of a session's points, with Pi's event bus:
+ * `pi.events.emit("pispark:view", { point, key?, component?, props? })`.
  */
 export interface ExtensionContribution {
-  /** A content slot (`tool:<name>`, `custom:<customType>`) or one of the places the client draws. */
-  slot: string;
-  /** Tells several contributions to one slot apart. */
+  /** An item of the history (`item.tool:<name>`, `item.custom:<customType>`) or a point the client draws. */
+  point: string;
+  /** Tells several contributions to one point apart. */
   key: string;
   /** The compiled component (content-addressed, so a changed file gets a new url). */
   url: string;
   props?: Json;
+  /** At `session.view`, a whole view of the session: its name, for the person to choose it by. */
+  title?: string;
+  /** How many times that view asked to be shown. A client acts on a rise it sees, never on what it finds. */
+  attention?: number;
 }
 export interface ExtensionView {
-  /** Components extensions placed in the chat's slots. */
+  /** Components extensions contributed to the session's points. */
   views: ExtensionContribution[];
   dialogs: ExtensionDialog[];
   statuses: { key: string; line: StyledLine }[];
@@ -144,6 +148,12 @@ export interface SessionDoc extends SessionInfo {
   queue: { steering: number; followUp: number };
   error?: string;
   extensions: ExtensionView;
+  /** The commands extensions registered with Pi (`registerCommand`); sending `/name` runs one. */
+  commands: SessionCommand[];
+}
+export interface SessionCommand {
+  name: string;
+  description?: string;
 }
 /** What a running tool has reported so far: the end of its output, and its details. */
 export interface ToolProgress {
@@ -195,7 +205,7 @@ export interface Receipt {
 }
 /** `POST /api/sessions/:id/calls`: an extension component's `host.call(name, data)` to a function of its own placement. */
 export interface CallRequest {
-  slot: string;
+  point: string;
   key: string;
   name: string;
   data?: Json;

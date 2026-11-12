@@ -10,11 +10,19 @@ import { compileView } from "./view-compiler.js";
 /** The one event an extension uses to show a component: `pi.events.emit(VIEW_EVENT, {...})`. */
 export const VIEW_EVENT = "pispark:view";
 /**
- * Content slots, the same for every client: `tool:<name>` (a tool's output, like Pi's tool
- * renderers) and `custom:<customType>` (custom messages and entries, like Pi's message and entry
- * renderers). Every other slot is a place the host's client draws, named in its configuration.
+ * The items of a session's history, the same for every client: `item.tool:<name>` (a tool's
+ * output, like Pi's tool renderers) and `item.custom:<customType>` (custom messages and entries,
+ * like Pi's message and entry renderers). Every other point is one the host's client draws, named
+ * in its configuration.
  */
-const CONTENT_SLOT = /^(tool:[\w.-]{1,64}|custom:[\w.:-]{1,64})$/;
+const ITEM_POINT = /^item\.(tool:[\w.-]{1,64}|custom:[\w.:-]{1,64})$/;
+/**
+ * A point that takes whole views (`session.view`): each offer has a key and a title, the person
+ * chooses which one shows, and an offer may ask to be shown.
+ */
+const takesViews = (point: string) => point.endsWith(".view");
+const TITLE = /^\P{Cc}{1,40}$/u;
+const MAX_VIEWS = 6;
 const NAME = /^[\w.:-]{1,64}$/;
 const KEY = /^[\w.:-]{0,64}$/;
 const MAX_JSON = 64 * 1024;
@@ -26,7 +34,7 @@ const MAX_PENDING = 16;
 type Call = (data: Json | undefined, context: { signal: AbortSignal }) => unknown;
 
 interface Placed {
-  slot: string;
+  point: string;
   key: string;
   file: string;
   props?: Json;
@@ -35,6 +43,10 @@ interface Placed {
   files?: string;
   /** Set once the component compiled. */
   url?: string;
+  /** A whole view's name, for the person to choose it by. */
+  title?: string;
+  /** How many times a whole view asked to be shown. */
+  attention?: number;
 }
 
 /** The extension's own error from a call, given back to the component that made it. */
@@ -78,7 +90,7 @@ export class ExtensionViews {
   private readonly compiled = new Map<string, Promise<string>>();
   private readonly running = new Set<AbortController>();
   private readonly roots: string[];
-  private readonly places: ReadonlySet<string>;
+  private readonly points: ReadonlySet<string>;
   private closed = false;
 
   constructor(
@@ -89,11 +101,11 @@ export class ExtensionViews {
       failed: (message: string) => void;
       /** How long a call may take. */
       callTimeoutMs?: number;
-      /** The places the client draws, besides the content slots. */
-      places?: readonly string[];
+      /** The points the client draws, besides the items of the history. */
+      points?: readonly string[];
     },
   ) {
-    this.places = new Set(host.places);
+    this.points = new Set(host.points);
     this.roots = extensionFolders.flatMap((folder) => {
       try {
         return [realpathSync.native(folder)];
@@ -155,22 +167,31 @@ export class ExtensionViews {
 
   private place(data: unknown) {
     if (this.closed) return;
-    if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("expected { slot, component, props?, calls?, files?, key? }");
-    const { slot, key = "", component, props, calls: given, files, ...rest } = data as Record<string, unknown>;
+    if (!data || typeof data !== "object" || Array.isArray(data))
+      throw new Error("expected { point, component, props?, calls?, files?, key?, title?, attention? }");
+    const { point, key = "", title, attention, component, props, calls: given, files, ...rest } = data as Record<string, unknown>;
     if (Object.keys(rest).length) throw new Error(`unknown field ${Object.keys(rest)[0]}`);
-    if (typeof slot !== "string" || !(CONTENT_SLOT.test(slot) || this.places.has(slot))) throw new Error(`unknown slot ${String(slot)}`);
+    if (typeof point !== "string" || !(ITEM_POINT.test(point) || this.points.has(point))) throw new Error(`unknown point ${String(point)}`);
     if (typeof key !== "string" || !KEY.test(key)) throw new Error("key must be a short name");
-    const id = `${slot}\u0000${key}`;
-    // No component: remove what this slot and key held.
+    const view = takesViews(point);
+    if (view && !key) throw new Error(`${point} needs a key`);
+    if (!view && (title !== undefined || attention !== undefined)) throw new Error(`${point} takes no title or attention: only a view does`);
+    const id = `${point}\u0000${key}`;
+    // No component: remove what this point and key held.
     if (component === undefined || component === null) {
       if (this.placed.delete(id)) this.host.changed();
       return;
     }
     const { file, root } = this.componentFile(component);
-    if (!this.placed.has(id) && this.placed.size >= MAX_CONTRIBUTIONS) throw new Error("too many views");
     const previous = this.placed.get(id);
+    if (!previous && this.placed.size >= MAX_CONTRIBUTIONS) throw new Error("too many views");
+    if (view) {
+      if (typeof title !== "string" || !TITLE.test(title.trim())) throw new Error("a view needs a title of 1 to 40 characters");
+      if (attention !== undefined && typeof attention !== "boolean") throw new Error("attention must be true or false");
+      if (!previous && this.count(point) >= MAX_VIEWS) throw new Error(`at most ${MAX_VIEWS} views at ${point}`);
+    }
     const entry: Placed = {
-      slot,
+      point,
       key,
       file,
       props: json(props, "props"),
@@ -178,6 +199,8 @@ export class ExtensionViews {
       files: this.folder(files),
       // New props for the same file show at once; the compiled component is reused.
       url: previous?.file === file ? previous.url : undefined,
+      // Each request to be shown counts once, so a client can tell a new one from one it has seen.
+      ...(view ? { title: (title as string).trim(), attention: (previous?.attention ?? 0) + (attention ? 1 : 0) } : {}),
     };
     this.placed.set(id, entry);
     this.host.changed();
@@ -201,17 +224,22 @@ export class ExtensionViews {
     );
   }
 
-  /** Whether any component is placed in a slot; custom entries with one are sent to the browser. */
-  has(slot: string): boolean {
-    return [...this.placed.values()].some((entry) => entry.slot === slot);
+  /** Whether any component is placed at a point; custom entries with one are sent to the browser. */
+  has(point: string): boolean {
+    return this.count(point) > 0;
+  }
+  private count(point: string): number {
+    let count = 0;
+    for (const entry of this.placed.values()) if (entry.point === point) count++;
+    return count;
   }
 
   /**
    * A component's `host.call(name, data)`: runs that function of its own placement and gives back
    * its result. Bounded, cancelled when the chat closes, and timed out.
    */
-  async call(slot: string, key: string, name: string, data: Json | undefined): Promise<Json | undefined> {
-    const fn = this.placed.get(`${slot}\u0000${key}`)?.calls[name];
+  async call(point: string, key: string, name: string, data: Json | undefined): Promise<Json | undefined> {
+    const fn = this.placed.get(`${point}\u0000${key}`)?.calls[name];
     if (this.closed || !fn) throw new RuntimeError("not-found");
     if (this.running.size >= MAX_PENDING) throw new RuntimeError("limit");
     const controller = new AbortController();
@@ -253,8 +281,8 @@ export class ExtensionViews {
    * A component's `host.file(path)`: the real path of a file inside the folder its own placement
    * named. Nothing outside that folder, and nothing when the placement named none.
    */
-  file(slot: string, key: string, path: string): string {
-    const root = this.placed.get(`${slot}\u0000${key}`)?.files;
+  file(point: string, key: string, path: string): string {
+    const root = this.placed.get(`${point}\u0000${key}`)?.files;
     if (this.closed || !root || typeof path !== "string" || !path || path.length > 1024 || path.includes("\0"))
       throw new RuntimeError("not-found");
     try {
@@ -269,8 +297,10 @@ export class ExtensionViews {
 
   /** What the browser mounts: compiled contributions, in the order they were placed. */
   view(): ExtensionContribution[] {
-    return [...this.placed.values()].flatMap(({ slot, key, url, props }) =>
-      url ? [{ slot, key, url, ...(props === undefined ? {} : { props }) }] : [],
+    return [...this.placed.values()].flatMap(({ point, key, url, props, title, attention }) =>
+      url
+        ? [{ point, key, url, ...(props === undefined ? {} : { props }), ...(title === undefined ? {} : { title }), ...(attention ? { attention } : {}) }]
+        : [],
     );
   }
 

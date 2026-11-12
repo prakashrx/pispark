@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Provider } from "@earendil-works/pi-ai";
-import { NOTICE_ENTRY, type ItemsPage, type LiveDoc, type PartPage, type SessionDoc } from "../../contract/protocol.js";
+import { NOTICE_ENTRY, type ItemsPage, type LiveDoc, type PartPage, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
 import { ExtensionUI } from "../extensions/extension-ui.js";
 import { ExtensionRendering } from "../extensions/extension-render.js";
 import { ExtensionViews } from "../extensions/views.js";
@@ -68,8 +68,8 @@ export interface ChatHost {
   readonly timeout: number;
   readonly runTimeout: number;
   readonly callTimeout?: number;
-  /** The places the client draws extension components in. */
-  readonly places?: readonly string[];
+  /** The contribution points the client draws, besides the items of a session's history. */
+  readonly points?: readonly string[];
   /** Whether the runtime still takes new work. */
   accepting(): boolean;
   /** Whether this chat is the one the runtime holds for its id. */
@@ -94,6 +94,17 @@ interface Run {
 
 /** Steer and follow-up input being prepared knows which run it belongs to. */
 const inputAdmission = new AsyncLocalStorage<{ valid: () => boolean }>();
+
+/** The commands extensions registered with Pi, by the name that runs each: a client lists them as actions. */
+function commandsOf(session: AgentSession): SessionCommand[] {
+  return session.extensionRunner
+    .getRegisteredCommands()
+    .slice(0, 50)
+    .map(({ invocationName: name, description }) => {
+      const text = description?.replace(/\s+/g, " ").trim().slice(0, 200);
+      return text ? { name, description: text } : { name };
+    });
+}
 
 /** "extensions/notes.ts" and "extensions/notes/index.ts" are both "notes". */
 function extensionName(path: string): string {
@@ -236,6 +247,7 @@ export class Chat {
         ...(this.ui?.view() ?? { dialogs: [], statuses: [], widgets: [], notices: [] }),
         views: this.views?.view() ?? [],
       },
+      commands: commandsOf(session),
     };
   }
   /** The live document: session state, the items in flight and what running tools reported. */
@@ -271,18 +283,18 @@ export class Chat {
     }
   }
   /** An extension component's `host.call`: a function of its own placement, and its result. */
-  call(slot: string, key: string, name: string, data?: Json): Promise<Json | undefined> {
+  call(point: string, key: string, name: string, data?: Json): Promise<Json | undefined> {
     this.loaded();
     this.touch();
     if (!this.views) throw new RuntimeError("not-found");
-    return this.views.call(slot, key, name, data);
+    return this.views.call(point, key, name, data);
   }
   /** An extension component's `host.file`: a file in the folder its own placement named. */
-  file(slot: string, key: string, path: string): string {
+  file(point: string, key: string, path: string): string {
     this.loaded();
     this.touch();
     if (!this.views) throw new RuntimeError("not-found");
-    return this.views.file(slot, key, path);
+    return this.views.file(point, key, path);
   }
   /** Answer a question an extension asked through Pi's `ctx.ui`. */
   answer(dialogId: string, answer: string | boolean | null): void {
@@ -354,7 +366,7 @@ export class Chat {
     }));
     const views = (this.views = new ExtensionViews(
       setup.extensionPaths.map((path) => dirname(path)),
-      { changed: () => this.changed(), failed: (message) => ui.failed(message), callTimeoutMs: host.callTimeout, places: host.places },
+      { changed: () => this.changed(), failed: (message) => ui.failed(message), callTimeoutMs: host.callTimeout, points: host.points },
     ));
     const services = await createSessionServices({
       setup,
@@ -408,7 +420,7 @@ export class Chat {
     if (this.error) throw new RuntimeError(this.error);
     this.unsubscribe = session.subscribe((event) => this.onEvent(event));
     const rendering = new ExtensionRendering(session, () => this.changed());
-    this.items = new ItemProjector(session, rendering, (customType) => views.has(`custom:${customType}`));
+    this.items = new ItemProjector(session, rendering, (customType) => views.has(`item.custom:${customType}`));
     // Pi's mode for clients that are not a terminal: dialogs and notices work, terminal components don't.
     await session.bindExtensions({
       mode: "rpc",

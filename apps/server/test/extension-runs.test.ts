@@ -20,7 +20,7 @@ async function fixture(maxRunning: number) {
     create: () => runtime.create({ folder }),
     saved: async (id: string) => JSON.parse(await readFile(join(h.home, "chats", id, "chat.json"), "utf8")),
     /** The extension starts a run, as a page's button would. */
-    ask: (id: string, text: string, how: "ask" | "nudge" = "ask") => runtime.call(id, "chat.header", "", how, text),
+    ask: (id: string, text: string, how: "ask" | "nudge" = "ask") => runtime.call(id, "session.header", "", how, text),
     cleanup: async () => {
       h.provider.automatic = true;
       for (const request of h.provider.requests) request.release();

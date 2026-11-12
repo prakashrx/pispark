@@ -3,12 +3,12 @@ import type { ExtensionContribution, ExtensionView } from "../../../../server/sr
 import type { Segment } from "./chat-turns";
 
 /**
- * Components extensions place in the chat's slots with Pi's event bus. The server compiles them
+ * Components extensions contribute to a session's points with Pi's event bus. The server compiles them
  * against the app's own Svelte; here they are imported once per compiled url and mounted by
- * `ViewSlot` wherever their slot is.
+ * `ContributionPoint` wherever their point is.
  */
 
-// SAFETY: an extension component takes whatever props its extension sends; PiSpark adds its slot's data.
+// SAFETY: an extension component takes whatever props its extension sends; PiSpark adds its point's data.
 export type ExtensionComponent = Component<any>;
 
 const modules = new Map<string, Promise<ExtensionComponent>>();
@@ -32,21 +32,21 @@ export function loadView(url: string): Promise<ExtensionComponent> {
   return loading;
 }
 
-/** What extensions placed in one slot, in the order they placed it. */
-export const contributionsFor = (view: ExtensionView | undefined, slot: string): ExtensionContribution[] =>
-  view?.views.filter((contribution) => contribution.slot === slot) ?? [];
+/** What extensions contributed to one point, in the order they did. */
+export const contributionsFor = (view: ExtensionView | undefined, point: string): ExtensionContribution[] =>
+  view?.views.filter((contribution) => contribution.point === point) ?? [];
 
-/** The slots that have at least one placement. */
-export const placedSlots = (view: ExtensionView | undefined): Set<string> =>
-  new Set(view?.views.map((contribution) => contribution.slot) ?? []);
+/** The points that have at least one contribution. */
+export const placedPoints = (view: ExtensionView | undefined): Set<string> =>
+  new Set(view?.views.map((contribution) => contribution.point) ?? []);
 
 /**
  * Where a part of a turn can be drawn by an extension, and what its component gets as `data`:
  * a tool's output gets the call, a custom message or entry gets the item.
  */
-export function slotOf(segment: Segment): { slot: string; data: unknown } | undefined {
-  if (segment.kind === "view") return { slot: segment.slot, data: segment.call };
+export function pointOf(segment: Segment): { point: string; data: unknown } | undefined {
+  if (segment.kind === "view") return { point: segment.point, data: segment.call };
   if (segment.kind === "custom" && segment.item.customType)
-    return { slot: `custom:${segment.item.customType}`, data: segment.item };
+    return { point: `item.custom:${segment.item.customType}`, data: segment.item };
   return undefined;
 }

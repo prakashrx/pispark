@@ -9,7 +9,7 @@ import { SessionHttp } from "../../src/http/session-http.js";
 import { createAppServer } from "../../src/http/server.js";
 import { localProviderSettings } from "./provider-settings.js";
 import { ProviderHttp } from "../../src/http/provider-http.js";
-import { WORKSPACE_PLACES } from "../../src/http/workspace-places.js";
+import { WORKSPACE_POINTS } from "../../src/http/workspace-points.js";
 import { addControlledExtension, addFrontendExtension, addViewExtension, writePersona } from "./home.js";
 
 // Optional harness-owned persistent state; never a production configuration switch.
@@ -47,7 +47,7 @@ if (!existsSync(join(home, "personas", "default", "persona.json"))) {
       "prompts/checklist.md": "---\ndescription: Run the checklist\n---\nRun the checklist on $1",
     },
   );
-  // An extension that places Svelte components in the chat's slots through Pi's bus.
+  // An extension that places Svelte components at the session's points through Pi's bus.
   await writePersona(home, "views", { name: "Extension views", description: "Components placed by an extension" });
   await addViewExtension(home, "views");
   // An extension whose one component is its own frontend for the chat.
@@ -65,7 +65,7 @@ await settingsFixture.settings.setDefault({
   provider: "pispark-local-test",
   id: "deterministic",
 });
-const runtime = new SessionRuntime({ home, places: WORKSPACE_PLACES }, settingsFixture.settings);
+const runtime = new SessionRuntime({ home, points: WORKSPACE_POINTS }, settingsFixture.settings);
 const sessions = new SessionHttp(
   runtime,
   process.env.PISPARK_DEV_ORIGIN,

@@ -4,16 +4,12 @@
   import RouteOutlet from "./RouteOutlet.svelte";
   import SessionSidebar from "./features/workspace/SessionSidebar.svelte";
   import SettingsSidebar from "./features/settings/SettingsSidebar.svelte";
+  import { focusMain } from "./lib/focus";
   import { pageFromHash, routes } from "./routes";
 
   import { provideSessions } from "./features/workspace/session-client.svelte";
   const sessions = provideSessions();
   let page = $state(pageFromHash(window.location.hash));
-  function focusMain() {
-    const main = document.querySelector("main");
-    main?.setAttribute("tabindex", "-1");
-    main?.focus({ preventScroll: true });
-  }
   onMount(() => {
     void sessions.mount();
     const navigate = async () => {

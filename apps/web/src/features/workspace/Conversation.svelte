@@ -1,17 +1,17 @@
 <script lang="ts">
   import Button from "../../lib/ui/Button.svelte";
   import { tick } from "svelte";
-  import ChatHeader from "./ChatHeader.svelte";
+  import SessionHeader from "./SessionHeader.svelte";
   import ResponseTurn from "./ResponseTurn.svelte";
   import { buildTurns } from "./chat-turns";
   import UserTurn from "./UserTurn.svelte";
-  import { placedSlots } from "./extension-views";
+  import { placedPoints } from "./extension-views";
   import { useChat } from "./session-client.svelte";
 
   /** PiSpark's own conversation: the chat's items as turns, in one continuous scroll. */
   const chat = useChat();
   const doc = $derived(chat.doc);
-  const placed = $derived(placedSlots(doc?.extensions));
+  const placed = $derived(placedPoints(doc?.extensions));
   const queued = $derived((doc?.queue.steering ?? 0) + (doc?.queue.followUp ?? 0));
   const running = $derived(["running", "cancelling"].includes(doc?.status ?? ""));
   // The chat as turns of ordered segments; extension notices land where they happened.
@@ -22,7 +22,7 @@
           notices: doc.extensions.notices,
           thinkingLabel: doc.extensions.thinkingLabel,
           progress: chat.progress,
-          placed: (slot) => placed.has(slot),
+          placed: (point) => placed.has(point),
         })
       : [],
   );
@@ -97,7 +97,7 @@
   {onscroll}
 >
   <div class="w-full max-w-3xl flex flex-col gap-8" bind:this={column}>
-    <ChatHeader />
+    <SessionHeader />
     {#if doc}
       {#if queued > 0}<p class="text-sm text-muted-foreground">
           {queued} messages queued

@@ -51,3 +51,138 @@ test("a live stream the server ends on purpose is followed on at once, and the c
     transport.close();
   }
 });
+
+/** A chat on screen whose live stream the test feeds: each `offer` is the session's views now. */
+function followed(id: string) {
+  let feed!: ReadableStreamDefaultController<Uint8Array>;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      if (url.startsWith(`/api/sessions/${id}/items`)) return new Response(JSON.stringify({ items: [], head: null, more: false }));
+      if (url === `/api/sessions/${id}/live`)
+        return new Response(new ReadableStream<Uint8Array>({ start: (controller) => void (feed = controller) }), {
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      throw new Error(`unexpected ${url}`);
+    }),
+  );
+  const transport = new Transport();
+  const chat = new ChatSession(id, transport, { changed: () => {}, refresh: async () => {}, roomForDraft: () => true, notice: () => {} });
+  let sent = 0;
+  return {
+    chat,
+    /** The server says which views are offered, as `key` or `key:attention`. */
+    async offer(...views: string[]) {
+      const title = String(++sent);
+      const doc = {
+        session: {
+          id,
+          status: "idle",
+          title,
+          extensions: {
+            views: views.map((view) => {
+              const [key, attention] = view.split(":");
+              return { point: "session.view", key, title: key, url: `/${key}.js`, ...(attention ? { attention: Number(attention) } : {}) };
+            }),
+          },
+        },
+        tail: [],
+        progress: {},
+      };
+      await waitFor(() => expect(feed).toBeDefined());
+      feed.enqueue(new TextEncoder().encode(`event: snapshot\ndata: ${JSON.stringify({ type: "snapshot", sessionId: id, head: null, doc })}\n\n`));
+      // Applied once the session shows this snapshot's marker.
+      await waitFor(() => expect(chat.doc?.title).toBe(title));
+    },
+    close() {
+      chat.hide();
+      transport.close();
+    },
+  };
+}
+
+test("a session opens on the conversation; the view a person chose is remembered, and shows once it is offered", async () => {
+  localStorage.clear();
+  const first = followed("views-1");
+  try {
+    await first.chat.show();
+    await first.offer();
+    expect(first.chat.shownView).toBeUndefined();
+    // Offered views do not take the session over: the conversation stays until the person chooses.
+    await first.offer("desk", "log");
+    expect(first.chat.views.map((view) => view.key)).toEqual(["desk", "log"]);
+    expect(first.chat.shownView).toBeUndefined();
+    first.chat.showView("log");
+    expect(first.chat.shownView).toBe("log");
+    expect(localStorage.getItem("pispark:view:views-1")).toBe("log");
+    // The view goes away (its extension removed it): the conversation shows; back, it shows again.
+    await first.offer("desk");
+    expect(first.chat.shownView).toBeUndefined();
+    await first.offer("desk", "log");
+    expect(first.chat.shownView).toBe("log");
+  } finally {
+    first.close();
+  }
+
+  // Opened again later (a new page): the choice is read back, and waits for the view to be offered.
+  const again = followed("views-1");
+  try {
+    await again.chat.show();
+    await again.offer("desk");
+    expect(again.chat.shownView).toBeUndefined();
+    await again.offer("desk", "log");
+    expect(again.chat.shownView).toBe("log");
+    // Choosing the conversation forgets the view.
+    again.chat.showView();
+    expect(again.chat.shownView).toBeUndefined();
+    expect(localStorage.getItem("pispark:view:views-1")).toBeNull();
+  } finally {
+    again.close();
+  }
+
+  // A person who switched before the remembered view was offered keeps what they chose.
+  localStorage.setItem("pispark:view:views-2", "log");
+  const switched = followed("views-2");
+  try {
+    await switched.chat.show();
+    await switched.offer("desk");
+    switched.chat.showView("desk");
+    await switched.offer("desk", "log");
+    expect(switched.chat.shownView).toBe("desk");
+  } finally {
+    switched.close();
+  }
+});
+
+test("a view that asks to be shown is shown once, while the session is on screen; what it asked before is not replayed", async () => {
+  localStorage.clear();
+  const { chat, offer, close } = followed("views-3");
+  try {
+    await chat.show();
+    // What the session finds when it opens is not acted on.
+    await offer("desk:2", "log");
+    expect(chat.shownView).toBeUndefined();
+    // A new request, seen while the session is on screen, shows the view and is remembered.
+    await offer("desk:3", "log");
+    expect(chat.shownView).toBe("desk");
+    expect(localStorage.getItem("pispark:view:views-3")).toBe("desk");
+    // The person switches back; the same count never switches again.
+    chat.showView();
+    await offer("desk:3", "log");
+    expect(chat.shownView).toBeUndefined();
+    // A view first offered with a request, after the session opened, is a new request.
+    await offer("desk:3", "log", "board:1");
+    expect(chat.shownView).toBe("board");
+
+    // Off screen and back: requests made meanwhile are found, not seen, so nothing switches.
+    chat.showView();
+    chat.hide();
+    await chat.show();
+    await offer("desk:9", "log", "board:1");
+    expect(chat.shownView).toBeUndefined();
+    await offer("desk:10", "log", "board:1");
+    expect(chat.shownView).toBe("desk");
+  } finally {
+    close();
+  }
+});

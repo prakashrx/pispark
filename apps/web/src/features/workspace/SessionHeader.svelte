@@ -1,20 +1,21 @@
 <script lang="ts">
   import Button from "../../lib/ui/Button.svelte";
   import InlinePanel from "../../lib/ui/InlinePanel.svelte";
+  import Menu from "../../lib/ui/Menu.svelte";
   import Segmented from "../../lib/ui/Segmented.svelte";
   import PersonaEditor from "../persona/PersonaEditor.svelte";
   import ChatDetails from "./ChatDetails.svelte";
   import StyledText from "./StyledText.svelte";
-  import ViewSlot from "./ViewSlot.svelte";
+  import ContributionPoint from "./ContributionPoint.svelte";
   import WorkingFrames from "./WorkingFrames.svelte";
   import { chatName, chatStatus, chatStarted, folderName } from "./chat-presentation";
   import type { ChatSession } from "./chat-session.svelte";
   import { useChat, useSessions } from "./session-client.svelte";
 
   /**
-   * What PiSpark always says about a chat, whichever frontend shows it: its name and state, the
-   * switch between frontends, Stop, and the notices a person must not miss. With no chat open it
-   * is the empty workspace's heading.
+   * What PiSpark always says about a session, whichever view shows it: its name and state, the
+   * switch between views, the commands its extensions registered, Stop, and the notices a person
+   * must not miss. With no chat open it is the empty workspace's heading.
    */
   const client = useSessions();
   const chat: ChatSession | undefined = useChat();
@@ -64,12 +65,28 @@
       .find((p) => p.id === doc?.model?.provider)
       ?.models.find((m) => m.id === doc?.model?.id)?.name,
   );
+  // The conversation is PiSpark's own view; extensions offer the others (`session.view`).
+  const views = $derived([
+    { value: "", label: "Conversation" },
+    ...(chat?.views ?? []).map((view) => ({ value: view.key, label: view.title ?? view.key })),
+  ]);
+  // A command runs as if it were typed in the reply box and sent, so it needs what a reply needs.
+  const ready = $derived(doc?.status === "idle" && chat?.connection === "Live" && !client.busy);
+  const commands = $derived(
+    (doc?.commands ?? []).map(({ name, description }) => ({
+      id: name,
+      label: description ? `${name} — ${description}` : name,
+      disabled: !ready,
+      onselect: () => void chat?.send(`/${name}`),
+    })),
+  );
   const button = "conversation-action";
 </script>
 
 <header class="pb-5 border-b border-[var(--border)]">
   <div class="flex flex-wrap items-start justify-between gap-3">
-    <div class="min-w-0 flex-1">
+    <!-- The name keeps a readable width: when it would not, the controls go under it. -->
+    <div class="min-w-0 flex-[1_1_16rem]">
       <div class="flex items-center gap-3 flex-wrap">
         <h1 class="text-2xl font-semibold tracking-tight text-foreground break-words">
           {info ? chatName(info) : "New chat"}
@@ -77,7 +94,7 @@
         {#if status}<span role="status" class="chat-status" class:custom-indicator={!!working?.frames}
             >{#if working?.frames}<WorkingFrames frames={working.frames} intervalMs={working.intervalMs} />{/if}{status}</span
           >{/if}
-        {#if chat}<ViewSlot slot="chat.title" />{/if}
+        {#if chat}<ContributionPoint point="session.title" />{/if}
       </div>
       {#if info}<p class="text-sm text-muted-foreground mt-1.5">
           {[
@@ -96,30 +113,30 @@
           Ask anything in the bar above to start a chat.
         </p>{/if}
     </div>
-    {#if chat?.hasPage}<Segmented
-        label="Show"
-        options={[
-          { value: "page", label: "Page" },
-          { value: "chat", label: "Chat" },
-        ]}
-        value={chat.showingPage ? "page" : "chat"}
-        onchange={(value) => chat.showPage(value === "page")}
-      />{/if}
-    {#if doc && ["running", "cancelling"].includes(doc.status)}<Button
-        class={button}
-        aria-label="Stop response"
-        onclick={() => chat?.stop()}>Stop</Button
-      >{:else if doc?.status === "queued"}<Button
-        class={button}
-        aria-label="Cancel queued message"
-        onclick={() => chat?.stop()}>Cancel</Button
-      >{/if}
-    {#if chat}<ChatDetails oneditpersona={() => (editingPersona = true)} />{/if}
+    {#if chat}<div class="ml-auto flex flex-wrap items-start justify-end gap-3">
+        {#if views.length > 1}<Segmented
+            label="Show"
+            options={views}
+            value={chat.shownView ?? ""}
+            onchange={(key) => chat.showView(key || undefined)}
+          />{/if}
+        {#if doc && ["running", "cancelling"].includes(doc.status)}<Button
+            class={button}
+            aria-label="Stop response"
+            onclick={() => chat.stop()}>Stop</Button
+          >{:else if doc?.status === "queued"}<Button
+            class={button}
+            aria-label="Cancel queued message"
+            onclick={() => chat.stop()}>Cancel</Button
+          >{/if}
+        <ChatDetails oneditpersona={() => (editingPersona = true)} />
+        {#if commands.length}<Menu label="Commands" items={commands} />{/if}
+      </div>{/if}
   </div>
 </header>
 {#if chat}
   {#if doc?.extensions.header}<StyledText class="extension-header" lines={doc.extensions.header} />{/if}
-  <ViewSlot slot="chat.header" />
+  <ContributionPoint point="session.header" />
   {#if editingPersona && info}<InlinePanel
       label="Persona for this chat"
       title="Persona for this chat"
@@ -150,9 +167,9 @@
   {#if doc?.error}<p role="alert" class="conversation-notice">
       Something went wrong. Reopen this chat to try again.
     </p>{/if}
-  {#if chat.showingPage && info?.waiting}<p role="status" class="conversation-notice flex flex-wrap items-center gap-3">
+  {#if chat.shownView && info?.waiting}<p role="status" class="conversation-notice flex flex-wrap items-center gap-3">
       <span class="flex-1">This chat is waiting for your answer.</span>
-      <Button class={button} onclick={() => chat.showPage(false)}>Show chat</Button>
+      <Button class={button} onclick={() => chat.showView()}>Show conversation</Button>
     </p>{/if}
 {/if}
 

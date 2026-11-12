@@ -39,8 +39,8 @@ export type Segment =
   /** ... or an SVG a tool wrote, drawn from the markup in its arguments. */
   | { kind: "svg"; key: string; markup: string; alt: string; /** The markup was cut to fit, so it is not drawn. */ clipped?: boolean }
   | { kind: "notice"; key: string; notice: Pick<Notice, "kind" | "lines"> }
-  /** A tool call drawn by the component its extension placed in the `tool:<name>` slot. */
-  | { kind: "view"; key: string; slot: string; call: ToolCall }
+  /** A tool call drawn by the component its extension placed at `item.tool:<name>`. */
+  | { kind: "view"; key: string; point: string; call: ToolCall }
   | { kind: "stopped"; key: string; reason: "aborted" | "error" };
 
 /** Your message and everything the agent did and said in answer to it. */
@@ -73,8 +73,8 @@ export function buildTurns(
     notices?: Notice[];
     thinkingLabel?: string;
     progress?: Record<string, ToolProgress>;
-    /** Whether an extension placed a component in a slot (`tool:<name>`). */
-    placed?: (slot: string) => boolean;
+    /** Whether an extension placed a component at a point (`item.tool:<name>`). */
+    placed?: (point: string) => boolean;
   },
 ): Turn[] {
   const results = new Map<string, Item>();
@@ -124,9 +124,9 @@ export function buildTurns(
           };
           // A tool an extension placed a component for is drawn by that component alone: no activity
           // line, no default output. The next call then starts a new activity.
-          const slot = `tool:${call.name}`;
-          if (options.placed?.(slot)) {
-            emit(turn, { kind: "view", key: `view.${call.id}`, slot, call });
+          const point = `item.tool:${call.name}`;
+          if (options.placed?.(point)) {
+            emit(turn, { kind: "view", key: `view.${call.id}`, point, call });
             return;
           }
           const last = turn.segments.at(-1);

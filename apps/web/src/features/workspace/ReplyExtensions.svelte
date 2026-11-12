@@ -1,7 +1,7 @@
 <script lang="ts">
   import ExtensionQuestion from "./ExtensionQuestion.svelte";
   import StyledText from "./StyledText.svelte";
-  import ViewSlot from "./ViewSlot.svelte";
+  import ContributionPoint from "./ContributionPoint.svelte";
   import { useChat } from "./session-client.svelte";
 
   /**
@@ -15,14 +15,14 @@
 </script>
 
 {#if view}
-  {#if placement === "below"}<ViewSlot slot="reply.below" />{/if}
+  {#if placement === "below"}<ContributionPoint point="session.input.below" />{/if}
   {#if widgets.length}
     <div class="extension-widgets" data-placement={placement}>
       {#each widgets as widget (widget.key)}<StyledText lines={widget.lines} />{/each}
     </div>
   {/if}
   {#if placement === "above"}
-    <ViewSlot slot="reply.above" />
+    <ContributionPoint point="session.input.above" />
     {#if view.dialogs.length}
       <div class="extension-questions">
         {#each view.dialogs as dialog (dialog.id)}
@@ -30,9 +30,9 @@
         {/each}
       </div>
     {/if}
-  {:else if view.views.some((v) => v.slot === "reply.footer")}
+  {:else if view.views.some((v) => v.point === "session.status")}
     <!-- A footer component replaces the status line, as Pi's setFooter replaces its footer. -->
-    <ViewSlot slot="reply.footer" />
+    <ContributionPoint point="session.status" />
   {:else if view.footer}
     <!-- An extension footer replaces the status line, as it replaces terminal Pi's footer. -->
     <div class="extension-statuses" aria-label="Extension status"><StyledText class="extension-status" lines={view.footer} /></div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import ViewSlot from "./ViewSlot.svelte";
+  import ContributionPoint from "./ContributionPoint.svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Input from "../../lib/ui/Input.svelte";
   import Selector from "../../lib/ui/Selector.svelte";
@@ -232,7 +232,7 @@
         {/snippet}
       </Selector>
     {/if}
-    {#if mode === "reply"}<ViewSlot slot="reply.actions" />{/if}
+    {#if mode === "reply"}<ContributionPoint point="session.input.actions" />{/if}
     <Button
       aria-label={mode === "reply" ? "Send message" : "Start chat"}
       type="submit"

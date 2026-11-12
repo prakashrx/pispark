@@ -4,7 +4,7 @@
   import ReplyExtensions from "./ReplyExtensions.svelte";
 
   /**
-   * PiSpark's own frontend for a chat: the conversation, and the reply box with what extensions
+   * PiSpark's own view of a session: the conversation, and the reply box with what extensions
    * show around it. It reads the chat it is given (`useChat`) and nothing else about chats.
    */
 </script>

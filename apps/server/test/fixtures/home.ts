@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RuntimeConfiguration } from "../../src/core/runtime/configuration.js";
 import type { PersonaDefinition } from "../../src/contract/persona-protocol.js";
-import { WORKSPACE_PLACES } from "../../src/http/workspace-places.js";
+import { WORKSPACE_POINTS } from "../../src/http/workspace-points.js";
 import { LocalProviderControl } from "./local-provider.js";
 
 export const controlledExtension = fileURLToPath(
@@ -57,7 +57,7 @@ export async function testHome(prefix = "pispark-test-") {
   const provider = new LocalProviderControl();
   const configuration: RuntimeConfiguration = {
     home,
-    places: WORKSPACE_PLACES,
+    points: WORKSPACE_POINTS,
     fixedModel: { provider: provider.provider, id: "deterministic" },
   };
   /** A working folder under the test root. */

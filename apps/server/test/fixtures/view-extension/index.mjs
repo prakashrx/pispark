@@ -1,4 +1,4 @@
-// An ordinary Pi extension that shows Svelte components in PiSpark's slots with Pi's own event bus,
+// An ordinary Pi extension that shows Svelte components in PiSpark's contribution points with Pi's own event bus,
 // and gives each the functions it may call. Terminal Pi has no listener for "pispark:view".
 const file = (name) => new URL(name, import.meta.url);
 const show = (pi, view) => pi.events.emit("pispark:view", view);
@@ -14,7 +14,7 @@ export default function (pi) {
   });
   const counter = () =>
     show(pi, {
-      slot: "reply.above",
+      point: "session.input.above",
       key: "counter",
       component: file("./Counter.svelte"),
       props: { count },
@@ -38,7 +38,7 @@ export default function (pi) {
   let on = false;
   const toggle = () =>
     show(pi, {
-      slot: "reply.actions",
+      point: "session.input.actions",
       component: file("./Toggle.svelte"),
       props: { on },
       calls: {
@@ -51,17 +51,17 @@ export default function (pi) {
     });
   toggle();
 
-  show(pi, { slot: "chat.title", component: file("./Chip.svelte"), props: { text: "fixture chip" } });
-  show(pi, { slot: "reply.footer", component: file("./Footer.svelte"), props: { text: "Fixture footer" } });
+  show(pi, { point: "session.title", component: file("./Chip.svelte"), props: { text: "fixture chip" } });
+  show(pi, { point: "session.status", component: file("./Footer.svelte"), props: { text: "Fixture footer" } });
   show(pi, {
-    slot: "chat.header",
+    point: "session.header",
     component: file("./Banner.svelte"),
     props: { text: "Fixture banner" },
     calls: {
-      removeCounter: () => show(pi, { slot: "reply.above", key: "counter" }),
-      placeOutside: () => show(pi, { slot: "reply.below", component: file("../Outside.svelte") }),
-      placeBroken: () => show(pi, { slot: "reply.below", key: "broken", component: file("./Broken.svelte") }),
-      placeNowhere: () => show(pi, { slot: "side.panel", component: file("./Chip.svelte") }),
+      removeCounter: () => show(pi, { point: "session.input.above", key: "counter" }),
+      placeOutside: () => show(pi, { point: "session.input.below", component: file("../Outside.svelte") }),
+      placeBroken: () => show(pi, { point: "session.input.below", key: "broken", component: file("./Broken.svelte") }),
+      placeNowhere: () => show(pi, { point: "side.panel", component: file("./Chip.svelte") }),
       // The extension has the agent work: a user message, or a custom message that starts a turn.
       ask: (text) => {
         pi.sendUserMessage(text);
@@ -71,16 +71,32 @@ export default function (pi) {
         pi.sendMessage({ customType: "nudge", content: text, display: true }, { triggerTurn: true });
         return true;
       },
-      placePage: () => page(true),
-      removePage: () => page(false),
+      placePage: () => page(),
+      removePage: () => page("off"),
+      // Anything a test wants to offer, with the page's component.
+      offer: (view) => show(pi, { component: file("./Page.svelte"), ...view }),
     },
   });
-  // A page takes the chat area. It imports a static file and reads a data file from `files`.
-  const page = (on) =>
-    show(pi, on ? { slot: "chat.page", component: file("./Page.svelte"), props: { title: "Fixture page" }, files: file("./data/") } : { slot: "chat.page" });
-  pi.registerCommand("page", { handler: async (args) => page(args.trim() !== "off") });
-  show(pi, { slot: "tool:shout", component: file("./Shout.svelte") });
-  show(pi, { slot: "custom:note", component: file("./Note.svelte") });
+  // A whole view of the session, offered beside the conversation. It imports a static file and
+  // reads a data file from `files`. "/page" offers it, "/page show" also asks to be shown,
+  // "/page off" removes it (as its own button does) and "/page second" offers another.
+  const page = (how) => {
+    if (how === "off") return show(pi, { point: "session.view", key: "page" });
+    const second = how === "second";
+    show(pi, {
+      point: "session.view",
+      key: second ? "second" : "page",
+      title: second ? "Second page" : "Fixture page",
+      component: file("./Page.svelte"),
+      props: { title: second ? "Second page" : "Fixture page" },
+      files: file("./data/"),
+      calls: { remove: () => page("off") },
+      ...(how === "show" ? { attention: true } : {}),
+    });
+  };
+  pi.registerCommand("page", { description: "Offer the fixture page;  'show' asks to show it", handler: async (args) => page(args.trim()) });
+  show(pi, { point: "item.tool:shout", component: file("./Shout.svelte") });
+  show(pi, { point: "item.custom:note", component: file("./Note.svelte") });
 
   pi.registerTool({
     name: "shout",

@@ -127,22 +127,22 @@ function validAnswer(c: Record<string, unknown>): Command {
   return c as unknown as Command;
 }
 /** An extension component's call: which placement, which of its functions, and optional JSON data. */
-function validCall(value: unknown): { slot: string; key: string; name: string; data?: Json } {
+function validCall(value: unknown): { point: string; key: string; name: string; data?: Json } {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new RuntimeError("invalid-input");
   const c = value as Record<string, unknown>;
-  const keys = ["slot", "key", "name", ...("data" in c ? ["data"] : [])];
+  const keys = ["point", "key", "name", ...("data" in c ? ["data"] : [])];
   const short = (value: unknown, empty = false) =>
     typeof value === "string" && (empty ? /^[\w.:-]{0,64}$/ : /^[\w.:-]{1,80}$/).test(value);
   if (
     Object.keys(c).length !== keys.length ||
     !keys.every((key) => key in c) ||
-    !short(c.slot) ||
+    !short(c.point) ||
     !short(c.key, true) ||
     !short(c.name)
   )
     throw new RuntimeError("invalid-input");
   // SAFETY: exact keys and every field validated above; the body limit bounds `data`.
-  return c as { slot: string; key: string; name: string; data?: Json };
+  return c as { point: string; key: string; name: string; data?: Json };
 }
 export async function body(
   request: IncomingMessage,
@@ -498,9 +498,9 @@ export class SessionHttp {
    * An extension component's `host.call(name, data)`: a plain request and response. The result, or
    * the extension's own error message; nothing is retained once it answers.
    */
-  private async call(id: string, call: { slot: string; key: string; name: string; data?: Json }, response: ServerResponse) {
+  private async call(id: string, call: { point: string; key: string; name: string; data?: Json }, response: ServerResponse) {
     try {
-      const result = await this.runtime.call(id, call.slot, call.key, call.name, call.data);
+      const result = await this.runtime.call(id, call.point, call.key, call.name, call.data);
       sendJson(response, 200, result === undefined ? {} : { result });
     } catch (error) {
       if (response.headersSent || response.destroyed) return;
@@ -515,10 +515,10 @@ export class SessionHttp {
    * it is now. Served as inert data.
    */
   private async file(id: string, query: URLSearchParams, response: ServerResponse) {
-    const { slot, key, path } = Object.fromEntries(query);
+    const { point, key, path } = Object.fromEntries(query);
     if (
-      [...query.keys()].some((name) => !["slot", "key", "path"].includes(name)) ||
-      slot === undefined ||
+      [...query.keys()].some((name) => !["point", "key", "path"].includes(name)) ||
+      point === undefined ||
       key === undefined ||
       path === undefined
     )
@@ -526,7 +526,7 @@ export class SessionHttp {
     let file: string;
     let size: number;
     try {
-      file = this.runtime.file(id, slot, key, path);
+      file = this.runtime.file(id, point, key, path);
       size = (await stat(file)).size;
     } catch (error) {
       if (error instanceof RuntimeError && error.code !== "not-found") throw error;

@@ -5,7 +5,7 @@ import type { Segment, ToolCall } from "./chat-turns";
  * How PiSpark draws the conversation is looked up, not written into the components: a kind of
  * segment has a view, and a tool has a view of what it did. PiSpark registers its own defaults
  * through the calls below; a later registration for the same name wins until it is disposed. This
- * is PiSpark's own; extensions take over a part of the chat by placing a component in its slot.
+ * is PiSpark's own; extensions take over a part of the chat by placing a component at its point.
  */
 
 /** What a tool call is doing, in words: "Editing demo.ts", then "Edited demo.ts". */

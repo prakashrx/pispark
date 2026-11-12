@@ -7,7 +7,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundledTransportPatched } from "../src/core/runtime/transport-gate.js";
-import { WORKSPACE_PLACES } from "../src/http/workspace-places.js";
+import { WORKSPACE_POINTS } from "../src/http/workspace-points.js";
 import { lockHome, prepareHome, resolveHome } from "../src/core/home.js";
 
 test("PISPARK_HOME: default ~/.pispark, ~ expansion, absolute paths only", () => {
@@ -60,7 +60,7 @@ test("startup: transport gate, first-start Default persona, public bind refusal"
   );
   if (bundledTransportPatched(process.versions.undici)) {
     assert.equal(probe.status, 0, probe.stderr);
-    assert.deepEqual(JSON.parse(probe.stdout), { home: root, places: [...WORKSPACE_PLACES] });
+    assert.deepEqual(JSON.parse(probe.stdout), { home: root, points: [...WORKSPACE_POINTS] });
   } else {
     assert.notEqual(probe.status, 0);
     assert.match(probe.stderr, /Native providers disabled/);

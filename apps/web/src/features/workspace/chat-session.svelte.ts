@@ -2,6 +2,7 @@ import type { Json } from "../../../../server/src/contract/stream-ops";
 import type {
   CallRequest,
   CallResponse,
+  ExtensionContribution,
   Item,
   PartPage,
   Receipt,
@@ -10,6 +11,7 @@ import type {
   ToolProgress,
 } from "../../../../server/src/contract/protocol";
 import type { CommandUncertaintyKind } from "./chat-presentation";
+import { contributionsFor } from "./extension-views";
 import { LiveChat } from "./live-chat.svelte";
 import { liveEvents } from "./live-stream";
 import { CommandUncertainty, type Transport } from "./transport";
@@ -31,8 +33,8 @@ export interface ChatSessionHost {
  * is doing now (its state, its items as they stream, what running tools report), follows it live
  * while it is on screen, and has the actions a person can take.
  *
- * Every frontend of a chat is given this object and nothing else: PiSpark's own conversation, and
- * a frontend an extension supplies. The members up to `fileUrl` are what a frontend may rely on.
+ * Every view of a session is given this object and nothing else: PiSpark's own conversation, and
+ * the views extensions offer. The members up to `showView` are what a view may rely on.
  */
 export class ChatSession {
   /** Everything about the chat except its history: status, title, model, queue, what extensions show. */
@@ -146,8 +148,8 @@ export class ChatSession {
    * An extension component's `host.call(name, data)`: runs a function its own placement gave it
    * and resolves with the result, or rejects with the extension's own message.
    */
-  async call(slot: string, key: string, name: string, data?: unknown): Promise<unknown> {
-    const request: CallRequest = { slot, key, name, ...(data === undefined ? {} : { data: data as Json }) };
+  async call(point: string, key: string, name: string, data?: unknown): Promise<unknown> {
+    const request: CallRequest = { point, key, name, ...(data === undefined ? {} : { data: data as Json }) };
     const response = await fetch(`/api/sessions/${this.id}/calls`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -159,22 +161,32 @@ export class ChatSession {
     return answer.result;
   }
   /** An extension component's `host.file(path)`: the address of a file in the folder its placement named. */
-  fileUrl(slot: string, key: string, path: string): string {
-    return `/api/sessions/${this.id}/files?${new URLSearchParams({ slot, key, path })}`;
+  fileUrl(point: string, key: string, path: string): string {
+    return `/api/sessions/${this.id}/files?${new URLSearchParams({ point, key, path })}`;
   }
 
-  // ---- Which frontend shows the chat --------------------------------------------------------
+  // ---- What shows the session ------------------------------------------------------------------
 
-  /** An extension supplied a frontend for this chat (the `chat.page` slot). */
-  get hasPage(): boolean {
-    return !!this.doc?.extensions.views.some((view) => view.slot === "chat.page");
+  /** The whole views extensions offer of this session (`session.view`), in the order first offered. */
+  get views(): ExtensionContribution[] {
+    return contributionsFor(this.doc?.extensions, "session.view");
   }
-  /** The extension's frontend is what shows; PiSpark's own is one click away. */
-  get showingPage(): boolean {
-    return this.hasPage && !this.defaultChosen;
+  /** The key of the view that shows; none while the conversation does. */
+  get shownView(): string | undefined {
+    return this.views.some((view) => view.key === this.chosenView) ? this.chosenView : undefined;
   }
-  showPage(page: boolean) {
-    this.defaultChosen = !page;
+  /**
+   * Shows a view, or the conversation (no key). The choice is kept for this session in the
+   * browser: a view that is not offered yet shows once it is.
+   */
+  showView(key?: string) {
+    this.chosenView = key;
+    try {
+      if (key) localStorage.setItem(viewChoice(this.id), key);
+      else localStorage.removeItem(viewChoice(this.id));
+    } catch {
+      /* The choice lasts for this visit when browser storage is unavailable. */
+    }
   }
 
   // ---- For the app that holds the chat --------------------------------------------------------
@@ -183,7 +195,9 @@ export class ChatSession {
   row = $state<SessionInfo>();
   /** The chat's history and live document, as the server's operations keep them. */
   readonly live: LiveChat;
-  private defaultChosen = $state(false);
+  private chosenView = $state<string>();
+  /** How often each view had asked to be shown when last looked; unset until the session shows. */
+  private asked?: Map<string, number>;
   private draftRevision = 0;
   /** The last draft an extension set that this chat applied, so each fills the reply box once. */
   private extensionDraft?: string;
@@ -197,12 +211,18 @@ export class ChatSession {
     private readonly host: ChatSessionHost,
   ) {
     this.live = new LiveChat((path) => transport.json(path));
+    try {
+      this.chosenView = localStorage.getItem(viewChoice(id)) ?? undefined;
+    } catch {
+      /* The conversation shows when browser storage is unavailable. */
+    }
   }
 
   /** The chat is on screen: load it on the server if it is not, then follow it live. */
   async show() {
     const showing = ++this.showing;
     this.shown = true;
+    this.asked = undefined;
     this.source?.abort();
     // Only a chat with nothing to show yet is opening; one seen before shows as it was.
     this.opening = !this.live.doc;
@@ -279,6 +299,7 @@ export class ChatSession {
             received = true;
             const session = this.live.doc!.session;
             this.applyExtensionDraft(session, event.type === "snapshot");
+            this.applyAttention();
             this.opening = false;
             this.connection = "Live";
             this.host.changed(session);
@@ -322,4 +343,18 @@ export class ChatSession {
     this.draft = draft.text;
     this.draftRevision++;
   }
+  /**
+   * A view asked to be shown while the person is looking at the session: show it. What views had
+   * asked before the session came on screen is only noted, so opening a session replays nothing.
+   */
+  private applyAttention() {
+    const before = this.asked;
+    this.asked = new Map(this.views.map((view) => [view.key, view.attention ?? 0]));
+    if (!before) return;
+    const asking = this.views.findLast((view) => (view.attention ?? 0) > (before.get(view.key) ?? 0));
+    if (asking) this.showView(asking.key);
+  }
 }
+
+/** Where the browser keeps the view a person last chose for a session. */
+const viewChoice = (sessionId: string) => `pispark:view:${sessionId}`;
