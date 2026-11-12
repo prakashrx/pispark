@@ -14,7 +14,7 @@ type Get = <T>(path: string) => Promise<T>;
  * One open chat as the browser holds it: history read by cursor from Pi's session, plus the live
  * document (session state and the items in flight) kept current by the server's operations.
  */
-export class LiveChat {
+export class LiveSession {
   doc = $state<LiveDoc>();
   /** Finalized items, oldest first. */
   history = $state<Item[]>([]);

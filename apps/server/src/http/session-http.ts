@@ -82,7 +82,7 @@ function validate(value: unknown): Command {
           ...(c.model === undefined ? [] : ["model"]),
           ...(c.persona === undefined ? [] : ["persona"]),
         ]
-      : ["open", "reload", "cancel", "stop"].includes(String(c.type))
+      : ["open", "reload", "cancel", "stop", "archive", "restore", "delete"].includes(String(c.type))
         ? ["sessionId"]
         : ["start", "steer", "follow-up"].includes(String(c.type))
           ? ["sessionId", "text"]
@@ -310,6 +310,15 @@ export class SessionHttp {
         case "stop":
           await this.runtime.stop(command.sessionId);
           break;
+        case "archive":
+          await this.runtime.archive(command.sessionId);
+          break;
+        case "restore":
+          this.runtime.restore(command.sessionId);
+          break;
+        case "delete":
+          this.runtime.delete(command.sessionId);
+          break;
         case "answer":
           this.runtime.answer(command.sessionId, command.dialogId, command.value);
           break;
@@ -386,15 +395,18 @@ export class SessionHttp {
       else if (
         request.method === "GET" &&
         path === "/api/sessions" &&
-        !url.search
+        (!url.search || url.search === "?archived")
       ) {
-        const sessions = this.runtime
-          .list()
-          .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        // The sessions in use, or (`?archived`) the ones put away; the newest 256 either way.
+        const archived = this.runtime.archived();
+        const sessions = (url.search ? archived : this.runtime.list()).sort((a, b) =>
+          a.createdAt.localeCompare(b.createdAt),
+        );
         sendJson(response, 200, {
           sessions: sessions.slice(-256),
           truncated: sessions.length > 256,
           unreadable: this.runtime.unreadableSessions,
+          archived: archived.length,
         });
       } else if (
         request.method === "GET" &&

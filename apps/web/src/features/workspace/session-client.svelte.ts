@@ -1,9 +1,9 @@
 import { getContext, setContext } from "svelte";
 import type { Catalog, HostSettings, SessionDoc, SessionInfo } from "../../../../server/src/contract/protocol";
 import type { ModelChoice } from "../../../../server/src/contract/provider-protocol";
-import type { CommandUncertaintyKind } from "./chat-presentation";
-import { ChatSession } from "./chat-session.svelte";
-import { CommandUncertainty, Transport } from "./transport";
+import type { CommandUncertaintyKind } from "./session-presentation";
+import { forgetViewChoice, Session } from "./session.svelte";
+import { CommandFailed, CommandUncertainty, Transport } from "./transport";
 import { ProviderClient } from "../settings/provider-client.svelte";
 import { PersonaClient } from "../persona/persona-client.svelte";
 const context = Symbol("session-client");
@@ -13,7 +13,7 @@ const KEPT = 8;
 
 /**
  * The app around the chats: the chat list, which chat is open, starting a new one, and PiSpark's
- * settings. Each chat that has been opened is a `ChatSession`, which owns everything about it.
+ * settings. Each chat that has been opened is a `Session`, which owns everything about it.
  */
 export class SessionClient {
   readonly providers = new ProviderClient();
@@ -24,8 +24,11 @@ export class SessionClient {
   catalogLoading = $state(true);
   catalogError = $state(false);
   sessions = $state<SessionInfo[]>([]);
+  /** How many sessions are archived, and which, once the Archived list has been opened. */
+  archivedCount = $state(0);
+  archived = $state<SessionInfo[]>();
   /** The open chat. */
-  current = $state<ChatSession>();
+  current = $state<Session>();
   get selected(): string {
     return this.current?.id ?? "";
   }
@@ -46,7 +49,7 @@ export class SessionClient {
   }
   private readonly transport = new Transport();
   /** Chats that have been opened, least recently shown first. */
-  private readonly opened = new Map<string, ChatSession>();
+  private readonly opened = new Map<string, Session>();
   private disposed = false;
   private refreshTimer?: ReturnType<typeof setInterval>;
   private refreshing = false;
@@ -118,11 +121,17 @@ export class SessionClient {
       sessions: SessionInfo[];
       truncated: boolean;
       unreadable?: number;
+      archived?: number;
     }>("/api/sessions");
     this.sessions = result.sessions;
+    this.archivedCount = result.archived ?? 0;
+    if (this.archived && this.archived.length !== this.archivedCount) void this.loadArchived();
+    const apps = new Set(this.personas.items.filter((persona) => persona.home).map((persona) => persona.id));
+    if (this.personas.items.length && result.sessions.some((session) => !!session.persona.home !== apps.has(session.persona.id)))
+      void this.personas.refresh();
     for (const row of result.sessions) {
-      const chat = this.opened.get(row.id);
-      if (chat) chat.row = row;
+      const session = this.opened.get(row.id);
+      if (session) session.row = row;
     }
     this.listNotice = result.truncated
       ? "Showing your latest 256 chats. Older chats are still saved."
@@ -133,10 +142,10 @@ export class SessionClient {
   }
 
   /** The chat's session object, kept from when it was last open or made now. */
-  session(id: string): ChatSession {
-    let chat = this.opened.get(id);
-    if (!chat) {
-      chat = new ChatSession(id, this.transport, {
+  session(id: string): Session {
+    let session = this.opened.get(id);
+    if (!session) {
+      session = new Session(id, this.transport, {
         changed: (session) => this.track(id, session),
         refresh: () => this.refresh(),
         roomForDraft: () => [...this.opened.values()].filter((other) => other.draft).length < 32,
@@ -148,23 +157,23 @@ export class SessionClient {
     }
     // Most recently used last. A chat with an unsent draft is never dropped.
     this.opened.delete(id);
-    this.opened.set(id, chat);
+    this.opened.set(id, session);
     for (const [other, kept] of this.opened) {
       if (this.opened.size <= KEPT) break;
-      if (kept !== this.current && kept !== chat && !kept.draft) this.opened.delete(other);
+      if (kept !== this.current && kept !== session && !kept.draft) this.opened.delete(other);
     }
-    chat.row = this.sessions.find((s) => s.id === id) ?? chat.row;
-    return chat;
+    session.row = this.sessions.find((s) => s.id === id) ?? session.row;
+    return session;
   }
   /** Opens a chat: it shows at once as it was last seen, and the live stream brings it up to date. */
   async select(id: string) {
-    const chat = this.session(id);
-    if (this.current !== chat) this.current?.hide();
-    this.current = chat;
+    const session = this.session(id);
+    if (this.current !== session) this.current?.hide();
+    this.current = session;
     try {
       localStorage.setItem("pispark-session", id);
     } catch { /* In-memory selection still works. */ }
-    await chat.show();
+    await session.show();
   }
   /** Keep the chat list's row in step with what the open chat reports. */
   private track(id: string, session: SessionDoc) {
@@ -222,10 +231,10 @@ export class SessionClient {
         .catch(() => {});
       await this.select(id);
       const receipt = await this.transport.submit({ type: "start", sessionId: id, text });
-      if (receipt.error) throw new Error(`${receipt.error} (${receipt.commandId})`);
-      const chat = this.session(id);
+      if (receipt.error) throw new CommandFailed(receipt.error);
+      const session = this.session(id);
       void this.transport.settled(receipt).catch((error) => {
-        if (!this.disposed) chat.fail(error);
+        if (!this.disposed) session.fail(error);
       });
       window.location.hash = "/workspace";
       return true;
@@ -233,8 +242,7 @@ export class SessionClient {
       if (id) this.session(id).fail(error);
       else {
         this.fail(error);
-        // The server's code for a working folder that is not there, in words.
-        this.error = `New session: ${this.error.startsWith("folder (") ? "that working folder doesn’t exist on the server." : this.error}`;
+        this.error = `New session: ${this.error}`;
       }
       return false;
     } finally {
@@ -269,10 +277,53 @@ export class SessionClient {
       this.asking = false;
     }
   }
+  /** The archived sessions, newest first. */
+  async loadArchived(): Promise<void> {
+    const result = await this.transport.json<{ sessions: SessionInfo[] }>("/api/sessions?archived");
+    this.archived = result.sessions.reverse();
+  }
+  /** Puts a session away: it unloads and leaves the list. If it was open, no session is. */
+  archive(id: string): Promise<boolean> {
+    return this.manage("archive", id);
+  }
+  restore(id: string): Promise<boolean> {
+    return this.manage("restore", id);
+  }
+  /** Deletes an archived session for good. */
+  delete(id: string): Promise<boolean> {
+    return this.manage("delete", id);
+  }
+  private async manage(type: "archive" | "restore" | "delete", id: string): Promise<boolean> {
+    this.error = "";
+    this.errorKind = undefined;
+    const open = this.opened.get(id);
+    // The server closes an archived session's stream: stop following it first.
+    if (type === "archive") open?.hide();
+    try {
+      await this.transport.run({ type, sessionId: id });
+    } catch (error) {
+      this.fail(error);
+      if (open && open === this.current) void open.show();
+      return false;
+    }
+    if (type !== "restore") {
+      if (open === this.current) {
+        this.current = undefined;
+        try {
+          localStorage.removeItem("pispark-session");
+        } catch { /* Nothing was kept. */ }
+      }
+      this.opened.delete(id);
+    }
+    if (type === "delete") forgetViewChoice(id);
+    await this.refresh();
+    if (this.archived) await this.loadArchived();
+    return true;
+  }
   dispose() {
     this.providers.dispose();
     this.disposed = true;
-    for (const chat of this.opened.values()) chat.hide();
+    for (const session of this.opened.values()) session.hide();
     this.transport.close();
     clearInterval(this.refreshTimer);
     window.removeEventListener("beforeunload", this.beforeUnload);
@@ -289,13 +340,13 @@ export function useSessions(): SessionClient {
   return getContext(context);
 }
 
-const chatContext = Symbol("chat-session");
+const sessionContext = Symbol("chat-session");
 /** Gives one chat to everything that draws it. */
-export function provideChat(chat: ChatSession) {
-  setContext(chatContext, chat);
-  return chat;
+export function provideSession(session: Session) {
+  setContext(sessionContext, session);
+  return session;
 }
 /** The chat this component is drawing. */
-export function useChat(): ChatSession {
-  return getContext(chatContext);
+export function useSession(): Session {
+  return getContext(sessionContext);
 }

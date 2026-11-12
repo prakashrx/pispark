@@ -10,14 +10,14 @@ import type {
   SessionInfo,
   ToolProgress,
 } from "../../../../server/src/contract/protocol";
-import type { CommandUncertaintyKind } from "./chat-presentation";
+import type { CommandUncertaintyKind } from "./session-presentation";
 import { contributionsFor } from "./extension-views";
-import { LiveChat } from "./live-chat.svelte";
+import { LiveSession } from "./live-session.svelte";
 import { liveEvents } from "./live-stream";
-import { CommandUncertainty, type Transport } from "./transport";
+import { CommandFailed, CommandUncertainty, type Transport } from "./transport";
 
 /** What a chat needs from the app that holds it. */
-export interface ChatSessionHost {
+export interface SessionHost {
   /** The chat reported new state: the chat list keeps its row in step. */
   changed(session: SessionDoc): void;
   /** Read the chat list again. */
@@ -36,7 +36,7 @@ export interface ChatSessionHost {
  * Every view of a session is given this object and nothing else: PiSpark's own conversation, and
  * the views extensions offer. The members up to `showView` are what a view may rely on.
  */
-export class ChatSession {
+export class Session {
   /** Everything about the chat except its history: status, title, model, queue, what extensions show. */
   get doc(): SessionDoc | undefined {
     return this.live.doc?.session;
@@ -87,7 +87,7 @@ export class ChatSession {
     this.clearError();
     try {
       const receipt = await this.transport.submit({ type: "start", sessionId: this.id, text: message });
-      if (receipt.error) throw new Error(`${receipt.error} (${receipt.commandId})`);
+      if (receipt.error) throw new CommandFailed(receipt.error);
       if (text === undefined && this.draftRevision === revision) this.draft = "";
       this.watch(receipt);
       return true;
@@ -197,7 +197,7 @@ export class ChatSession {
   /** The chat's row in the chat list. */
   row = $state<SessionInfo>();
   /** The chat's history and live document, as the server's operations keep them. */
-  readonly live: LiveChat;
+  readonly live: LiveSession;
   /** The view the person chose: "" is the conversation, unset is no choice yet. */
   private chosenView = $state<string>();
   /** How often each view had asked to be shown when last looked; unset until the session shows. */
@@ -212,9 +212,9 @@ export class ChatSession {
   constructor(
     readonly id: string,
     private readonly transport: Transport,
-    private readonly host: ChatSessionHost,
+    private readonly host: SessionHost,
   ) {
-    this.live = new LiveChat((path) => transport.json(path));
+    this.live = new LiveSession((path) => transport.json(path));
     try {
       this.chosenView = localStorage.getItem(viewChoice(id)) ?? undefined;
     } catch {
@@ -362,3 +362,11 @@ export class ChatSession {
 
 /** Where the browser keeps the view a person last chose for a session. */
 const viewChoice = (sessionId: string) => `pispark:view:${sessionId}`;
+/** A deleted session's view choice goes with it. */
+export function forgetViewChoice(sessionId: string) {
+  try {
+    localStorage.removeItem(viewChoice(sessionId));
+  } catch {
+    /* Nothing was kept. */
+  }
+}

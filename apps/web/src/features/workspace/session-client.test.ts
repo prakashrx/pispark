@@ -170,3 +170,53 @@ test("unknown initial create acceptance and settlement are explicit without an i
     client.dispose();
   }
 });
+
+test("the Apps section follows a persona that became an app elsewhere: the persona list is read again", async () => {
+  const persona = { id: "desk", name: "Desk", base: [], builtIn: false, valid: true };
+  let personaReads = 0;
+  let home: string | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      if (url === "/api/personas") {
+        personaReads++;
+        return new Response(JSON.stringify({ personas: [{ ...persona, ...(home ? { home } : {}) }] }));
+      }
+      const session = {
+        id: "11111111-1111-4111-8111-111111111111",
+        createdAt: "2026-11-13T00:00:00Z",
+        folder: "/work",
+        status: "unloaded",
+        interrupted: false,
+        persona: { id: "desk", name: "Desk", layered: false, ...(home ? { home } : {}) },
+      };
+      return new Response(
+        JSON.stringify(
+          url === "/api/catalog"
+            ? { home: "/home", recentFolders: [] }
+            : url === "/api/providers"
+              ? { providers: [], defaultModel: null, networkBlocked: false }
+              : url === "/api/sessions"
+                ? { sessions: [session], truncated: false }
+                : {},
+        ),
+      );
+    }),
+  );
+  const client = new SessionClient();
+  try {
+    await client.mount();
+    await waitFor(() => expect(client.personas.items).toHaveLength(1));
+    // Nothing changed: the list is not read again.
+    const before = personaReads;
+    await client.refresh();
+    expect(personaReads).toBe(before);
+    // The persona became an app in an editor or another tab: its sessions say so, and the list follows.
+    home = "desk";
+    await client.refresh();
+    await waitFor(() => expect(client.personas.items[0]?.home).toBe("desk"));
+    expect(personaReads).toBe(before + 1);
+  } finally {
+    client.dispose();
+  }
+});

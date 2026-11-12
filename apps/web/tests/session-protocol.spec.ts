@@ -240,14 +240,14 @@ test("background receipt failure stays with its originating session across selec
     page.getByText("local:session B", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("alert").filter({ hasText: /execution/ }),
+    page.getByRole("alert").filter({ hasText: /The run failed/ }),
   ).toHaveCount(0);
   await page
     .getByRole("link", { name: /^provider-error/ })
     .last()
     .click();
   await expect(
-    page.getByRole("alert").filter({ hasText: /execution \(/ }),
+    page.getByRole("alert").filter({ hasText: "The run failed on the server." }),
   ).toBeVisible();
 });
 

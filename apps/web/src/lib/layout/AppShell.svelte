@@ -5,9 +5,9 @@
   import Composer from "../../features/workspace/Composer.svelte";
   import { useSessions } from "../../features/workspace/session-client.svelte";
   import {
-    chatName,
+    sessionName,
     commandUncertainty,
-  } from "../../features/workspace/chat-presentation";
+  } from "../../features/workspace/session-presentation";
   const sessions = useSessions();
   const displayedChat = $derived(sessions.current?.info);
   const backend = $derived(
@@ -140,7 +140,7 @@
         class="notice break-words" data-tone="danger"
       >
         <p>
-          {chatName(displayedChat)}:
+          {sessionName(displayedChat)}:
           <span
             >{commandUncertainty(
               sessions.current.errorKind,

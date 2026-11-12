@@ -2,15 +2,15 @@
   import ExtensionQuestion from "./ExtensionQuestion.svelte";
   import StyledText from "./StyledText.svelte";
   import ContributionPoint from "./ContributionPoint.svelte";
-  import { useChat } from "./session-client.svelte";
+  import { useSession } from "./session-client.svelte";
 
   /**
    * What extensions show around the reply box, where terminal Pi shows it: widgets above and
    * below the editor, questions above it, statuses (or an extension's footer) underneath.
    */
   let { placement }: { placement: "above" | "below" } = $props();
-  const chat = useChat();
-  const view = $derived(chat.doc?.extensions);
+  const session = useSession();
+  const view = $derived(session.doc?.extensions);
   const widgets = $derived(view?.widgets.filter((w) => w.placement === placement) ?? []);
 </script>
 
@@ -26,7 +26,7 @@
     {#if view.dialogs.length}
       <div class="extension-questions">
         {#each view.dialogs as dialog (dialog.id)}
-          <ExtensionQuestion {dialog} onanswer={(value) => chat.answer(dialog.id, value)} />
+          <ExtensionQuestion {dialog} onanswer={(value) => session.answer(dialog.id, value)} />
         {/each}
       </div>
     {/if}

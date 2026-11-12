@@ -17,10 +17,11 @@ export const VIEW_EVENT = "pispark:view";
  */
 const ITEM_POINT = /^item\.(tool:[\w.-]{1,64}|custom:[\w.:-]{1,64})$/;
 /**
- * A point that takes whole views (`session.view`): each offer has a key and a title, the person
- * chooses which one shows, and an offer may ask to be shown.
+ * The point that takes whole views of a session: each offer has a key and a title, the person
+ * chooses which one shows, and an offer may ask to be shown. A client that draws it names it in
+ * its points like any other.
  */
-const takesViews = (point: string) => point.endsWith(".view");
+export const VIEW_POINT = "session.view";
 const TITLE = /^\P{Cc}{1,40}$/u;
 const MAX_VIEWS = 6;
 const NAME = /^[\w.:-]{1,64}$/;
@@ -173,7 +174,7 @@ export class ExtensionViews {
     if (Object.keys(rest).length) throw new Error(`unknown field ${Object.keys(rest)[0]}`);
     if (typeof point !== "string" || !(ITEM_POINT.test(point) || this.points.has(point))) throw new Error(`unknown point ${String(point)}`);
     if (typeof key !== "string" || !KEY.test(key)) throw new Error("key must be a short name");
-    const view = takesViews(point);
+    const view = point === VIEW_POINT;
     if (view && !key) throw new Error(`${point} needs a key`);
     if (!view && (title !== undefined || attention !== undefined)) throw new Error(`${point} takes no title or attention: only a view does`);
     const id = `${point}\u0000${key}`;

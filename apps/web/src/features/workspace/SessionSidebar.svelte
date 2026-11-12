@@ -1,9 +1,10 @@
 <script lang="ts">
   import Icon from "../../lib/ui/Icon.svelte";
   import AppEntry from "./AppEntry.svelte";
-  import SessionMark from "./SessionMark.svelte";
+  import ArchivedList from "./ArchivedList.svelte";
+  import SessionRow from "./SessionRow.svelte";
   import { useSessions } from "./session-client.svelte";
-  import { chatName, sessionStatus } from "./chat-presentation";
+  import { sessionName } from "./session-presentation";
   const client = useSessions();
   // App personas are opened from their own section, and their sessions are listed there.
   const apps = $derived(client.personas.items.filter((persona) => persona.valid && persona.home));
@@ -61,25 +62,21 @@
               <p class="px-3 pt-2 pb-1.5 text-xs font-medium text-subtle">{group.label}</p>
               <div class="space-y-px">
                 {#each group.items as session (session.id)}
-                  <a
-                    href="#/workspace"
-                    onclick={() => client.select(session.id)}
-                    aria-current={session.id === client.selected ? "page" : undefined}
-                    class="nav-item"
-                  >
+                  {@const name = sessionName(session)}
+                  <SessionRow {session} {name}>
                     <span class="min-w-0 flex-1">
-                      <span class="block truncate">{chatName(session)}</span>
+                      <span class="block truncate">{name}</span>
                       {#if session.persona?.name}
                         <span class="block truncate text-xs text-subtle mt-0.5">{session.persona.name}</span>
                       {/if}
                     </span>
-                    <SessionMark status={sessionStatus(session)} />
-                  </a>
+                  </SessionRow>
                 {/each}
               </div>
             </div>
           {/each}
         {/if}
+        <ArchivedList />
       </nav>
     </div>
   </div>

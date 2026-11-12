@@ -189,7 +189,7 @@ export type Command = { commandId: string } & (
       /** Persona ID; Default when omitted. */
       persona?: string;
     }
-  | { type: "open" | "reload" | "cancel" | "stop"; sessionId: string }
+  | { type: "open" | "reload" | "cancel" | "stop" | "archive" | "restore" | "delete"; sessionId: string }
   | { type: "start" | "steer" | "follow-up"; sessionId: string; text: string }
   /** Answer an extension's question; null dismisses it. */
   | {

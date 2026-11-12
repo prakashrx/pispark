@@ -585,3 +585,25 @@ test("SessionHttp: a create command for a project persona carries no folder", as
   const none = await f.settle(await f.post({ type: "create" }));
   assert.equal(none.error, "invalid-input");
 });
+
+test("SessionHttp: archive, restore and delete are commands; the list says how many are archived", async (t) => {
+  const f = await fixture(t);
+  const a = await f.create("a");
+  const b = await f.create("b");
+  const list = async (query = "") =>
+    (await (await fetch(`${f.base}/api/sessions${query}`)).json()) as { sessions: { id: string }[]; archived: number };
+  assert.equal((await f.settle(await f.post({ type: "archive", sessionId: a }))).outcome, "completed");
+  assert.deepEqual((await list()).sessions.map((s) => s.id), [b]);
+  assert.equal((await list()).archived, 1);
+  assert.deepEqual((await list("?archived")).sessions.map((s) => s.id), [a]);
+  // Only an archived session is deleted.
+  assert.equal((await f.settle(await f.post({ type: "delete", sessionId: b }))).error, "busy");
+  assert.equal((await f.settle(await f.post({ type: "restore", sessionId: a }))).outcome, "completed");
+  assert.equal((await list()).archived, 0);
+  await f.settle(await f.post({ type: "archive", sessionId: a }));
+  assert.equal((await f.settle(await f.post({ type: "delete", sessionId: a }))).outcome, "completed");
+  assert.deepEqual((await list("?archived")).sessions, []);
+  assert.deepEqual((await list()).sessions.map((s) => s.id), [b]);
+  // No other query is accepted.
+  assert.equal((await fetch(`${f.base}/api/sessions?all`)).status, 404);
+});

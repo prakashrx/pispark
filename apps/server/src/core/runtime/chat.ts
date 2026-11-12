@@ -201,21 +201,21 @@ export class Chat {
     // No client callbacks, serialization, I/O or transcript copying in synchronous SDK listeners.
     for (const observer of this.observers) observer.push({ sessionId: this.id, sequence: this.sequence, type: "changed" });
   }
-  /**
-   * Whether the chat can be unloaded without anyone noticing: nothing runs, waits or is queued in
-   * it, no question is open, and nobody has it on screen.
-   */
-  get unloadable(): boolean {
+  /** Nothing runs, waits or is queued in the chat, and no question is open. */
+  get settled(): boolean {
     return (
       (this.status === "idle" || this.status === "error") &&
       !this.loading &&
       !this.input &&
       !this.queuedRun &&
-      this.observers.size === 0 &&
       !this.asking &&
       !this.host.slots.holds(this.id) &&
       !this.host.slots.queued(this.id)
     );
+  }
+  /** Whether the chat can be unloaded without anyone noticing: settled, and nobody has it on screen. */
+  get unloadable(): boolean {
+    return this.settled && this.observers.size === 0;
   }
   /** After a persona edit: whether the resolved setup still matches the one the session started with. */
   checkSetup(fingerprint: string): void {

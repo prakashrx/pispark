@@ -153,23 +153,9 @@ Because the entries are on the chat's branch, the state survives a restart, a re
 
 Folder extensions only: a component file must live inside the extension's folder, so a single-file extension that wants a view becomes a folder (`extensions/<name>/index.ts`).
 
-The `session.*` points in the table are the ones the workspace draws (`apps/server/src/http/workspace-points.ts`). The core knows only the items of the history (`item.tool:`, `item.custom:`) and the points its host names; a point that is neither is refused with a notice. Points for a place (a folder shared by several sessions), a persona and the whole workspace are planned ([VISION.md](../VISION.md) §7) and not built.
+The `session.*` points in the table are the ones the workspace draws (`apps/server/src/http/workspace-points.ts`). The core knows the items of the history (`item.tool:`, `item.custom:`), that `session.view` takes whole views, and the points its host names; any other point is refused with a notice. Points for a place (a folder shared by several sessions), a persona and the whole workspace are planned ([VISION.md](../VISION.md) §7) and not built.
 
-### Names before the points
-
-The points replaced the earlier slot names. The old names are refused like any unknown point; there are no aliases.
-
-| Before | Now |
-| --- | --- |
-| event field `slot` | `point` |
-| `tool:<name>` | `item.tool:<name>` |
-| `custom:<type>` | `item.custom:<type>` |
-| `chat.title` | `session.title` |
-| `chat.header` | `session.header` |
-| `reply.above`, `reply.below` | `session.input.above`, `session.input.below` |
-| `reply.actions` | `session.input.actions` |
-| `reply.footer` | `session.status` |
-| `chat.page` | `session.view`, which now needs `key` and `title` and is offered rather than shown |
+Earlier builds used slot names (`tool:<name>`, `chat.page`, `reply.*` and the event field `slot`). They are refused like any unknown point; there are no aliases.
 
 ## Not yet
 

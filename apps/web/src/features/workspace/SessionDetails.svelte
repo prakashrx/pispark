@@ -2,16 +2,16 @@
   import Popover from "../../lib/ui/Popover.svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
-  import { useChat, useSessions } from "./session-client.svelte";
+  import { useSession, useSessions } from "./session-client.svelte";
   /**
    * Facts about the open chat, anchored to an info button in the chat header so the
    * conversation never moves.
    */
   let { oneditpersona }: { oneditpersona?: () => void } = $props();
   const client = useSessions();
-  const session = useChat();
+  const session = useSession();
   const snapshot = $derived(session.doc);
-  const chat = $derived(session.info);
+  const info = $derived(session.info);
   const model = $derived(snapshot?.model);
   const modelName = $derived(
     client.providers.catalog.providers
@@ -20,7 +20,7 @@
   );
 </script>
 
-{#if chat}
+{#if info}
   <Popover label="Chat info">
     {#snippet trigger()}<Icon name="info" class="h-[18px] w-[18px]" />{/snippet}
     {#snippet children(close)}
@@ -34,15 +34,15 @@
         <dl class="grid grid-cols-[max-content_1fr] gap-x-5 gap-y-2 text-sm">
           <dt class="text-muted-foreground">Persona</dt>
           <dd class="break-words">
-            {chat.persona.name}{#if chat.persona.layered}<span class="text-muted-foreground"> · edited for this chat</span>{/if}
+            {info.persona.name}{#if info.persona.layered}<span class="text-muted-foreground"> · edited for this chat</span>{/if}
           </dd>
           <dt class="text-muted-foreground">Model</dt>
           <dd class="break-words">{modelName ?? "Not available"}</dd>
           <dt class="text-muted-foreground">Working folder</dt>
-          <dd class="break-all">{chat.folder}</dd>
+          <dd class="break-all">{info.folder}</dd>
           <dt class="text-muted-foreground">Started</dt>
           <dd>
-            {new Date(chat.createdAt).toLocaleString(undefined, {
+            {new Date(info.createdAt).toLocaleString(undefined, {
               dateStyle: "medium",
               timeStyle: "short",
             })}

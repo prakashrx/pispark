@@ -1,6 +1,6 @@
 <script lang="ts">
   import { contributionsFor, loadView } from "./extension-views";
-  import { useChat } from "./session-client.svelte";
+  import { useSession } from "./session-client.svelte";
 
   /**
    * One of a session's contribution points: draws what extensions contributed here, in the order
@@ -12,14 +12,14 @@
    * them. `only` draws just the contribution with that key: the one view that shows.
    */
   let { point, data, only }: { point: string; data?: unknown; only?: string } = $props();
-  const chat = useChat();
+  const session = useSession();
   const contributions = $derived(
-    contributionsFor(chat.doc?.extensions, point).filter((contribution) => only === undefined || contribution.key === only),
+    contributionsFor(session.doc?.extensions, point).filter((contribution) => only === undefined || contribution.key === only),
   );
   // One host per placement: it can reach only that placement's functions.
   const hostFor = (key: string) => ({
-    call: (name: string, payload?: unknown) => chat.call(point, key, name, payload),
-    file: (path: string) => chat.fileUrl(point, key, path),
+    call: (name: string, payload?: unknown) => session.call(point, key, name, payload),
+    file: (path: string) => session.fileUrl(point, key, path),
   });
   const propsOf = (props: unknown): Record<string, unknown> =>
     props && typeof props === "object" && !Array.isArray(props)
@@ -33,7 +33,7 @@
   <div class="extension-view" data-point={point}>
     {#await loadView(contribution.url) then View}
       <svelte:boundary>
-        <View {...propsOf(contribution.props)} {data} session={chat} host={hostFor(contribution.key)} />
+        <View {...propsOf(contribution.props)} {data} {session} host={hostFor(contribution.key)} />
         {#snippet failed()}<span class="extension-view-failed" role="status">This extension view stopped working.</span>{/snippet}
       </svelte:boundary>
     {:catch}

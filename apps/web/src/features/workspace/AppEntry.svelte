@@ -1,8 +1,9 @@
 <script lang="ts">
   import Icon from "../../lib/ui/Icon.svelte";
   import SessionMark from "./SessionMark.svelte";
+  import SessionRow from "./SessionRow.svelte";
   import { useSessions } from "./session-client.svelte";
-  import { foremostStatus, sessionStarted, sessionStatus } from "./chat-presentation";
+  import { foremostStatus, sessionStarted, sessionStatus } from "./session-presentation";
   import { validChatTitle } from "../../../../server/src/contract/chat-title";
   import type { PersonaSummary } from "../../../../server/src/contract/persona-protocol";
   // An app persona in the sidebar: its name opens it, and its sessions are listed under it.
@@ -40,17 +41,11 @@
 {#if open}
   <div {id} class="space-y-px">
     {#each sessions as session (session.id)}
-      <a
-        href="#/workspace"
-        class="nav-item app-session"
-        aria-current={session.id === client.selected ? "page" : undefined}
-        onclick={() => client.select(session.id)}
-      >
-        {#if validChatTitle(session.title)}<span class="min-w-0 flex-1 truncate">{session.title}</span>{:else}<span
-            class="min-w-0 flex-1 truncate text-muted-foreground">Started {sessionStarted(session)}</span
-          >{/if}
-        <SessionMark status={sessionStatus(session)} />
-      </a>
+      {@const titled = validChatTitle(session.title)}
+      {@const name = titled ? session.title! : `Started ${sessionStarted(session)}`}
+      <SessionRow {session} {name} class="app-session">
+        <span class="min-w-0 flex-1 truncate" class:text-muted-foreground={!titled}>{name}</span>
+      </SessionRow>
     {/each}
     <button type="button" class="nav-item app-session w-full text-muted-foreground" onclick={() => client.openApp(app.id, true)}>
       <Icon name="plus" class="h-3.5 w-3.5" />New session
@@ -91,7 +86,7 @@
   .app-toggle:hover {
     color: var(--foreground);
   }
-  .app-session {
+  :global(.app-session) {
     min-height: 2rem;
     padding: 0.3125rem 0.5rem 0.3125rem 2.75rem;
     font-size: 0.8125rem;

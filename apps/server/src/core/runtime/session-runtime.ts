@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { mkdirSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative } from "node:path";
 import type { Provider } from "@earendil-works/pi-ai";
 import type { HostSettings, ItemsPage, LiveDoc, PartPage, SessionDoc } from "../../contract/protocol.js";
 import type { ModelChoice } from "../../contract/provider-protocol.js";
@@ -44,8 +44,9 @@ export class SessionRuntime {
   private readonly settingsPath: string;
   private readonly timeout: number;
   /**
-   * What a chat says of its persona (name, home view) and which chats have their own layer. A loaded chat's document is read on every
-   * streaming update, so these are read from disk once and again only after a persona change.
+   * What a chat says of its persona (name, home view) and which chats have their own layer. A
+   * loaded chat's document is read on every streaming update, so these are read from disk once and
+   * again only after a persona change.
    */
   private known?: Map<string, PersonaSummary>;
   private readonly appsDir: string;
@@ -110,17 +111,38 @@ export class SessionRuntime {
     for (const chat of this.live.values()) chat.changed();
     return this.settings();
   }
+  /** The sessions in use; archived ones are left out. */
   list(): SessionSummary[] {
-    return this.storage.list().map((metadata) => this.summary(metadata, this.live.get(metadata.id)));
+    return this.storage
+      .list()
+      .filter((metadata) => !metadata.archived)
+      .map((metadata) => this.summary(metadata, this.live.get(metadata.id)));
+  }
+  /** The sessions the person put away. */
+  archived(): SessionSummary[] {
+    return this.storage
+      .list()
+      .filter((metadata) => metadata.archived)
+      .map((metadata) => this.summary(metadata));
   }
   get unreadableSessions(): number {
     return this.storage.unreadable;
   }
-  /** Recent distinct working folders, newest first, for Ask's folder picker. */
+  /** Recent distinct working folders, newest first, for Ask's folder picker. An app's own folder is its own. */
   recentFolders(limit = 8): string[] {
     const folders: string[] = [];
+    let apps = this.appsDir;
+    try {
+      apps = realpathSync.native(apps);
+    } catch {
+      /* No app has a folder yet. */
+    }
+    const inApps = (folder: string) => {
+      const path = relative(apps, folder);
+      return !path.startsWith("..") && !isAbsolute(path);
+    };
     for (const chat of this.storage.list().sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
-      if (chat.cwd && !folders.includes(chat.cwd)) {
+      if (chat.cwd && !folders.includes(chat.cwd) && !inApps(chat.cwd)) {
         folders.push(chat.cwd);
         if (folders.length >= limit) break;
       }
@@ -277,7 +299,10 @@ export class SessionRuntime {
       this.admit();
       if (this.live.has(id)) throw new RuntimeError("owned");
     }
-    return this.load(this.storage.read(id), true);
+    const metadata = this.storage.read(id);
+    // An archived session is not opened until it is restored.
+    if (metadata.archived) throw new RuntimeError("not-found");
+    return this.load(metadata, true);
   }
   /** Loads a chat that is not loaded (or waits for one that is loading), so it can be sent to. */
   async ensure(id: string): Promise<void> {
@@ -311,6 +336,34 @@ export class SessionRuntime {
       if (!this.live.has(id)) return;
     }
     await chat.stop();
+  }
+  /**
+   * Puts a session away: it unloads and leaves the list. Refused while it runs, waits for an answer
+   * or has a prompt waiting for its turn.
+   */
+  async archive(id: string): Promise<void> {
+    validateId(id);
+    const chat = this.live.get(id);
+    if (chat && !chat.settled) throw new RuntimeError("busy");
+    if (chat) await this.stop(id);
+    const metadata = this.storage.read(id);
+    if (metadata.queued !== undefined || this.live.has(id)) throw new RuntimeError("busy");
+    this.storage.write({ ...metadata, archived: true });
+  }
+  restore(id: string): void {
+    validateId(id);
+    const { archived, ...metadata } = this.storage.read(id);
+    if (archived) this.storage.write(metadata);
+  }
+  /**
+   * Deletes an archived session for good, with everything in its folder. Its working folder, and
+   * an app's own folder, are not its to remove.
+   */
+  delete(id: string): void {
+    validateId(id);
+    if (!this.storage.read(id).archived || this.live.has(id)) throw new RuntimeError("busy");
+    this.storage.remove(id);
+    this.layered.delete(id);
   }
   async shutdown(): Promise<void> {
     this.accepting = false;

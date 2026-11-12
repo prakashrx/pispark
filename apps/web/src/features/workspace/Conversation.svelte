@@ -6,22 +6,22 @@
   import { buildTurns } from "./chat-turns";
   import UserTurn from "./UserTurn.svelte";
   import { placedPoints } from "./extension-views";
-  import { useChat } from "./session-client.svelte";
+  import { useSession } from "./session-client.svelte";
 
   /** PiSpark's own conversation: the chat's items as turns, in one continuous scroll. */
-  const chat = useChat();
-  const doc = $derived(chat.doc);
+  const session = useSession();
+  const doc = $derived(session.doc);
   const placed = $derived(placedPoints(doc?.extensions));
   const queued = $derived((doc?.queue.steering ?? 0) + (doc?.queue.followUp ?? 0));
   const running = $derived(["running", "cancelling"].includes(doc?.status ?? ""));
   // The chat as turns of ordered segments; extension notices land where they happened.
   const turns = $derived(
     doc
-      ? buildTurns(chat.items, {
+      ? buildTurns(session.items, {
           running,
           notices: doc.extensions.notices,
           thinkingLabel: doc.extensions.thinkingLabel,
-          progress: chat.progress,
+          progress: session.progress,
           placed: (point) => placed.has(point),
         })
       : [],
@@ -40,15 +40,15 @@
   const atBottom = () =>
     !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
   async function earlier() {
-    if (loadingEarlier || !chat.more || !scroller) return;
+    if (loadingEarlier || !session.more || !scroller) return;
     loadingEarlier = true;
     const fromBottom = scroller.scrollHeight - scroller.scrollTop;
-    earlierFailed = !(await chat.loadEarlier());
+    earlierFailed = !(await session.loadEarlier());
     await tick();
     if (scroller) scroller.scrollTop = scroller.scrollHeight - fromBottom;
     loadingEarlier = false;
     // Still at the top (the older page did not fill the view): keep reading.
-    if (scroller && scroller.scrollTop < 40 && chat.more && !earlierFailed) void earlier();
+    if (scroller && scroller.scrollTop < 40 && session.more && !earlierFailed) void earlier();
   }
   $effect(() => {
     if (!scroller || !top) return;
@@ -104,7 +104,7 @@
         </p>{/if}
       <div bind:this={top} aria-hidden="true"></div>
       {#if loadingEarlier}<p role="status" class="text-sm text-muted-foreground">Loading earlier messages…</p>
-      {:else if chat.more && earlierFailed}<Button
+      {:else if session.more && earlierFailed}<Button
           class={button}
           onclick={() => {
             earlierFailed = false;
@@ -113,7 +113,7 @@
         >{/if}
       <div class="flex flex-col gap-8">
         {#each turns as turn (turn.key)}
-          <ResponseTurn {turn} sessionId={chat.id} />
+          <ResponseTurn {turn} sessionId={session.id} />
         {/each}
         {#if doc.status === "queued" && doc.queuedText}<div class="queued-turn">
             <UserTurn text={doc.queuedText} />

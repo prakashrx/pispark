@@ -5,11 +5,11 @@
   import Input from "../../lib/ui/Input.svelte";
   import Selector from "../../lib/ui/Selector.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
-  import type { ChatSession } from "./chat-session.svelte";
-  import { useChat, useSessions } from "./session-client.svelte";
+  import type { Session } from "./session.svelte";
+  import { useSession, useSessions } from "./session-client.svelte";
   const sessions = useSessions();
   // The reply box belongs to a chat; Ask, in the shell, has none.
-  const chat: ChatSession | undefined = useChat();
+  const session: Session | undefined = useSession();
   let {
     mode = "ask",
     draft = $bindable(""),
@@ -91,9 +91,9 @@
                 !sessions.providers.loading
               ? "Choose a model in Providers & models."
               : undefined
-        : chat?.doc?.status !== "idle"
+        : session?.doc?.status !== "idle"
           ? "Open a chat that is ready for a message."
-          : chat.connection !== "Live"
+          : session.connection !== "Live"
             ? "Waiting for the chat to reconnect."
             : undefined,
   );
@@ -113,7 +113,7 @@
         context === JSON.stringify([folder, model, sessions.personas.selected])
       )
         draft = "";
-    } else await chat?.send();
+    } else await session?.send();
   }
 </script>
 
@@ -136,13 +136,13 @@
       maxlength={65536}
       value={mode === "ask"
         ? draft
-        : (chat?.draft ?? "")}
+        : (session?.draft ?? "")}
       oninput={(event) => {
         const text = event.currentTarget.value;
         if (mode === "ask") {
           draftRevision++;
           draft = text;
-        } else chat?.setDraft(text);
+        } else session?.setDraft(text);
       }}
       appearance="composer"
       placeholder={mode === "reply" ? "Message…" : quiet ? "Start a new chat…" : "Ask anything…"}

@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 import type { Item, ItemsPage, LiveEvent, SessionDoc } from "../../../../server/src/contract/protocol";
-import { LiveChat } from "./live-chat.svelte";
+import { LiveSession } from "./live-session.svelte";
 
 const session = { id: "s", status: "running" } as unknown as SessionDoc;
 const item = (id: string, text: string, role: Item["role"] = "assistant"): Item => ({
@@ -19,7 +19,7 @@ function chat(pages: Record<string, ItemsPage>) {
     if (!hit) throw new Error("unexpected " + path);
     return hit as never;
   });
-  return { live: new LiveChat(get), get };
+  return { live: new LiveSession(get), get };
 }
 
 test("history loads by cursor; the snapshot only adds what the client lacks", async () => {

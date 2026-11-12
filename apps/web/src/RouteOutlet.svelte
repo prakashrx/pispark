@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Page } from "./routes";
   import SessionArea from "./features/workspace/SessionArea.svelte";
-  import NoChat from "./features/workspace/NoChat.svelte";
+  import NoSession from "./features/workspace/NoSession.svelte";
   import ProvidersPage from "./features/settings/providers/ProvidersPage.svelte";
   import GeneralSettings from "./features/settings/GeneralSettings.svelte";
   import PersonaPage from "./features/persona/PersonaPage.svelte";
@@ -18,7 +18,7 @@
 >
   {#if page === "workspace"}
     <!-- Each chat gets its own host, so nothing of one chat's view leaks into the next. -->
-    {#if sessions.current}{#key sessions.current.id}<SessionArea chat={sessions.current} />{/key}{:else}<NoChat />{/if}
+    {#if sessions.current}{#key sessions.current.id}<SessionArea session={sessions.current} />{/key}{:else}<NoSession />{/if}
   {:else if page === "providers"}
     <ProvidersPage />
   {:else if page === "settings"}

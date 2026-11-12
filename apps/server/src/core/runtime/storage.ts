@@ -34,6 +34,8 @@ export interface ChatMetadata {
   setup?: string;
   /** A prompt waiting for a run slot, kept so a restart does not lose it. */
   queued?: string;
+  /** Put away by the person: not listed or opened until restored. */
+  archived?: true;
 }
 
 const UUID =
@@ -86,7 +88,8 @@ export class ChatStorage {
         typeof value.active !== "boolean" ||
         typeof value.interrupted !== "boolean" ||
         (value.setup !== undefined && !/^[a-f0-9]{64}$/.test(value.setup)) ||
-        (value.queued !== undefined && (typeof value.queued !== "string" || value.queued.length > 64 * 1024))
+        (value.queued !== undefined && (typeof value.queued !== "string" || value.queued.length > 64 * 1024)) ||
+        (value.archived !== undefined && value.archived !== true)
       )
         throw new Error();
       return { ...value, id };
@@ -141,6 +144,16 @@ export class ChatStorage {
       if (error instanceof RuntimeError) throw error;
       throw new RuntimeError("storage");
     }
+  }
+  /** Removes a chat for good: its folder holds everything about it (chat.json, Pi's transcript, its persona layer). */
+  remove(id: string): void {
+    const dir = this.directory(id);
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+    } catch {
+      throw new RuntimeError("storage");
+    }
+    this.catalog.delete(id);
   }
   /** Remove a chat folder that never got a chat.json (a failed first start). */
   discardUnpublished(id: string): void {

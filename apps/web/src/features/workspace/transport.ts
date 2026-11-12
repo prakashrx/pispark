@@ -1,5 +1,5 @@
 import type { Command, Receipt } from "../../../../server/src/contract/protocol";
-import type { CommandUncertaintyKind } from "./chat-presentation";
+import { commandError, type CommandUncertaintyKind } from "./session-presentation";
 
 /** A command whose outcome is not known: it may or may not have been accepted or settled. */
 export class CommandUncertainty extends Error {
@@ -8,6 +8,12 @@ export class CommandUncertainty extends Error {
     detail: string,
   ) {
     super(detail);
+  }
+}
+/** A command the server refused or that failed there: its code, said in words. */
+export class CommandFailed extends Error {
+  constructor(readonly code: string) {
+    super(commandError(code));
   }
 }
 export type InputCommand = Command extends infer C ? (C extends Command ? Omit<C, "commandId"> : never) : never;
@@ -82,7 +88,7 @@ export class Transport {
         );
       }
     }
-    if (receipt.error) throw new Error(`${receipt.error} (${receipt.commandId})`);
+    if (receipt.error) throw new CommandFailed(receipt.error);
     return receipt;
   }
   /** A command sent and settled. */

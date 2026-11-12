@@ -4,7 +4,7 @@
   import Selector from "../../lib/ui/Selector.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   import { useSessions } from "./session-client.svelte";
-  import { folderName } from "./chat-presentation";
+  import { folderName } from "./session-presentation";
   // The choice of a working folder: any existing folder on the backend host, from the recent
   // ones, home, or a path typed in. Ask and the persona editor share it.
   let {
