@@ -37,6 +37,8 @@ PiSpark owns the web experience, session hosting, presentation, navigation, conf
 
 It provides a consistent environment in which Pi agents and their extensions can operate.
 
+PiSpark provides; it does not orchestrate. It starts, keeps, wakes, and shows sessions. Deciding what agents do, and in what order, belongs to Pi and to extensions.
+
 The backend must exist independently of the web interface. A browser is a client of the runtime, not the owner of an agent session.
 
 ### Extensions own their experiences
@@ -68,6 +70,8 @@ Users should not need to understand Pi's internal architecture to use PiSpark.
 
 Advanced configuration should be discoverable without making the everyday experience complicated.
 
+Conversation is the default way in, not the only one. A persona may be an app: something a user opens rather than chats with, presenting its own experience (see §4).
+
 ## 4. Personas and Capability Composition
 
 A persona is more than a system prompt or conversational personality.
@@ -81,6 +85,24 @@ Users should be able to create, customize, and reuse personas.
 Personas should be composed from existing Pi capabilities wherever possible, rather than introducing new equivalents.
 
 Different personas may support different workflows, interaction styles, and tools while sharing the same underlying Pi runtime.
+
+What a persona is used for comes from what it has, not from separate kinds:
+
+- **Role persona:** capabilities only. The user brings the working directory when they ask.
+- **Project persona:** a persona bound to a place, such as a project folder. It always works there.
+- **App persona:** a persona with a home surface. It is opened rather than chatted with, and may also have a place.
+
+These are combinations of one persona model, composable through persona layering, not three types.
+
+A capability is not an app. An extension may offer its experience wherever it applies, such as in any session whose folder holds the records it understands, without being launched as an app.
+
+### Apps
+
+An app is a persona with a home surface. It becomes active when someone opens it or when something triggers it, and it may keep working in the background.
+
+An app's backend is its ordinary Pi extensions, its frontend is their Svelte components, its workers are Pi sessions, and its state lives in its place: a project folder or its own data folder. There is no separate app entity, manifest, runtime, or store; Sources distributes personas.
+
+An app may manage its own sessions: start them, follow them, and decide what they do. That orchestration belongs to the app. PiSpark provides the session lifecycle it needs and keeps every session inspectable.
 
 ## 5. Sources and Resource Discovery
 
@@ -100,6 +122,10 @@ The goal is to make Pi's extensibility accessible through a friendly web interfa
 
 Sessions are owned by the backend runtime.
 
+A session is a unit of agent work, not a chat. It may have many human turns or none, be driven from a page or a schedule, and have child sessions. Any session can be viewed as a conversation; the conversation is one surface over a session, shown when a user wants it, not what the session is.
+
+Work is woken by triggers: a user opening or asking, a schedule, an event, or another session. Nothing runs unless something asks. A session that is not needed is not kept loaded; a trigger loads it, the work runs, and it can be unloaded again. Unattended work is off unless a user turns it on for a persona, and every unattended run remains an inspectable session.
+
 They must not depend on an active browser tab to exist.
 
 PiSpark should support independent sessions, including multiple sessions operating concurrently.
@@ -108,7 +134,7 @@ The runtime should provide a coherent lifecycle for starting, interacting with, 
 
 The web interface should be able to disconnect and reconnect without treating the agent as a disposable browser process.
 
-The architecture should also leave room for future interfaces, such as messaging clients or other applications, to interact with the same runtime.
+PiSpark's clients are the web workspace and, later, mobile; they use the same runtime. Bridging to messaging services or other outside channels is something an app may do through its own extensions; PiSpark does not need to know about it.
 
 PiSpark's configuration, credentials, resources, and session history must remain independent of any separately installed terminal Pi environment unless explicitly configured otherwise.
 
@@ -132,9 +158,13 @@ PiSpark provides well-defined places where extension components can appear.
 
 These may include session headers, footers, side panels, conversation turns, tool results, contextual surfaces, hover interfaces, and other workspace locations.
 
+Places exist beyond a single session too: an app's launcher, tiles on a home view, and notifications.
+
 Some components may remain visible throughout a session. Others may appear dynamically in response to agent activity or user interaction.
 
 Placement is a responsibility of PiSpark. Content and behaviour belong to the extension.
+
+An extension offers its components; it does not force a layout. When several offers want the same place, PiSpark shows them side by side and lets the user choose. Visibility follows the user first, then the persona, then the extension. An extension may ask for attention, but PiSpark does not decide an extension's experience for it, and an extension does not take over the workspace.
 
 ### Extension communication
 
@@ -163,9 +193,11 @@ Third-party component execution must be treated as a deliberate trust and securi
 
 Extensions should continue to use Pi's native extension mechanisms.
 
+The reason is the existing ecosystem: third-party Pi extensions should work in PiSpark without changes made for PiSpark. Terminal Pi is not a PiSpark client.
+
 Web-specific presentation capabilities should be additive rather than requiring changes to Pi itself.
 
-An extension should be able to support both terminal Pi and PiSpark, providing richer presentation when PiSpark is available.
+An extension may still support both terminal Pi and PiSpark, providing richer presentation when PiSpark is available.
 
 ## 8. Architecture Direction
 
@@ -214,7 +246,7 @@ PiSpark is not intended to be:
 - A replacement for Pi or its Agent SDK.
 - A fork of Pi's terminal application.
 - A browser-based terminal emulator.
-- A separate agent orchestration framework.
+- A separate agent orchestration framework. Apps may orchestrate their own sessions; PiSpark provides the sessions.
 - A competing extension or package ecosystem.
 - A rigid UI framework that dictates how extensions must render.
 - A distributed services platform built in anticipation of hypothetical scale.
@@ -245,10 +277,8 @@ PiSpark should feel like ChatGPT when someone simply wants to ask a question.
 
 It should feel like Pi when someone wants to customize their agent's capabilities.
 
-And it should go beyond both when an extension introduces a specialized, interactive web experience.
+And it should go beyond both when an extension introduces a specialized, interactive web experience, up to a complete app a user opens and leaves working.
 
 **Pi runs the agent. PiSpark hosts the experience. Extensions make it their own.**
 
 That is the direction against which future backend and product decisions should be evaluated.
-
-Define the first backend milestoneClarify the persona configuration model
