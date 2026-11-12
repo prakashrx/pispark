@@ -9,6 +9,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -73,6 +74,19 @@ const readText = (path: string): string => {
   const buffer = readFileSync(path);
   if (buffer.length > MAX_FILE) fail("limit");
   return buffer.toString("utf8");
+};
+
+/** What a layer's persona.json may hold: Default and a chat's own layer name no working folder. */
+const rules = (target: PersonaTarget) => ({
+  chatLayer: "chat" in target,
+  folder: "persona" in target && target.persona !== DEFAULT_PERSONA,
+});
+const isFolder = (path: string): boolean => {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
 };
 
 /**
@@ -183,7 +197,7 @@ export class PersonaStore {
       return fail("invalid-definition", 400, "json");
     }
     return {
-      definition: validateDefinition(parsed, { chatLayer: "chat" in target }),
+      definition: validateDefinition(parsed, rules(target)),
       revision: digest(source),
     };
   }
@@ -259,9 +273,7 @@ export class PersonaStore {
     input: unknown,
     check?: (definition: PersonaDefinition) => void,
   ): { revision: string } {
-    const definition = validateDefinition(input, {
-      chatLayer: "chat" in target,
-    });
+    const definition = validateDefinition(input, rules(target));
     if ("persona" in target && definition.base?.includes(target.persona))
       fail("cycle", 400, target.persona);
     // Default is always the first layer; it has no parents.
@@ -271,8 +283,11 @@ export class PersonaStore {
       definition.base?.length
     )
       fail("invalid-definition", 400, "base");
-    const current = this.exists(target) ? this.read(target).revision : "";
-    if (current !== expectedRevision) fail("revision-conflict", 409);
+    const current = this.exists(target) ? this.read(target) : undefined;
+    if ((current?.revision ?? "") !== expectedRevision) fail("revision-conflict", 409);
+    // Checked when it is set. One that has since gone is found when a session starts there.
+    if (definition.folder && definition.folder !== current?.definition.folder && !isFolder(definition.folder))
+      fail("folder");
     check?.(definition);
     const dir = this.dir(target);
     mkdirSync(dir, { recursive: true, mode: 0o700 });

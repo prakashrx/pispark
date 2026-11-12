@@ -1,12 +1,12 @@
 <script lang="ts">
   import ContributionPoint from "./ContributionPoint.svelte";
+  import FolderChoice from "./FolderChoice.svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Input from "../../lib/ui/Input.svelte";
   import Selector from "../../lib/ui/Selector.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   import type { ChatSession } from "./chat-session.svelte";
   import { useChat, useSessions } from "./session-client.svelte";
-  import { folderName } from "./chat-presentation";
   const sessions = useSessions();
   // The reply box belongs to a chat; Ask, in the shell, has none.
   const chat: ChatSession | undefined = useChat();
@@ -22,18 +22,9 @@
   } = $props();
   let draftRevision = 0;
   let folder = $state("");
-  let otherFolder = $state("");
   let model = $state("");
-  // Any existing folder on the backend host: recent ones, home, or one typed in.
-  const folderOptions = $derived(
-    [
-      ...new Set(
-        [folder, ...sessions.catalog.recentFolders, sessions.catalog.home].filter(
-          Boolean,
-        ),
-      ),
-    ].map((value) => ({ value, label: value })),
-  );
+  // A project persona works in its own folder; Ask's choice waits for the next other persona.
+  const bound = $derived(sessions.personas.items.find((p) => p.id === sessions.personas.selected)?.folder);
   const personaOptions = $derived([
     ...(sessions.personas.selected &&
     !sessions.personas.items.some((p) => p.id === sessions.personas.selected)
@@ -87,7 +78,7 @@
     sessions.busy
       ? "Please wait…"
       : mode === "ask"
-        ? !folder
+        ? !bound && !folder
           ? "Choose a working folder."
           : sessions.personas.selected &&
               !sessions.personas.items.some(
@@ -114,7 +105,7 @@
       if (
         (await sessions.ask(
           draft,
-          folder,
+          bound ? undefined : folder,
           model && selected ? JSON.parse(selected.value) : undefined,
           sessions.personas.selected || undefined,
         )) &&
@@ -163,41 +154,9 @@
       : "flex items-center flex-shrink-0"}
   >
     {#if mode === "ask"}
-      <Selector
-        label="Working folder"
-        options={folderOptions}
-        bind:value={folder}
-        searchable
-      >
-        {#snippet children(value)}
-          <Icon name="folder" class="w-4 h-4" />
-          <span class="max-w-36 truncate" title={value}>{folderName(value)}</span>
-          <Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60" />
-        {/snippet}
-        {#snippet footer(close)}
-          <form
-            class="flex items-end gap-2 w-[min(22rem,80vw)]"
-            aria-label="Use another folder"
-            onsubmit={(event) => {
-              event.preventDefault();
-              if (!otherFolder.trim()) return;
-              folder = otherFolder.trim();
-              otherFolder = "";
-              close();
-            }}
-          >
-            <div class="flex-1 min-w-0">
-              <Input
-                label="Another folder"
-                placeholder="Full path on this computer"
-                density="compact"
-                bind:value={otherFolder}
-              />
-            </div>
-            <Button size="compact" type="submit">Use</Button>
-          </form>
-        {/snippet}
-      </Selector>
+      {#if bound}<FolderChoice value={bound} locked="Set by the persona" />{:else}<FolderChoice
+          bind:value={folder}
+        />{/if}
       <Selector
         label="Persona"
         options={personaOptions}

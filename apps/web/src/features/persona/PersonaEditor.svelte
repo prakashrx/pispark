@@ -9,6 +9,7 @@
   import Disclosure from "../../lib/ui/Disclosure.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   import ItemList from "./ItemList.svelte";
+  import FolderChoice from "../workspace/FolderChoice.svelte";
   import { sameTarget } from "./persona-client.svelte";
   import { personaError } from "./persona-presentation";
   import { useSessions } from "../workspace/session-client.svelte";
@@ -125,6 +126,14 @@
       if (!settings[key]) delete settings[key];
       const next: PersonaDefinition = { ...d, settings };
       if (!Object.keys(settings).length) delete next.settings;
+      return next;
+    });
+  }
+  function setFolder(folder: string) {
+    if (folder === (definition?.folder ?? "")) return;
+    void client.updateDefinition((d) => {
+      const next: PersonaDefinition = { ...d, folder };
+      if (!folder) delete next.folder;
       return next;
     });
   }
@@ -278,6 +287,23 @@
           Inherited: {view.settings.model}
         </p>{/if}
     </Section>
+    {#if !isDefault && !isChat}
+      <Section
+        title="Working folder"
+        description="Chats with this persona always work in this folder and read its AGENTS.md."
+        layout="split"
+        class="border-b border-[var(--border)] pb-6"
+      >
+        <FolderChoice
+          display="field"
+          none={view.folder && !definition?.folder ? "Inherited folder" : "None: Ask chooses the folder"}
+          bind:value={() => definition?.folder ?? "", setFolder}
+        />
+        {#if view.folder && !definition?.folder}<p class="text-xs text-muted-foreground mt-2 break-all">
+            Inherited: {view.folder}
+          </p>{/if}
+      </Section>
+    {/if}
     <Section title="Advanced" description="How this persona is stored." layout="split">
       <div class="space-y-3">
         <p class="text-sm text-muted-foreground break-all">

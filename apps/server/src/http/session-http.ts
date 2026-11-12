@@ -78,7 +78,7 @@ function validate(value: unknown): Command {
   const keys =
     c.type === "create"
       ? [
-          "folder",
+          ...(c.folder === undefined ? [] : ["folder"]),
           ...(c.model === undefined ? [] : ["model"]),
           ...(c.persona === undefined ? [] : ["persona"]),
         ]
@@ -102,7 +102,7 @@ function validate(value: unknown): Command {
       throw new RuntimeError("invalid-input");
   if ("sessionId" in c && !uuid.test(String(c.sessionId)))
     throw new RuntimeError("invalid-input");
-  if (c.type === "create" && (c.folder as string).length > 4096)
+  if (c.type === "create" && typeof c.folder === "string" && c.folder.length > 4096)
     throw new RuntimeError("invalid-input");
   if ("text" in c && Buffer.byteLength(String(c.text)) > 64 * 1024)
     throw new RuntimeError("invalid-input");
@@ -268,7 +268,7 @@ export class SessionHttp {
         case "create":
           receipt.sessionId = (
             await this.runtime.create({
-              folder: command.folder,
+              ...(command.folder === undefined ? {} : { folder: command.folder }),
               ...(command.model ? { model: command.model } : {}),
               ...(command.persona ? { persona: command.persona } : {}),
             })

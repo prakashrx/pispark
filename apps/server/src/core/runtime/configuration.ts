@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { TITLE_TOOL } from "./chat-title.js";
 import {
   createEventBus,
+  loadProjectContextFiles,
   loadSkills,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
@@ -260,12 +261,15 @@ export async function createSessionServices(options: {
     shortcuts: new Map(),
   });
   const prompts = promptTemplates(setup);
+  // A project persona's session reads its folder's context files (AGENTS.md) the way Pi does. The
+  // agent folder is the session's own, so terminal Pi's global file is never among them.
+  const agentsFiles = setup.folder ? loadProjectContextFiles({ cwd, agentDir }) : [];
   const resourceLoader: ResourceLoader = {
     getExtensions: () => loadedExtensions,
     getSkills: () => loadedSkills,
     getPrompts: () => ({ prompts: structuredClone(prompts), diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
-    getAgentsFiles: () => ({ agentsFiles: [] }),
+    getAgentsFiles: () => ({ agentsFiles }),
     // Pi's own system prompt, with the persona's instructions appended.
     getSystemPrompt: () => undefined,
     getSystemPromptSource: () => undefined,

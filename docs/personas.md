@@ -30,6 +30,7 @@
 - **Switches** use `type:name`: `instruction:`, `skill:`, `prompt:`, `extension:`, `mcp:` and `tool:`. `off` turns an inherited item or a tool off; `on` turns one back on (or turns a tool on).
 - **Customizing** an inherited item means adding one with the same name; the later layer wins.
 - `persona.json` is strict: unknown keys, malformed switches and `"default"` in `base` are refused, so typos never silently do nothing.
+- `"folder"` makes it a [project persona](#project-personas).
 - **MCP servers** are part of the format and resolution, but are **not connected to chats yet**; the editor says so.
 
 ## Default and layering
@@ -47,6 +48,17 @@ Default → parents (flattened) → this persona → the chat's own layer, if an
 
 Cycles and a missing parent are reported (`cycle`, `missing-parent`); at most 16 layers.
 
+## Project personas
+
+`"folder": "D:/dev/pispark"` in `persona.json` binds a persona to a folder on the backend host (an absolute path). A persona with a folder, its own or one a parent names, is a **project persona**.
+
+- **It always works there.** Ask shows the folder locked ("Set by the persona") and sends none; the server uses the persona's folder and refuses a `create` command that names one.
+- **It reads the folder's context files**, as Pi does in a terminal: `AGENTS.md` (or `CLAUDE.md`) in the folder and in its parent folders, through Pi's own `loadProjectContextFiles`. Sessions of every other persona read nothing from their working folder. The files are read when the session starts; **Reload chat** reads them again. Pi's global file is looked for in the session's own agent folder, so terminal Pi's is never read. Project trust stays off: no skills, prompts or extensions load from the folder.
+- **Inherited** like `settings`: the nearest layer that names a folder wins, and a persona cannot unset one it inherits. Default names none, because every persona builds on it. A chat's own layer names none, because a session's folder is fixed when it is created.
+- **Checked when it is set:** saving a folder that does not exist is refused (`folder`). One that has gone since is reported when a session starts there.
+- Changing the folder affects new sessions only. Giving a persona a folder, or taking it away, changes what its sessions read, so open chats are flagged as changed.
+- Paths belong to one machine: a project persona is local to its host.
+
 ## Chats use personas live
 
 A chat records only which persona it uses; nothing is copied. When its Pi session starts, the chat stores a fingerprint of the resolved setup. After any persona change, open chats whose resolved setup differs show **"The persona changed. Reload to apply it"**; **Reload chat** restarts the Pi session from the same transcript. Changes never apply in the middle of a run. The fingerprint covers every file of a skill folder and of an extension folder (`extensions/<name>/`: its code, helpers and Svelte components); a single-file extension is that file. Edits made outside PiSpark, in an editor, count too: the server watches the personas folder. A reload compiles changed components again.
@@ -63,6 +75,7 @@ Personas lists every persona, Default first. The editor shows, for one layer:
 - **Instructions, Skills, Commands, Extensions:** every resolved item with where it comes from ("Added here", "From Writer"), whether a layer switched it, and an on/off switch. Items in this layer can be edited or removed; inherited ones can be viewed and **customized here** (copied into this layer). New instructions, skills and commands start from a template.
 - **Tools:** Pi's built-in tools and extension tools with on/off switches and which layer set them.
 - **Model:** a preferred model and thinking level.
+- **Working folder:** the folder of a project persona, chosen as in Ask (recent folders, home, or a path), or "Inherited" with the parent's folder. Not shown for Default or a chat's own layer.
 - **Advanced:** where the persona is stored, the layer order and the raw `persona.json`; delete (not Default, not a persona another one builds on).
 
 Every change saves immediately. Saves are revision-checked against the file's hash: if the file changed elsewhere, the save is refused and the latest version is shown.
@@ -73,8 +86,8 @@ All endpoints use the shared loopback Host/Origin/Fetch Metadata guard and exact
 
 | Endpoint | Body → result |
 | --- | --- |
-| `GET /api/personas` | → `{personas: PersonaSummary[]}`, Default first |
-| `POST /api/personas/read` | `{target}` → `PersonaView` (definition, revision, layers, resolved items and tools, settings; `error` when unresolvable) |
+| `GET /api/personas` | → `{personas: PersonaSummary[]}`, Default first; each has `folder` when it is a project persona |
+| `POST /api/personas/read` | `{target}` → `PersonaView` (definition, revision, layers, resolved items and tools, settings and folder; `error` when unresolvable) |
 | `POST /api/personas/create` | `{name, description?, base?}` → `{id, revision}` |
 | `POST /api/personas/save` | `{target, expectedRevision, definition}` → `{revision}`; `""` creates a chat's layer |
 | `POST /api/personas/delete` | `{id}` |

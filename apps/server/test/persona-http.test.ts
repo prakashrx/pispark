@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { test, type TestContext } from "node:test";
+import { join } from "node:path";
 import { createAppServer } from "../src/http/server.js";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { SessionHttp } from "../src/http/session-http.js";
@@ -151,4 +152,21 @@ test("persona HTTP: strict inputs, same-origin guard and content-free failure lo
   await f.post("create", { name: "PRIVATE-NAME", base: ["missing"] });
   assert.doesNotMatch(f.logs.join(""), /PRIVATE-NAME/);
   assert.match(f.logs.join(""), /missing-parent/);
+});
+
+test("persona HTTP: a working folder is refused when it is not there, then listed and shown in the view", async (t) => {
+  const f = await fixture(t);
+  const folder = await f.folder("project");
+  const { id } = await f.ok<{ id: string }>("create", { name: "Project" });
+  const view = await f.ok<PersonaView>("read", { target: { persona: id } });
+  const missing = await f.post("save", {
+    target: { persona: id },
+    expectedRevision: view.revision,
+    definition: { ...view.definition, folder: join(folder, "missing") },
+  });
+  assert.equal(missing.status, 400);
+  assert.equal((await missing.json()).error, "folder");
+  await f.ok("save", { target: { persona: id }, expectedRevision: view.revision, definition: { ...view.definition, folder } });
+  assert.equal((await f.ok<PersonaView>("read", { target: { persona: id } })).folder, folder);
+  assert.equal((await f.list()).find((persona) => persona.id === id)!.folder, folder);
 });

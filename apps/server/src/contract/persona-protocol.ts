@@ -34,6 +34,11 @@ export interface PersonaDefinition {
   /** Pi `mcp.json` server entries. Resolved, not yet connected. */
   mcpServers?: Record<string, Record<string, unknown>>;
   settings?: { model?: string; thinking?: ThinkingLevel };
+  /**
+   * The folder on the backend host this persona always works in, which makes it a project persona.
+   * Inherited like the settings: the nearest layer that names one wins.
+   */
+  folder?: string;
 }
 
 /** A persona by ID, or the layer a chat owns after an in-chat edit. */
@@ -50,6 +55,8 @@ export interface PersonaSummary {
   name: string;
   description?: string;
   base: string[];
+  /** The folder it works in, its own or a parent's: Ask uses it instead of asking for one. */
+  folder?: string;
   builtIn: boolean;
   /** False when persona.json can't be read or resolved; `error` says why. */
   valid: boolean;
@@ -89,6 +96,8 @@ export interface PersonaView {
   items: ResolvedItem[];
   tools: ResolvedTool[];
   settings: { model?: string; thinking?: ThinkingLevel };
+  /** The folder it resolves to, its own or a parent's. */
+  folder?: string;
   /** Set when the setup can't be resolved, e.g. a missing parent or a cycle. */
   error?: string;
   detail?: string;

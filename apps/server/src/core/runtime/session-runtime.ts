@@ -7,7 +7,7 @@ import type { ChatPersona, PersonaTarget } from "../../contract/persona-protocol
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { homePaths } from "../home.js";
 import { PersonaStore } from "../personas/store.js";
-import { resolveSetup, type Setup } from "../personas/resolve.js";
+import { folderOf, resolveSetup, type Setup } from "../personas/resolve.js";
 import { DEFAULT_PERSONA, validPersonaId } from "../personas/format.js";
 import type { Json } from "../../contract/stream-ops.js";
 import { Chat, validateText, type ChatHost, type RunHandle, type SessionSummary } from "./chat.js";
@@ -214,30 +214,36 @@ export class SessionRuntime {
     this.live.set(metadata.id, chat); // Reserve the chat before any async setup.
     return chat.load();
   }
-  async create(request: { folder: string; model?: ModelChoice; persona?: string }): Promise<SessionDoc> {
+  /** A new session in the folder given, or in its persona's own when that is a project persona. */
+  async create(request: { folder?: string; model?: ModelChoice; persona?: string }): Promise<SessionDoc> {
     this.admit();
     // Only above the backstop is there anything to wait for; below it, admission stays immediate.
     if (this.live.size >= this.maxLive) {
       await this.makeRoom();
       this.admit();
     }
-    if (
-      !request ||
-      typeof request.folder !== "string" ||
-      Object.keys(request).some((key) => key !== "folder" && key !== "model" && key !== "persona")
-    )
+    if (!request || Object.keys(request).some((key) => key !== "folder" && key !== "model" && key !== "persona"))
       throw new RuntimeError("invalid-input");
     if (request.model !== undefined && !validChoice(request.model)) throw new RuntimeError("invalid-input");
     const persona = request.persona ?? DEFAULT_PERSONA;
     if (!validPersonaId(persona)) throw new RuntimeError("invalid-input");
     if (!this.personas.exists({ persona })) throw new RuntimeError("persona");
-    if (!isAbsolute(request.folder) || request.folder.length > 4096) throw new RuntimeError("invalid-input");
+    let bound: string | undefined;
+    try {
+      bound = folderOf(this.personas, { persona });
+    } catch {
+      throw new RuntimeError("persona");
+    }
+    // A project persona decides the folder; nobody else may. Any other persona is given one.
+    const folder = bound ?? request.folder;
+    if ((bound && request.folder !== undefined) || typeof folder !== "string" || !isAbsolute(folder) || folder.length > 4096)
+      throw new RuntimeError("invalid-input");
     // The folder is checked and made canonical during setup, after the chat is reserved.
     return this.load(
       {
         version: 2,
         id: randomUUID(),
-        cwd: request.folder,
+        cwd: folder,
         persona,
         ...(request.model ? { model: request.model } : {}),
         createdAt: new Date().toISOString(),

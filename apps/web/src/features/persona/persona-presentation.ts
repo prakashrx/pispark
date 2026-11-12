@@ -15,6 +15,7 @@ const messages: Record<string, string> = {
   "built-in": "Default can’t be deleted.",
   "not-found": "Not found.",
   limit: "That’s too large.",
+  folder: "That folder doesn’t exist on the server.",
   storage: "Couldn’t read or save on the server.",
 };
 

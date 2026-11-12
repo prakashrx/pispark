@@ -180,8 +180,11 @@ export interface Catalog {
 export type Command = { commandId: string } & (
   | {
       type: "create";
-      /** Absolute path of an existing folder on the backend host. */
-      folder: string;
+      /**
+       * Absolute path of an existing folder on the backend host. Left out for a project persona,
+       * which works in its own folder.
+       */
+      folder?: string;
       model?: { provider: string; id: string };
       /** Persona ID; Default when omitted. */
       persona?: string;

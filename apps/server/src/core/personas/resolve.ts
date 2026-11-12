@@ -4,6 +4,7 @@ import type {
   ItemType,
   LayerRef,
   PersonaDefinition,
+  PersonaSummary,
   PersonaTarget,
   PersonaView,
   ResolvedItem,
@@ -39,6 +40,8 @@ export interface Setup {
   items: ResolvedItem[];
   tools: ResolvedTool[];
   settings: PersonaDefinition["settings"] & {};
+  /** The folder the persona works in, when it is a project persona. */
+  folder?: string;
   instructions: { name: string; text: string }[];
   skillDirs: string[];
   prompts: {
@@ -107,6 +110,23 @@ export function resolveLayers(
   if (!isDefault)
     visit(top, ["persona" in target ? target.persona : "chat"]);
   return [first, ...ordered];
+}
+
+/** The folder a persona works in: the nearest layer that names one. */
+const folderIn = (layers: Layer[]) => layers.findLast((layer) => layer.definition.folder)?.definition.folder;
+export const folderOf = (store: PersonaStore, target: PersonaTarget) => folderIn(resolveLayers(store, target));
+
+/** Every persona, each with the folder it works in. */
+export function listPersonas(store: PersonaStore): PersonaSummary[] {
+  return store.list().map((summary) => {
+    try {
+      const folder = summary.valid ? folderOf(store, { persona: summary.id }) : undefined;
+      return folder ? { ...summary, folder } : summary;
+    } catch {
+      // A missing parent or a cycle: the persona's own view says so.
+      return summary;
+    }
+  });
 }
 
 const switchKey = (type: ItemType, name: string) => `${type}:${name}`;
@@ -199,6 +219,7 @@ export function resolveSetup(
       : target;
   const layers = resolveLayers(store, effective);
   const { entries, tools, settings } = fold(store, layers);
+  const folder = folderIn(layers);
   const active = [...entries.values()].filter((e) => e.resolved.on);
   const of = (type: ItemType) => active.filter((e) => e.item.type === type);
   const instructions = of("instructions").map((e) => ({
@@ -240,6 +261,8 @@ export function resolveSetup(
       toolsOn,
       toolsOff,
       settings,
+      // A project persona's sessions read their folder's context files (AGENTS.md).
+      ...(folder ? { project: true } : {}),
     }),
   );
   return {
@@ -247,6 +270,7 @@ export function resolveSetup(
     items: [...entries.values()].map((e) => e.resolved),
     tools: toolList,
     settings,
+    ...(folder ? { folder } : {}),
     instructions,
     skillDirs,
     prompts,
@@ -274,6 +298,7 @@ export function viewPersona(
       items: setup.items,
       tools: setup.tools,
       settings: setup.settings,
+      ...(setup.folder ? { folder: setup.folder } : {}),
     };
   } catch (error) {
     if (!(error instanceof PersonaError)) throw error;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { writeFile } from "node:fs/promises";
+import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { RuntimeError } from "../src/core/runtime/errors.js";
@@ -194,6 +194,31 @@ test("editing any file of an extension folder outside PiSpark flags open chats; 
     assert.equal(f.runtime.session(chat.id).personaChanged, undefined);
     await writeFile(join(dir, "single.ts"), extension + "// edited\n");
     await eventually(() => f.runtime.session(chat.id).personaChanged === true);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a project persona works in its own folder and reads its AGENTS.md; other personas read nothing from the folder", async () => {
+  const f = await fixture();
+  try {
+    const invalid = (error: unknown) => error instanceof RuntimeError && error.code === "invalid-input";
+    const project = join(f.root, "project");
+    await mkdir(project);
+    await writeFile(join(project, "AGENTS.md"), "PROJECT-RULES");
+    await f.persona("project", { name: "Project", folder: project });
+    const chat = await f.runtime.create({ persona: "project" });
+    assert.equal(chat.folder, await realpath(project));
+    await f.runtime.start(chat.id, "hello").completion;
+    assert.match(systemText(f.provider.requests.at(-1)!), /PROJECT-RULES/);
+    // The folder is the persona's to decide: naming one, even its own, is refused.
+    await assert.rejects(f.runtime.create({ persona: "project", folder: project }), invalid);
+    // Any other persona is given a folder, and reads nothing from it.
+    await assert.rejects(f.runtime.create({}), invalid);
+    const plain = await f.runtime.create({ folder: project });
+    await f.runtime.start(plain.id, "hello").completion;
+    assert.doesNotMatch(systemText(f.provider.requests.at(-1)!), /PROJECT-RULES/);
+    assert.equal(f.runtime.list().length, 2);
   } finally {
     await f.cleanup();
   }

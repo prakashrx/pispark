@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PersonaStore } from "../src/core/personas/store.js";
 import {
   checkCycles,
+  folderOf,
+  listPersonas,
   resolveSetup,
   viewPersona,
 } from "../src/core/personas/resolve.js";
@@ -233,4 +235,43 @@ test("a chat on Default gets a layer with no listed parents", async (t) => {
   assert.deepEqual(setup.layers.map((l) => l.id), ["default", "chat"]);
   assert.ok(!setup.toolsOn.includes("bash"));
   assert.ok(resolveSetup(s, { persona: "default" }).toolsOn.includes("bash"));
+});
+
+test("a working folder: absolute, inherited from the nearest layer, not for Default or a chat's own layer, checked when it is set", async (t) => {
+  const { store: s, persona, folder, remove } = await store();
+  t.after(remove);
+  const project = await folder("project");
+  const other = await folder("other");
+  for (const bad of [{ name: "A", folder: "relative/path" }, { name: "A", folder: "" }, { name: "A", folder: 3 }])
+    assert.throws(() => validateDefinition(bad), code("invalid-definition"));
+  assert.throws(() => validateDefinition({ base: ["dev"], folder: project }, { chatLayer: true }), code("invalid-definition"));
+
+  await persona("role", { name: "Role" });
+  await persona("project", { name: "Project", base: ["role"], folder: project });
+  await persona("reviewer", { name: "Reviewer", base: ["project"] });
+  await persona("moved", { name: "Moved", base: ["project"], folder: other });
+  const setup = (id: string) => resolveSetup(s, { persona: id });
+  assert.equal(setup("role").folder, undefined);
+  assert.equal(setup("project").folder, project);
+  assert.equal(viewPersona(s, { persona: "reviewer" }).folder, project);
+  assert.equal(folderOf(s, { persona: "moved" }), other);
+  assert.deepEqual(
+    listPersonas(s).map((summary) => [summary.id, summary.folder]),
+    [["default", undefined], ["moved", other], ["project", project], ["reviewer", project], ["role", undefined]],
+  );
+  // A project persona's sessions read their folder's AGENTS.md: becoming one changes the setup, which folder does not.
+  assert.notEqual(setup("project").fingerprint, setup("role").fingerprint);
+  assert.equal(setup("moved").fingerprint, setup("project").fingerprint);
+
+  // The folder must be there when it is set. One that has since gone does not stop other edits.
+  const role = s.read({ persona: "role" });
+  assert.throws(() => s.save({ persona: "role" }, role.revision, { name: "Role", folder: join(project, "missing") }), code("folder"));
+  s.save({ persona: "role" }, role.revision, { name: "Role", folder: project });
+  assert.equal(setup("role").folder, project);
+  await rm(other, { recursive: true });
+  const moved = s.read({ persona: "moved" });
+  s.save({ persona: "moved" }, moved.revision, { ...moved.definition, description: "Still editable" });
+  // Every persona builds on Default, so it names none.
+  const base = s.read({ persona: "default" });
+  assert.throws(() => s.save({ persona: "default" }, base.revision, { ...base.definition, folder: project }), code("invalid-definition"));
 });

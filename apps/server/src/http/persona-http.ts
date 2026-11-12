@@ -5,7 +5,7 @@ import { correlated } from "../core/logger.js";
 import type { PersonaTarget } from "../contract/persona-protocol.js";
 import type { PersonaStore } from "../core/personas/store.js";
 import { PersonaError } from "../core/personas/format.js";
-import { checkCycles, viewPersona } from "../core/personas/resolve.js";
+import { checkCycles, listPersonas, viewPersona } from "../core/personas/resolve.js";
 import { RuntimeError } from "../core/runtime/errors.js";
 
 const MAXIMUM = 512 * 1024;
@@ -52,7 +52,7 @@ export class PersonaHttp {
       try {
         let result: unknown;
         if (request.method === "GET" && path === "/api/personas" && !url.search)
-          result = { personas: this.store.list() };
+          result = { personas: listPersonas(this.store) };
         else {
           if (request.method !== "POST" || url.search)
             throw new PersonaError("not-found", 404);

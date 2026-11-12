@@ -194,14 +194,14 @@ export class SessionClient {
     if (this.current) void this.current.reconnect();
     else void this.mount();
   }
-  /** Starts a new chat with a first message. */
+  /** Starts a new chat with a first message, in `folder` or, without one, in its project persona's. */
   async ask(
     text: string,
-    folder: string,
+    folder: string | undefined,
     model?: ModelChoice,
     persona?: string,
   ): Promise<boolean> {
-    if (this.busy || !text.trim() || !folder.trim()) return false;
+    if (this.busy || !text.trim()) return false;
     this.asking = true;
     this.error = "";
     this.errorKind = undefined;
@@ -209,7 +209,7 @@ export class SessionClient {
     try {
       const created = await this.transport.run({
         type: "create",
-        folder: folder.trim(),
+        ...(folder?.trim() ? { folder: folder.trim() } : {}),
         ...(model ? { model } : {}),
         ...(persona ? { persona } : {}),
       });
@@ -233,7 +233,8 @@ export class SessionClient {
       if (id) this.session(id).fail(error);
       else {
         this.fail(error);
-        this.error = `New session: ${this.error}`;
+        // The server's code for a working folder that is not there, in words.
+        this.error = `New session: ${this.error.startsWith("folder (") ? "that working folder doesn’t exist on the server." : this.error}`;
       }
       return false;
     } finally {

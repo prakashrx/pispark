@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import { once, EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { request, type IncomingMessage, type ServerResponse } from "node:http";
@@ -571,4 +571,17 @@ test("SessionHttp: repeated pending lifecycle controls share a retained canonica
     (await fetch(`${f.base}/api/receipts/${first.commandId}`)).status,
     200,
   );
+});
+
+test("SessionHttp: a create command for a project persona carries no folder", async (t) => {
+  const f = await fixture(t);
+  await mkdir(join(f.home, "personas", "project"), { recursive: true });
+  await writeFile(join(f.home, "personas", "project", "persona.json"), JSON.stringify({ name: "Project", folder: f.folders.a }));
+  const made = await f.settle(await f.post({ type: "create", persona: "project" }));
+  assert.equal(made.outcome, "completed");
+  assert.equal(f.runtime.session(made.sessionId!).folder, await realpath(f.folders.a));
+  const named = await f.settle(await f.post({ type: "create", persona: "project", folder: f.folders.b }));
+  assert.equal(named.error, "invalid-input");
+  const none = await f.settle(await f.post({ type: "create" }));
+  assert.equal(none.error, "invalid-input");
 });

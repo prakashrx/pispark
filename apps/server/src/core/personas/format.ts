@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isAbsolute } from "node:path";
 import { SWITCH_PREFIX } from "../../contract/persona-protocol.js";
 import type {
   ItemType,
@@ -109,7 +110,11 @@ const text = (value: unknown, max: number, required = false) => {
 /** Strict, small and complete: unknown keys are refused so typos never silently do nothing. */
 export function validateDefinition(
   value: unknown,
-  { chatLayer = false }: { chatLayer?: boolean } = {},
+  {
+    chatLayer = false,
+    // Not Default, which every persona builds on, nor a chat's own layer: its folder is already fixed.
+    folder = !chatLayer,
+  }: { chatLayer?: boolean; folder?: boolean } = {},
 ): PersonaDefinition {
   if (!plainObject(value)) return fail("invalid-definition", 400, "object");
   const allowed = [
@@ -120,11 +125,15 @@ export function validateDefinition(
     "off",
     "mcpServers",
     "settings",
+    ...(folder ? ["folder"] : []),
   ];
   const unknown = Object.keys(value).find((key) => !allowed.includes(key));
   if (unknown) fail("invalid-definition", 400, unknown);
   text(value.name, 120, !chatLayer);
   text(value.description, 1024);
+  text(value.folder, 4096);
+  if (value.folder !== undefined && !isAbsolute(value.folder as string))
+    fail("invalid-definition", 400, "folder");
   if (value.base !== undefined) {
     if (
       !Array.isArray(value.base) ||
