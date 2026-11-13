@@ -86,6 +86,8 @@ export interface ChatHost {
   summary(chat: Chat): SessionSummary;
   /** The chat has stopped and is no longer held. */
   released(chat: Chat): void;
+  /** The chat became free (`settled`), so a waiting wake can go. Called outside Pi's listeners. */
+  freed?(chat: Chat): void;
   /** The schedules of a chat, for its agent (`pispark_schedule`). */
   readonly schedules?: {
     of(sessionId: string): Schedule[];
@@ -161,6 +163,8 @@ export class Chat {
   private runDone?: Promise<RunResult>;
   /** Ends a run Pi started by itself (see `adopt`). */
   private settleAdopted?: () => void;
+  /** Whether the chat was settled at the last change, to tell the host when it becomes free. */
+  private wasSettled = true;
   /** Steer or follow-up input being prepared. */
   private input?: Promise<unknown>;
   private cancelling?: Promise<void>;
@@ -210,6 +214,9 @@ export class Chat {
     this.sequence++;
     // No client callbacks, serialization, I/O or transcript copying in synchronous SDK listeners.
     for (const observer of this.observers) observer.push({ sessionId: this.id, sequence: this.sequence, type: "changed" });
+    const settled = this.settled;
+    if (settled && !this.wasSettled) setImmediate(() => this.host.freed?.(this));
+    this.wasSettled = settled;
   }
   /** Nothing runs, waits or is queued in the chat, and no question is open. */
   get settled(): boolean {

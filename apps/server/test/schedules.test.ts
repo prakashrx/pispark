@@ -141,11 +141,10 @@ test("a run due while the session is busy waits for it, and only one waits", asy
     await f.runtime.checkWakes();
     assert.equal(f.provider.requests.length, 1);
 
+    // Once the chat is free the waiting run goes, without waiting for the next check.
     f.provider.automatic = true;
     f.provider.requests[0]!.release();
     await mine.completion;
-    f.clock.now = local("2026-11-13T08:24:00");
-    await f.runtime.checkWakes();
     await eventually(() => f.one().runs.length === 1);
     assert.equal(f.provider.requests.length, 2);
     assert.equal(f.one().waiting, undefined);

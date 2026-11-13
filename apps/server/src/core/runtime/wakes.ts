@@ -59,6 +59,8 @@ const MAX_LIMIT = 1440;
 const OUTCOMES = ["ran", "failed", "cancelled", "missed", "limit"];
 const REASONS = ["busy", "off", "paused", "full"];
 
+/** A source in a session, for the runs in flight. */
+const key = (sessionId: string, sourceId: string) => `${sessionId}/${sourceId}`;
 const time = (value: string) => new Date(value).getTime();
 const validTime = (value: unknown): value is string => typeof value === "string" && value.length <= 40 && !Number.isNaN(time(value));
 const shortString = (value: unknown, max: number): value is string => typeof value === "string" && value.length > 0 && value.length <= max;
@@ -163,14 +165,15 @@ export class Wakes {
   /** Runs the wake now if it can; otherwise it waits, or is recorded as missed or over the limit. */
   async deliver(sessionId: string, wake: Wake): Promise<void> {
     if (this.closed) return;
-    if (this.host.paused() && wake.policy === "latest") return this.note(sessionId, wake.source.id, { due: wake.due, outcome: "missed", reason: "paused" });
+    const paused = this.host.paused();
+    if (paused && wake.policy === "latest") return this.note(sessionId, wake.source.id, { due: wake.due, outcome: "missed", reason: "paused" });
     // Wakes reach a session in order: behind any already waiting for it.
-    if (this.host.paused() || this.state(sessionId).waiting.length || !(await this.attempt(sessionId, wake, false))) this.wait(sessionId, wake);
+    const first = !paused && !this.state(sessionId).waiting.length;
+    if (!first || !(await this.attempt(sessionId, wake, false))) this.wait(sessionId, wake);
   }
   /** Run now, with the person watching: refused while the session is busy or archived. */
   async runNow(sessionId: string, wake: Wake): Promise<void> {
-    if (this.archived(sessionId) || this.running.has(`${sessionId}/${wake.source.id}`) || !this.host.free(sessionId))
-      throw new RuntimeError("busy");
+    if (this.archived(sessionId) || this.running.has(key(sessionId, wake.source.id)) || !this.host.free(sessionId)) throw new RuntimeError("busy");
     await this.fire(sessionId, wake, { manual: true });
   }
   /** Looks at every waiting wake; overlapping calls share one pass. */
@@ -207,22 +210,23 @@ export class Wakes {
       this.note(sessionId, wake.source.id, { due: wake.due, outcome: "limit" });
       return true;
     }
-    if (this.archived(sessionId) || this.running.has(`${sessionId}/${wake.source.id}`) || !this.host.free(sessionId)) return false;
+    if (this.archived(sessionId) || this.running.has(key(sessionId, wake.source.id)) || !this.host.free(sessionId)) return false;
     return this.fire(sessionId, wake, waited ? { reason: "busy" } : wake.late ? { reason: "off" } : {});
   }
   /** Sends the message. The run is recorded when it ends. `false`: the session turned busy meanwhile. */
   private async fire(sessionId: string, wake: Wake, how: { reason?: "busy" | "off"; manual?: true }): Promise<boolean> {
-    const key = `${sessionId}/${wake.source.id}`;
+    const running = key(sessionId, wake.source.id);
     const at = this.iso();
-    this.running.add(key);
+    this.running.add(running);
     let completion: Promise<RunResult>;
     try {
       ({ completion } = await this.host.run(sessionId, wake.text, { source: wake.source, due: wake.due }));
     } catch (error) {
-      this.running.delete(key);
+      this.running.delete(running);
       if (how.manual) throw error;
       const code = runtimeError(error, "execution").code;
-      if (code === "busy") return false;
+      // Busy, or PiSpark is stopping: it waits.
+      if (code === "busy" || code === "closed") return false;
       this.note(sessionId, wake.source.id, { due: wake.due, at, outcome: "failed", error: code });
       return true;
     }
@@ -238,7 +242,7 @@ export class Wakes {
       )
       .then((result) => {
         // A source removed while its run was going has nothing left to record to.
-        if (!this.running.delete(key)) return;
+        if (!this.running.delete(running)) return;
         this.note(sessionId, wake.source.id, { due: wake.due, at, ...result, ...how });
         this.options.settled?.(sessionId, wake.source.id);
         void this.drain();
@@ -291,7 +295,7 @@ export class Wakes {
   }
   /** Whether the source has a wake waiting or running. */
   active(sessionId: string, sourceId: string): boolean {
-    return this.waiting(sessionId, sourceId) || this.running.has(`${sessionId}/${sourceId}`);
+    return this.waiting(sessionId, sourceId) || this.running.has(key(sessionId, sourceId));
   }
   /** Drops the source's waiting wakes, such as when a schedule is switched off. */
   cancel(sessionId: string, sourceId: string): void {
@@ -303,7 +307,7 @@ export class Wakes {
   /** The source is gone: its waiting wakes, records and count go with it. */
   forgetSource(sessionId: string, sourceId: string): void {
     const state = this.states.get(sessionId);
-    this.running.delete(`${sessionId}/${sourceId}`);
+    this.running.delete(key(sessionId, sourceId));
     if (!state) return;
     state.waiting = state.waiting.filter((w) => w.source.id !== sourceId);
     delete state.records[sourceId];
@@ -313,7 +317,7 @@ export class Wakes {
   /** The session was deleted: its wakes went with its folder. */
   forget(sessionId: string): void {
     this.states.delete(sessionId);
-    for (const key of [...this.running]) if (key.startsWith(`${sessionId}/`)) this.running.delete(key);
+    for (const running of [...this.running]) if (running.startsWith(`${sessionId}/`)) this.running.delete(running);
   }
 
   // ---- Storage --------------------------------------------------------------------------------

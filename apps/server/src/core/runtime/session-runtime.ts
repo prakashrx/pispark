@@ -106,6 +106,10 @@ export class SessionRuntime {
         this.layered.delete(chat.id);
         if (!chat.published) this.storage.discardUnpublished(chat.id);
       },
+      // A waiting wake goes as soon as its session is free; the minute check catches anything missed.
+      freed: () => {
+        if (this.accepting) void this.wakes.drain();
+      },
       schedules: {
         of: (sessionId) => this.schedules.of(sessionId),
         add: (sessionId, input, by) => this.schedules.add(sessionId, input, by),
