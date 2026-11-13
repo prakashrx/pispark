@@ -5,6 +5,7 @@
   import { useSession, useSessions } from "./session-client.svelte";
   import { describeSchedule } from "../../../../server/src/contract/cron";
   import { nextText } from "../schedules/schedule-presentation";
+  import { sessionName, sessionStatus } from "./session-presentation";
   /**
    * Facts about the open chat, anchored to an info button in the chat header so the
    * conversation never moves.
@@ -16,6 +17,8 @@
   const info = $derived(session.info);
   const model = $derived(snapshot?.model);
   const schedules = $derived(info ? client.schedules.of(info.id) : []);
+  // The sessions this one started, with their state; one at work can be stopped from here.
+  const started = $derived(info ? client.sessions.filter((each) => each.parent === info.id) : []);
   const modelName = $derived(
     client.providers.catalog.providers
       .find((p) => p.id === model?.provider)
@@ -71,6 +74,29 @@
                     >
                   </li>{/each}
               </ul>{:else}<p class="text-xs text-muted-foreground">Send a prompt to this chat at a time, once or repeating.</p>{/if}
+          </div>{/if}
+        {#if started.length}<div class="space-y-2 border-t border-[var(--border)] pt-3">
+            <h3 class="text-sm font-semibold">Sessions it started</h3>
+            <ul class="space-y-1.5 text-sm" aria-label="Sessions it started">
+              {#each started as child (child.id)}
+                {@const state = sessionStatus(child)}
+                <li class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    class="min-w-0 flex-1 truncate text-left text-[var(--interactive-text)] underline underline-offset-2"
+                    onclick={() => {
+                      close();
+                      client.select(child.id);
+                    }}>{sessionName(child)}</button
+                  >
+                  <span class="text-xs text-muted-foreground">{state || "Finished"}</span>
+                  {#if state === "Working…" || state === "Queued"}<Button size="compact" variant="ghost" onclick={() => void client.stop(child.id)}
+                      >Stop<span class="sr-only"> {sessionName(child)}</span></Button
+                    >{/if}
+                </li>
+              {/each}
+            </ul>
+            <p class="text-xs text-muted-foreground">Each reports back here when it finishes.</p>
           </div>{/if}
         {#if snapshot && oneditpersona}<div
             class="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3"

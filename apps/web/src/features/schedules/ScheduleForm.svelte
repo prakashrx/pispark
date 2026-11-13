@@ -7,7 +7,7 @@
   import { describeSchedule } from "../../../../server/src/contract/cron";
   import type { Schedule, ScheduleInput } from "../../../../server/src/contract/schedule-protocol";
   import { choiceOf, whenOf, type Repeat } from "./schedule-presentation";
-  /** Adds a schedule, or changes one: when (plain choices, or cron), the prompt and the daily limit. */
+  /** Adds a schedule, or changes one: when (plain choices, or cron) and the prompt. */
   let {
     schedule,
     onsave,
@@ -29,8 +29,6 @@
   let cron = $state(start.cron);
   // svelte-ignore state_referenced_locally
   let prompt = $state(schedule?.prompt ?? "");
-  // svelte-ignore state_referenced_locally
-  let limit = $state(String(schedule?.limit ?? 24));
   let error = $state("");
   let saving = $state(false);
   const when = $derived(whenOf({ repeat: repeat as Repeat, time, date, weekday, every, cron }));
@@ -45,12 +43,10 @@
     event.preventDefault();
     if ("error" in when) return void (error = when.error);
     if (!prompt.trim()) return void (error = "Write the prompt to send.");
-    const daily = Number(limit);
-    if (!Number.isInteger(daily) || daily < 1 || daily > 1440) return void (error = "Enter a daily limit from 1 to 1440.");
     error = "";
     saving = true;
     try {
-      await onsave({ ...when, prompt, limit: daily });
+      await onsave({ ...when, prompt });
     } catch (failure) {
       error = (failure as Error).message;
     } finally {
@@ -114,11 +110,6 @@
     <label for="{id}-prompt" class="block text-sm font-medium">Prompt</label>
     <Textarea id="{id}-prompt" rows={3} bind:value={prompt} aria-describedby="{id}-prompt-help" class="w-full" />
     <p id="{id}-prompt-help" class="note">Sent to this chat as if you typed it; /commands work.</p>
-  </div>
-  <div class="flex flex-wrap items-center gap-2">
-    <label for="{id}-limit" class="text-sm font-medium">At most</label>
-    <div class="number"><Input id="{id}-limit" type="number" min="1" max="1440" bind:value={limit} /></div>
-    <span class="text-sm">runs a day</span>
   </div>
   <p class="note flex items-start gap-2">
     <Icon name="alert" class="h-4 w-4 mt-0.5 shrink-0" /><span

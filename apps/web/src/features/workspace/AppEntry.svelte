@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from "../../lib/ui/Icon.svelte";
   import SessionMark from "./SessionMark.svelte";
-  import SessionRow from "./SessionRow.svelte";
+  import SessionTree from "./SessionTree.svelte";
   import { useSessions } from "./session-client.svelte";
   import { foremostStatus, sessionStarted, sessionStatus } from "./session-presentation";
   import { validChatTitle } from "../../../../server/src/contract/chat-title";
@@ -43,9 +43,9 @@
     {#each sessions as session (session.id)}
       {@const titled = validChatTitle(session.title)}
       {@const name = titled ? session.title! : `Started ${sessionStarted(session)}`}
-      <SessionRow {session} {name} class="app-session">
+      <SessionTree {session} {name} class="app-session">
         <span class="min-w-0 flex-1 truncate" class:text-muted-foreground={!titled}>{name}</span>
-      </SessionRow>
+      </SessionTree>
     {/each}
     <button type="button" class="nav-item app-session w-full text-muted-foreground" onclick={() => client.openApp(app.id, true)}>
       <Icon name="plus" class="h-3.5 w-3.5" />New session

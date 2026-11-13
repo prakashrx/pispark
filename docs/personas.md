@@ -85,7 +85,7 @@ Personas lists every persona, Default first. The editor shows, for one layer:
 
 - **Builds on:** Default (always) and the parents, in order; add or remove parents.
 - **Instructions, Skills, Commands, Extensions:** every resolved item with where it comes from ("Added here", "From Writer"), whether a layer switched it, and an on/off switch. Items in this layer can be edited or removed; inherited ones can be viewed and **customized here** (copied into this layer). New instructions, skills and commands start from a template.
-- **Tools:** Pi's built-in tools and extension tools with on/off switches and which layer set them.
+- **Tools:** every tool the persona has, found by loading its extensions without starting a session (Pi allows it; cached by the setup's fingerprint), with on/off switches and which layer set them. Grouped: **PiSpark** first (Pi's built-in tools and those of PiSpark's own built-in extension), then each extension, then switches naming tools nothing provides now. MCP tools appear once PiSpark connects MCP servers (not yet).
 - **Model:** a preferred model and thinking level.
 - **App:** the key of the home view of an app persona, or "Inherited" with the parent's. The editor cannot list views: they exist only while a session runs. Not shown for Default or a chat's own layer.
 - **Working folder:** the folder of a project persona, chosen as in Ask (recent folders, home, or a path), or "Inherited" with the parent's folder. Not shown for Default or a chat's own layer.

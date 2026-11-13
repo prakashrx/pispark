@@ -2,8 +2,6 @@ import { realpath, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
-import { TITLE_TOOL } from "./chat-title.js";
-import { SCHEDULE_TOOL } from "./schedule-tool.js";
 import {
   createEventBus,
   loadProjectContextFiles,
@@ -65,6 +63,11 @@ export interface RuntimeConfiguration {
   now?: () => number;
 }
 
+/** PiSpark's own built-in extension (`extensions/pispark.ts`): loaded first in every session. */
+export function builtInExtension(): string {
+  return fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../extensions/pispark.ts" : "../extensions/pispark.js", import.meta.url));
+}
+
 /** A working folder chosen in Ask: any existing folder on this host. */
 export async function resolveFolder(path: unknown): Promise<string> {
   if (
@@ -117,6 +120,8 @@ export async function createSessionServices(options: {
     views: { bind: (bus: EventBus) => () => void };
     /** The built-in schedule tool's requests, on the same bus. */
     schedules?: { bind: (bus: EventBus) => () => void };
+    /** The built-in session tool's requests, on the same bus. */
+    sessions?: { bind: (bus: EventBus) => () => void };
   };
 }) {
   const { setup, cwd, agentDir, managed, fixed, admission, host } = options;
@@ -210,18 +215,12 @@ export async function createSessionServices(options: {
     skillPaths: setup.skillDirs,
     includeDefaults: false,
   });
-  const builtIn = fileURLToPath(
-    new URL(
-      import.meta.url.endsWith(".ts")
-        ? "../extensions/pispark.ts"
-        : "../extensions/pispark.js",
-      import.meta.url,
-    ),
-  );
+  const builtIn = builtInExtension();
   const eventBus = createEventBus();
   // Before any extension loads, so none of its placements are missed.
   const unbindViews = host.views.bind(eventBus);
   const unbindSchedules = host.schedules?.bind(eventBus);
+  const unbindSessions = host.sessions?.bind(eventBus);
   let loadedExtensions;
   try {
     loadedExtensions = await loadExplicitExtensions(
@@ -229,11 +228,11 @@ export async function createSessionServices(options: {
       cwd,
       eventBus,
     );
+    // PiSpark's own tools are reserved: a persona extension may not shadow them.
+    const reserved = [...(loadedExtensions.extensions[0]?.tools.keys() ?? [])];
     if (
       loadedExtensions.errors.length ||
-      loadedExtensions.extensions
-        .slice(1)
-        .some((extension) => extension.tools.has(TITLE_TOOL) || extension.tools.has(SCHEDULE_TOOL))
+      loadedExtensions.extensions.slice(1).some((extension) => reserved.some((name) => extension.tools.has(name)))
     ) {
       loadedExtensions.runtime.invalidate("Resource loading failed");
       throw new RuntimeError("extension");
@@ -241,6 +240,7 @@ export async function createSessionServices(options: {
   } catch (error) {
     unbindViews();
     unbindSchedules?.();
+    unbindSessions?.();
     throw error;
   }
   // Last input handler: queued input from a run that already settled must not be appended.
@@ -289,7 +289,7 @@ export async function createSessionServices(options: {
   };
   // The resolved setup decides the active tools, also on reopen, where Pi would otherwise
   // restore whatever the transcript last recorded.
-  const off = new Set(setup.toolsOff.filter((name) => name !== TITLE_TOOL));
+  const off = new Set(setup.toolsOff);
   const extensionTools = loadedExtensions.extensions.flatMap((extension) => [
     ...extension.tools.keys(),
   ]);

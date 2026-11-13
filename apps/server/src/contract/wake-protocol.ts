@@ -6,7 +6,8 @@
 
 /** What woke a session. `kind` and `label` are for showing; the host reads no meaning into them. */
 export interface WakeSource {
-  kind: "schedule";
+  /** A schedule, or another session: a parent sending its child work, or a child reporting back. */
+  kind: "schedule" | "session";
   /** The source's own id, such as a schedule's. Records and waiting runs are kept by it. */
   id: string;
   /** How this wake reads, written by its source when it woke the session: "Every weekday at 9:00 am · Fri 13 Nov". */
@@ -17,7 +18,7 @@ export interface WakeSource {
 export interface WakeRecord {
   due: string;
   at: string;
-  outcome: "ran" | "failed" | "cancelled" | "missed" | "limit";
+  outcome: "ran" | "failed" | "cancelled" | "missed";
   /**
    * Why it was late or missed: the session was busy, PiSpark was not running, unattended runs were
    * paused, or too many were already waiting.

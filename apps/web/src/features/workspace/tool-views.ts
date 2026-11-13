@@ -92,6 +92,29 @@ registerToolView("grep", search("Searching for", "Searched for", "pattern"));
 registerToolView("find", search("Finding", "Found", "pattern"));
 registerToolView("ls", { describe: words("Listing", "Listed", on), group: "search", summarize: (calls) => `searched ${noun(calls.length, "time")}`, artifacts: genericArtifacts });
 
+// PiSpark's own session tool: words for each action, and the session a start made, as a row.
+const startedId = (call: ToolCall) => /\(id ([0-9a-f-]{36})\)/.exec((call.result?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""))?.[1];
+registerToolView("pispark_session", {
+  describe(call) {
+    const action = arg(call, "action");
+    const title = arg(call, "title");
+    if (action === "start") return { doing: "Starting a session", done: title ? `Started ${short(title)}` : "Started a session" };
+    if (action === "list") return { doing: "Listing its sessions", done: "Listed its sessions" };
+    if (action === "send") return { doing: "Sending to a session", done: "Sent to a session" };
+    if (action === "stop") return { doing: "Stopping a session", done: "Stopped a session" };
+    return { doing: "Reading a session's answer", done: "Read a session's answer" };
+  },
+  group: "sessions",
+  summarize: (calls) => {
+    const started = calls.filter((call) => arg(call, "action") === "start").length;
+    return started ? `started ${noun(started, "session")}` : `used ${noun(calls.length, "session action")}`;
+  },
+  artifacts(call) {
+    const id = call.status === "done" && arg(call, "action") === "start" ? startedId(call) : undefined;
+    return id ? [{ kind: "session", key: `session.${call.id}`, sessionId: id, title: arg(call, "title") ?? "A session" }] : [];
+  },
+});
+
 /** What a call is doing, in words. */
 export const describeCall = (call: ToolCall): CallWords => resolveToolView(call.name).describe(call);
 

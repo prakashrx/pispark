@@ -2,6 +2,7 @@ import type {
   ItemType,
   LayerRef,
   ResolvedItem,
+  ResolvedTool,
 } from "../../../../server/src/contract/persona-protocol";
 
 const messages: Record<string, string> = {
@@ -47,6 +48,20 @@ export function switchLabel(item: ResolvedItem, viewing: string): string {
   if (!item.switchedBy) return item.replaced.length ? "Replaces an inherited one" : "";
   const who = item.switchedBy.id === viewing ? "here" : `by ${item.switchedBy.name}`;
   return item.on ? `Turned back on ${who}` : `Turned off ${who}`;
+}
+
+/**
+ * Tools in groups, in the order the server sends them: PiSpark (Pi's built-in tools and PiSpark's
+ * own), then each extension, then each MCP server, then switches naming tools nothing provides now.
+ */
+export function toolGroups(tools: ResolvedTool[]): { title: string; tools: ResolvedTool[] }[] {
+  const groups: { title: string; tools: ResolvedTool[] }[] = [];
+  for (const tool of tools) {
+    const title = !tool.source ? "Not provided now" : tool.source.kind === "core" ? "PiSpark" : tool.source.kind === "mcp" ? `MCP: ${tool.source.name}` : tool.source.name;
+    const group = groups.find((g) => g.title === title) ?? groups[groups.push({ title, tools: [] }) - 1]!;
+    group.tools.push(tool);
+  }
+  return groups;
 }
 
 /** Starting text for a new item file. */

@@ -17,6 +17,8 @@ export interface SessionInfo {
   waiting?: boolean;
   /** Waits for a free run slot: a prompt that has not started, or a run resuming after an answer. */
   queued?: boolean;
+  /** The session that started this one (a child session). */
+  parent?: string;
 }
 /**
  * A notice PiSpark showed in an open chat (an extension's message or failure, an answered question),

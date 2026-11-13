@@ -42,7 +42,9 @@ export type Segment =
   | { kind: "notice"; key: string; notice: Pick<Notice, "kind" | "lines"> }
   /** A tool call drawn by the component its extension placed at `item.tool:<name>`. */
   | { kind: "view"; key: string; point: string; call: ToolCall }
-  | { kind: "stopped"; key: string; reason: "aborted" | "error" };
+  | { kind: "stopped"; key: string; reason: "aborted" | "error" }
+  /** A session this one started, shown with its live state. */
+  | { kind: "session"; key: string; sessionId: string; title: string };
 
 /** Your message and everything the agent did and said in answer to it. */
 export interface Turn {
@@ -50,6 +52,8 @@ export interface Turn {
   user?: Item;
   /** The message was sent by something other than the person (a wake): how it reads ("Scheduled · Every day at 9:00 am · Fri 13 Nov"). */
   woken?: string;
+  /** Sent by another session: which one, so the turn can link to it. */
+  from?: { id: string; label: string };
   segments: Segment[];
   /** The agent is still working on this turn. */
   running: boolean;
@@ -65,12 +69,19 @@ export function clippedPart(item: Item): PartRef | undefined {
 }
 
 /** The word for each source of a wake. */
-const WOKEN_BY: Record<WakeSource["kind"], string> = { schedule: "Scheduled" };
+const WOKEN_BY: Record<WakeSource["kind"], string> = { schedule: "Scheduled", session: "From" };
 /** How a turn something other than the person sent is labelled, from its `WOKEN_ENTRY` details. */
 export function wokenLabel(details: unknown): string {
   const { source } = (details ?? {}) as { source?: { kind?: unknown; label?: unknown } };
   const kind = typeof source?.kind === "string" && Object.hasOwn(WOKEN_BY, source.kind) ? WOKEN_BY[source.kind as WakeSource["kind"]] : "Woken";
-  return [kind, typeof source?.label === "string" ? source.label : ""].filter(Boolean).join(" · ");
+  const label = typeof source?.label === "string" ? source.label : "";
+  if (kind === "From") return label ? `From ${label}` : "From another session";
+  return [kind, label].filter(Boolean).join(" · ");
+}
+/** The session a turn came from, when another session sent it. */
+export function wokenFrom(details: unknown): { id: string; label: string } | undefined {
+  const { source } = (details ?? {}) as { source?: { kind?: unknown; id?: unknown; label?: unknown } };
+  return source?.kind === "session" && typeof source.id === "string" && typeof source.label === "string" ? { id: source.id, label: source.label } : undefined;
 }
 
 /**
@@ -97,6 +108,7 @@ export function buildTurns(
   let notice = 0;
   /** A wake's marker, waiting for the message it sent. */
   let woken: string | undefined;
+  let from: { id: string; label: string } | undefined;
 
   const current = (): Turn => turns.at(-1) ?? turns[turns.push({ key: "earlier", segments: [], running: false }) - 1]!;
   const emit = (turn: Turn, segment: Segment) => turn.segments.push(segment);
@@ -112,12 +124,14 @@ export function buildTurns(
   for (const item of items) {
     if (item.pos !== undefined) flush(item.pos);
     if (item.role === "user") {
-      turns.push({ key: item.key, user: item, ...(woken ? { woken } : {}), segments: [], running: false });
+      turns.push({ key: item.key, user: item, ...(woken ? { woken } : {}), ...(from ? { from } : {}), segments: [], running: false });
       woken = undefined;
+      from = undefined;
       continue;
     }
     if (item.role === "entry" && item.customType === WOKEN_ENTRY) {
       woken = wokenLabel(item.details);
+      from = wokenFrom(item.details);
       continue;
     }
     const turn = current();

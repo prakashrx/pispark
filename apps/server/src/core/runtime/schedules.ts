@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describeSchedule, nextRun, parseCron, shortDate } from "../../contract/cron.js";
-import { DEFAULT_DAILY_LIMIT, MAX_SCHEDULES_PER_SESSION, type Schedule, type ScheduleInput } from "../../contract/schedule-protocol.js";
+import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { writeAtomic } from "../personas/store.js";
 import { RuntimeError, runtimeError } from "./errors.js";
@@ -25,7 +25,6 @@ interface Stored {
   at?: string;
   prompt: string;
   on: boolean;
-  limit: number;
   createdAt: string;
   by: "person" | "agent";
   /** The last due time that was dealt with (delivered, missed or passed over). */
@@ -33,7 +32,6 @@ interface Stored {
 }
 
 const MAX_PROMPT = 8 * 1024;
-const MAX_LIMIT = 1440;
 const DAY = 86_400_000;
 /** A run missed while PiSpark was off is still sent if it was due within this long. */
 const CATCH_UP = DAY;
@@ -56,21 +54,18 @@ function readStored(value: unknown): Stored | undefined {
     !!s.prompt.trim() &&
     s.prompt.length <= MAX_PROMPT &&
     typeof s.on === "boolean" &&
-    Number.isSafeInteger(s.limit) &&
-    s.limit >= 1 &&
-    s.limit <= MAX_LIMIT &&
     validTime(s.createdAt) &&
     (s.by === "person" || s.by === "agent") &&
     validTime(s.lastDue);
   if (!valid) return undefined;
-  const { id, cron, at, prompt, on, limit, createdAt, by, lastDue } = s;
-  return { id, ...(cron !== undefined ? { cron } : { at }), prompt, on, limit, createdAt, by, lastDue };
+  const { id, cron, at, prompt, on, createdAt, by, lastDue } = s;
+  return { id, ...(cron !== undefined ? { cron } : { at }), prompt, on, createdAt, by, lastDue };
 }
 
 /**
  * The clock: every session's schedules, kept in each session's folder and checked once a minute. A
  * schedule decides only when it is due and what it says; delivery (waiting while busy, the daily
- * limit, Pause all, records) is the wakes'. Only the latest due time counts; a run missed while
+ * Pause all, records) is the wakes'. Only the latest due time counts; a run missed while
  * PiSpark was off is sent once if it was due within a day; archived sessions' schedules pass their
  * times without catching up.
  */
@@ -102,7 +97,7 @@ export class Schedules {
       try {
         const file = JSON.parse(readFileSync(path, "utf8")) as { version?: number; schedules?: unknown[] };
         if (file.version !== 1 || !Array.isArray(file.schedules)) throw new Error();
-        const schedules = file.schedules.flatMap((s) => readStored(s) ?? []).slice(0, MAX_SCHEDULES_PER_SESSION);
+        const schedules = file.schedules.flatMap((s) => readStored(s) ?? []);
         if (schedules.length) this.index.set(id, schedules);
       } catch {
         this.logger.event("schedule.unreadable", { sessionId: id, outcome: "failed", code: "storage" });
@@ -144,10 +139,10 @@ export class Schedules {
     }
     throw new RuntimeError("not-found");
   }
-  /** Validates when, prompt, on and limit; `base` is the schedule being changed. */
-  private validInput(input: ScheduleInput, base?: Stored): Pick<Stored, "cron" | "at" | "prompt" | "on" | "limit"> {
+  /** Validates when, prompt and on; `base` is the schedule being changed. */
+  private validInput(input: ScheduleInput, base?: Stored): Pick<Stored, "cron" | "at" | "prompt" | "on"> {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new RuntimeError("invalid-input");
-    const allowed = ["cron", "at", "prompt", "on", "limit", ...(base ? [] : ["sessionId"])];
+    const allowed = ["cron", "at", "prompt", "on", ...(base ? [] : ["sessionId"])];
     if (Object.keys(input).some((key) => !allowed.includes(key))) throw new RuntimeError("invalid-input");
     const whenGiven = input.cron !== undefined || input.at !== undefined;
     if (input.cron !== undefined && input.at !== undefined) throw new RuntimeError("invalid-input");
@@ -161,9 +156,8 @@ export class Schedules {
     const prompt = input.prompt ?? base?.prompt;
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > MAX_PROMPT) throw new RuntimeError("invalid-input");
     const on = input.on ?? base?.on ?? true;
-    const limit = input.limit ?? base?.limit ?? DEFAULT_DAILY_LIMIT;
-    if (typeof on !== "boolean" || !Number.isSafeInteger(limit) || limit < 1 || limit > MAX_LIMIT) throw new RuntimeError("invalid-input");
-    return { ...(cron !== undefined ? { cron } : { at: new Date(at!).toISOString() }), prompt, on, limit };
+    if (typeof on !== "boolean") throw new RuntimeError("invalid-input");
+    return { ...(cron !== undefined ? { cron } : { at: new Date(at!).toISOString() }), prompt, on };
   }
   add(sessionId: string, input: ScheduleInput, by: "person" | "agent"): Schedule {
     const session = this.host.sessions().find((s) => s.id === sessionId);
@@ -171,7 +165,6 @@ export class Schedules {
     if (session.archived) throw new RuntimeError("busy");
     const valid = this.validInput(input);
     const schedules = this.index.get(sessionId) ?? [];
-    if (schedules.length >= MAX_SCHEDULES_PER_SESSION) throw new RuntimeError("limit");
     const now = new Date(this.now()).toISOString();
     const schedule: Stored = { id: randomUUID(), ...valid, createdAt: now, by, lastDue: now };
     this.save(sessionId, [...schedules, schedule]);
@@ -265,7 +258,6 @@ export class Schedules {
       text: s.prompt,
       due,
       policy: "latest",
-      limit: s.limit,
       ...(late ? { late: true as const } : {}),
     };
   }

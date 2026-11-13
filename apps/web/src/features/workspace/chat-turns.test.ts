@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import type { Item, ItemPart } from "../../../../server/src/contract/protocol";
 import { buildTurns, clippedPart, itemText } from "./chat-turns";
-import { describeCall, summarizeCalls } from "./tool-views";
+import { artifactsOf, describeCall, summarizeCalls } from "./tool-views";
 import { pointOf } from "./extension-views";
 
 let n = 0;
@@ -199,4 +199,19 @@ test("a notice kept in the chat's history is a notice where it happened", () => 
   );
   expect(turn!.segments.map((s) => s.kind)).toEqual(["notice", "text"]);
   expect(turn!.segments[0]).toMatchObject({ notice: { kind: "warning", lines: [[{ text: "Heads up" }]] } });
+});
+
+test("PiSpark's session tool: words for each action, and the session a start made, with its id", () => {
+  const id = "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b";
+  const call = {
+    id: "c1",
+    name: "pispark_session",
+    args: { action: "start", prompt: "research", title: "Zustand research" },
+    status: "done" as const,
+    result: item("toolResult", [{ type: "text", text: `Started "Zustand research" (id ${id}). It works on its own.` }]),
+  };
+  expect(describeCall(call).done).toBe("Started Zustand research");
+  expect(summarizeCalls([call, call])).toBe("Started 2 sessions");
+  expect(artifactsOf(call)).toEqual([{ kind: "session", key: "session.c1", sessionId: id, title: "Zustand research" }]);
+  expect(artifactsOf({ ...call, args: { action: "list" } })).toEqual([]);
 });

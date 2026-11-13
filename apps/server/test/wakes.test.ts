@@ -39,12 +39,11 @@ async function fixture() {
     wakes.start();
     return wakes;
   };
-  const wake = (id: string, text: string, policy: Wake["policy"], limit = 24): Wake => ({
+  const wake = (id: string, text: string, policy: Wake["policy"]): Wake => ({
     source: { kind: "schedule", id, label: id },
     text,
     due: new Date(clock.now).toISOString(),
     policy,
-    limit,
   });
   return { root, clock, state, sent, busy, host, make, wake, cleanup: () => rm(root, { recursive: true, force: true }) };
 }
@@ -118,28 +117,6 @@ test("Pause all: a latest wake is missed, a queue wake waits for the pause to en
       f.sent.map((s) => s.text),
       ["message"],
     );
-  } finally {
-    await f.cleanup();
-  }
-});
-
-test("the daily limit counts every run of the day, not only the records kept", async () => {
-  const f = await fixture();
-  try {
-    const wakes = f.make();
-    for (let i = 0; i < 12; i++) {
-      await wakes.deliver(SESSION, f.wake("often", `run ${i}`, "latest", 12));
-      f.sent.at(-1)!.finish();
-      await settle();
-    }
-    assert.equal(wakes.records(SESSION, "often").length, 10);
-    await wakes.deliver(SESSION, f.wake("often", "one too many", "latest", 12));
-    assert.equal(f.sent.length, 12);
-    assert.equal(wakes.records(SESSION, "often")[0]!.outcome, "limit");
-    // The next day counts again.
-    f.clock.now += 86_400_000;
-    await wakes.deliver(SESSION, f.wake("often", "tomorrow", "latest", 12));
-    assert.equal(f.sent.length, 13);
   } finally {
     await f.cleanup();
   }

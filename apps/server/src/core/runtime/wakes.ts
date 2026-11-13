@@ -22,8 +22,6 @@ export interface Wake {
    * (a clock: only the latest time matters). `queue`: each waits, in order (every message matters).
    */
   policy: "latest" | "queue";
-  /** At most this many runs a day from this source. */
-  limit: number;
   /** It came due while PiSpark was not running. */
   late?: true;
 }
@@ -50,13 +48,10 @@ interface State {
   waiting: Wake[];
   /** The last records of each source, newest first. */
   records: Record<string, WakeRecord[]>;
-  /** Runs sent per source on one local day, for the daily limit. */
-  counts: Record<string, { day: string; runs: number }>;
 }
 
 const MAX_TEXT = 64 * 1024;
-const MAX_LIMIT = 1440;
-const OUTCOMES = ["ran", "failed", "cancelled", "missed", "limit"];
+const OUTCOMES = ["ran", "failed", "cancelled", "missed"];
 const REASONS = ["busy", "off", "paused", "full"];
 
 /** A source in a session, for the runs in flight. */
@@ -67,7 +62,7 @@ const shortString = (value: unknown, max: number): value is string => typeof val
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
 function validSource(value: unknown): value is WakeSource {
-  return object(value) && value.kind === "schedule" && shortString(value.id, 100) && shortString(value.label, 200);
+  return object(value) && (value.kind === "schedule" || value.kind === "session") && shortString(value.id, 100) && shortString(value.label, 200);
 }
 function validWake(value: unknown): value is Wake {
   return (
@@ -76,9 +71,6 @@ function validWake(value: unknown): value is Wake {
     shortString(value.text, MAX_TEXT) &&
     validTime(value.due) &&
     (value.policy === "latest" || value.policy === "queue") &&
-    Number.isSafeInteger(value.limit) &&
-    (value.limit as number) >= 1 &&
-    (value.limit as number) <= MAX_LIMIT &&
     (value.late === undefined || value.late === true)
   );
 }
@@ -99,15 +91,12 @@ function readState(value: unknown): State {
   const records: State["records"] = {};
   for (const [id, list] of Object.entries(object(value.records) ? value.records : {}))
     if (Array.isArray(list)) records[id] = list.filter(validRecord).slice(0, MAX_RECORDS_KEPT);
-  const counts: State["counts"] = {};
-  for (const [id, count] of Object.entries(object(value.counts) ? value.counts : {}))
-    if (object(count) && shortString(count.day, 40) && Number.isSafeInteger(count.runs)) counts[id] = { day: count.day, runs: count.runs as number };
-  return { waiting: Array.isArray(value.waiting) ? value.waiting.filter(validWake) : [], records, counts };
+  return { waiting: Array.isArray(value.waiting) ? value.waiting.filter(validWake) : [], records };
 }
 
 /**
  * Delivers wakes to sessions, whatever their source, by one set of rules: paused, nothing runs
- * unattended; past a source's daily limit, nothing more that day; while the session is busy or
+ * unattended; while the session is busy or
  * archived, the wake waits (one per `latest` source, in order for `queue` ones); otherwise the
  * message is sent with a `WOKEN_ENTRY` before it. Every outcome is recorded by source. Kept in each
  * session's `wakes.json`; waiting wakes are looked at by `drain`, which the runtime calls once a
@@ -162,7 +151,7 @@ export class Wakes {
 
   // ---- Delivery -------------------------------------------------------------------------------
 
-  /** Runs the wake now if it can; otherwise it waits, or is recorded as missed or over the limit. */
+  /** Runs the wake now if it can; otherwise it waits, or is recorded as missed. */
   async deliver(sessionId: string, wake: Wake): Promise<void> {
     if (this.closed) return;
     const paused = this.host.paused();
@@ -206,10 +195,6 @@ export class Wakes {
   }
   /** Sends the wake if nothing stops it; `false` means it has to wait. */
   private async attempt(sessionId: string, wake: Wake, waited: boolean): Promise<boolean> {
-    if (this.overLimit(sessionId, wake)) {
-      this.note(sessionId, wake.source.id, { due: wake.due, outcome: "limit" });
-      return true;
-    }
     if (this.archived(sessionId) || this.running.has(key(sessionId, wake.source.id)) || !this.host.free(sessionId)) return false;
     return this.fire(sessionId, wake, waited ? { reason: "busy" } : wake.late ? { reason: "off" } : {});
   }
@@ -230,7 +215,6 @@ export class Wakes {
       this.note(sessionId, wake.source.id, { due: wake.due, at, outcome: "failed", error: code });
       return true;
     }
-    this.count(sessionId, wake.source.id);
     this.logger.event("wake.run", { sessionId, outcome: "completed" });
     void completion
       .then(
@@ -262,19 +246,6 @@ export class Wakes {
     state.waiting = state.waiting.filter((w) => w !== wake);
     this.save(sessionId);
   }
-  private today(): string {
-    return new Date(this.now()).toDateString();
-  }
-  private overLimit(sessionId: string, wake: Wake): boolean {
-    const count = this.state(sessionId).counts[wake.source.id];
-    return !!count && count.day === this.today() && count.runs >= wake.limit;
-  }
-  private count(sessionId: string, sourceId: string): void {
-    const state = this.state(sessionId);
-    const count = state.counts[sourceId];
-    state.counts[sourceId] = { day: this.today(), runs: count?.day === this.today() ? count.runs + 1 : 1 };
-    this.save(sessionId);
-  }
   private archived(sessionId: string): boolean {
     return !!this.host.sessions().find((s) => s.id === sessionId)?.archived;
   }
@@ -304,14 +275,13 @@ export class Wakes {
     state.waiting = state.waiting.filter((w) => w.source.id !== sourceId);
     this.save(sessionId);
   }
-  /** The source is gone: its waiting wakes, records and count go with it. */
+  /** The source is gone: its waiting wakes and records go with it. */
   forgetSource(sessionId: string, sourceId: string): void {
     const state = this.states.get(sessionId);
     this.running.delete(key(sessionId, sourceId));
     if (!state) return;
     state.waiting = state.waiting.filter((w) => w.source.id !== sourceId);
     delete state.records[sourceId];
-    delete state.counts[sourceId];
     this.save(sessionId);
   }
   /** The session was deleted: its wakes went with its folder. */
@@ -324,7 +294,7 @@ export class Wakes {
 
   private state(sessionId: string): State {
     let state = this.states.get(sessionId);
-    if (!state) this.states.set(sessionId, (state = { waiting: [], records: {}, counts: {} }));
+    if (!state) this.states.set(sessionId, (state = { waiting: [], records: {} }));
     return state;
   }
   private save(sessionId: string): void {

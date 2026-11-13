@@ -345,6 +345,30 @@ export const icons = {
       },
     },
   ],
+  /** A session started by another, or something leaving for another place. */
+  sessionOut: [
+    {
+      tag: "path",
+      attrs: {
+        d: "M14 4h6v6M10 14L20 4M20 14v6H4V4h6",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "stroke-width": "1.8",
+      },
+    },
+  ],
+  /** Something that came back from another session. */
+  sessionBack: [
+    {
+      tag: "path",
+      attrs: {
+        d: "M10 19l-7-7m0 0l7-7m-7 7h18",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "stroke-width": "1.8",
+      },
+    },
+  ],
   general: [
     {
       tag: "circle",

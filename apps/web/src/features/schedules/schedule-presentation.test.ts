@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { choiceOf, nextText, runText, whenOf, type WhenChoice } from "./schedule-presentation";
-import { buildTurns, wokenLabel } from "../workspace/chat-turns";
+import { buildTurns, wokenFrom, wokenLabel } from "../workspace/chat-turns";
 import type { Schedule } from "../../../../server/src/contract/schedule-protocol";
 import { WOKEN_ENTRY } from "../../../../server/src/contract/wake-protocol";
 
@@ -40,7 +40,6 @@ test("what a run did and when the next one is, in words", () => {
   expect(runText({ due, at: at(0), outcome: "ran", manual: true }, now)).toBe("Ran now, by hand");
   expect(runText({ due, at: at(0), outcome: "missed", reason: "paused" }, now)).toBe("Missed: unattended runs were paused");
   expect(runText({ due, at: at(0), outcome: "missed", reason: "full" }, now)).toBe("Missed: too many were already waiting");
-  expect(runText({ due, at: at(0), outcome: "limit" }, now)).toBe("Skipped: the daily limit was reached");
   expect(runText({ due, at: at(0), outcome: "failed", error: "busy" }, now)).toMatch(/^Failed: /);
 
   const schedule = { on: true, next: new Date("2026-11-16T09:00").toISOString() } as Schedule;
@@ -58,6 +57,11 @@ test("a woken turn's message is labelled with its source in the conversation", (
   // A source this client does not know still says the turn was not typed.
   expect(wokenLabel({ source: { kind: "later", id: "x", label: "From elsewhere" }, due })).toBe("Woken · From elsewhere");
   expect(wokenLabel(undefined)).toBe("Woken");
+  // Another session: its report (or a parent's message) says which session, and links to it.
+  const child = { kind: "session", id: "c", label: "Zustand research · finished" };
+  expect(wokenLabel({ source: child, due })).toBe("From Zustand research · finished");
+  expect(wokenFrom({ source: child, due })).toEqual({ id: "c", label: "Zustand research · finished" });
+  expect(wokenFrom({ source, due })).toBeUndefined();
   const turns = buildTurns(
     [
       { key: "u1", role: "user", parts: [{ type: "text", text: "typed" }] },

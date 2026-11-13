@@ -3,6 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { chatTitle } from "../../contract/chat-title.js";
 import { TITLE_TOOL } from "../runtime/chat-title.js";
 import { SCHEDULE_CHANNEL, SCHEDULE_TOOL, type ScheduleMessage, type ScheduleRequest } from "../runtime/schedule-tool.js";
+import { SESSION_CHANNEL, SESSION_TOOL, type SessionMessage, type SessionRequest } from "../runtime/session-tool.js";
 
 /** "2026-11-13 14:30 (UTC+01:00)": the server's local time, for the agent to schedule by. */
 function localNow(now = new Date()): string {
@@ -15,7 +16,8 @@ function localNow(now = new Date()): string {
 /**
  * Ordinary native Pi extension, instantiated separately for every hosted session. Its title tool
  * names the session with Pi's own `setSessionName`; the session's name is the chat title. Its
- * schedule tool asks PiSpark (which asks the person first) to wake this session later.
+ * schedule tool asks PiSpark (which asks the person first) to wake this session later. Its session
+ * tool asks PiSpark to start and follow child sessions, whose answers come back as messages.
  */
 export default function pispark(pi: ExtensionAPI): void {
   pi.registerTool({
@@ -84,6 +86,53 @@ export default function pispark(pi: ExtensionAPI): void {
       return { content: [{ type: "text", text: answer.text }], details: undefined };
     },
   });
+  pi.registerTool({
+    name: SESSION_TOOL,
+    label: "Start other sessions",
+    description:
+      "Hand work to another PiSpark session that runs on its own while this one carries on: start one with a first message (and optionally a persona and a title), list this session's sessions, send one another message, stop one, or read its last answer. When a session you started finishes, its answer arrives here as a new message. Sessions started by another session cannot start sessions.",
+    parameters: Type.Object(
+      {
+        action: Type.Union([Type.Literal("start"), Type.Literal("list"), Type.Literal("send"), Type.Literal("stop"), Type.Literal("read")]),
+        prompt: Type.Optional(Type.String({ maxLength: 65536, description: "start: the new session's first message, complete on its own." })),
+        title: Type.Optional(Type.String({ maxLength: 200, description: "start: a short title for the new session." })),
+        persona: Type.Optional(Type.String({ maxLength: 64, description: "start: a persona id; this session's persona when left out." })),
+        report: Type.Optional(Type.Boolean({ description: "start: false when its answers should not come back here." })),
+        id: Type.Optional(Type.String({ maxLength: 64, description: "send, stop, read: the session (list shows them)." })),
+        text: Type.Optional(Type.String({ maxLength: 65536, description: "send: the message." })),
+      },
+      { additionalProperties: false },
+    ),
+    async execute(_id, parameters, signal) {
+      if (signal?.aborted) throw new Error("Cancelled");
+      const { action } = parameters;
+      let request: SessionRequest;
+      if (action === "list") request = { action };
+      else if (action === "start") {
+        if (!parameters.prompt?.trim()) throw new Error("Give the first message for the new session");
+        request = {
+          action,
+          prompt: parameters.prompt,
+          ...(parameters.persona ? { persona: parameters.persona } : {}),
+          ...(parameters.title ? { title: parameters.title } : {}),
+          ...(parameters.report !== undefined ? { report: parameters.report } : {}),
+        };
+      } else {
+        if (!parameters.id) throw new Error("Give the id of the session (list shows them)");
+        if (action === "send") {
+          if (!parameters.text?.trim()) throw new Error("Give the message to send");
+          request = { action, id: parameters.id, text: parameters.text };
+        } else request = { action, id: parameters.id };
+      }
+      const answer = await new Promise<{ ok: boolean; text: string }>((reply) => {
+        const message: SessionMessage = { request, reply };
+        pi.events.emit(SESSION_CHANNEL, message);
+        if (!message.taken) reply({ ok: false, text: "Starting sessions is not available here." });
+      });
+      if (!answer.ok) throw new Error(answer.text);
+      return { content: [{ type: "text", text: answer.text }], details: undefined };
+    },
+  });
   pi.on("before_agent_start", (event) => {
     const active = pi.getActiveTools();
     const guidance = [
@@ -92,6 +141,9 @@ export default function pispark(pi: ExtensionAPI): void {
         : "",
       active.includes(SCHEDULE_TOOL)
         ? `When the person asks to do something later or repeatedly in this chat, use pispark_schedule; PiSpark asks them to confirm. The server's local time now is ${localNow()}.`
+        : "",
+      active.includes(SESSION_TOOL)
+        ? "For work that can run on its own (research, a long job, one of several parallel parts), you may start other sessions with pispark_session and carry on. Each session's answer arrives later as a message here; when others are still running, acknowledge it in one line."
         : "",
     ].filter(Boolean);
     if (!guidance.length) return;

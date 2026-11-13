@@ -83,6 +83,8 @@
     })),
   );
   const button = "conversation-action";
+  // A session another one started links back to it while that one is listed.
+  const parent = $derived(info?.parent ? client.sessions.find((each) => each.id === info.parent) : undefined);
 </script>
 
 <header class="pb-5 border-b border-[var(--border)]">
@@ -99,7 +101,8 @@
         {#if session}<ContributionPoint point="session.title" />{/if}
       </div>
       {#if info}<p class="text-sm text-muted-foreground mt-1.5">
-          {[
+          {#if parent}Started by <button type="button" class="started-by" onclick={() => client.select(parent.id)}>{sessionName(parent)}</button
+            >{" · "}{/if}{[
             info.persona.layered
               ? `${info.persona.name} (edited here)`
               : // Not said twice when the session goes by its app's name.
@@ -223,5 +226,10 @@
     padding: 0.4rem 0.9rem;
     font-size: 0.875rem;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+  .started-by {
+    color: var(--interactive-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 </style>

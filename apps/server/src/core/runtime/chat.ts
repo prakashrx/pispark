@@ -27,6 +27,7 @@ import { WOKEN_ENTRY, type WokenDetails } from "../../contract/wake-protocol.js"
 import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
 import { describeSchedule, parseCron } from "../../contract/cron.js";
 import { SCHEDULE_CHANNEL, validMessage, type ScheduleMessage } from "./schedule-tool.js";
+import { SESSION_CHANNEL, SESSION_TOOL, validSessionMessage, type SessionRequest } from "./session-tool.js";
 
 export type SessionStatus =
   | "starting"
@@ -54,6 +55,8 @@ export interface SessionSummary {
   waiting?: boolean;
   /** Waits for a free run slot: a prompt that has not started, or a run resuming after an answer. */
   queued?: boolean;
+  /** The session that started this one. */
+  parent?: string;
 }
 export interface RunResult {
   outcome: "completed" | "cancelled" | "failed";
@@ -88,6 +91,12 @@ export interface ChatHost {
   released(chat: Chat): void;
   /** The chat became free (`settled`), so a waiting wake can go. Called outside Pi's listeners. */
   freed?(chat: Chat): void;
+  /** One of the chat's runs ended (a child reports back). Called outside Pi's listeners. */
+  ended?(chat: Chat, result: RunResult): void;
+  /** The sessions a chat starts and follows, for its agent (`pispark_session`). */
+  readonly sessions?: {
+    request(parentId: string, request: SessionRequest): Promise<{ ok: boolean; text: string }>;
+  };
   /** The schedules of a chat, for its agent (`pispark_schedule`). */
   readonly schedules?: {
     of(sessionId: string): Schedule[];
@@ -363,7 +372,11 @@ export class Chat {
     const dir = host.storage.prepare(metadata.id);
     const transcript = reopening ? host.storage.validateHistory(metadata) : undefined;
     metadata.interrupted ||= metadata.active;
-    const manager = transcript ? SessionManager.open(transcript, dir, cwd) : SessionManager.create(cwd, dir, { id: metadata.id });
+    // A child session names its parent in Pi's own header too, so Pi's tools see the relation.
+    const parentSession = metadata.parent ? host.storage.transcript(metadata.parent) : undefined;
+    const manager = transcript
+      ? SessionManager.open(transcript, dir, cwd)
+      : SessionManager.create(cwd, dir, { id: metadata.id, ...(parentSession ? { parentSession } : {}) });
     metadata.active = true;
     metadata.setup = setup.fingerprint;
     if (reopening) host.storage.write(metadata);
@@ -386,7 +399,8 @@ export class Chat {
       { changed: () => this.changed(), failed: (message) => ui.failed(message), callTimeoutMs: host.callTimeout, points: host.points },
     ));
     const services = await createSessionServices({
-      setup,
+      // A session started by another session cannot start sessions: one level only.
+      setup: metadata.parent ? { ...setup, toolsOff: [...setup.toolsOff, SESSION_TOOL] } : setup,
       cwd,
       agentDir: join(dir, "agent"),
       managed,
@@ -412,6 +426,7 @@ export class Chat {
       host: {
         views,
         schedules: { bind: (bus) => bus.on(SCHEDULE_CHANNEL, (message) => this.scheduleRequest(message)) },
+        sessions: { bind: (bus) => bus.on(SESSION_CHANNEL, (message) => this.sessionRequest(message)) },
       },
     });
     const thinkingLevel = setup.settings.thinking ?? "off";
@@ -475,6 +490,31 @@ export class Chat {
     // A prompt that was waiting when PiSpark stopped rejoins the queue now that the chat is open.
     if (reopening && metadata.queued !== undefined) this.restoreQueued(metadata.queued);
     return this.doc();
+  }
+
+  /** The built-in session tool (or an extension in this session): its own children only. */
+  private sessionRequest(value: unknown): void {
+    if (!validSessionMessage(value)) return;
+    value.taken = true;
+    const sessions = this.host.sessions;
+    void (sessions ? sessions.request(this.id, value.request) : Promise.resolve({ ok: false, text: "Starting sessions is not available here." }))
+      .catch((error: unknown) => ({ ok: false, text: `That did not work (${runtimeError(error, "execution").code}).` }))
+      .then((answer) => value.reply(answer));
+  }
+  /** The agent's last answer in this chat: the text of its last reply that has any. */
+  lastReply(): string | undefined {
+    const messages = (this.session?.messages ?? []) as { role?: string; content?: unknown }[];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i]!;
+      if (message.role !== "assistant" || !Array.isArray(message.content)) continue;
+      const text = (message.content as { type?: string; text?: unknown }[])
+        .filter((part) => part.type === "text" && typeof part.text === "string")
+        .map((part) => part.text as string)
+        .join("\n")
+        .trim();
+      if (text) return text;
+    }
+    return undefined;
   }
 
   /** The built-in schedule tool: list, remove, or add after the person says yes. */
@@ -689,7 +729,9 @@ export class Chat {
         code: this.error,
       });
       this.changed();
-      return this.error ? { outcome: "failed", error: this.error } : { outcome: run.cancelled ? "cancelled" : "completed" };
+      const result: RunResult = this.error ? { outcome: "failed", error: this.error } : { outcome: run.cancelled ? "cancelled" : "completed" };
+      setImmediate(() => host.ended?.(this, result));
+      return result;
     };
     return { run, settle };
   }

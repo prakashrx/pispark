@@ -37,7 +37,7 @@ Types: `apps/server/src/contract/protocol.ts`, `provider-protocol.ts` and `perso
 | Endpoint | Meaning |
 | --- | --- |
 | `GET /api/catalog` | `{home, recentFolders}`: starting points for Ask's folder picker |
-| `GET /api/sessions` | `{sessions, truncated, unreadable?, archived}`: the newest 256 chats in use, and how many are archived; `?archived` lists the archived ones instead |
+| `GET /api/sessions` | `{sessions, truncated, unreadable?, archived}`: the newest 256 chats in use, and how many are archived; `?archived` lists the archived ones instead. A [child session](session-runtime.md#child-sessions) carries `parent` |
 | `POST /api/commands` | Exact typed JSON command, UUID `commandId`; HTTP202 correlated receipt |
 | `GET /api/receipts/:commandId` | Current accepted/settled receipt;404 `unknown-receipt` after expiry/restart or unknown ID |
 | `GET /api/sessions/:uuid` | The chat's session document: status, model, queue, error, what extensions show and the commands they registered (`commands: {name, description?}[]`, at most 50); no history |
@@ -46,8 +46,8 @@ Types: `apps/server/src/contract/protocol.ts`, `provider-protocol.ts` and `perso
 | `GET /api/sessions/:uuid/items/:id/parts/:n` | An image part's bytes, or with `?offset=` a chunk of a clipped text part |
 | `GET /api/settings` / `POST /api/settings {maxRunning?, unattendedPaused?}` | PiSpark's own settings, saved in `<home>/settings.json`: how many chats may have an agent working at once (1–32, default 8), and Pause all unattended runs ([wakes](session-runtime.md#wakes)). A change names only what changes |
 | `GET /api/schedules` | `{paused, schedules}`: every [schedule](session-runtime.md#schedules), with its session's title and persona, `next`, `waiting`, `held: "archived"` and its last ten `runs` |
-| `POST /api/schedules {sessionId, cron \| at, prompt, on?, limit?}` | Adds a schedule to a session (201); `invalid-input` for a bad time or prompt, `busy` for an archived session |
-| `POST /api/schedules/:id {cron?, at?, prompt?, on?, limit?}` | Changes some fields; a new time, or switching on, counts from now |
+| `POST /api/schedules {sessionId, cron \| at, prompt, on?}` | Adds a schedule to a session (201); `invalid-input` for a bad time or prompt, `busy` for an archived session |
+| `POST /api/schedules/:id {cron?, at?, prompt?, on?}` | Changes some fields; a new time, or switching on, counts from now |
 | `POST /api/schedules/:id/run` / `/remove` | Run now (202; `busy` while the session works or waits) / remove |
 | `POST /api/sessions/:uuid/calls` | An extension component's `host.call` (see below) |
 | `GET /api/views/:hash.js` | An extension's compiled Svelte component, addressed by its content; the session document lists them under `extensions.views` ([extensions](extensions.md)) |

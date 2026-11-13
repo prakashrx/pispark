@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { body, sendJson } from "./session-http.js";
 import { correlated } from "../core/logger.js";
-import type { PersonaTarget } from "../contract/persona-protocol.js";
+import type { DiscoveredTool, PersonaTarget } from "../contract/persona-protocol.js";
 import type { PersonaStore } from "../core/personas/store.js";
 import { PersonaError } from "../core/personas/format.js";
 import { checkCycles, listPersonas, viewPersona } from "../core/personas/resolve.js";
@@ -42,7 +42,11 @@ function revision(value: unknown, allowEmpty = false): string {
  * A target is `{ persona: id }` or `{ chat: id }` (a chat's own layer).
  */
 export class PersonaHttp {
-  constructor(readonly store: PersonaStore) {}
+  constructor(
+    readonly store: PersonaStore,
+    /** The tools a persona's extensions register, found without a session. */
+    private readonly tools?: (target: PersonaTarget) => Promise<{ tools: DiscoveredTool[]; incomplete: boolean } | undefined>,
+  ) {}
   async handle(request: IncomingMessage, response: ServerResponse) {
     const requestId = randomUUID(),
       started = Date.now();
@@ -61,7 +65,10 @@ export class PersonaHttp {
           switch (operation) {
             case "read": {
               const i = input(value, ["target"]);
-              result = viewPersona(this.store, target(i.target));
+              const viewed = target(i.target);
+              // Listing a persona's tools loads its extensions; a failure leaves the list as switched.
+              const discovered = await this.tools?.(viewed).catch(() => undefined);
+              result = viewPersona(this.store, viewed, discovered);
               break;
             }
             case "create": {

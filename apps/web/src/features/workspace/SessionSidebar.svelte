@@ -2,13 +2,15 @@
   import Icon from "../../lib/ui/Icon.svelte";
   import AppEntry from "./AppEntry.svelte";
   import ArchivedList from "./ArchivedList.svelte";
-  import SessionRow from "./SessionRow.svelte";
+  import SessionTree from "./SessionTree.svelte";
   import { useSessions } from "./session-client.svelte";
   import { sessionName } from "./session-presentation";
   const client = useSessions();
   // App personas are opened from their own section, and their sessions are listed there.
   const apps = $derived(client.personas.items.filter((persona) => persona.valid && persona.home));
-  const chats = $derived(client.sessions.filter((session) => !session.persona?.home));
+  // A session started by another is listed under it (when that one is listed), not on its own.
+  const listed = $derived(new Set(client.sessions.map((session) => session.id)));
+  const chats = $derived(client.sessions.filter((session) => !session.persona?.home && !(session.parent && listed.has(session.parent))));
 
   function groupByDate(sessions: typeof client.sessions) {
     const now = new Date();
@@ -63,14 +65,14 @@
               <div class="space-y-px">
                 {#each group.items as session (session.id)}
                   {@const name = sessionName(session)}
-                  <SessionRow {session} {name}>
+                  <SessionTree {session} {name}>
                     <span class="min-w-0 flex-1">
                       <span class="block truncate">{name}</span>
                       {#if session.persona?.name}
                         <span class="block truncate text-xs text-subtle mt-0.5">{session.persona.name}</span>
                       {/if}
                     </span>
-                  </SessionRow>
+                  </SessionTree>
                 {/each}
               </div>
             </div>

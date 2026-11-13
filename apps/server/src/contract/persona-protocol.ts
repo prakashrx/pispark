@@ -85,12 +85,29 @@ export interface ResolvedItem {
   path?: string;
 }
 
+/**
+ * Where a tool comes from: PiSpark's core (Pi's built-in tools and PiSpark's own built-in
+ * extension), one of the persona's extensions, or an MCP server.
+ */
+export type ToolSource = { kind: "core" } | { kind: "extension"; name: string } | { kind: "mcp"; name: string };
+/** A tool found by loading the persona's extensions (no session, no model). */
+export interface DiscoveredTool {
+  name: string;
+  /** The extension's short name for it. */
+  label?: string;
+  description?: string;
+  source: ToolSource;
+}
 export interface ResolvedTool {
   name: string;
   on: boolean;
   builtIn: boolean;
   /** The last layer that switched it. */
   setBy?: LayerRef;
+  /** Where it comes from; absent when a switch names a tool nothing provides now. */
+  source?: ToolSource;
+  label?: string;
+  description?: string;
 }
 
 export interface PersonaView {
@@ -106,6 +123,8 @@ export interface PersonaView {
   /** The folder and the home view it resolves to, its own or a parent's. */
   folder?: string;
   home?: string;
+  /** Some extensions could not be loaded to list their tools. */
+  toolsIncomplete?: true;
   /** Set when the setup can't be resolved, e.g. a missing parent or a cycle. */
   error?: string;
   detail?: string;

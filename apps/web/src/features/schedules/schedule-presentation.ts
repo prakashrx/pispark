@@ -107,8 +107,6 @@ export function runText(run: WakeRecord, now = new Date()): string {
       if (run.reason === "paused") return "Missed: unattended runs were paused";
       if (run.reason === "full") return "Missed: too many were already waiting";
       return `Missed: PiSpark wasn’t running (${shortDate(due, now)})`;
-    case "limit":
-      return "Skipped: the daily limit was reached";
   }
 }
 export const runFailed = (run: WakeRecord) => run.outcome === "failed";

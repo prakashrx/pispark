@@ -11,7 +11,7 @@
   import ItemList from "./ItemList.svelte";
   import FolderChoice from "../workspace/FolderChoice.svelte";
   import { sameTarget } from "./persona-client.svelte";
-  import { personaError } from "./persona-presentation";
+  import { personaError, toolGroups } from "./persona-presentation";
   import { useSessions } from "../workspace/session-client.svelte";
   import type {
     PersonaDefinition,
@@ -259,25 +259,32 @@
     {#if view.items.some((item) => item.type === "mcp")}
       <ItemList {client} {viewing} type="mcp" description="MCP servers from persona.json." />
     {/if}
-    <Section title="Tools" description="What the agent may do. Default turns all on." layout="split" class="border-b border-[var(--border)] pb-6">
-      <ul class="tool-grid">
-        {#each view.tools as tool (tool.name)}
-          <li class="flex items-center justify-between gap-3">
-            <span class="min-w-0">
-              <span class="text-sm font-medium">{tool.name}</span>
-              {#if tool.setBy && tool.setBy.id !== viewing}<span class="block text-xs text-muted-foreground">from {tool.setBy.name}</span>
-              {:else if tool.setBy}<span class="block text-xs text-muted-foreground">set here</span>{/if}
-            </span>
-            <Toggle
-              label={`Allow ${tool.name}`}
-              checked={tool.on}
-              disabled={client.busy}
-              onchange={(event: Event) =>
-                void client.toggle("tool", tool.name, (event.currentTarget as HTMLInputElement).checked)}
-            />
-          </li>
-        {/each}
-      </ul>
+    <Section title="Tools" description="What the agent may do, from PiSpark and from this persona’s extensions." layout="split" class="border-b border-[var(--border)] pb-6">
+      {#each toolGroups(view.tools) as group (group.title)}
+        <h4 class="tool-group">{group.title}</h4>
+        <ul class="tool-grid" aria-label={`${group.title} tools`}>
+          {#each group.tools as tool (tool.name)}
+            <li class="flex items-center justify-between gap-3">
+              <span class="min-w-0">
+                <span class="text-sm font-medium" title={tool.description}>{tool.label ?? tool.name}</span>
+                {#if tool.label}<span class="block text-xs text-muted-foreground font-mono">{tool.name}</span>{/if}
+                {#if tool.setBy && tool.setBy.id !== viewing}<span class="block text-xs text-muted-foreground">from {tool.setBy.name}</span>
+                {:else if tool.setBy}<span class="block text-xs text-muted-foreground">set here</span>{/if}
+              </span>
+              <Toggle
+                label={`Allow ${tool.label ?? tool.name}`}
+                checked={tool.on}
+                disabled={client.busy}
+                onchange={(event: Event) =>
+                  void client.toggle("tool", tool.name, (event.currentTarget as HTMLInputElement).checked)}
+              />
+            </li>
+          {/each}
+        </ul>
+      {/each}
+      {#if view.toolsIncomplete}<p class="text-xs text-muted-foreground mt-2">
+          Some extensions could not be loaded, so their tools are not listed.
+        </p>{/if}
     </Section>
     <Section title="Model" description="A preferred model and thinking level for new chats." layout="split" class="border-b border-[var(--border)] pb-6">
       <div class="grid gap-3 sm:grid-cols-2">
@@ -379,6 +386,15 @@
   }
   .chip-remove:hover {
     color: var(--foreground);
+  }
+  .tool-group {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--subtle-foreground);
+    margin: 0 0 0.5rem;
+  }
+  .tool-grid + .tool-group {
+    margin-top: 1.25rem;
   }
   .tool-grid {
     display: grid;

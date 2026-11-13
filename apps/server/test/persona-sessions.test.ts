@@ -7,6 +7,7 @@ import { RuntimeError } from "../src/core/runtime/errors.js";
 import { DEFAULT_TOOLS } from "../src/core/personas/format.js";
 import { TITLE_TOOL } from "../src/core/runtime/chat-title.js";
 import { SCHEDULE_TOOL } from "../src/core/runtime/schedule-tool.js";
+import { SESSION_TOOL } from "../src/core/runtime/session-tool.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { localProviderSettings } from "./fixtures/provider-settings.js";
 import { testHome } from "./fixtures/home.js";
@@ -49,7 +50,7 @@ test("a fresh data root needs no setup: Default gives every chat Pi's built-in t
     await f.runtime.start(chat.id, "read:value.txt").completion;
     assert.deepEqual(
       toolsOf(f.provider.requests[0]!).sort(),
-      [...DEFAULT_TOOLS, TITLE_TOOL, SCHEDULE_TOOL].sort(),
+      [...DEFAULT_TOOLS, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL].sort(),
     );
     assert.match(chatText(f.runtime, chat.id), /WORK-FILE/);
   } finally {

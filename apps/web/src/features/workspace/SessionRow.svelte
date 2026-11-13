@@ -14,12 +14,18 @@
     session,
     name,
     children,
+    before,
+    status,
     class: className = "",
   }: {
     session: SessionInfo;
     /** What the row is called, for the Archive button's name. */
     name: string;
     children: Snippet;
+    /** A control at the start of the row, such as the toggle for the sessions it started. */
+    before?: Snippet;
+    /** The mark to show instead of the session's own, such as the foremost of it and its children. */
+    status?: string;
     class?: string;
   } = $props();
   const client = useSessions();
@@ -42,6 +48,7 @@
 </script>
 
 <div class="nav-item session-row {className}" bind:this={row}>
+  {@render before?.()}
   <a
     href="#/workspace"
     class="flex min-w-0 flex-1 items-center gap-2.5"
@@ -52,7 +59,7 @@
   {#if scheduled}<span class="scheduled" title={`Scheduled: ${describeSchedule(scheduled)}`}
       ><Icon name="clock" class="h-3.5 w-3.5" /><span class="sr-only">Scheduled: {describeSchedule(scheduled)}</span></span
     >{/if}
-  <SessionMark status={sessionStatus(session)} />
+  <SessionMark status={status ?? sessionStatus(session)} />
   {#if archivable}<button type="button" class="row-action" aria-label={`Archive ${name}`} title="Archive" onclick={archive}
       ><Icon name="archive" class="h-4 w-4" /></button
     >{/if}

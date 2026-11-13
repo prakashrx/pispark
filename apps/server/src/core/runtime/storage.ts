@@ -36,6 +36,10 @@ export interface ChatMetadata {
   queued?: string;
   /** Put away by the person: not listed or opened until restored. */
   archived?: true;
+  /** The session that started this one (a child session); its runs report back to it. */
+  parent?: string;
+  /** Started with `report: false`: its runs do not report back to its parent. */
+  report?: false;
 }
 
 const UUID =
@@ -89,7 +93,9 @@ export class ChatStorage {
         typeof value.interrupted !== "boolean" ||
         (value.setup !== undefined && !/^[a-f0-9]{64}$/.test(value.setup)) ||
         (value.queued !== undefined && (typeof value.queued !== "string" || value.queued.length > 64 * 1024)) ||
-        (value.archived !== undefined && value.archived !== true)
+        (value.archived !== undefined && value.archived !== true) ||
+        (value.parent !== undefined && (typeof value.parent !== "string" || !UUID.test(value.parent))) ||
+        (value.report !== undefined && value.report !== false)
       )
         throw new Error();
       return { ...value, id };

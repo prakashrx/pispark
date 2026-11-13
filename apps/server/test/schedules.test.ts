@@ -56,7 +56,7 @@ test("a schedule is checked, kept in its session's folder, and read again after 
       { sessionId: chat.id, cron: "0 0 30 2 *", prompt: "x" },
       { sessionId: chat.id, at: new Date(f.clock.now - HOUR).toISOString(), prompt: "x" },
       { sessionId: chat.id, cron: "0 9 * * *", prompt: "  " },
-      { sessionId: chat.id, cron: "0 9 * * *", prompt: "x", limit: 0 },
+      { sessionId: chat.id, cron: "0 9 * * *", prompt: "x", limit: 5 },
       { sessionId: chat.id, cron: "0 9 * * *", prompt: "x", extra: 1 },
     ])
       assert.throws(() => f.runtime.addSchedule(bad as never), code("invalid-input"));
@@ -65,7 +65,6 @@ test("a schedule is checked, kept in its session's folder, and read again after 
     const added = f.runtime.addSchedule({ sessionId: chat.id, cron: "0 9 * * 1-5", prompt: "Summarise yesterday." });
     assert.equal(added.on, true);
     assert.equal(added.by, "person");
-    assert.equal(added.limit, 24);
     assert.equal(added.next, new Date(local("2026-11-13T09:00")).toISOString());
     const file = JSON.parse(await readFile(join(f.home, "chats", chat.id, "schedules.json"), "utf8"));
     assert.equal(file.schedules[0].prompt, "Summarise yesterday.");
@@ -188,21 +187,20 @@ test("missed while PiSpark was off: sent once if within a day, else recorded as 
   }
 });
 
-test("the daily limit, Pause all, and archived sessions", async () => {
+test("no daily limit; Pause all, and archived sessions", async () => {
   const f = await fixture();
   try {
     const chat = await f.runtime.create({ folder: f.folder });
-    f.runtime.addSchedule({ sessionId: chat.id, cron: "*/30 * * * *", prompt: "often", limit: 1 });
+    f.runtime.addSchedule({ sessionId: chat.id, cron: "*/30 * * * *", prompt: "often" });
     f.clock.now = local("2026-11-13T08:30:01");
     await f.runtime.checkWakes();
     await eventually(() => f.one().runs.length === 1);
     f.clock.now = local("2026-11-13T09:00:01");
     await f.runtime.checkWakes();
-    assert.equal(f.one().runs[0]!.outcome, "limit");
-    assert.equal(f.provider.requests.length, 1);
+    await eventually(() => f.one().runs.length === 2);
+    assert.equal(f.provider.requests.length, 2);
 
-    // The next day counts again; Pause all records runs as missed.
-    f.runtime.updateSchedule(f.one().id, { limit: 5 });
+    // Pause all records runs as missed.
     f.runtime.updateSettings({ unattendedPaused: true });
     assert.equal(f.one().next, undefined);
     f.clock.now = local("2026-11-13T09:30:01");
@@ -218,7 +216,7 @@ test("the daily limit, Pause all, and archived sessions", async () => {
     await f.runtime.checkWakes();
     f.runtime.restore(chat.id);
     await f.runtime.checkWakes();
-    assert.equal(f.provider.requests.length, 1);
+    assert.equal(f.provider.requests.length, 2);
     assert.equal(f.one().held, undefined);
     // Adding to an archived session is refused; deleting the session takes its schedules.
     await f.runtime.archive(chat.id);

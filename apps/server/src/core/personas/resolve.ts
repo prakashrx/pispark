@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import type {
+  DiscoveredTool,
   ItemType,
   LayerRef,
   PersonaDefinition,
@@ -292,10 +293,35 @@ export function resolveSetup(
   };
 }
 
+/**
+ * Every tool the persona has, in groups: core first (Pi's built-in tools, then PiSpark's own), then
+ * each extension's, then switches naming tools nothing provides now. A discovered tool is on
+ * unless a layer switched it off, as in a session.
+ */
+function withDiscovered(switched: ResolvedTool[], discovered: DiscoveredTool[]): ResolvedTool[] {
+  const byName = new Map(switched.map((tool) => [tool.name, tool]));
+  const tools: ResolvedTool[] = switched
+    .filter((tool) => tool.builtIn)
+    .map((tool) => ({ ...tool, source: { kind: "core" } }));
+  for (const found of discovered) {
+    if (tools.some((tool) => tool.name === found.name)) continue;
+    const { name: _name, ...about } = found;
+    tools.push({ ...(byName.get(found.name) ?? { name: found.name, on: true, builtIn: false }), ...about });
+  }
+  const group = (tool: ResolvedTool) => (!tool.source ? 2 : tool.source.kind === "core" ? 0 : 1);
+  const unknown = switched.filter((tool) => !tools.some((t) => t.name === tool.name));
+  return [...tools, ...unknown]
+    .map((tool, index) => ({ tool, index }))
+    .sort((a, b) => group(a.tool) - group(b.tool) || sourceName(a.tool).localeCompare(sourceName(b.tool)) || a.index - b.index)
+    .map(({ tool }) => tool);
+}
+const sourceName = (tool: ResolvedTool) => (tool.source && tool.source.kind !== "core" ? tool.source.name : "");
+
 /** The editor's view of one layer: its own definition plus everything it resolves to. */
 export function viewPersona(
   store: PersonaStore,
   target: PersonaTarget,
+  discovered?: { tools: DiscoveredTool[]; incomplete: boolean },
 ): PersonaView {
   const { definition, revision } = store.read(target);
   try {
@@ -306,7 +332,8 @@ export function viewPersona(
       revision,
       layers: setup.layers,
       items: setup.items,
-      tools: setup.tools,
+      tools: discovered ? withDiscovered(setup.tools, discovered.tools) : setup.tools,
+      ...(discovered?.incomplete ? { toolsIncomplete: true as const } : {}),
       settings: setup.settings,
       ...(setup.folder ? { folder: setup.folder } : {}),
       ...(setup.home ? { home: setup.home } : {}),

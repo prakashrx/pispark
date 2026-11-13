@@ -24,7 +24,7 @@
 <div class="turn" data-purpose="turn">
   {#if turn.user}
     {@const detail = clippedPart(turn.user)}
-    <UserTurn text={ellipsis(itemText(turn.user), !!detail)} woken={turn.woken} />
+    <UserTurn text={ellipsis(itemText(turn.user), !!detail)} woken={turn.woken} from={turn.from} />
     {#if detail}{#key detail.id}<MessageReader reference={detail} />{/key}{/if}
   {/if}
   {#if turn.segments.length}

@@ -255,8 +255,10 @@ export class SessionClient {
   }
   /** The sessions of an app persona, newest first. */
   appSessions(persona: string): SessionInfo[] {
+    // A session another one started is listed under that one, not as one of the app's own.
+    const listed = new Set(this.sessions.map((session) => session.id));
     return this.sessions
-      .filter((session) => session.persona?.id === persona)
+      .filter((session) => session.persona?.id === persona && !(session.parent && listed.has(session.parent)))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
   /**
@@ -289,6 +291,18 @@ export class SessionClient {
   /** Puts a session away: it unloads and leaves the list. If it was open, no session is. */
   archive(id: string): Promise<boolean> {
     return this.manage("archive", id);
+  }
+  /** Stops a session's run, such as one this session started, without opening it. */
+  async stop(id: string): Promise<boolean> {
+    this.error = "";
+    this.errorKind = undefined;
+    try {
+      await this.transport.run({ type: "cancel", sessionId: id });
+      return true;
+    } catch (error) {
+      this.fail(error);
+      return false;
+    }
   }
   restore(id: string): Promise<boolean> {
     return this.manage("restore", id);

@@ -15,8 +15,6 @@ export interface Schedule extends ScheduleWhen {
   sessionId: string;
   prompt: string;
   on: boolean;
-  /** At most this many runs a day. */
-  limit: number;
   createdAt: string;
   /** Who added it: the person, or the agent (after the person said yes). */
   by: "person" | "agent";
@@ -43,7 +41,4 @@ export interface ScheduleInput extends ScheduleWhen {
   sessionId?: string;
   prompt?: string;
   on?: boolean;
-  limit?: number;
 }
-export const MAX_SCHEDULES_PER_SESSION = 20;
-export const DEFAULT_DAILY_LIMIT = 24;

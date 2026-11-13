@@ -11,7 +11,10 @@ import { PersonaStore } from "../personas/store.js";
 import { bindingOf, listPersonas, resolveSetup, type Setup } from "../personas/resolve.js";
 import { DEFAULT_PERSONA, validPersonaId } from "../personas/format.js";
 import type { Json } from "../../contract/stream-ops.js";
-import { Chat, validateText, type ChatHost, type RunHandle, type SessionSummary } from "./chat.js";
+import { Chat, validateText, type ChatHost, type RunHandle, type RunResult, type SessionSummary } from "./chat.js";
+import { toolChatTitle } from "./chat-title.js";
+import type { SessionRequest } from "./session-tool.js";
+import type { WokenDetails } from "../../contract/wake-protocol.js";
 import type { RuntimeConfiguration } from "./configuration.js";
 import { deadline, RuntimeError, runtimeError } from "./errors.js";
 import { readSettings, validSettings, writeSettings } from "./host-settings.js";
@@ -22,6 +25,7 @@ import { validChoice } from "./provider-storage.js";
 import { RunSlots } from "./run-slots.js";
 import { ChatStorage, validateId } from "./storage.js";
 import { Schedules } from "./schedules.js";
+import { ToolDiscovery } from "./tool-discovery.js";
 import { Wakes } from "./wakes.js";
 import type { ScheduleInput, ScheduleList } from "../../contract/schedule-protocol.js";
 import type { ChatMetadata } from "./storage.js";
@@ -33,6 +37,7 @@ import type { ChatMetadata } from "./storage.js";
  */
 export class SessionRuntime {
   readonly personas: PersonaStore;
+  private readonly tools: ToolDiscovery;
   private readonly storage: ChatStorage;
   private readonly live = new Map<string, Chat>();
   private readonly host: ChatHost;
@@ -68,6 +73,7 @@ export class SessionRuntime {
     private readonly logger: SafeLogger = silentLogger,
   ) {
     const paths = homePaths(configuration.home);
+    this.tools = new ToolDiscovery(configuration.home);
     this.maxLive = configuration.maxLiveSessions ?? 32;
     this.idleUnload = configuration.idleUnloadMs ?? 15 * 60_000;
     this.settingsPath = paths.settings;
@@ -106,6 +112,8 @@ export class SessionRuntime {
         this.layered.delete(chat.id);
         if (!chat.published) this.storage.discardUnpublished(chat.id);
       },
+      ended: (chat, result) => this.childEnded(chat, result),
+      sessions: { request: (parentId, request) => this.sessionRequest(parentId, request) },
       // A waiting wake goes as soon as its session is free; the minute check catches anything missed.
       freed: () => {
         if (this.accepting) void this.wakes.drain();
@@ -227,6 +235,7 @@ export class SessionRuntime {
       ...(chat?.setupChanged ? { personaChanged: true } : {}),
       ...(chat?.asking ? { waiting: true } : {}),
       ...(chat?.waitingForSlot || (!chat && metadata.queued !== undefined) ? { queued: true } : {}),
+      ...(metadata.parent ? { parent: metadata.parent } : {}),
     };
   }
   /** The chat's own layer once it has one, else the persona it started with. */
@@ -300,14 +309,21 @@ export class SessionRuntime {
    * or an app persona's folder under the data root.
    */
   async create(request: { folder?: string; model?: ModelChoice; persona?: string }): Promise<SessionDoc> {
+    if (!request || Object.keys(request).some((key) => key !== "folder" && key !== "model" && key !== "persona"))
+      throw new RuntimeError("invalid-input");
+    return this.createSession(request);
+  }
+  /** `create`, after its input is checked; a child session also names its parent. */
+  private async createSession(
+    request: { folder?: string; model?: ModelChoice; persona?: string },
+    child: Pick<ChatMetadata, "parent" | "report" | "title"> = {},
+  ): Promise<SessionDoc> {
     this.admit();
     // Only above the backstop is there anything to wait for; below it, admission stays immediate.
     if (this.live.size >= this.maxLive) {
       await this.makeRoom();
       this.admit();
     }
-    if (!request || Object.keys(request).some((key) => key !== "folder" && key !== "model" && key !== "persona"))
-      throw new RuntimeError("invalid-input");
     if (request.model !== undefined && !validChoice(request.model)) throw new RuntimeError("invalid-input");
     const persona = request.persona ?? DEFAULT_PERSONA;
     if (!validPersonaId(persona)) throw new RuntimeError("invalid-input");
@@ -334,6 +350,7 @@ export class SessionRuntime {
         createdAt: new Date().toISOString(),
         active: false,
         interrupted: false,
+        ...child,
       },
       false,
     );
@@ -400,17 +417,27 @@ export class SessionRuntime {
    */
   async archive(id: string): Promise<void> {
     validateId(id);
-    const chat = this.live.get(id);
-    if (chat && !chat.settled) throw new RuntimeError("busy");
-    if (chat) await this.stop(id);
-    const metadata = this.storage.read(id);
-    if (metadata.queued !== undefined || this.live.has(id)) throw new RuntimeError("busy");
-    this.storage.write({ ...metadata, archived: true });
+    // A parent takes its children along; nothing is put away while any of them works.
+    const ids = [...this.childrenOf(id).filter((child) => !child.archived).map((child) => child.id), id];
+    if (ids.some((each) => this.live.get(each) && !this.live.get(each)!.settled)) throw new RuntimeError("busy");
+    for (const each of ids) {
+      if (this.live.has(each)) await this.stop(each);
+      const metadata = this.storage.read(each);
+      if (metadata.queued !== undefined || this.live.has(each)) throw new RuntimeError("busy");
+      this.storage.write({ ...metadata, archived: true });
+    }
   }
+  /** Brings a session back, with its children. */
   restore(id: string): void {
     validateId(id);
-    const { archived, ...metadata } = this.storage.read(id);
-    if (archived) this.storage.write(metadata);
+    for (const each of [id, ...this.childrenOf(id).map((child) => child.id)]) {
+      const { archived, ...metadata } = this.storage.read(each);
+      if (archived) this.storage.write(metadata);
+    }
+  }
+  /** The sessions this one started. */
+  private childrenOf(id: string): ChatMetadata[] {
+    return this.storage.list().filter((metadata) => metadata.parent === id);
   }
   /**
    * Deletes an archived session for good, with everything in its folder. Its working folder, and
@@ -418,11 +445,141 @@ export class SessionRuntime {
    */
   delete(id: string): void {
     validateId(id);
-    if (!this.storage.read(id).archived || this.live.has(id)) throw new RuntimeError("busy");
-    this.storage.remove(id);
-    this.layered.delete(id);
-    this.schedules.forget(id);
-    this.wakes.forget(id);
+    const metadata = this.storage.read(id);
+    const children = this.childrenOf(id);
+    if (!metadata.archived || [id, ...children.map((child) => child.id)].some((each) => this.live.has(each))) throw new RuntimeError("busy");
+    for (const each of [...children.map((child) => child.id), id]) {
+      this.storage.remove(each);
+      this.layered.delete(each);
+      this.schedules.forget(each);
+      this.wakes.forget(each);
+    }
+    // A deleted child's reports are no longer kept by its parent.
+    if (metadata.parent) this.wakes.forgetSource(metadata.parent, id);
+  }
+
+  /**
+   * The tools a persona (or a chat's own layer) provides, found by loading its extensions without a
+   * session. Nothing when the persona cannot be resolved; its view says why.
+   */
+  async discoverTools(target: PersonaTarget) {
+    let setup: Setup;
+    try {
+      setup = resolveSetup(this.personas, target);
+    } catch {
+      return undefined;
+    }
+    return this.tools.tools(setup);
+  }
+
+  // ---- Child sessions -------------------------------------------------------------------------
+
+  private now(): number {
+    return this.configuration.now?.() ?? Date.now();
+  }
+  private titleOf(metadata: ChatMetadata): string {
+    return metadata.title ?? "a session";
+  }
+  /** The session tool's requests (the agent's, or an extension's in that session): its own children only. */
+  private async sessionRequest(parentId: string, request: SessionRequest): Promise<{ ok: boolean; text: string }> {
+    const parent = this.storage.read(parentId);
+    if (request.action === "start") return this.startChild(parent, request);
+    if (request.action === "list") {
+      const children = this.childrenOf(parentId);
+      if (!children.length) return { ok: true, text: "This session has not started any sessions." };
+      return { ok: true, text: children.map((child) => `${child.id}: ${this.titleOf(child)} (${this.childState(child)})`).join("\n") };
+    }
+    const child = this.childrenOf(parentId).find((each) => each.id === request.id);
+    if (!child) return { ok: false, text: "This session did not start a session with that id (list shows them)." };
+    if (request.action === "read") {
+      if (child.archived) return { ok: false, text: "That session is archived." };
+      await this.ensure(child.id);
+      return { ok: true, text: this.get(child.id).lastReply() ?? "It has not answered yet." };
+    }
+    if (request.action === "stop") {
+      const chat = this.live.get(child.id);
+      if (!chat || chat.settled) return { ok: true, text: "It is not working." };
+      await this.cancel(child.id);
+      return { ok: true, text: "Stopped." };
+    }
+    if (child.archived) return { ok: false, text: "That session is archived." };
+    this.admit();
+    await this.ensure(child.id);
+    validateText(request.text);
+    try {
+      void this.get(child.id).start(request.text, this.from(parent)).completion.catch(() => {});
+    } catch (error) {
+      if (runtimeError(error, "execution").code === "busy") return { ok: false, text: "It is still working; its answer will come back here." };
+      throw error;
+    }
+    return { ok: true, text: "Sent." };
+  }
+  /** What a parent's message to its child says about where it came from. */
+  private from(parent: ChatMetadata): WokenDetails {
+    return { source: { kind: "session", id: parent.id, label: this.titleOf(parent) }, due: new Date(this.now()).toISOString() };
+  }
+  private childState(child: ChatMetadata): string {
+    if (child.archived) return "archived";
+    const chat = this.live.get(child.id);
+    if (chat?.asking) return "waiting for the person";
+    if (chat && !chat.settled) return "working";
+    if (chat?.status === "error" || child.interrupted) return "failed";
+    return "finished";
+  }
+  /**
+   * A session started by another one: in the parent's folder (or its persona's own), with the
+   * parent's persona and model unless another persona is named, and the parent's message first.
+   * One level only: a child cannot start sessions.
+   */
+  private async startChild(parent: ChatMetadata, request: Extract<SessionRequest, { action: "start" }>) {
+    if (parent.parent) return { ok: false, text: "A session started by another session cannot start sessions." };
+    const persona = request.persona ?? parent.persona;
+    if (!validPersonaId(persona) || !this.personas.exists({ persona })) return { ok: false, text: `There is no persona "${persona}".` };
+    let ownFolder: boolean;
+    try {
+      ownFolder = !!bindingOf(this.personas, { persona }).folder;
+    } catch {
+      return { ok: false, text: `The persona "${persona}" cannot be used now.` };
+    }
+    validateText(request.prompt);
+    let title: string | undefined;
+    try {
+      title = request.title ? toolChatTitle(request.title) : undefined;
+    } catch {
+      /* Named from its first message instead. */
+    }
+    const doc = await this.createSession(
+      { ...(ownFolder ? {} : { folder: parent.cwd }), persona, ...(persona === parent.persona && parent.model ? { model: parent.model } : {}) },
+      { parent: parent.id, ...(request.report === false ? { report: false as const } : {}), ...(title ? { title } : {}) },
+    );
+    const chat = this.get(doc.id);
+    void chat.start(request.prompt, this.from(parent)).completion.catch(() => {});
+    return {
+      ok: true,
+      text: `Started "${this.titleOf(chat.metadata)}" (id ${doc.id}). It works on its own; ${
+        request.report === false ? "it does not report back (read shows its answer)." : "its answer arrives here as a message when it finishes."
+      }`,
+    };
+  }
+  /** A child's run ended: its answer goes to its parent as a wake, which waits while the parent is busy. */
+  private childEnded(chat: Chat, result: RunResult): void {
+    const { parent, report } = chat.metadata;
+    if (!parent || report === false || !this.accepting) return;
+    try {
+      if (this.storage.read(parent).parent !== undefined) return;
+    } catch {
+      return;
+    }
+    const title = this.titleOf(chat.metadata);
+    const how = result.outcome === "completed" ? "finished" : result.outcome === "cancelled" ? "stopped" : "failed";
+    const answer = result.outcome === "completed" ? chat.lastReply() : undefined;
+    const body = answer ? (answer.length > 8192 ? `${answer.slice(0, 8192)}…\n(cut; read shows all of it)` : answer) : `It ${how} without an answer.`;
+    void this.wakes.deliver(parent, {
+      source: { kind: "session", id: chat.id, label: `${title} · ${how}` },
+      text: `The session "${title}" you started ${how}:\n\n${body}`,
+      due: new Date(this.now()).toISOString(),
+      policy: "queue",
+    });
   }
 
   // ---- Schedules ------------------------------------------------------------------------------

@@ -191,7 +191,7 @@ export class SessionHttp {
     private readonly providers?: ProviderHttp,
     private readonly logger: SafeLogger = silentLogger,
   ) {
-    this.personas = new PersonaHttp(runtime.personas);
+    this.personas = new PersonaHttp(runtime.personas, (target) => runtime.discoverTools(target));
   }
   private secure(request: IncomingMessage) {
     const local = request.socket.localAddress;
