@@ -21,7 +21,8 @@ import type { ProviderSettings } from "./provider-settings.js";
 import { validChoice } from "./provider-storage.js";
 import { RunSlots } from "./run-slots.js";
 import { ChatStorage, validateId } from "./storage.js";
-import { Scheduler } from "./schedules.js";
+import { Schedules } from "./schedules.js";
+import { Wakes } from "./wakes.js";
 import type { ScheduleInput, ScheduleList } from "../../contract/schedule-protocol.js";
 import type { ChatMetadata } from "./storage.js";
 
@@ -53,9 +54,13 @@ export class SessionRuntime {
   private known?: Map<string, PersonaSummary>;
   private readonly appsDir: string;
   private readonly layered = new Map<string, boolean>();
-  /** The schedules of every session, and Pause all. */
-  private readonly scheduler: Scheduler;
-  private schedulesPaused: boolean;
+  /** Delivery of every wake (whatever asks a session to work besides the person), and Pause all. */
+  private readonly wakes: Wakes;
+  /** The clock: every session's schedules, delivered as wakes. */
+  private readonly schedules: Schedules;
+  private unattendedPaused: boolean;
+  private ticker?: ReturnType<typeof setInterval>;
+  private checking?: Promise<void>;
 
   constructor(
     private readonly configuration: RuntimeConfiguration,
@@ -69,7 +74,7 @@ export class SessionRuntime {
     this.appsDir = paths.apps;
     const stored = readSettings(this.settingsPath);
     this.slots = new RunSlots(configuration.maxRunning ?? stored.maxRunning);
-    this.schedulesPaused = stored.schedulesPaused;
+    this.unattendedPaused = stored.unattendedPaused;
     this.timeout = configuration.operationTimeoutMs ?? 10_000;
     const runTimeout = configuration.runTimeoutMs ?? 300_000;
     if (![this.maxLive, this.timeout, runTimeout].every((value) => Number.isSafeInteger(value) && value > 0))
@@ -102,48 +107,60 @@ export class SessionRuntime {
         if (!chat.published) this.storage.discardUnpublished(chat.id);
       },
       schedules: {
-        of: (sessionId) => this.scheduler.of(sessionId),
-        add: (sessionId, input, by) => this.scheduler.add(sessionId, input, by),
-        remove: (id) => this.scheduler.remove(id),
+        of: (sessionId) => this.schedules.of(sessionId),
+        add: (sessionId, input, by) => this.schedules.add(sessionId, input, by),
+        remove: (id) => this.schedules.remove(id),
       },
     };
-    this.scheduler = new Scheduler(
+    const sessions = {
+      sessions: () => this.storage.list().map((metadata) => ({ id: metadata.id, archived: !!metadata.archived })),
+      ids: () => this.storage.ids(),
+      directory: (id: string) => this.storage.directory(id),
+    };
+    this.wakes = new Wakes(
       {
-        sessions: () => this.storage.list().map((metadata) => ({ id: metadata.id, archived: !!metadata.archived })),
-        ids: () => this.storage.ids(),
-        directory: (id) => this.storage.directory(id),
+        ...sessions,
         free: (id) => {
           const chat = this.live.get(id);
           return !chat || (chat.ready && chat.settled);
         },
-        run: async (id, text, marker) => {
+        run: async (id, text, details) => {
           this.admit();
           // A chat whose last run failed starts again from its transcript, as reopening it would.
           const chat = this.live.get(id);
           if (chat?.ready && chat.settled && chat.status === "error") await this.stop(id);
           await this.ensure(id);
           validateText(text);
-          return this.get(id).start(text, marker);
+          return this.get(id).start(text, details);
         },
-        paused: () => this.schedulesPaused,
+        paused: () => this.unattendedPaused,
       },
-      { tickMs: configuration.scheduleTickMs, now: configuration.now, logger },
+      { now: configuration.now, logger, settled: (sessionId, sourceId) => this.schedules.settled(sessionId, sourceId) },
     );
-    this.scheduler.start();
+    this.schedules = new Schedules(sessions, this.wakes, { now: configuration.now, logger });
+    this.wakes.start();
+    this.schedules.start();
+    const tickMs = configuration.wakeTickMs ?? 60_000;
+    if (tickMs > 0) {
+      this.ticker = setInterval(() => void this.checkWakes(), tickMs);
+      this.ticker.unref();
+      // What came due while PiSpark was off is looked at soon after it starts.
+      setTimeout(() => void this.checkWakes(), Math.min(tickMs, 5000)).unref();
+    }
   }
 
   // ---- Settings and the list ------------------------------------------------------------------
 
   /** PiSpark's own settings. */
   settings(): HostSettings {
-    return { maxRunning: this.slots.max, schedulesPaused: this.schedulesPaused };
+    return { maxRunning: this.slots.max, unattendedPaused: this.unattendedPaused };
   }
   /** Saves a settings change; a new run limit applies at once (running chats keep running). */
   updateSettings(input: unknown): HostSettings {
     const settings = { ...this.settings(), ...validSettings(input) };
     writeSettings(this.settingsPath, settings);
     this.slots.setLimit(settings.maxRunning);
-    this.schedulesPaused = settings.schedulesPaused;
+    this.unattendedPaused = settings.unattendedPaused;
     for (const chat of this.live.values()) chat.changed();
     return this.settings();
   }
@@ -400,7 +417,8 @@ export class SessionRuntime {
     if (!this.storage.read(id).archived || this.live.has(id)) throw new RuntimeError("busy");
     this.storage.remove(id);
     this.layered.delete(id);
-    this.scheduler.forget(id);
+    this.schedules.forget(id);
+    this.wakes.forget(id);
   }
 
   // ---- Schedules ------------------------------------------------------------------------------
@@ -409,8 +427,8 @@ export class SessionRuntime {
   listSchedules(): ScheduleList {
     const sessions = new Map(this.storage.list().map((metadata) => [metadata.id, metadata]));
     return {
-      paused: this.schedulesPaused,
-      schedules: this.scheduler.list().flatMap((schedule) => {
+      paused: this.unattendedPaused,
+      schedules: this.schedules.list().flatMap((schedule) => {
         const metadata = sessions.get(schedule.sessionId);
         if (!metadata) return [];
         const { title, persona } = this.summary(metadata, this.live.get(metadata.id));
@@ -423,29 +441,38 @@ export class SessionRuntime {
     if (!input || typeof input !== "object" || typeof input.sessionId !== "string") throw new RuntimeError("invalid-input");
     validateId(input.sessionId);
     const { sessionId, ...rest } = input;
-    return this.scheduler.add(sessionId, rest, "person");
+    return this.schedules.add(sessionId, rest, "person");
   }
   updateSchedule(id: string, input: ScheduleInput) {
-    return this.scheduler.update(id, input);
+    return this.schedules.update(id, input);
   }
   removeSchedule(id: string): void {
-    this.scheduler.remove(id);
+    this.schedules.remove(id);
   }
   /** Run now, with the person watching; refused while the session is busy. */
   runSchedule(id: string): Promise<void> {
     if (!this.accepting) throw new RuntimeError("closed");
-    return this.scheduler.runNow(id);
+    return this.schedules.runNow(id);
   }
-  /** Looks at every schedule now, as the minute check does. */
-  checkSchedules(): Promise<void> {
-    return this.scheduler.tick();
+  /**
+   * The minute check: the clock delivers what is due, then waiting wakes are looked at. Overlapping
+   * calls share one pass.
+   */
+  checkWakes(): Promise<void> {
+    if (!this.accepting) return Promise.resolve();
+    return (this.checking ??= (async () => {
+      await this.schedules.check();
+      await this.wakes.drain();
+    })().finally(() => (this.checking = undefined)));
   }
   async shutdown(): Promise<void> {
     this.accepting = false;
     clearInterval(this.sweeper);
+    if (this.ticker) clearInterval(this.ticker);
     this.unwatchPersonas();
+    this.schedules.shutdown();
     const results = await Promise.allSettled([
-      this.scheduler.shutdown(),
+      this.checking?.catch(() => {}).then(() => this.wakes.shutdown()) ?? this.wakes.shutdown(),
       this.personas.shutdown(),
       ...[...this.live.keys()].map((id) => this.stop(id)),
     ]);

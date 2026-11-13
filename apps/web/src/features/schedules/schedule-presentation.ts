@@ -1,5 +1,6 @@
 import { clockTime, parseCron, shortDate } from "../../../../server/src/contract/cron";
-import type { Schedule, ScheduleRun, ScheduleWhen } from "../../../../server/src/contract/schedule-protocol";
+import type { Schedule, ScheduleWhen } from "../../../../server/src/contract/schedule-protocol";
+import type { WakeRecord } from "../../../../server/src/contract/wake-protocol";
 import { commandError } from "../workspace/session-presentation";
 
 /** The plain choices the form offers; each writes a cron (or, once, a time). */
@@ -89,7 +90,7 @@ export function nextText(schedule: Schedule, paused: boolean, now = new Date()):
 }
 
 /** What happened to a run, in words that do not depend on color. */
-export function runText(run: ScheduleRun, now = new Date()): string {
+export function runText(run: WakeRecord, now = new Date()): string {
   const late = Math.round((new Date(run.at).getTime() - new Date(run.due).getTime()) / 60_000);
   const due = new Date(run.due);
   switch (run.outcome) {
@@ -103,9 +104,11 @@ export function runText(run: ScheduleRun, now = new Date()): string {
     case "cancelled":
       return "Stopped before it finished";
     case "missed":
-      return run.reason === "paused" ? "Missed: schedules were paused" : `Missed: PiSpark wasn’t running (${shortDate(due, now)})`;
+      if (run.reason === "paused") return "Missed: unattended runs were paused";
+      if (run.reason === "full") return "Missed: too many were already waiting";
+      return `Missed: PiSpark wasn’t running (${shortDate(due, now)})`;
     case "limit":
       return "Skipped: the daily limit was reached";
   }
 }
-export const runFailed = (run: ScheduleRun) => run.outcome === "failed";
+export const runFailed = (run: WakeRecord) => run.outcome === "failed";

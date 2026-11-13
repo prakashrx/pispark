@@ -1,7 +1,6 @@
 import { NOTICE_ENTRY, type ExtensionView, type Item, type ItemPart, type StyledLine, type ToolProgress } from "../../../../server/src/contract/protocol";
 import type { Json } from "../../../../server/src/contract/stream-ops";
-import { SCHEDULED_ENTRY } from "../../../../server/src/contract/schedule-protocol";
-import { describeSchedule, shortDate } from "../../../../server/src/contract/cron";
+import { WOKEN_ENTRY, type WakeSource } from "../../../../server/src/contract/wake-protocol";
 import { artifactsOf } from "./tool-views";
 
 /** A clipped part of a finalized item, read on demand. */
@@ -49,8 +48,8 @@ export type Segment =
 export interface Turn {
   key: string;
   user?: Item;
-  /** The message was sent by a schedule, not typed: how it reads ("Scheduled · Every day at 9:00 am · Fri 13 Nov"). */
-  scheduled?: string;
+  /** The message was sent by something other than the person (a wake): how it reads ("Scheduled · Every day at 9:00 am · Fri 13 Nov"). */
+  woken?: string;
   segments: Segment[];
   /** The agent is still working on this turn. */
   running: boolean;
@@ -65,14 +64,13 @@ export function clippedPart(item: Item): PartRef | undefined {
   return part >= 0 && item.id ? { id: item.id, part } : undefined;
 }
 
-/** How a scheduled turn is labelled, from its `SCHEDULED_ENTRY` details. */
-export function scheduledLabel(details: unknown, now = new Date()): string {
-  const { cron, at, due } = (details ?? {}) as { cron?: unknown; at?: unknown; due?: unknown };
-  const when = typeof cron === "string" ? describeSchedule({ cron }, now) : typeof at === "string" ? describeSchedule({ at }, now) : "";
-  const dueDate = typeof due === "string" ? new Date(due) : undefined;
-  // A one-off already says its day; a repeating one says which of its days this was.
-  const day = typeof cron === "string" && dueDate && !Number.isNaN(dueDate.getTime()) ? shortDate(dueDate, now).split(",")[0] : "";
-  return ["Scheduled", when, day].filter(Boolean).join(" · ");
+/** The word for each source of a wake. */
+const WOKEN_BY: Record<WakeSource["kind"], string> = { schedule: "Scheduled" };
+/** How a turn something other than the person sent is labelled, from its `WOKEN_ENTRY` details. */
+export function wokenLabel(details: unknown): string {
+  const { source } = (details ?? {}) as { source?: { kind?: unknown; label?: unknown } };
+  const kind = typeof source?.kind === "string" && Object.hasOwn(WOKEN_BY, source.kind) ? WOKEN_BY[source.kind as WakeSource["kind"]] : "Woken";
+  return [kind, typeof source?.label === "string" ? source.label : ""].filter(Boolean).join(" · ");
 }
 
 /**
@@ -97,8 +95,8 @@ export function buildTurns(
   const turns: Turn[] = [];
   const lastItem = items.at(-1);
   let notice = 0;
-  /** A scheduled run's marker, waiting for the message it sent. */
-  let scheduled: string | undefined;
+  /** A wake's marker, waiting for the message it sent. */
+  let woken: string | undefined;
 
   const current = (): Turn => turns.at(-1) ?? turns[turns.push({ key: "earlier", segments: [], running: false }) - 1]!;
   const emit = (turn: Turn, segment: Segment) => turn.segments.push(segment);
@@ -114,12 +112,12 @@ export function buildTurns(
   for (const item of items) {
     if (item.pos !== undefined) flush(item.pos);
     if (item.role === "user") {
-      turns.push({ key: item.key, user: item, ...(scheduled ? { scheduled } : {}), segments: [], running: false });
-      scheduled = undefined;
+      turns.push({ key: item.key, user: item, ...(woken ? { woken } : {}), segments: [], running: false });
+      woken = undefined;
       continue;
     }
-    if (item.role === "entry" && item.customType === SCHEDULED_ENTRY) {
-      scheduled = scheduledLabel(item.details);
+    if (item.role === "entry" && item.customType === WOKEN_ENTRY) {
+      woken = wokenLabel(item.details);
       continue;
     }
     const turn = current();

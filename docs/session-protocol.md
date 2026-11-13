@@ -44,7 +44,7 @@ Types: `apps/server/src/contract/protocol.ts`, `provider-protocol.ts` and `perso
 | `GET /api/sessions/:uuid/items?before=ID&limit=N` / `?after=ID` | Finalized items on Pi's active branch, oldest first, read straight from Pi's session; bounded by count and bytes; `head` is the session's last entry id, `more` says whether the page was cut |
 | `GET /api/sessions/:uuid/live` | SSE: one `snapshot` of the live document, then `ops` batches (see below). A chat that is not loaded answers one `unloaded` event: open it, then reconnect |
 | `GET /api/sessions/:uuid/items/:id/parts/:n` | An image part's bytes, or with `?offset=` a chunk of a clipped text part |
-| `GET /api/settings` / `POST /api/settings {maxRunning?, schedulesPaused?}` | PiSpark's own settings, saved in `<home>/settings.json`: how many chats may have an agent working at once (1–32, default 8), and Pause all for schedules. A change names only what changes |
+| `GET /api/settings` / `POST /api/settings {maxRunning?, unattendedPaused?}` | PiSpark's own settings, saved in `<home>/settings.json`: how many chats may have an agent working at once (1–32, default 8), and Pause all unattended runs ([wakes](session-runtime.md#wakes)). A change names only what changes |
 | `GET /api/schedules` | `{paused, schedules}`: every [schedule](session-runtime.md#schedules), with its session's title and persona, `next`, `waiting`, `held: "archived"` and its last ten `runs` |
 | `POST /api/schedules {sessionId, cron \| at, prompt, on?, limit?}` | Adds a schedule to a session (201); `invalid-input` for a bad time or prompt, `busy` for an archived session |
 | `POST /api/schedules/:id {cron?, at?, prompt?, on?, limit?}` | Changes some fields; a new time, or switching on, counts from now |

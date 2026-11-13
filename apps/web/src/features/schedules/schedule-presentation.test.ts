@@ -1,7 +1,8 @@
 import { expect, test } from "vitest";
 import { choiceOf, nextText, runText, whenOf, type WhenChoice } from "./schedule-presentation";
-import { buildTurns, scheduledLabel } from "../workspace/chat-turns";
-import { SCHEDULED_ENTRY, type Schedule } from "../../../../server/src/contract/schedule-protocol";
+import { buildTurns, wokenLabel } from "../workspace/chat-turns";
+import type { Schedule } from "../../../../server/src/contract/schedule-protocol";
+import { WOKEN_ENTRY } from "../../../../server/src/contract/wake-protocol";
 
 const now = new Date("2026-11-13T08:00");
 const base: WhenChoice = { repeat: "day", time: "09:00", date: "2026-11-13", weekday: "1", every: "2", cron: "" };
@@ -37,7 +38,8 @@ test("what a run did and when the next one is, in words", () => {
   expect(runText({ due, at: at(4), outcome: "ran", reason: "busy" }, now)).toBe("Waited 4 min for the chat, then ran");
   expect(runText({ due, at: at(120), outcome: "ran", reason: "off" }, now)).toBe("Ran late: PiSpark wasn’t running at 9:00 am");
   expect(runText({ due, at: at(0), outcome: "ran", manual: true }, now)).toBe("Ran now, by hand");
-  expect(runText({ due, at: at(0), outcome: "missed", reason: "paused" }, now)).toBe("Missed: schedules were paused");
+  expect(runText({ due, at: at(0), outcome: "missed", reason: "paused" }, now)).toBe("Missed: unattended runs were paused");
+  expect(runText({ due, at: at(0), outcome: "missed", reason: "full" }, now)).toBe("Missed: too many were already waiting");
   expect(runText({ due, at: at(0), outcome: "limit" }, now)).toBe("Skipped: the daily limit was reached");
   expect(runText({ due, at: at(0), outcome: "failed", error: "busy" }, now)).toMatch(/^Failed: /);
 
@@ -49,18 +51,21 @@ test("what a run did and when the next one is, in words", () => {
   expect(nextText({ ...schedule, waiting: true }, false, now)).toBe("Waiting for the chat to be free");
 });
 
-test("a scheduled run's message is labelled as scheduled in the conversation", () => {
+test("a woken turn's message is labelled with its source in the conversation", () => {
   const due = new Date("2026-11-13T09:00").toISOString();
-  expect(scheduledLabel({ cron: "0 9 * * 1-5", due }, now)).toBe("Scheduled · Every weekday at 9:00 am · Fri 13 Nov");
-  expect(scheduledLabel({ at: due, due }, now)).toBe("Scheduled · Once, Fri 13 Nov, 9:00 am");
+  const source = { kind: "schedule", id: "s", label: "Every day at 9:00 am · Fri 13 Nov" };
+  expect(wokenLabel({ source, due })).toBe("Scheduled · Every day at 9:00 am · Fri 13 Nov");
+  // A source this client does not know still says the turn was not typed.
+  expect(wokenLabel({ source: { kind: "later", id: "x", label: "From elsewhere" }, due })).toBe("Woken · From elsewhere");
+  expect(wokenLabel(undefined)).toBe("Woken");
   const turns = buildTurns(
     [
       { key: "u1", role: "user", parts: [{ type: "text", text: "typed" }] },
-      { key: "m", role: "entry", customType: SCHEDULED_ENTRY, parts: [], details: { schedule: "s", due, cron: "0 9 * * *" } },
+      { key: "m", role: "entry", customType: WOKEN_ENTRY, parts: [], details: { source, due } },
       { key: "u2", role: "user", parts: [{ type: "text", text: "sent by the schedule" }] },
     ],
     { running: false },
   );
-  expect(turns.map((turn) => turn.scheduled)).toEqual([undefined, expect.stringMatching(/^Scheduled · Every day at 9:00 am/)]);
+  expect(turns.map((turn) => turn.woken)).toEqual([undefined, expect.stringMatching(/^Scheduled · Every day at 9:00 am/)]);
   expect(turns.flatMap((turn) => turn.segments)).toEqual([]);
 });

@@ -20,7 +20,7 @@
 
 <div class="space-y-3" bind:this={list}>
   {#if client.schedules.paused}<p role="status" class="text-sm text-muted-foreground">
-      All schedules are paused in Settings → Schedules.
+      Unattended runs are paused in Settings → Schedules.
     </p>{/if}
   {#if schedules.length}
     <ul class="space-y-3" aria-label="Schedules">

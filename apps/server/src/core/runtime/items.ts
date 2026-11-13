@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, SessionEntry, SessionProjection } from "@earendil-works/pi-coding-agent";
 import type { ExtensionRendering } from "../extensions/extension-render.js";
-import { SCHEDULED_ENTRY } from "../../contract/schedule-protocol.js";
+import { WOKEN_ENTRY } from "../../contract/wake-protocol.js";
 import { NOTICE_ENTRY, type Item, type ItemPart, type ItemsPage, type PartPage, type ToolProgress } from "../../contract/protocol.js";
 import type { Json } from "../../contract/stream-ops.js";
 import { RuntimeError } from "./errors.js";
@@ -267,7 +267,7 @@ export class ItemProjector {
       case "custom":
         return (
           entry.customType === NOTICE_ENTRY ||
-          entry.customType === SCHEDULED_ENTRY ||
+          entry.customType === WOKEN_ENTRY ||
           !!this.session.extensionRunner.getEntryRenderer(entry.customType) ||
           this.entryView(entry.customType)
         );
@@ -288,7 +288,7 @@ export class ItemProjector {
       case "branch_summary":
         return { id: entry.id, key: entry.id, role: "summary", parts: parts(entry.summary) };
       case "custom": {
-        if (entry.customType === NOTICE_ENTRY || entry.customType === SCHEDULED_ENTRY)
+        if (entry.customType === NOTICE_ENTRY || entry.customType === WOKEN_ENTRY)
           return { id: entry.id, key: entry.id, role: "entry", customType: entry.customType, parts: [], ...details(entry.data) };
         const body = this.rendering.entry(entry);
         const view = this.entryView(entry.customType);

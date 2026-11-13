@@ -59,9 +59,9 @@ export interface RuntimeConfiguration {
   callTimeoutMs?: number;
   operationTimeoutMs?: number;
   runTimeoutMs?: number;
-  /** How often schedules are looked at (default a minute); 0 looks only when asked (tests). */
-  scheduleTickMs?: number;
-  /** Tests only: the clock schedules go by. */
+  /** How often schedules and waiting wakes are looked at (default a minute); 0 looks only when asked (tests). */
+  wakeTickMs?: number;
+  /** Tests only: the clock schedules and wakes go by. */
   now?: () => number;
 }
 

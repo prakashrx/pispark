@@ -1,44 +1,24 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { nextRun, parseCron } from "../../contract/cron.js";
-import {
-  DEFAULT_DAILY_LIMIT,
-  MAX_RUNS_KEPT,
-  MAX_SCHEDULES_PER_SESSION,
-  type Schedule,
-  type ScheduleInput,
-  type ScheduleRun,
-} from "../../contract/schedule-protocol.js";
+import { describeSchedule, nextRun, parseCron, shortDate } from "../../contract/cron.js";
+import { DEFAULT_DAILY_LIMIT, MAX_SCHEDULES_PER_SESSION, type Schedule, type ScheduleInput } from "../../contract/schedule-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { writeAtomic } from "../personas/store.js";
 import { RuntimeError, runtimeError } from "./errors.js";
-import type { RunResult } from "./chat.js";
+import type { Wake, Wakes } from "./wakes.js";
 
-/** What a scheduled run puts in the session before its prompt (`SCHEDULED_ENTRY`). */
-export interface ScheduledMarker {
-  schedule: string;
-  due: string;
-  cron?: string;
-  at?: string;
-}
-/** What the scheduler needs from the runtime that holds the sessions. */
-export interface ScheduleHost {
+/** What the clock needs from the runtime that holds the sessions. */
+export interface ClockHost {
   /** Every session there is, and whether it is archived. */
   sessions(): { id: string; archived: boolean }[];
   /** The session folders there are, read without loading anything (at start). */
   ids(): string[];
   /** The session's folder, where its `schedules.json` lives beside `chat.json`. */
   directory(sessionId: string): string;
-  /** Whether a prompt could be sent now: the session is not loaded, or loaded with nothing going on. */
-  free(sessionId: string): boolean;
-  /** Loads the session if needed and sends the prompt, which then runs (or waits for a run slot). Throws `busy`. */
-  run(sessionId: string, text: string, marker: ScheduledMarker): Promise<{ completion: Promise<RunResult> }>;
-  /** Pause all, from the host's settings. */
-  paused(): boolean;
 }
 
-/** One schedule as `schedules.json` keeps it. */
+/** One schedule as `schedules.json` keeps it. Its runs are the wakes' records. */
 interface Stored {
   id: string;
   cron?: string;
@@ -48,11 +28,8 @@ interface Stored {
   limit: number;
   createdAt: string;
   by: "person" | "agent";
-  runs: ScheduleRun[];
-  /** The last due time that was dealt with (run, waited for, missed or passed over). */
+  /** The last due time that was dealt with (delivered, missed or passed over). */
   lastDue: string;
-  /** A due run waiting for the session to be free. */
-  waiting?: string;
 }
 
 const MAX_PROMPT = 8 * 1024;
@@ -63,11 +40,11 @@ const CATCH_UP = DAY;
 
 const time = (value: string) => new Date(value).getTime();
 const validTime = (value: unknown): value is string => typeof value === "string" && value.length <= 40 && !Number.isNaN(time(value));
-const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
 
-function validStored(value: unknown): value is Stored {
+/** A stored schedule, keeping only what is known of it. */
+function readStored(value: unknown): Stored | undefined {
   const s = value as Stored;
-  return (
+  const valid =
     !!s &&
     typeof s === "object" &&
     typeof s.id === "string" &&
@@ -84,29 +61,28 @@ function validStored(value: unknown): value is Stored {
     s.limit <= MAX_LIMIT &&
     validTime(s.createdAt) &&
     (s.by === "person" || s.by === "agent") &&
-    Array.isArray(s.runs) &&
-    validTime(s.lastDue) &&
-    (s.waiting === undefined || validTime(s.waiting))
-  );
+    validTime(s.lastDue);
+  if (!valid) return undefined;
+  const { id, cron, at, prompt, on, limit, createdAt, by, lastDue } = s;
+  return { id, ...(cron !== undefined ? { cron } : { at }), prompt, on, limit, createdAt, by, lastDue };
 }
 
 /**
- * The schedules of every session: kept in each session's folder, indexed in memory, checked once a
- * minute. A due schedule sends its prompt to its session; while the session is busy one run waits for
- * it; a run missed while PiSpark was off is sent once if it was due within a day. Each schedule keeps
- * its last ten runs. No catch-up backlog, nothing for archived sessions, nothing while paused.
+ * The clock: every session's schedules, kept in each session's folder and checked once a minute. A
+ * schedule decides only when it is due and what it says; delivery (waiting while busy, the daily
+ * limit, Pause all, records) is the wakes'. Only the latest due time counts; a run missed while
+ * PiSpark was off is sent once if it was due within a day; archived sessions' schedules pass their
+ * times without catching up.
  */
-export class Scheduler {
+export class Schedules {
   private readonly index = new Map<string, Stored[]>();
-  private readonly running = new Set<string>();
-  private timer?: ReturnType<typeof setInterval>;
-  private ticking?: Promise<void>;
   private readonly startedAt: number;
   private closed = false;
 
   constructor(
-    private readonly host: ScheduleHost,
-    private readonly options: { tickMs?: number; now?: () => number; logger?: SafeLogger } = {},
+    private readonly host: ClockHost,
+    private readonly wakes: Wakes,
+    private readonly options: { now?: () => number; logger?: SafeLogger } = {},
   ) {
     this.startedAt = this.now();
   }
@@ -118,7 +94,7 @@ export class Scheduler {
     return this.options.logger ?? silentLogger;
   }
 
-  /** Reads every session's schedules and starts checking them (unless `tickMs` is 0). */
+  /** Reads every session's schedules. */
   start(): void {
     for (const id of this.host.ids()) {
       const path = join(this.host.directory(id), "schedules.json");
@@ -126,24 +102,15 @@ export class Scheduler {
       try {
         const file = JSON.parse(readFileSync(path, "utf8")) as { version?: number; schedules?: unknown[] };
         if (file.version !== 1 || !Array.isArray(file.schedules)) throw new Error();
-        const schedules = file.schedules.filter(validStored).slice(0, MAX_SCHEDULES_PER_SESSION);
+        const schedules = file.schedules.flatMap((s) => readStored(s) ?? []).slice(0, MAX_SCHEDULES_PER_SESSION);
         if (schedules.length) this.index.set(id, schedules);
       } catch {
         this.logger.event("schedule.unreadable", { sessionId: id, outcome: "failed", code: "storage" });
       }
     }
-    const tickMs = this.options.tickMs ?? 60_000;
-    if (tickMs > 0) {
-      this.timer = setInterval(() => void this.tick(), tickMs);
-      this.timer.unref();
-      // Runs missed while PiSpark was off are looked at soon after it starts.
-      setTimeout(() => void this.tick(), Math.min(tickMs, 5000)).unref();
-    }
   }
-  async shutdown(): Promise<void> {
+  shutdown(): void {
     this.closed = true;
-    if (this.timer) clearInterval(this.timer);
-    await this.ticking?.catch(() => {});
   }
 
   // ---- What clients read and change -----------------------------------------------------------
@@ -153,13 +120,14 @@ export class Scheduler {
     return [...this.index].flatMap(([sessionId, schedules]) => schedules.map((s) => this.view(sessionId, s, archived.has(sessionId))));
   }
   private view(sessionId: string, s: Stored, archived: boolean): Schedule {
-    const next = s.on && !archived && !this.host.paused() ? this.next(s) : undefined;
-    const { lastDue: _lastDue, waiting, ...rest } = s;
+    const next = s.on && !archived && !this.wakes.paused() ? this.next(s) : undefined;
+    const { lastDue: _lastDue, ...rest } = s;
     return {
       ...structuredClone(rest),
       sessionId,
+      runs: this.wakes.records(sessionId, s.id),
       ...(next ? { next } : {}),
-      ...(waiting && !archived ? { waiting: true as const } : {}),
+      ...(this.wakes.waiting(sessionId, s.id) && !archived ? { waiting: true as const } : {}),
       ...(archived ? { held: "archived" as const } : {}),
     };
   }
@@ -205,7 +173,7 @@ export class Scheduler {
     const schedules = this.index.get(sessionId) ?? [];
     if (schedules.length >= MAX_SCHEDULES_PER_SESSION) throw new RuntimeError("limit");
     const now = new Date(this.now()).toISOString();
-    const schedule: Stored = { id: randomUUID(), ...valid, createdAt: now, by, runs: [], lastDue: now };
+    const schedule: Stored = { id: randomUUID(), ...valid, createdAt: now, by, lastDue: now };
     this.save(sessionId, [...schedules, schedule]);
     this.logger.event("schedule.add", { sessionId, outcome: "completed" });
     return this.view(sessionId, schedule, false);
@@ -216,12 +184,8 @@ export class Scheduler {
     const valid = this.validInput(input, schedule);
     const restart = input.cron !== undefined || input.at !== undefined || (valid.on && !schedule.on);
     const { cron: _cron, at: _at, ...kept } = schedule;
-    const changed: Stored = {
-      ...kept,
-      ...valid,
-      ...(restart ? { lastDue: new Date(this.now()).toISOString() } : {}),
-    };
-    if (restart || !valid.on) delete changed.waiting;
+    const changed: Stored = { ...kept, ...valid, ...(restart ? { lastDue: new Date(this.now()).toISOString() } : {}) };
+    if (restart || !valid.on) this.wakes.cancel(sessionId, id);
     this.replace(sessionId, changed);
     return this.view(sessionId, changed, this.archived(sessionId));
   }
@@ -236,23 +200,22 @@ export class Scheduler {
   /** Run now, with the person watching: refused while the session is busy or archived. */
   async runNow(id: string): Promise<void> {
     const { sessionId, schedule } = this.find(id);
-    if (this.archived(sessionId)) throw new RuntimeError("busy");
-    if (this.running.has(id) || !this.host.free(sessionId)) throw new RuntimeError("busy");
-    await this.fire(sessionId, schedule, new Date(this.now()).toISOString(), { manual: true });
+    await this.wakes.runNow(sessionId, this.wake(schedule, new Date(this.now()).toISOString()));
   }
   /** The schedules of one session, for its agent. */
   of(sessionId: string): Schedule[] {
     return (this.index.get(sessionId) ?? []).map((s) => this.view(sessionId, s, false));
   }
+  /** A schedule's run ended: a one-off whose time has been dealt with goes. */
+  settled(sessionId: string, id: string): void {
+    const schedule = this.index.get(sessionId)?.find((s) => s.id === id);
+    if (schedule) this.tidy(sessionId, schedule);
+  }
 
   // ---- Checking -------------------------------------------------------------------------------
 
-  /** Looks at every schedule once; overlapping calls share one pass. */
-  tick(): Promise<void> {
-    if (this.closed) return Promise.resolve();
-    return (this.ticking ??= this.check().finally(() => (this.ticking = undefined)));
-  }
-  private async check(): Promise<void> {
+  /** Looks at every schedule once, delivering what is due. */
+  async check(): Promise<void> {
     const now = this.now();
     const sessions = new Map(this.host.sessions().map((s) => [s.id, s.archived]));
     for (const [sessionId, schedules] of [...this.index]) {
@@ -285,87 +248,30 @@ export class Scheduler {
     return latest.toISOString();
   }
   private async consider(sessionId: string, s: Stored, now: number, archived: boolean): Promise<void> {
-    if (this.running.has(s.id)) return;
     const due = this.due(s, now);
+    if (due) this.replace(sessionId, (s = { ...s, lastDue: due }));
     // Archived or switched off: time passes without catching up later.
-    if (archived || !s.on) {
-      const { waiting, ...rest } = s;
-      if (due || waiting) this.replace(sessionId, { ...rest, lastDue: due ?? s.lastDue });
-      return;
-    }
-    if (s.waiting) {
-      const waited = s.waiting;
-      if (due) this.replace(sessionId, (s = { ...s, lastDue: due }));
-      if (this.host.paused() || !this.host.free(sessionId)) return;
-      await this.fire(sessionId, s, waited, { reason: "busy" });
-      return;
-    }
-    if (!due) return;
-    const dealt = { ...s, lastDue: due };
-    if (this.host.paused()) return this.finish(sessionId, dealt, { due, outcome: "missed", reason: "paused" });
-    if (now - time(due) > CATCH_UP) return this.finish(sessionId, dealt, { due, outcome: "missed", reason: "off" });
-    if (this.ranToday(s, now) >= s.limit) return this.finish(sessionId, dealt, { due, outcome: "limit" });
-    if (!this.host.free(sessionId)) {
-      this.replace(sessionId, { ...dealt, waiting: due });
-      return;
-    }
-    await this.fire(sessionId, dealt, due, time(due) < this.startedAt ? { reason: "off" } : {});
+    if (archived || !s.on) this.wakes.cancel(sessionId, s.id);
+    else if (due && now - time(due) > CATCH_UP) this.wakes.note(sessionId, s.id, { due, outcome: "missed", reason: "off" });
+    else if (due) await this.wakes.deliver(sessionId, this.wake(s, due, time(due) < this.startedAt));
+    this.tidy(sessionId, s);
   }
-  private ranToday(s: Stored, now: number): number {
-    const today = new Date(now);
-    return s.runs.filter((run) => ["ran", "failed", "cancelled"].includes(run.outcome) && sameDay(new Date(run.at), today)).length;
+  private wake(s: Stored, due: string, late = false): Wake {
+    const now = new Date(this.now());
+    // A one-off already says its day; a repeating one says which of its days this was.
+    const label = [describeSchedule(s, now), s.cron !== undefined ? shortDate(new Date(due), now).split(",")[0] : ""].filter(Boolean).join(" · ");
+    return {
+      source: { kind: "schedule", id: s.id, label },
+      text: s.prompt,
+      due,
+      policy: "latest",
+      limit: s.limit,
+      ...(late ? { late: true as const } : {}),
+    };
   }
-  /**
-   * Sends the prompt. The run is recorded when it ends; a one-off schedule goes once its run is done.
-   * A session that turned busy meanwhile makes the run wait (Run now is refused instead).
-   */
-  private async fire(sessionId: string, s: Stored, due: string, how: { reason?: "busy" | "off"; manual?: true }): Promise<void> {
-    const { waiting: _waiting, ...current } = s;
-    this.replace(sessionId, current);
-    this.running.add(s.id);
-    const at = new Date(this.now()).toISOString();
-    let completion: Promise<RunResult>;
-    try {
-      ({ completion } = await this.host.run(sessionId, s.prompt, {
-        schedule: s.id,
-        due,
-        ...(s.cron !== undefined ? { cron: s.cron } : { at: s.at }),
-      }));
-    } catch (error) {
-      this.running.delete(s.id);
-      const code = runtimeError(error, "execution").code;
-      if (code === "busy" && !how.manual) {
-        this.replace(sessionId, { ...current, waiting: due });
-        return;
-      }
-      if (how.manual) throw error;
-      this.finish(sessionId, current, { due, at, outcome: "failed", error: code });
-      return;
-    }
-    this.logger.event("schedule.run", { sessionId, outcome: "completed" });
-    void completion
-      .then(
-        (result) => ({
-          outcome: result.outcome === "completed" ? ("ran" as const) : result.outcome === "cancelled" ? ("cancelled" as const) : ("failed" as const),
-          ...(result.error ? { error: result.error } : {}),
-        }),
-        (error: unknown) => ({ outcome: "failed" as const, error: runtimeError(error, "execution").code }),
-      )
-      .then((result) => {
-        this.running.delete(s.id);
-        const latest = this.index.get(sessionId)?.find((x) => x.id === s.id);
-        if (!latest) return;
-        this.finish(sessionId, latest, { due, at, ...result, ...(how.reason ? { reason: how.reason } : {}), ...(how.manual ? { manual: true as const } : {}) }, !how.manual);
-      });
-  }
-  /** Records a run; a one-off schedule whose time has been dealt with is removed. */
-  private finish(sessionId: string, s: Stored, run: Omit<ScheduleRun, "at"> & { at?: string }, done = true): void {
-    const record: ScheduleRun = { ...run, at: run.at ?? new Date(this.now()).toISOString() };
-    if (s.at !== undefined && done && time(s.lastDue) >= time(s.at)) {
-      this.drop(sessionId, s.id);
-      return;
-    }
-    this.replace(sessionId, { ...s, runs: [record, ...s.runs].slice(0, MAX_RUNS_KEPT) });
+  /** A one-off whose time has been dealt with goes once nothing of it is waiting or running. */
+  private tidy(sessionId: string, s: Stored): void {
+    if (s.at !== undefined && time(s.lastDue) >= time(s.at) && !this.wakes.active(sessionId, s.id)) this.drop(sessionId, s.id);
   }
 
   // ---- Storage --------------------------------------------------------------------------------
@@ -382,19 +288,17 @@ export class Scheduler {
     );
   }
   private drop(sessionId: string, id: string): void {
+    const schedules = this.index.get(sessionId) ?? [];
+    if (!schedules.some((s) => s.id === id)) return;
     this.save(
       sessionId,
-      (this.index.get(sessionId) ?? []).filter((s) => s.id !== id),
+      schedules.filter((s) => s.id !== id),
     );
+    this.wakes.forgetSource(sessionId, id);
   }
   private save(sessionId: string, schedules: Stored[]): void {
-    const directory = this.host.directory(sessionId);
-    if (!existsSync(directory)) {
-      this.index.delete(sessionId);
-      throw new RuntimeError("not-found");
-    }
     try {
-      writeAtomic(join(directory, "schedules.json"), JSON.stringify({ version: 1, schedules }, null, 2) + "\n");
+      writeAtomic(join(this.host.directory(sessionId), "schedules.json"), JSON.stringify({ version: 1, schedules }, null, 2) + "\n");
     } catch {
       throw new RuntimeError("storage");
     }

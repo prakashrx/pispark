@@ -4,7 +4,7 @@ import type { HostSettings } from "../../contract/protocol.js";
 import { RuntimeError } from "./errors.js";
 
 /** PiSpark's own settings, in `<home>/settings.json`. Missing or unreadable values use the defaults. */
-export const DEFAULT_SETTINGS: HostSettings = { maxRunning: 8, schedulesPaused: false };
+export const DEFAULT_SETTINGS: HostSettings = { maxRunning: 8, unattendedPaused: false };
 export const MAX_RUNNING = 32;
 
 const validRunning = (value: unknown): value is number =>
@@ -16,7 +16,7 @@ export function readSettings(path: string): HostSettings {
     const value = JSON.parse(readFileSync(path, "utf8")) as Partial<HostSettings>;
     return {
       maxRunning: validRunning(value.maxRunning) ? value.maxRunning : DEFAULT_SETTINGS.maxRunning,
-      schedulesPaused: value.schedulesPaused === true,
+      unattendedPaused: value.unattendedPaused === true,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -30,14 +30,14 @@ export function validSettings(value: unknown): Partial<HostSettings> {
   const keys = Object.keys(change);
   if (
     !keys.length ||
-    keys.some((key) => key !== "maxRunning" && key !== "schedulesPaused") ||
+    keys.some((key) => key !== "maxRunning" && key !== "unattendedPaused") ||
     ("maxRunning" in change && !validRunning(change.maxRunning)) ||
-    ("schedulesPaused" in change && typeof change.schedulesPaused !== "boolean")
+    ("unattendedPaused" in change && typeof change.unattendedPaused !== "boolean")
   )
     throw new RuntimeError("invalid-input");
   return {
     ...(change.maxRunning !== undefined ? { maxRunning: change.maxRunning } : {}),
-    ...(change.schedulesPaused !== undefined ? { schedulesPaused: change.schedulesPaused } : {}),
+    ...(change.unattendedPaused !== undefined ? { unattendedPaused: change.unattendedPaused } : {}),
   };
 }
 

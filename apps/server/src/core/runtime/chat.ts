@@ -23,8 +23,7 @@ import type { SessionChange } from "./observation.js";
 import type { ProviderSettings } from "./provider-settings.js";
 import type { RunSlots } from "./run-slots.js";
 import type { ChatMetadata, ChatStorage } from "./storage.js";
-import { SCHEDULED_ENTRY } from "../../contract/schedule-protocol.js";
-import type { ScheduledMarker } from "./schedules.js";
+import { WOKEN_ENTRY, type WokenDetails } from "../../contract/wake-protocol.js";
 import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
 import { describeSchedule, parseCron } from "../../contract/cron.js";
 import { SCHEDULE_CHANNEL, validMessage, type ScheduleMessage } from "./schedule-tool.js";
@@ -567,7 +566,7 @@ export class Chat {
    * Sends a prompt: it runs now if a run slot is free, else it waits for one in order. A waiting
    * prompt is saved with the chat, so a restart keeps it.
    */
-  start(text: string, marker?: ScheduledMarker): RunHandle {
+  start(text: string, marker?: WokenDetails): RunHandle {
     validateText(text);
     if (!this.host.accepting()) throw new RuntimeError("closed");
     this.loaded();
@@ -590,7 +589,7 @@ export class Chat {
       this.host.slots.release(this.id);
     }
   }
-  private enqueue(text: string, restored = false, marker?: ScheduledMarker): Promise<RunResult> {
+  private enqueue(text: string, restored = false, marker?: WokenDetails): Promise<RunResult> {
     const metadata = { ...this.metadata, queued: text };
     // A waiting first message already names the chat, so the list can tell queued chats apart.
     this.firstTitle(metadata, text);
@@ -687,11 +686,11 @@ export class Chat {
     };
     return { run, settle };
   }
-  /** Runs a prompt; the chat holds a run slot. A scheduled run says so in the session first. */
-  private begin(text: string, marker?: ScheduledMarker): Promise<RunResult> {
+  /** Runs a prompt; the chat holds a run slot. A wake says what woke it in the session first. */
+  private begin(text: string, marker?: WokenDetails): Promise<RunResult> {
     const session = this.loaded().session;
     const { settle } = this.mark(text);
-    if (marker) session.sessionManager.appendCustomEntry(SCHEDULED_ENTRY, marker);
+    if (marker) session.sessionManager.appendCustomEntry(WOKEN_ENTRY, marker);
     this.runDone = (async (): Promise<RunResult> => {
       try {
         // The persona's prompts work as /commands, as in terminal Pi. A cancel that arrives while Pi

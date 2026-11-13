@@ -1,11 +1,11 @@
 <script lang="ts">
   import Icon from "../../lib/ui/Icon.svelte";
-  /** Your message, or (`scheduled`) the one a schedule sent for you, labelled as such. */
-  let { text, scheduled }: { text: string; scheduled?: string } = $props();
+  /** Your message, or (`woken`) one something else sent, such as a schedule, labelled as such. */
+  let { text, woken }: { text: string; woken?: string } = $props();
 </script>
 
 <div class="flex flex-col items-end gap-1.5" data-purpose="user-turn">
-  {#if scheduled}<p class="scheduled"><Icon name="clock" class="h-3.5 w-3.5" /><span>{scheduled}</span></p>{/if}
+  {#if woken}<p class="woken"><Icon name="clock" class="h-3.5 w-3.5" /><span>{woken}</span></p>{/if}
   <div class="user-bubble">
     {text}
   </div>
@@ -24,7 +24,7 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  .scheduled {
+  .woken {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;

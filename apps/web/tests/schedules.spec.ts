@@ -59,9 +59,9 @@ fresh("a chat's schedules: add from Chat info, run now, switch off, see them in 
   const all = page.getByRole("list", { name: "All schedules" }).getByRole("listitem");
   await expect(all).toHaveCount(1);
   await expect(all.getByRole("button", { name: "daily digest" })).toBeVisible();
-  await page.getByRole("switch", { name: "Pause all schedules" }).click();
-  await expect(page.getByText("Paused: no schedule runs.")).toBeVisible();
-  expect((await (await page.request.get("/api/settings")).json()).schedulesPaused).toBe(true);
+  await page.getByRole("switch", { name: "Pause all unattended runs" }).click();
+  await expect(page.getByText("Paused: nothing runs unless you ask.")).toBeVisible();
+  expect((await (await page.request.get("/api/settings")).json()).unattendedPaused).toBe(true);
 
   // Delete asks first; Escape keeps it; Delete removes it.
   await all.getByRole("button", { name: "Delete" }).click();

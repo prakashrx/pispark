@@ -141,13 +141,13 @@ test("the run limit is a setting: saved in the data folder, applied at once, val
   };
   try {
     const runtime = make();
-    assert.deepEqual(runtime.settings(), { maxRunning: 8, schedulesPaused: false });
-    assert.deepEqual(runtime.updateSettings({ maxRunning: 1 }), { maxRunning: 1, schedulesPaused: false });
-    assert.deepEqual(JSON.parse(await readFile(join(h.home, "settings.json"), "utf8")), { maxRunning: 1, schedulesPaused: false });
+    assert.deepEqual(runtime.settings(), { maxRunning: 8, unattendedPaused: false });
+    assert.deepEqual(runtime.updateSettings({ maxRunning: 1 }), { maxRunning: 1, unattendedPaused: false });
+    assert.deepEqual(JSON.parse(await readFile(join(h.home, "settings.json"), "utf8")), { maxRunning: 1, unattendedPaused: false });
     // A change names only what changes; Pause all keeps the run limit.
-    assert.deepEqual(runtime.updateSettings({ schedulesPaused: true }), { maxRunning: 1, schedulesPaused: true });
-    assert.deepEqual(runtime.updateSettings({ schedulesPaused: false }), { maxRunning: 1, schedulesPaused: false });
-    for (const bad of [{ maxRunning: 0 }, { maxRunning: 33 }, { maxRunning: 1.5 }, { maxRunning: 2, extra: 1 }, { schedulesPaused: "yes" }, {}, null])
+    assert.deepEqual(runtime.updateSettings({ unattendedPaused: true }), { maxRunning: 1, unattendedPaused: true });
+    assert.deepEqual(runtime.updateSettings({ unattendedPaused: false }), { maxRunning: 1, unattendedPaused: false });
+    for (const bad of [{ maxRunning: 0 }, { maxRunning: 33 }, { maxRunning: 1.5 }, { maxRunning: 2, extra: 1 }, { unattendedPaused: "yes" }, {}, null])
       assert.throws(() => runtime.updateSettings(bad), (error: { code?: string }) => error.code === "invalid-input");
 
     // With one slot, a second prompt waits; raising the limit starts it.
@@ -165,7 +165,7 @@ test("the run limit is a setting: saved in the data folder, applied at once, val
     await runtime.shutdown();
 
     // A new start reads the saved setting.
-    assert.deepEqual(make().settings(), { maxRunning: 2, schedulesPaused: false });
+    assert.deepEqual(make().settings(), { maxRunning: 2, unattendedPaused: false });
   } finally {
     await Promise.allSettled(runtimes.map((r) => r.shutdown()));
     await h.remove();
@@ -183,12 +183,12 @@ test("settings over HTTP: read, change, refuse a bad value", async () => {
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const post = (body: unknown) =>
       fetch(`${base}/api/settings`, { method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify(body) });
-    assert.deepEqual(await (await fetch(`${base}/api/settings`)).json(), { maxRunning: 8, schedulesPaused: false });
+    assert.deepEqual(await (await fetch(`${base}/api/settings`)).json(), { maxRunning: 8, unattendedPaused: false });
     const saved = await post({ maxRunning: 3 });
     assert.equal(saved.status, 200);
-    assert.deepEqual(await saved.json(), { maxRunning: 3, schedulesPaused: false });
+    assert.deepEqual(await saved.json(), { maxRunning: 3, unattendedPaused: false });
     assert.equal((await post({ maxRunning: "3" })).status, 400);
-    assert.deepEqual(await (await fetch(`${base}/api/settings`)).json(), { maxRunning: 3, schedulesPaused: false });
+    assert.deepEqual(await (await fetch(`${base}/api/settings`)).json(), { maxRunning: 3, unattendedPaused: false });
   } finally {
     await http.shutdown();
     server.closeAllConnections();

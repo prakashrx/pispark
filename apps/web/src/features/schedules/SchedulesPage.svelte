@@ -13,7 +13,7 @@
   async function pause(paused: boolean) {
     error = "";
     try {
-      await client.saveSettings({ schedulesPaused: paused });
+      await client.saveSettings({ unattendedPaused: paused });
     } catch {
       error = "Couldn’t save. Try again.";
     }
@@ -26,11 +26,11 @@
   description="Every schedule in your chats. Each run is a turn in its chat, with that chat’s persona and tools."
   label="Schedules settings"
 >
-  <Section title="Pause all" description="Nothing runs while paused. Runs that come due are recorded as missed.">
+  <Section title="Pause all" description="While paused, nothing runs unless you ask. A schedule’s runs that come due are recorded as missed.">
     <div class="settings-card mt-4">
-      <FieldRow label="Pause all schedules" description={schedules.paused ? "Paused: no schedule runs." : "Schedules run at their times."}>
+      <FieldRow label="Pause all unattended runs" description={schedules.paused ? "Paused: nothing runs unless you ask." : "Schedules run at their times."}>
         <Toggle
-          label="Pause all schedules"
+          label="Pause all unattended runs"
           checked={schedules.paused}
           onchange={(event) => void pause((event.currentTarget as HTMLInputElement).checked)}
         />
