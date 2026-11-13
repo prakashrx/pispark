@@ -15,6 +15,10 @@ const events = [
   "session.settle",
   "session.cancel",
   "session.failure",
+  "schedule.add",
+  "schedule.run",
+  "schedule.failure",
+  "schedule.unreadable",
 ] as const;
 export type LogEvent = (typeof events)[number];
 const codes = [

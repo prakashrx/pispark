@@ -1,5 +1,7 @@
 import { NOTICE_ENTRY, type ExtensionView, type Item, type ItemPart, type StyledLine, type ToolProgress } from "../../../../server/src/contract/protocol";
 import type { Json } from "../../../../server/src/contract/stream-ops";
+import { SCHEDULED_ENTRY } from "../../../../server/src/contract/schedule-protocol";
+import { describeSchedule, shortDate } from "../../../../server/src/contract/cron";
 import { artifactsOf } from "./tool-views";
 
 /** A clipped part of a finalized item, read on demand. */
@@ -47,6 +49,8 @@ export type Segment =
 export interface Turn {
   key: string;
   user?: Item;
+  /** The message was sent by a schedule, not typed: how it reads ("Scheduled · Every day at 9:00 am · Fri 13 Nov"). */
+  scheduled?: string;
   segments: Segment[];
   /** The agent is still working on this turn. */
   running: boolean;
@@ -59,6 +63,16 @@ export const itemText = (item: Item) => item.parts.map(textOf).join("\n");
 export function clippedPart(item: Item): PartRef | undefined {
   const part = item.parts.findIndex((p) => (p.type === "text" || p.type === "thinking") && p.size !== undefined);
   return part >= 0 && item.id ? { id: item.id, part } : undefined;
+}
+
+/** How a scheduled turn is labelled, from its `SCHEDULED_ENTRY` details. */
+export function scheduledLabel(details: unknown, now = new Date()): string {
+  const { cron, at, due } = (details ?? {}) as { cron?: unknown; at?: unknown; due?: unknown };
+  const when = typeof cron === "string" ? describeSchedule({ cron }, now) : typeof at === "string" ? describeSchedule({ at }, now) : "";
+  const dueDate = typeof due === "string" ? new Date(due) : undefined;
+  // A one-off already says its day; a repeating one says which of its days this was.
+  const day = typeof cron === "string" && dueDate && !Number.isNaN(dueDate.getTime()) ? shortDate(dueDate, now).split(",")[0] : "";
+  return ["Scheduled", when, day].filter(Boolean).join(" · ");
 }
 
 /**
@@ -83,6 +97,8 @@ export function buildTurns(
   const turns: Turn[] = [];
   const lastItem = items.at(-1);
   let notice = 0;
+  /** A scheduled run's marker, waiting for the message it sent. */
+  let scheduled: string | undefined;
 
   const current = (): Turn => turns.at(-1) ?? turns[turns.push({ key: "earlier", segments: [], running: false }) - 1]!;
   const emit = (turn: Turn, segment: Segment) => turn.segments.push(segment);
@@ -98,7 +114,12 @@ export function buildTurns(
   for (const item of items) {
     if (item.pos !== undefined) flush(item.pos);
     if (item.role === "user") {
-      turns.push({ key: item.key, user: item, segments: [], running: false });
+      turns.push({ key: item.key, user: item, ...(scheduled ? { scheduled } : {}), segments: [], running: false });
+      scheduled = undefined;
+      continue;
+    }
+    if (item.role === "entry" && item.customType === SCHEDULED_ENTRY) {
+      scheduled = scheduledLabel(item.details);
       continue;
     }
     const turn = current();

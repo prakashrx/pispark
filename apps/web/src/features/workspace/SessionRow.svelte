@@ -4,6 +4,7 @@
   import SessionMark from "./SessionMark.svelte";
   import { useSessions } from "./session-client.svelte";
   import { canArchive, sessionStatus } from "./session-presentation";
+  import { describeSchedule } from "../../../../server/src/contract/cron";
   import type { SessionInfo } from "../../../../server/src/contract/protocol";
   /**
    * A session in the sidebar: its name opens it, its mark says its state, and Archive (shown on
@@ -24,6 +25,7 @@
   const client = useSessions();
   // Nothing to offer while the session runs, waits or is queued: its mark says so.
   const archivable = $derived(canArchive(session));
+  const scheduled = $derived(client.schedules.active(session.id));
   let row = $state<HTMLElement>();
 
   async function archive() {
@@ -47,6 +49,9 @@
     aria-current={session.id === client.selected ? "page" : undefined}
     onclick={() => client.select(session.id)}>{@render children()}</a
   >
+  {#if scheduled}<span class="scheduled" title={`Scheduled: ${describeSchedule(scheduled)}`}
+      ><Icon name="clock" class="h-3.5 w-3.5" /><span class="sr-only">Scheduled: {describeSchedule(scheduled)}</span></span
+    >{/if}
   <SessionMark status={sessionStatus(session)} />
   {#if archivable}<button type="button" class="row-action" aria-label={`Archive ${name}`} title="Archive" onclick={archive}
       ><Icon name="archive" class="h-4 w-4" /></button
@@ -56,6 +61,12 @@
 <style>
   .session-row {
     position: relative;
+  }
+  .scheduled {
+    flex-shrink: 0;
+    display: inline-grid;
+    place-items: center;
+    color: var(--subtle-foreground);
   }
   .session-row:focus-within {
     background: var(--sidebar-hover);

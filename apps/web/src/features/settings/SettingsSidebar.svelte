@@ -52,6 +52,8 @@
             <span class="flex-1">{link.label}</span>
             {#if link.page === "persona" && sessions.personas.items.length}<span
                 class="text-xs text-subtle">{sessions.personas.items.length}</span
+              >{:else if link.page === "schedules" && sessions.schedules.schedules.length}<span
+                class="text-xs text-subtle">{sessions.schedules.schedules.length}</span
               >{/if}
           </a>
           {#if link.page === "persona" && page === "persona" && sessions.personas.items.length}

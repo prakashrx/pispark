@@ -15,7 +15,9 @@ beforeEach(() => {
                 ? { personas: [] }
                 : url === "/api/providers"
                   ? { providers: [], defaultModel: null, networkBlocked: false }
-                  : { sessions: [], truncated: false },
+                  : url === "/api/schedules"
+                    ? { paused: false, schedules: [] }
+                    : { sessions: [], truncated: false },
           ),
         ),
     ),

@@ -6,6 +6,7 @@
   import GeneralSettings from "./features/settings/GeneralSettings.svelte";
   import PersonaPage from "./features/persona/PersonaPage.svelte";
   import Sources from "./features/sources/Sources.svelte";
+  import SchedulesPage from "./features/schedules/SchedulesPage.svelte";
   import { useSessions } from "./features/workspace/session-client.svelte";
   let { page }: { page: Page } = $props();
   const sessions = useSessions();
@@ -25,6 +26,8 @@
     <GeneralSettings />
   {:else if page === "persona"}
     <PersonaPage />
+  {:else if page === "schedules"}
+    <SchedulesPage />
   {:else}
     <Sources />
   {/if}

@@ -145,6 +145,14 @@ export class ChatStorage {
       throw new RuntimeError("storage");
     }
   }
+  /** The chat folders there are, by name; nothing is read or cached. */
+  ids(): string[] {
+    try {
+      return readdirSync(this.root).filter((id) => UUID.test(id));
+    } catch {
+      return [];
+    }
+  }
   /** Removes a chat for good: its folder holds everything about it (chat.json, Pi's transcript, its persona layer). */
   remove(id: string): void {
     const dir = this.directory(id);

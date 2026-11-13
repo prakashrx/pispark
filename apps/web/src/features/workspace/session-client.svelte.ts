@@ -6,6 +6,7 @@ import { forgetViewChoice, Session } from "./session.svelte";
 import { CommandFailed, CommandUncertainty, Transport } from "./transport";
 import { ProviderClient } from "../settings/provider-client.svelte";
 import { PersonaClient } from "../persona/persona-client.svelte";
+import { ScheduleClient } from "../schedules/schedule-client.svelte";
 const context = Symbol("session-client");
 
 /** How many chats stay in memory as they were last shown, so opening one again shows it at once. */
@@ -48,6 +49,8 @@ export class SessionClient {
     return this.asking || !!this.current?.sending;
   }
   private readonly transport = new Transport();
+  /** Every schedule, read with the session list. */
+  readonly schedules = new ScheduleClient(this.transport);
   /** Chats that have been opened, least recently shown first. */
   private readonly opened = new Map<string, Session>();
   private disposed = false;
@@ -125,6 +128,7 @@ export class SessionClient {
     }>("/api/sessions");
     this.sessions = result.sessions;
     this.archivedCount = result.archived ?? 0;
+    void this.schedules.refresh().catch(() => {});
     if (this.archived && this.archived.length !== this.archivedCount) void this.loadArchived();
     const apps = new Set(this.personas.items.filter((persona) => persona.home).map((persona) => persona.id));
     if (this.personas.items.length && result.sessions.some((session) => !!session.persona.home !== apps.has(session.persona.id)))
@@ -192,7 +196,7 @@ export class SessionClient {
       this.sessions = this.sessions.map((s) => (s.id === id ? { ...s, ...next } : s));
   }
   /** Saves a settings change; rejects when the server refused it. */
-  async saveSettings(settings: HostSettings): Promise<void> {
+  async saveSettings(settings: Partial<HostSettings>): Promise<void> {
     this.settings = await this.transport.json<HostSettings>("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

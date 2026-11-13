@@ -171,6 +171,8 @@ export interface LiveDoc {
 export interface HostSettings {
   /** How many chats may have an agent working at once; more prompts wait for a turn. */
   maxRunning: number;
+  /** Pause all: no schedule runs; runs that come due are recorded as missed. */
+  schedulesPaused: boolean;
 }
 /** Starting points for Ask's folder picker. Any existing folder on the host is allowed. */
 export interface Catalog {

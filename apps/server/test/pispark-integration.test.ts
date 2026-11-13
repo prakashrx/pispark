@@ -17,6 +17,7 @@ import {
   type RuntimeConfiguration,
 } from "../src/core/runtime/session-runtime.js";
 import { TITLE_TOOL, toolChatTitle } from "../src/core/runtime/chat-title.js";
+import { SCHEDULE_TOOL } from "../src/core/runtime/schedule-tool.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
 import { chatItems, chatNotices, chatText } from "./fixtures/chat.js";
@@ -83,7 +84,7 @@ test("PiSpark integration: real native title-only calls, persona/no-persona isol
             ? (message.toolsAdded ?? []).map((tool) => tool.name)
             : [],
         ),
-        [TITLE_TOOL],
+        [TITLE_TOOL, SCHEDULE_TOOL],
       );
     const prompts = JSON.stringify(
       f.control.requests.map((request) =>
@@ -111,7 +112,7 @@ test("PiSpark integration: real native title-only calls, persona/no-persona isol
             ? (message.toolsAdded ?? []).map((tool) => tool.name)
             : [],
         ),
-      [TITLE_TOOL],
+      [TITLE_TOOL, SCHEDULE_TOOL],
     );
     observer.events.close();
     other.events.close();
@@ -324,7 +325,7 @@ test("PiSpark integration: legacy unmentioned tool activates on reopen; explicit
           latest.flatMap((m) => m.toolsAdded?.map((tool) => tool.name) ?? []),
         ),
       ],
-      [TITLE_TOOL],
+      [SCHEDULE_TOOL, TITLE_TOOL],
     );
   } finally {
     await f.cleanup();

@@ -3,6 +3,7 @@ import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { TITLE_TOOL } from "./chat-title.js";
+import { SCHEDULE_TOOL } from "./schedule-tool.js";
 import {
   createEventBus,
   loadProjectContextFiles,
@@ -58,6 +59,10 @@ export interface RuntimeConfiguration {
   callTimeoutMs?: number;
   operationTimeoutMs?: number;
   runTimeoutMs?: number;
+  /** How often schedules are looked at (default a minute); 0 looks only when asked (tests). */
+  scheduleTickMs?: number;
+  /** Tests only: the clock schedules go by. */
+  now?: () => number;
 }
 
 /** A working folder chosen in Ask: any existing folder on this host. */
@@ -110,6 +115,8 @@ export async function createSessionServices(options: {
   host: {
     /** Extension components placed with `pispark:view` events on the chat's bus. */
     views: { bind: (bus: EventBus) => () => void };
+    /** The built-in schedule tool's requests, on the same bus. */
+    schedules?: { bind: (bus: EventBus) => () => void };
   };
 }) {
   const { setup, cwd, agentDir, managed, fixed, admission, host } = options;
@@ -214,6 +221,7 @@ export async function createSessionServices(options: {
   const eventBus = createEventBus();
   // Before any extension loads, so none of its placements are missed.
   const unbindViews = host.views.bind(eventBus);
+  const unbindSchedules = host.schedules?.bind(eventBus);
   let loadedExtensions;
   try {
     loadedExtensions = await loadExplicitExtensions(
@@ -225,13 +233,14 @@ export async function createSessionServices(options: {
       loadedExtensions.errors.length ||
       loadedExtensions.extensions
         .slice(1)
-        .some((extension) => extension.tools.has(TITLE_TOOL))
+        .some((extension) => extension.tools.has(TITLE_TOOL) || extension.tools.has(SCHEDULE_TOOL))
     ) {
       loadedExtensions.runtime.invalidate("Resource loading failed");
       throw new RuntimeError("extension");
     }
   } catch (error) {
     unbindViews();
+    unbindSchedules?.();
     throw error;
   }
   // Last input handler: queued input from a run that already settled must not be appended.

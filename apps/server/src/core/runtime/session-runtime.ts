@@ -21,6 +21,8 @@ import type { ProviderSettings } from "./provider-settings.js";
 import { validChoice } from "./provider-storage.js";
 import { RunSlots } from "./run-slots.js";
 import { ChatStorage, validateId } from "./storage.js";
+import { Scheduler } from "./schedules.js";
+import type { ScheduleInput, ScheduleList } from "../../contract/schedule-protocol.js";
 import type { ChatMetadata } from "./storage.js";
 
 /**
@@ -51,6 +53,9 @@ export class SessionRuntime {
   private known?: Map<string, PersonaSummary>;
   private readonly appsDir: string;
   private readonly layered = new Map<string, boolean>();
+  /** The schedules of every session, and Pause all. */
+  private readonly scheduler: Scheduler;
+  private schedulesPaused: boolean;
 
   constructor(
     private readonly configuration: RuntimeConfiguration,
@@ -62,7 +67,9 @@ export class SessionRuntime {
     this.idleUnload = configuration.idleUnloadMs ?? 15 * 60_000;
     this.settingsPath = paths.settings;
     this.appsDir = paths.apps;
-    this.slots = new RunSlots(configuration.maxRunning ?? readSettings(this.settingsPath).maxRunning);
+    const stored = readSettings(this.settingsPath);
+    this.slots = new RunSlots(configuration.maxRunning ?? stored.maxRunning);
+    this.schedulesPaused = stored.schedulesPaused;
     this.timeout = configuration.operationTimeoutMs ?? 10_000;
     const runTimeout = configuration.runTimeoutMs ?? 300_000;
     if (![this.maxLive, this.timeout, runTimeout].every((value) => Number.isSafeInteger(value) && value > 0))
@@ -94,20 +101,49 @@ export class SessionRuntime {
         this.layered.delete(chat.id);
         if (!chat.published) this.storage.discardUnpublished(chat.id);
       },
+      schedules: {
+        of: (sessionId) => this.scheduler.of(sessionId),
+        add: (sessionId, input, by) => this.scheduler.add(sessionId, input, by),
+        remove: (id) => this.scheduler.remove(id),
+      },
     };
+    this.scheduler = new Scheduler(
+      {
+        sessions: () => this.storage.list().map((metadata) => ({ id: metadata.id, archived: !!metadata.archived })),
+        ids: () => this.storage.ids(),
+        directory: (id) => this.storage.directory(id),
+        free: (id) => {
+          const chat = this.live.get(id);
+          return !chat || (chat.ready && chat.settled);
+        },
+        run: async (id, text, marker) => {
+          this.admit();
+          // A chat whose last run failed starts again from its transcript, as reopening it would.
+          const chat = this.live.get(id);
+          if (chat?.ready && chat.settled && chat.status === "error") await this.stop(id);
+          await this.ensure(id);
+          validateText(text);
+          return this.get(id).start(text, marker);
+        },
+        paused: () => this.schedulesPaused,
+      },
+      { tickMs: configuration.scheduleTickMs, now: configuration.now, logger },
+    );
+    this.scheduler.start();
   }
 
   // ---- Settings and the list ------------------------------------------------------------------
 
   /** PiSpark's own settings. */
   settings(): HostSettings {
-    return { maxRunning: this.slots.max };
+    return { maxRunning: this.slots.max, schedulesPaused: this.schedulesPaused };
   }
   /** Saves a settings change; a new run limit applies at once (running chats keep running). */
   updateSettings(input: unknown): HostSettings {
-    const settings = validSettings(input);
+    const settings = { ...this.settings(), ...validSettings(input) };
     writeSettings(this.settingsPath, settings);
     this.slots.setLimit(settings.maxRunning);
+    this.schedulesPaused = settings.schedulesPaused;
     for (const chat of this.live.values()) chat.changed();
     return this.settings();
   }
@@ -364,12 +400,55 @@ export class SessionRuntime {
     if (!this.storage.read(id).archived || this.live.has(id)) throw new RuntimeError("busy");
     this.storage.remove(id);
     this.layered.delete(id);
+    this.scheduler.forget(id);
+  }
+
+  // ---- Schedules ------------------------------------------------------------------------------
+
+  /** Every schedule, with what a list needs of its session, and whether all are paused. */
+  listSchedules(): ScheduleList {
+    const sessions = new Map(this.storage.list().map((metadata) => [metadata.id, metadata]));
+    return {
+      paused: this.schedulesPaused,
+      schedules: this.scheduler.list().flatMap((schedule) => {
+        const metadata = sessions.get(schedule.sessionId);
+        if (!metadata) return [];
+        const { title, persona } = this.summary(metadata, this.live.get(metadata.id));
+        return [{ ...schedule, session: { ...(title ? { title } : {}), persona } }];
+      }),
+    };
+  }
+  /** A schedule the person added, to a session given by `sessionId`. */
+  addSchedule(input: ScheduleInput) {
+    if (!input || typeof input !== "object" || typeof input.sessionId !== "string") throw new RuntimeError("invalid-input");
+    validateId(input.sessionId);
+    const { sessionId, ...rest } = input;
+    return this.scheduler.add(sessionId, rest, "person");
+  }
+  updateSchedule(id: string, input: ScheduleInput) {
+    return this.scheduler.update(id, input);
+  }
+  removeSchedule(id: string): void {
+    this.scheduler.remove(id);
+  }
+  /** Run now, with the person watching; refused while the session is busy. */
+  runSchedule(id: string): Promise<void> {
+    if (!this.accepting) throw new RuntimeError("closed");
+    return this.scheduler.runNow(id);
+  }
+  /** Looks at every schedule now, as the minute check does. */
+  checkSchedules(): Promise<void> {
+    return this.scheduler.tick();
   }
   async shutdown(): Promise<void> {
     this.accepting = false;
     clearInterval(this.sweeper);
     this.unwatchPersonas();
-    const results = await Promise.allSettled([this.personas.shutdown(), ...[...this.live.keys()].map((id) => this.stop(id))]);
+    const results = await Promise.allSettled([
+      this.scheduler.shutdown(),
+      this.personas.shutdown(),
+      ...[...this.live.keys()].map((id) => this.stop(id)),
+    ]);
     const failed = results.find((result) => result.status === "rejected");
     if (failed?.status === "rejected") throw runtimeError(failed.reason, "execution");
   }

@@ -23,6 +23,11 @@ import type { SessionChange } from "./observation.js";
 import type { ProviderSettings } from "./provider-settings.js";
 import type { RunSlots } from "./run-slots.js";
 import type { ChatMetadata, ChatStorage } from "./storage.js";
+import { SCHEDULED_ENTRY } from "../../contract/schedule-protocol.js";
+import type { ScheduledMarker } from "./schedules.js";
+import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
+import { describeSchedule, parseCron } from "../../contract/cron.js";
+import { SCHEDULE_CHANNEL, validMessage, type ScheduleMessage } from "./schedule-tool.js";
 
 export type SessionStatus =
   | "starting"
@@ -82,6 +87,12 @@ export interface ChatHost {
   summary(chat: Chat): SessionSummary;
   /** The chat has stopped and is no longer held. */
   released(chat: Chat): void;
+  /** The schedules of a chat, for its agent (`pispark_schedule`). */
+  readonly schedules?: {
+    of(sessionId: string): Schedule[];
+    add(sessionId: string, input: ScheduleInput, by: "agent"): Schedule;
+    remove(id: string): void;
+  };
 }
 
 /** One run's identity: whether it was cancelled, settled, and whether it may still take input. */
@@ -392,7 +403,10 @@ export class Chat {
           await this.input?.catch(() => {});
         },
       },
-      host: { views },
+      host: {
+        views,
+        schedules: { bind: (bus) => bus.on(SCHEDULE_CHANNEL, (message) => this.scheduleRequest(message)) },
+      },
     });
     const thinkingLevel = setup.settings.thinking ?? "off";
     let session: AgentSession;
@@ -457,6 +471,42 @@ export class Chat {
     return this.doc();
   }
 
+  /** The built-in schedule tool: list, remove, or add after the person says yes. */
+  private scheduleRequest(value: unknown): void {
+    if (!validMessage(value)) return;
+    const message: ScheduleMessage = value;
+    message.taken = true;
+    const schedules = this.host.schedules;
+    const answer = async (): Promise<{ ok: boolean; text: string }> => {
+      if (!schedules || !this.ui) return { ok: false, text: "Scheduling is not available here." };
+      const { request } = message;
+      const mine = schedules.of(this.id);
+      if (request.action === "list")
+        return {
+          ok: true,
+          text: mine.length
+            ? mine.map((s) => `${s.id}: ${describeSchedule(s)} (${s.on ? "on" : "off"}): ${s.prompt}`).join("\n")
+            : "This chat has no schedules.",
+        };
+      if (request.action === "remove") {
+        if (!mine.some((s) => s.id === request.id)) return { ok: false, text: "This chat has no schedule with that id." };
+        schedules.remove(request.id);
+        return { ok: true, text: "Schedule removed." };
+      }
+      const { input } = request;
+      const when = { cron: input.cron, at: input.at };
+      if (input.cron !== undefined ? !parseCron(input.cron) : Number.isNaN(new Date(input.at ?? "").getTime()) || new Date(input.at!).getTime() <= Date.now())
+        return { ok: false, text: "That is not a time that can be scheduled." };
+      const yes = await this.ui.context.confirm("Schedule this in this chat?", `${describeSchedule(when)}: ${input.prompt ?? ""}`);
+      if (!yes) return { ok: true, text: "The person declined; nothing was scheduled." };
+      const added = schedules.add(this.id, { ...when, prompt: input.prompt }, "agent");
+      return { ok: true, text: `Scheduled: ${describeSchedule(added)} (id ${added.id}). The person can change it under Chat info → Schedules.` };
+    };
+    void answer()
+      .catch((error: unknown) => ({ ok: false, text: `Scheduling failed (${runtimeError(error, "execution").code}).` }))
+      .then((result) => message.reply(result));
+  }
+
   private onEvent(event: Parameters<Parameters<AgentSession["subscribe"]>[0]>[0]): void {
     // A running tool reports progress only as events. Keep the latest reference; it is projected
     // when a client asks, never here. Calls nested inside another tool are not shown.
@@ -517,15 +567,15 @@ export class Chat {
    * Sends a prompt: it runs now if a run slot is free, else it waits for one in order. A waiting
    * prompt is saved with the chat, so a restart keeps it.
    */
-  start(text: string): RunHandle {
+  start(text: string, marker?: ScheduledMarker): RunHandle {
     validateText(text);
     if (!this.host.accepting()) throw new RuntimeError("closed");
     this.loaded();
     if (this.status !== "idle" || this.input) throw new RuntimeError("busy");
     this.touch();
-    if (!this.host.slots.take(this.id)) return { completion: this.enqueue(text) };
+    if (!this.host.slots.take(this.id)) return { completion: this.enqueue(text, false, marker) };
     try {
-      return { completion: this.begin(text) };
+      return { completion: this.begin(text, marker) };
     } catch (error) {
       this.host.slots.release(this.id);
       throw error;
@@ -540,7 +590,7 @@ export class Chat {
       this.host.slots.release(this.id);
     }
   }
-  private enqueue(text: string, restored = false): Promise<RunResult> {
+  private enqueue(text: string, restored = false, marker?: ScheduledMarker): Promise<RunResult> {
     const metadata = { ...this.metadata, queued: text };
     // A waiting first message already names the chat, so the list can tell queued chats apart.
     this.firstTitle(metadata, text);
@@ -557,7 +607,7 @@ export class Chat {
         this.restored = false;
         this.status = "idle";
         try {
-          resolve(this.begin(text));
+          resolve(this.begin(text, marker));
         } catch (error) {
           this.host.slots.release(this.id);
           this.error = runtimeError(error, "storage").code;
@@ -637,10 +687,11 @@ export class Chat {
     };
     return { run, settle };
   }
-  /** Runs a prompt; the chat holds a run slot. */
-  private begin(text: string): Promise<RunResult> {
+  /** Runs a prompt; the chat holds a run slot. A scheduled run says so in the session first. */
+  private begin(text: string, marker?: ScheduledMarker): Promise<RunResult> {
     const session = this.loaded().session;
     const { settle } = this.mark(text);
+    if (marker) session.sessionManager.appendCustomEntry(SCHEDULED_ENTRY, marker);
     this.runDone = (async (): Promise<RunResult> => {
       try {
         // The persona's prompts work as /commands, as in terminal Pi. A cancel that arrives while Pi

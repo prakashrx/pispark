@@ -3,16 +3,19 @@
   import Button from "../../lib/ui/Button.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   import { useSession, useSessions } from "./session-client.svelte";
+  import { describeSchedule } from "../../../../server/src/contract/cron";
+  import { nextText } from "../schedules/schedule-presentation";
   /**
    * Facts about the open chat, anchored to an info button in the chat header so the
    * conversation never moves.
    */
-  let { oneditpersona }: { oneditpersona?: () => void } = $props();
+  let { oneditpersona, onschedules }: { oneditpersona?: () => void; onschedules?: () => void } = $props();
   const client = useSessions();
   const session = useSession();
   const snapshot = $derived(session.doc);
   const info = $derived(session.info);
   const model = $derived(snapshot?.model);
+  const schedules = $derived(info ? client.schedules.of(info.id) : []);
   const modelName = $derived(
     client.providers.catalog.providers
       .find((p) => p.id === model?.provider)
@@ -48,6 +51,27 @@
             })}
           </dd>
         </dl>
+        {#if onschedules}<div class="space-y-2 border-t border-[var(--border)] pt-3">
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-sm font-semibold">Schedules</h3>
+              <Button
+                size="compact"
+                onclick={() => {
+                  close();
+                  onschedules();
+                }}>{schedules.length ? "Manage" : "Add"}</Button
+              >
+            </div>
+            {#if schedules.length}<ul class="space-y-1.5 text-sm">
+                {#each schedules.slice(0, 4) as schedule (schedule.id)}<li class="flex items-start gap-2">
+                    <Icon name="clock" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span
+                      >{describeSchedule(schedule)}<span class="block text-xs text-muted-foreground"
+                        >{nextText(schedule, client.schedules.paused)}</span
+                      ></span
+                    >
+                  </li>{/each}
+              </ul>{:else}<p class="text-xs text-muted-foreground">Send a prompt to this chat at a time, once or repeating.</p>{/if}
+          </div>{/if}
         {#if snapshot && oneditpersona}<div
             class="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3"
           >

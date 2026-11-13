@@ -3,6 +3,7 @@ export const routes = {
   settings: { title: "General Settings" },
   providers: { title: "Providers & models" },
   persona: { title: "Personas" },
+  schedules: { title: "Schedules" },
   sources: { title: "Sources" },
 } as const;
 

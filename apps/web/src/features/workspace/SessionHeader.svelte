@@ -4,6 +4,7 @@
   import Menu from "../../lib/ui/Menu.svelte";
   import Segmented from "../../lib/ui/Segmented.svelte";
   import PersonaEditor from "../persona/PersonaEditor.svelte";
+  import SchedulesPanel from "../schedules/SchedulesPanel.svelte";
   import SessionDetails from "./SessionDetails.svelte";
   import StyledText from "./StyledText.svelte";
   import ContributionPoint from "./ContributionPoint.svelte";
@@ -23,6 +24,7 @@
   const info = $derived(session?.info);
   // Editing the persona inside a chat edits this chat's own layer; closing applies it.
   let editingPersona = $state(false);
+  let schedulesOpen = $state(false);
   async function closePersona() {
     editingPersona = false;
     // The Personas page shares the editor; give it back its list, not this chat's layer.
@@ -130,7 +132,7 @@
             aria-label="Cancel queued message"
             onclick={() => session.stop()}>Cancel</Button
           >{/if}
-        <SessionDetails oneditpersona={() => (editingPersona = true)} />
+        <SessionDetails oneditpersona={() => (editingPersona = true)} onschedules={() => (schedulesOpen = true)} />
         {#if commands.length}<Menu label="Commands" items={commands} />{/if}
       </div>{/if}
   </div>
@@ -146,6 +148,15 @@
       onclose={() => void closePersona()}
     >
       <PersonaEditor target={{ chat: session.id }} embedded />
+    </InlinePanel>{/if}
+  {#if schedulesOpen && info}<InlinePanel
+      label="Schedules for this chat"
+      title="Schedules for this chat"
+      help="Each run sends its prompt to this chat as if you typed it, with this chat’s persona and tools, even while the browser is closed."
+      size="wide"
+      onclose={() => (schedulesOpen = false)}
+    >
+      <SchedulesPanel sessionId={session.id} />
     </InlinePanel>{/if}
   {#if doc?.personaChanged && !editingPersona}<p role="status" class="conversation-notice flex flex-wrap items-center gap-3">
       <span class="flex-1">The persona changed. Reload to apply it; your messages stay.</span>

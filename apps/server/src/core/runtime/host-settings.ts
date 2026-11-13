@@ -4,7 +4,7 @@ import type { HostSettings } from "../../contract/protocol.js";
 import { RuntimeError } from "./errors.js";
 
 /** PiSpark's own settings, in `<home>/settings.json`. Missing or unreadable values use the defaults. */
-export const DEFAULT_SETTINGS: HostSettings = { maxRunning: 8 };
+export const DEFAULT_SETTINGS: HostSettings = { maxRunning: 8, schedulesPaused: false };
 export const MAX_RUNNING = 32;
 
 const validRunning = (value: unknown): value is number =>
@@ -14,19 +14,31 @@ export function readSettings(path: string): HostSettings {
   if (!existsSync(path)) return { ...DEFAULT_SETTINGS };
   try {
     const value = JSON.parse(readFileSync(path, "utf8")) as Partial<HostSettings>;
-    return { maxRunning: validRunning(value.maxRunning) ? value.maxRunning : DEFAULT_SETTINGS.maxRunning };
+    return {
+      maxRunning: validRunning(value.maxRunning) ? value.maxRunning : DEFAULT_SETTINGS.maxRunning,
+      schedulesPaused: value.schedulesPaused === true,
+    };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
 }
 
-/** A change from a client: exact keys, values in range. */
-export function validSettings(value: unknown): HostSettings {
+/** A change from a client: one or more known keys, values in range. */
+export function validSettings(value: unknown): Partial<HostSettings> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new RuntimeError("invalid-input");
-  const keys = Object.keys(value);
-  if (keys.length !== 1 || keys[0] !== "maxRunning" || !validRunning((value as HostSettings).maxRunning))
+  const change = value as Partial<HostSettings>;
+  const keys = Object.keys(change);
+  if (
+    !keys.length ||
+    keys.some((key) => key !== "maxRunning" && key !== "schedulesPaused") ||
+    ("maxRunning" in change && !validRunning(change.maxRunning)) ||
+    ("schedulesPaused" in change && typeof change.schedulesPaused !== "boolean")
+  )
     throw new RuntimeError("invalid-input");
-  return { maxRunning: (value as HostSettings).maxRunning };
+  return {
+    ...(change.maxRunning !== undefined ? { maxRunning: change.maxRunning } : {}),
+    ...(change.schedulesPaused !== undefined ? { schedulesPaused: change.schedulesPaused } : {}),
+  };
 }
 
 export function writeSettings(path: string, settings: HostSettings): void {

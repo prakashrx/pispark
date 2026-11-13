@@ -6,6 +6,7 @@ import {
 } from "../core/runtime/session-runtime.js";
 import type { Catalog, Command, LiveEvent, Receipt } from "../contract/protocol.js";
 import type { Json } from "../contract/stream-ops.js";
+import type { ScheduleInput } from "../contract/schedule-protocol.js";
 import type { ProviderHttp } from "./provider-http.js";
 import { validChoice } from "../core/runtime/provider-storage.js";
 import {
@@ -374,6 +375,24 @@ export class SessionHttp {
       }
       if (path === "/api/settings" && !url.search && (request.method === "GET" || request.method === "POST")) {
         sendJson(response, 200, request.method === "GET" ? this.runtime.settings() : this.runtime.updateSettings(await body(request)));
+        return;
+      }
+      // Schedules: every one (`GET`), add one (`POST`), change, run now or remove one (`POST`).
+      if (path === "/api/schedules" && !url.search && (request.method === "GET" || request.method === "POST")) {
+        if (request.method === "GET") sendJson(response, 200, this.runtime.listSchedules(), 1024 * 1024);
+        else sendJson(response, 201, this.runtime.addSchedule((await body(request)) as ScheduleInput));
+        return;
+      }
+      const schedule = /^\/api\/schedules\/([\w-]+)(?:\/(run|remove))?$/.exec(path);
+      if (schedule && request.method === "POST" && uuid.test(schedule[1]!) && !url.search) {
+        const [, id, action] = schedule;
+        if (action === "run") {
+          await this.runtime.runSchedule(id!);
+          sendJson(response, 202, {});
+        } else if (action === "remove") {
+          this.runtime.removeSchedule(id!);
+          sendJson(response, 200, {});
+        } else sendJson(response, 200, this.runtime.updateSchedule(id!, (await body(request)) as ScheduleInput));
         return;
       }
       if (
