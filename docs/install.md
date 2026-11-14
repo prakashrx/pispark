@@ -39,7 +39,13 @@ The installer:
 | `pispark` command | `<program>\bin` (added to your PATH) | `~/.local/bin/pispark` |
 | Your data | `~\.pispark` | `~/.pispark` |
 
-**On a server (VPS):** to keep PiSpark running while you are logged out, run `sudo loginctl enable-linger $USER` once. PiSpark listens only on `127.0.0.1`. To reach it from your other devices, use a private network such as Tailscale (`tailscale serve 3000`); don't open the port to the internet.
+**On a server (VPS):** to keep PiSpark running while you are logged out, run `sudo loginctl enable-linger $USER` once. PiSpark has no login of its own, so it listens only on `127.0.0.1` and answers only requests addressed to `127.0.0.1` or `localhost`. Reach it from your computer with an SSH tunnel, then open <http://127.0.0.1:3300>:
+
+```sh
+ssh -N -L 3300:127.0.0.1:3000 you@your-server
+```
+
+Don't open its port to the internet. A reverse proxy or Tailscale Serve doesn't work yet: it passes on its own host name, which PiSpark refuses. Reaching PiSpark by name (a tailnet, a phone) is planned.
 
 ## The program folder
 
