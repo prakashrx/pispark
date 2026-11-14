@@ -34,6 +34,13 @@ export async function isolatedHost(info: TestInfo) {
       "TEMP",
       "TMP",
       "COMSPEC",
+      // Pi finds Git Bash under %ProgramFiles%; without these it falls back to the first bash.exe on
+      // PATH, which on GitHub's Windows image is WSL's (commands then run in Linux, out of reach of Stop).
+      "ProgramFiles",
+      "ProgramFiles(x86)",
+      "ProgramW6432",
+      "LOCALAPPDATA",
+      "PISPARK_DEBUG_PROCESSES",
     ])
       if (process.env[key]) env[key] = process.env[key];
     child = fork(resolve("../server/test/fixtures/browser-host.ts"), [root], {

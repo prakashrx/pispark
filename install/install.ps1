@@ -4,6 +4,8 @@
 #
 # Options, as environment variables set before running it:
 #   $env:PISPARK_CHANNEL = "latest"   # "stable" (default): tested releases; "latest": every change merged to main
+#   $env:PISPARK_NAME = "dev"         # a second install beside the main one: "PiSpark (dev)", its own
+#                                     # folder, data (~\.pispark-dev), port, login entry and pispark-dev command
 #   $env:PISPARK_VERSION = "0.2.0"    # that version (any channel), kept there until you resume updates
 #   $env:PISPARK_PORT = "3000"        # default 3000, or the next free port
 #   $env:PISPARK_HOME = "..."         # the data folder, default ~\.pispark
@@ -20,12 +22,16 @@ $ProgressPreference = "SilentlyContinue"
 & {
   $channel = if ($env:PISPARK_CHANNEL) { $env:PISPARK_CHANNEL } else { "stable" }
   if ($channel -notin "stable", "latest") { throw "PISPARK_CHANNEL must be stable or latest" }
-  $root = if ($env:PISPARK_INSTALL_DIR) { $env:PISPARK_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\PiSpark" }
+  $name = $env:PISPARK_NAME
+  if ($name -and $name -notmatch "^[a-z0-9][a-z0-9-]{0,19}$") { throw "PISPARK_NAME: lowercase letters, digits and dashes, up to 20 (e.g. dev)" }
+  $label = if ($name) { "PiSpark ($name)" } else { "PiSpark" }
+  $command = if ($name) { "pispark-$name" } else { "pispark" }
+  $root = if ($env:PISPARK_INSTALL_DIR) { $env:PISPARK_INSTALL_DIR } elseif ($name) { Join-Path $env:LOCALAPPDATA "Programs\PiSpark-$name" } else { Join-Path $env:LOCALAPPDATA "Programs\PiSpark" }
   $releases = if ($env:PISPARK_RELEASES_URL) { $env:PISPARK_RELEASES_URL } else { "https://api.github.com/repos/prakashrx/pispark/releases?per_page=100" }
   $tar = Join-Path $env:SystemRoot "System32\tar.exe"
   if (-not (Test-Path $tar)) { throw "This Windows has no tar.exe (Windows 10 1803 or later has it)." }
 
-  Write-Host "PiSpark installer" -ForegroundColor Cyan
+  Write-Host "$label installer" -ForegroundColor Cyan
 
   # Pi's bash tool runs on Git Bash.
   $gitBash = @("$env:ProgramFiles\Git\bin\bash.exe", "${env:ProgramFiles(x86)}\Git\bin\bash.exe", "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe") | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
@@ -88,7 +94,7 @@ $ProgressPreference = "SilentlyContinue"
 
   # The hand-built PiSpark from before the installer: its launcher and Start menu entry go, your data stays.
   $old = Join-Path $env:LOCALAPPDATA "PiSpark"
-  if (-not $env:PISPARK_INSTALL_DIR -and (Test-Path (Join-Path $old "PiSpark.vbs"))) {
+  if (-not $env:PISPARK_INSTALL_DIR -and -not $name -and (Test-Path (Join-Path $old "PiSpark.vbs"))) {
     Write-Host "Found an earlier hand-built PiSpark in $old (your data in ~\.pispark is separate and stays)."
     $answer = Read-Host "Stop it and remove that folder? [Y/n]"
     if ($answer -eq "" -or $answer -match "^[Yy]") {
@@ -105,6 +111,7 @@ $ProgressPreference = "SilentlyContinue"
   if ($env:PISPARK_PORT) { $setup += @("--port", $env:PISPARK_PORT) }
   if ($env:PISPARK_HOME) { $setup += @("--home", $env:PISPARK_HOME) }
   if ($wanted) { $setup += "--keep" }
+  if ($name) { $setup += @("--name", $name) }
   if ($env:PISPARK_NO_AUTOSTART) { $setup += "--no-autostart" }
   if ($env:PISPARK_NO_OPEN) { $setup += "--no-open" }
   & $node @setup
@@ -115,7 +122,7 @@ $ProgressPreference = "SilentlyContinue"
   $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
   if (-not $env:PISPARK_INSTALL_DIR -and -not (($userPath -split ";") -contains $bin)) {
     [Environment]::SetEnvironmentVariable("Path", (($userPath, $bin) | Where-Object { $_ }) -join ";", "User")
-    Write-Host "Added $bin to your PATH (new terminals): pispark status | open | update | stop | uninstall"
+    Write-Host "Added $bin to your PATH (new terminals): $command status | open | update | stop | uninstall"
   }
-  if ($env:PISPARK_NO_AUTOSTART) { Write-Host "Done." -ForegroundColor Green } else { Write-Host "Done. PiSpark starts when you sign in; it is in the Start menu and the tray." -ForegroundColor Green }
+  if ($env:PISPARK_NO_AUTOSTART) { Write-Host "Done." -ForegroundColor Green } else { Write-Host "Done. $label starts when you sign in; it is in the Start menu and the tray." -ForegroundColor Green }
 }

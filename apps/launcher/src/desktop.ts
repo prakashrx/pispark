@@ -2,7 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { windows, type Install } from "./install.ts";
+import { identity, windows, type Install } from "./install.ts";
 
 /**
  * What PiSpark registers on the machine: starting at login, the Start menu entry, the `pispark`
@@ -11,8 +11,10 @@ import { windows, type Install } from "./install.ts";
  */
 const system32 = (file: string) => join(process.env.SystemRoot ?? "C:\\Windows", "System32", file);
 const RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-const startMenu = () => join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "Microsoft", "Windows", "Start Menu", "Programs", "PiSpark.lnk");
-const systemdUnit = () => join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "systemd", "user", "pispark.service");
+const names = (install: Install) => identity(install.choices().name);
+const startMenu = (install: Install) =>
+  join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "Microsoft", "Windows", "Start Menu", "Programs", `${names(install).label}.lnk`);
+const systemdUnit = (install: Install) => join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "systemd", "user", names(install).unit);
 const binDir = () => join(homedir(), ".local", "bin");
 
 /** The command that runs the current version's launcher (`current` never changes, so neither does this). */
@@ -26,17 +28,17 @@ export function enableAutostart(install: Install) {
   if (windows) {
     const { exe, args } = launcherCommand(install, "run");
     const value = [exe, ...args].map((a) => `"${a}"`).join(" ");
-    run(system32("reg.exe"), ["add", RUN_KEY, "/v", "PiSpark", "/t", "REG_SZ", "/d", value, "/f"]);
+    run(system32("reg.exe"), ["add", RUN_KEY, "/v", names(install).run, "/t", "REG_SZ", "/d", value, "/f"]);
     return;
   }
   writeStartScript(install);
-  const unit = systemdUnit();
+  const unit = systemdUnit(install);
   mkdirSync(join(unit, ".."), { recursive: true });
   writeFileSync(
     unit,
     [
       "[Unit]",
-      "Description=PiSpark",
+      `Description=${names(install).label}`,
       "After=network-online.target",
       "",
       "[Service]",
@@ -50,23 +52,23 @@ export function enableAutostart(install: Install) {
     ].join("\n"),
   );
   run("systemctl", ["--user", "daemon-reload"]);
-  run("systemctl", ["--user", "enable", "pispark.service"]);
+  run("systemctl", ["--user", "enable", names(install).unit]);
 }
 
 export function disableAutostart(install: Install) {
   if (windows) {
-    spawnSync(system32("reg.exe"), ["delete", RUN_KEY, "/v", "PiSpark", "/f"], { windowsHide: true, stdio: "ignore" });
+    spawnSync(system32("reg.exe"), ["delete", RUN_KEY, "/v", names(install).run, "/f"], { windowsHide: true, stdio: "ignore" });
     return;
   }
-  spawnSync("systemctl", ["--user", "disable", "--now", "pispark.service"], { stdio: "ignore" });
-  rmSync(systemdUnit(), { force: true });
+  spawnSync("systemctl", ["--user", "disable", "--now", names(install).unit], { stdio: "ignore" });
+  rmSync(systemdUnit(install), { force: true });
   spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "ignore" });
   rmSync(join(install.root, "pispark-start"), { force: true });
 }
 
-export function autostartEnabled(): boolean {
-  if (windows) return spawnSync(system32("reg.exe"), ["query", RUN_KEY, "/v", "PiSpark"], { windowsHide: true, stdio: "ignore" }).status === 0;
-  return spawnSync("systemctl", ["--user", "is-enabled", "pispark.service"], { stdio: "ignore" }).status === 0;
+export function autostartEnabled(install: Install): boolean {
+  if (windows) return spawnSync(system32("reg.exe"), ["query", RUN_KEY, "/v", names(install).run], { windowsHide: true, stdio: "ignore" }).status === 0;
+  return spawnSync("systemctl", ["--user", "is-enabled", names(install).unit], { stdio: "ignore" }).status === 0;
 }
 
 /** Linux: under systemd, the service starts and stops PiSpark. */
@@ -74,8 +76,8 @@ export function underSystemd() {
   return !windows && Boolean(process.env.INVOCATION_ID);
 }
 
-export function systemd(action: "start" | "stop" | "restart") {
-  return spawnSync("systemctl", ["--user", action, "pispark.service"], { stdio: "ignore" }).status === 0;
+export function systemd(install: Install, action: "start" | "stop" | "restart") {
+  return spawnSync("systemctl", ["--user", action, names(install).unit], { stdio: "ignore" }).status === 0;
 }
 
 /**
@@ -115,11 +117,11 @@ export function installCommand(install: Install): string {
     mkdirSync(dir, { recursive: true });
     // The console Node, so the command prints; the windowless one is for login and the tray.
     const node = join(install.current, "node", "node.exe");
-    writeFileSync(join(dir, "pispark.cmd"), `@echo off\r\n"${node}" "${args[0]}" %*\r\n`);
+    writeFileSync(join(dir, `${names(install).command}.cmd`), `@echo off\r\n"${node}" "${args[0]}" %*\r\n`);
     return dir;
   }
   mkdirSync(binDir(), { recursive: true });
-  const file = join(binDir(), "pispark");
+  const file = join(binDir(), names(install).command);
   writeFileSync(file, `#!/bin/sh\nexec "${exe}" "${args[0]}" "$@"\n`);
   chmodSync(file, 0o755);
   return binDir();
@@ -127,7 +129,7 @@ export function installCommand(install: Install): string {
 
 export function removeCommand(install: Install) {
   if (windows) rmSync(join(install.root, "bin"), { recursive: true, force: true });
-  else rmSync(join(binDir(), "pispark"), { force: true });
+  else rmSync(join(binDir(), names(install).command), { force: true });
 }
 
 /** Windows: a Start menu entry that opens PiSpark (starting it if needed), with its icon. */
@@ -137,18 +139,18 @@ export function addStartMenu(install: Install) {
   const icon = join(install.current, "app", "apps", "launcher", "dist", "pispark.ico");
   const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
   const script = [
-    `$s = (New-Object -ComObject WScript.Shell).CreateShortcut(${q(startMenu())})`,
+    `$s = (New-Object -ComObject WScript.Shell).CreateShortcut(${q(startMenu(install))})`,
     `$s.TargetPath = ${q(exe)}`,
     `$s.Arguments = ${q(args.map((a) => `"${a}"`).join(" "))}`,
     `$s.IconLocation = ${q(icon)}`,
-    `$s.Description = 'PiSpark'`,
+    `$s.Description = ${q(names(install).label)}`,
     `$s.Save()`,
   ].join("; ");
   run(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", script]);
 }
 
-export function removeStartMenu() {
-  if (windows) rmSync(startMenu(), { force: true });
+export function removeStartMenu(install: Install) {
+  if (windows) rmSync(startMenu(install), { force: true });
 }
 
 /** Opens PiSpark's window: Edge as an app window if there is one, otherwise the default browser. */

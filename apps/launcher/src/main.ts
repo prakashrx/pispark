@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { RELEASE_CHANNELS, type ReleaseChannel } from "../../server/src/contract/host-protocol.ts";
 import { callControl, type ControlStatus } from "./control.ts";
@@ -18,7 +19,7 @@ import {
   underSystemd,
   writeStartScript,
 } from "./desktop.ts";
-import { Install, ensureWindowless, ownRelease, windows, type Release } from "./install.ts";
+import { Install, NAME, ensureWindowless, identity, ownRelease, windows, type Release } from "./install.ts";
 
 const HELP = `pispark: runs PiSpark in the background and keeps it up to date.
 
@@ -35,7 +36,10 @@ const HELP = `pispark: runs PiSpark in the background and keeps it up to date.
   pispark uninstall   remove PiSpark (keeps your data; --purge removes it too)
 
   pispark setup       used by the installer: --channel stable|latest --port <n> [--home <folder>]
-                      [--keep] [--no-autostart] [--no-start] [--no-open]`;
+                      [--name <name>] [--keep] [--no-autostart] [--no-start] [--no-open]
+
+A named install (setup --name dev) sits beside the main one with its own program folder, data
+folder (~/.pispark-dev), port, login entry, service and command (pispark-dev).`;
 
 function flag(args: string[], name: string) {
   return args.includes(`--${name}`);
@@ -61,7 +65,7 @@ async function status(install: Install) {
 
 /** Starts the launcher in the background (detached, without a window) and waits until it answers. */
 async function startBackground(install: Install, release: Release): Promise<ControlStatus | undefined> {
-  if (underSystemdInstalled(install)) systemd("start");
+  if (underSystemdInstalled(install)) systemd(install, "start");
   else spawn(release.windowless, [release.launcher, "run"], { detached: true, stdio: "ignore", windowsHide: true }).unref();
   const until = Date.now() + 40_000;
   while (Date.now() < until) {
@@ -73,8 +77,8 @@ async function startBackground(install: Install, release: Release): Promise<Cont
 }
 
 /** Linux with the systemd service set up: systemd starts and stops PiSpark. */
-function underSystemdInstalled(_install: Install) {
-  return !windows && autostartEnabled();
+function underSystemdInstalled(install: Install) {
+  return !windows && autostartEnabled(install);
 }
 
 function portFree(port: number): Promise<boolean> {
@@ -97,13 +101,17 @@ async function setup(args: string[]) {
   let port = Number(option(args, "port") ?? install.choices().port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("--port must be a number from 1 to 65535");
   if (!option(args, "port")) while (!(await portFree(port)) && port < 65535) port++;
-  const home = option(args, "home");
+  const name = option(args, "name") ?? install.choices().name;
+  if (name !== undefined && !NAME.test(name)) throw new Error("--name: lowercase letters, digits and dashes, up to 20 (e.g. dev)");
+  // A named install keeps its data apart from the main one unless told otherwise.
+  const home = option(args, "home") ?? install.choices().home ?? (name ? join(homedir(), `.pispark-${name}`) : undefined);
   const releases = process.env.PISPARK_RELEASES_URL;
   install.choose({
     channel: channelInput as ReleaseChannel,
     port,
     ...(home ? { home } : {}),
     ...(releases ? { releases } : {}),
+    ...(name ? { name } : {}),
     // Installed as a specific version: kept there until updates are resumed.
     kept: flag(args, "keep") ? release.info.version : undefined,
   });
@@ -121,9 +129,10 @@ async function setup(args: string[]) {
     }
     addStartMenu(install);
   } else if (!windows) writeStartScript(install);
-  console.log(`PiSpark ${release.info.version} installed in ${install.root}`);
+  console.log(`${identity(name).label} ${release.info.version} installed in ${install.root}`);
   console.log(`  channel ${channelInput}, address http://127.0.0.1:${port}`);
-  console.log(`  the pispark command: ${bin}`);
+  console.log(`  data folder ${home ?? join(homedir(), ".pispark")}`);
+  console.log(`  the ${identity(name).command} command: ${bin}`);
   if (flag(args, "no-start")) return;
   const s = await startBackground(install, release);
   if (s?.server !== "running") {
@@ -136,13 +145,13 @@ async function setup(args: string[]) {
 
 async function uninstall(args: string[]) {
   const { install } = located();
-  if (underSystemdInstalled(install)) systemd("stop");
+  if (underSystemdInstalled(install)) systemd(install, "stop");
   if (await status(install)) {
     await callControl(install.root, { cmd: "stop" });
     await new Promise((done) => setTimeout(done, 2000));
   }
   disableAutostart(install);
-  removeStartMenu();
+  removeStartMenu(install);
   removeCommand(install);
   const home = install.choices().home;
   console.log(`Removing ${install.root}`);
@@ -188,15 +197,15 @@ async function main(args: string[]) {
       const { release, install } = located();
       const s = await status(install);
       if (!s) {
-        console.log(`PiSpark ${release.info.version} is not running. (${install.root})`);
+        console.log(`${identity(install.choices().name).label} ${release.info.version} is not running. (${install.root})`);
         process.exit(3);
       }
-      console.log(`PiSpark ${s.version}: ${s.server} at ${s.address} (launcher pid ${s.pid}, channel ${install.choices().channel})`);
+      console.log(`${identity(install.choices().name).label} ${s.version}: ${s.server} at ${s.address} (launcher pid ${s.pid}, channel ${install.choices().channel})`);
       return;
     }
     case "stop": {
       const { install } = located();
-      if (underSystemdInstalled(install) && systemd("stop")) return void console.log("Stopped.");
+      if (underSystemdInstalled(install) && systemd(install, "stop")) return void console.log("Stopped.");
       if (!(await callControl(install.root, { cmd: "stop" }))) return void console.log("PiSpark is not running.");
       console.log("Stopping.");
       return;
