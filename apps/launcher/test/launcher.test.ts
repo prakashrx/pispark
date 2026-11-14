@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { Install, Release, ensureWindowless, windows } from "../src/install.ts";
-import { expectedSum, pick } from "../src/updates.ts";
+import { expectedSum, find, pick } from "../src/updates.ts";
 
 const release = (tag: string, prerelease: boolean, names = ["linux-x64", "win-x64"]) => ({
   tag_name: `v${tag}`,
@@ -105,4 +105,28 @@ test("Windows: the windowless Node is the same program marked as windowed", { sk
   writeFileSync(r.node, Buffer.from("not a program"));
   rmSync(r.windowless);
   assert.throws(() => ensureWindowless(r), /not a Windows program/);
+});
+
+test("a specific version: found on any channel, only with this platform's archive", () => {
+  const list = [release("0.5.0-main.3", true), release("0.4.3", false), release("0.4.4", false, ["linux-x64"])];
+  assert.equal(find(list, "0.5.0-main.3", "win", "x64")?.version, "0.5.0-main.3");
+  assert.equal(find(list, "0.4.3", "win", "x64")?.archive.name, "pispark-0.4.3-win-x64.tar.gz");
+  assert.equal(find(list, "0.4.4", "win", "x64"), undefined);
+  assert.equal(find(list, "0.9.9", "win", "x64"), undefined);
+});
+
+test("a kept version persists, and asking for a failed version clears its failure", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "pispark-kept-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const install = new Install(root);
+  install.choose({ channel: "latest", kept: "0.4.2" });
+  assert.equal(install.choices().kept, "0.4.2");
+  install.choose({ kept: undefined });
+  assert.equal(install.choices().kept, undefined);
+  writeFileSync(join(root, "state.json"), JSON.stringify({ kept: "not a version" }));
+  assert.equal(install.choices().kept, undefined);
+  install.markFailed("0.4.3");
+  install.markFailed("0.4.4");
+  install.unmarkFailed("0.4.3");
+  assert.deepEqual(install.failed(), ["0.4.4"]);
 });

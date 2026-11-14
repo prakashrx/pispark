@@ -63,7 +63,13 @@
   {#if status?.managed && launcher && update}
     <Section title="Updates" description="">
       <div class="mt-4 space-y-3">
-        {#if update.phase === "restarting" || host.restarting}
+        {#if launcher.kept && !host.restarting && update.phase !== "restarting"}
+          <div class="notice" role="status">
+            <Icon name="pin" class="w-4 h-4 shrink-0" />
+            <span class="flex-1"><strong>Kept at v{launcher.kept}.</strong> PiSpark doesn’t check for updates until you resume them.</span>
+            <Button size="compact" disabled={acting} onclick={() => void act({ action: "resume" })}>Resume updates</Button>
+          </div>
+        {:else if update.phase === "restarting" || host.restarting}
           <div class="notice" role="status">
             <span class="spin" aria-hidden="true"></span><span><strong>Updating to v{host.restarting ?? (update.phase === "restarting" ? update.version : "")}…</strong> Back in a few seconds.</span>
           </div>

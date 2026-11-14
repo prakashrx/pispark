@@ -9,7 +9,7 @@ import { windows } from "./install.ts";
  * install folder on Linux. The command line (`pispark status`, `stop`, `open`, `update`) and a
  * handover between launchers use it. One per install folder, which also keeps a second launcher out.
  */
-export type ControlRequest = { cmd: "status" | "stop" | "open" | "update" | "restart" | "check" };
+export type ControlRequest = { cmd: "status" | "stop" | "open" | "update" | "restart" | "check" } | { cmd: "install"; version: string };
 
 export interface ControlStatus {
   pid: number;

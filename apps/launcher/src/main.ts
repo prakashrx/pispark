@@ -28,11 +28,14 @@ const HELP = `pispark: runs PiSpark in the background and keeps it up to date.
   pispark stop        stop PiSpark
   pispark restart     restart PiSpark's server
   pispark update      check for an update and install it now
+  pispark install <version>
+                      install that version (older or newer, any channel) and keep it there;
+                      resume updates in Settings → About
   pispark logs        where the logs are, and the end of the server log
   pispark uninstall   remove PiSpark (keeps your data; --purge removes it too)
 
   pispark setup       used by the installer: --channel stable|latest --port <n> [--home <folder>]
-                      [--no-autostart] [--no-start] [--no-open]`;
+                      [--keep] [--no-autostart] [--no-start] [--no-open]`;
 
 function flag(args: string[], name: string) {
   return args.includes(`--${name}`);
@@ -96,7 +99,14 @@ async function setup(args: string[]) {
   if (!option(args, "port")) while (!(await portFree(port)) && port < 65535) port++;
   const home = option(args, "home");
   const releases = process.env.PISPARK_RELEASES_URL;
-  install.choose({ channel: channelInput as ReleaseChannel, port, ...(home ? { home } : {}), ...(releases ? { releases } : {}) });
+  install.choose({
+    channel: channelInput as ReleaseChannel,
+    port,
+    ...(home ? { home } : {}),
+    ...(releases ? { releases } : {}),
+    // Installed as a specific version: kept there until updates are resumed.
+    kept: flag(args, "keep") ? release.info.version : undefined,
+  });
   ensureWindowless(release);
   install.point(release.info.version);
   const bin = installCommand(install);
@@ -204,6 +214,18 @@ async function main(args: string[]) {
       if (result.phase === "current") console.log("PiSpark is up to date.");
       else if (result.phase === "error") console.log(`Update failed: ${result.message}`);
       else console.log(`Update: ${result.phase}${result.version ? ` ${result.version}` : ""}`);
+      return;
+    }
+    case "install": {
+      const { install } = located();
+      const version = rest[0]?.replace(/^v/, "");
+      if (!version) return void console.log("Which version? pispark install <version>, e.g. pispark install 0.2.0");
+      console.log(`Installing PiSpark ${version}…`);
+      const result = await callControl<{ phase: string; version?: string; reason?: string; message?: string; kept?: string }>(install.root, { cmd: "install", version }, 30 * 60_000);
+      if (!result) return void console.log("PiSpark is not running, or it restarted into another launcher. Check with: pispark status");
+      if (result.kept) console.log(`PiSpark ${result.kept} is running and kept there. Resume updates in Settings → About.`);
+      else if (result.phase === "failed") console.log(`${version} did not start (${result.reason}). PiSpark went back to the version before.`);
+      else console.log(`Install: ${result.phase}${result.message ? ` (${result.message})` : ""}`);
       return;
     }
     case "logs": {

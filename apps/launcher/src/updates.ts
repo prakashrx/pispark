@@ -6,7 +6,7 @@ import { compareVersions, type ReleaseChannel } from "../../server/src/contract/
 import { Release, ensureWindowless, windows, type Install, type ReleaseInfo } from "./install.ts";
 
 /** Where releases are listed: this repository's GitHub Releases, unless setup recorded another list. */
-export const RELEASES_URL = "https://api.github.com/repos/prakashrx/pispark/releases?per_page=30";
+export const RELEASES_URL = "https://api.github.com/repos/prakashrx/pispark/releases?per_page=100";
 
 export interface Available {
   version: string;
@@ -51,12 +51,27 @@ export function pick(
   return best;
 }
 
+/** One release by its version, on any channel (for `pispark install <version>`). */
+export function find(releases: GitHubRelease[], version: string, os: ReleaseInfo["os"], arch: ReleaseInfo["arch"]): Available | undefined {
+  const r = releases.find((r) => !r.draft && r.tag_name.replace(/^v/, "") === version);
+  if (!r) return;
+  const name = archiveName(version, os, arch);
+  const archive = r.assets.find((a) => a.name === name);
+  const sums = r.assets.find((a) => a.name === "SHA256SUMS");
+  if (!archive || !sums) return;
+  return { version, archive: { name, url: archive.browser_download_url }, sums: sums.browser_download_url, ...(r.html_url ? { notes: r.html_url } : {}) };
+}
+
+export async function listReleases(url: string): Promise<GitHubRelease[]> {
+  const response = await fetch(url, { headers, signal: AbortSignal.timeout(20_000) });
+  if (!response.ok) throw new Error(`Release list: HTTP ${response.status}`);
+  return (await response.json()) as GitHubRelease[];
+}
+
 const headers = { Accept: "application/vnd.github+json", "User-Agent": "pispark-launcher" };
 
 export async function check(url: string, options: Parameters<typeof pick>[1]): Promise<Available | undefined> {
-  const response = await fetch(url, { headers, signal: AbortSignal.timeout(20_000) });
-  if (!response.ok) throw new Error(`Release list: HTTP ${response.status}`);
-  return pick((await response.json()) as GitHubRelease[], options);
+  return pick(await listReleases(url), options);
 }
 
 /**

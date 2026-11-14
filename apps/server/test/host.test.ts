@@ -22,6 +22,7 @@ test("versions order as releases do: numbers, then a release after its prereleas
 
 test("host actions: only the known shapes pass", () => {
   assert.deepEqual(validHostAction({ action: "check" }), { action: "check" });
+  assert.deepEqual(validHostAction({ action: "resume" }), { action: "resume" });
   assert.deepEqual(validHostAction({ action: "apply", when: "idle" }), { action: "apply", when: "idle" });
   assert.deepEqual(validHostAction({ action: "configure", channel: "latest" }), { action: "configure", channel: "latest" });
   assert.deepEqual(validHostAction({ action: "configure", autoUpdate: true }), { action: "configure", autoUpdate: true });

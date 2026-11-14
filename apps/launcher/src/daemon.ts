@@ -5,10 +5,10 @@ import { join } from "node:path";
 import type { HostAction, LauncherStatus, RunningWork, ServerMessage, UpdateState } from "../../server/src/contract/host-protocol.ts";
 import { callControl, serveControl, type ControlRequest, type ControlStatus } from "./control.ts";
 import { autostartEnabled, openFolder, openWindow, underSystemd } from "./desktop.ts";
-import { Install, LAUNCHER_VERSION, Release, windows } from "./install.ts";
+import { Install, LAUNCHER_VERSION, Release, VERSION, windows } from "./install.ts";
 import { Supervisor, killTree } from "./supervisor.ts";
 import { Tray, type TrayChoice } from "./tray.ts";
-import { RELEASES_URL, check, fetchRelease, type Available } from "./updates.ts";
+import { RELEASES_URL, check, fetchRelease, find, listReleases, type Available } from "./updates.ts";
 
 const DAY_MS = 24 * 60 * 60_000;
 const IDLE_POLL_MS = 30_000;
@@ -99,6 +99,7 @@ export class Daemon {
       program: this.install.root,
       logs: this.install.logs,
       startsAtLogin: this.startsAtLogin,
+      ...(choices.kept ? { kept: choices.kept } : {}),
     };
   }
   private setUpdate(update: UpdateState) {
@@ -143,7 +144,10 @@ export class Daemon {
       case "check":
         await this.act({ action: "check" });
         return this.update;
+      case "install":
+        return this.installVersion(request.version);
       case "update":
+        if (this.install.choices().kept) throw new Error(`PiSpark is kept at ${this.install.choices().kept}. Resume updates in Settings → About, or install another version with: pispark install <version>`);
         if (this.update.phase === "idle" || this.update.phase === "current" || this.update.phase === "error") await this.act({ action: "check" });
         if (this.update.phase === "ready") await this.act({ action: "apply", when: "now" });
         return this.update;
@@ -199,6 +203,13 @@ export class Daemon {
         if (action.autoUpdate && !before.autoUpdate && this.update.phase === "ready") await this.act({ action: "apply", when: "idle" });
         return;
       }
+      case "resume":
+        if (!this.install.choices().kept) return;
+        this.install.choose({ kept: undefined });
+        this.note("updates resumed");
+        this.update = { phase: "idle" };
+        this.push();
+        return this.check();
       case "cancel":
         if (this.update.phase === "waiting") {
           clearTimeout(this.idleTimer);
@@ -229,7 +240,7 @@ export class Daemon {
   }
 
   private async check() {
-    if (this.busyPhase() || this.update.phase === "ready") return;
+    if (this.busyPhase() || this.update.phase === "ready" || this.install.choices().kept) return;
     this.setUpdate({ phase: "checking" });
     const choices = this.install.choices();
     try {
@@ -250,6 +261,43 @@ export class Daemon {
       this.note(`update check failed: ${(error as Error).message}`);
       this.setUpdate({ phase: "error", message: (error as Error).message, at: new Date().toISOString() });
     }
+  }
+
+  /**
+   * `pispark install <version>`: that exact version, on any channel, older or newer, downloaded if
+   * needed; then kept there (no update checks) until updates are resumed. A version that does not
+   * start rolls back like any update, and is not kept.
+   */
+  private async installVersion(version: string): Promise<UpdateState & { kept?: string }> {
+    if (!VERSION.test(version)) throw new Error(`Not a version: ${version}`);
+    if (this.busy || ["downloading", "restarting"].includes(this.update.phase)) throw new Error("PiSpark is updating; try again when it is done.");
+    const current = this.supervisor.runningRelease?.info.version ?? this.own.info.version;
+    this.install.unmarkFailed(version);
+    if (version !== current && !this.install.installed().includes(version)) {
+      const choices = this.install.choices();
+      const found = find(await listReleases(choices.releases ?? RELEASES_URL), version, this.own.info.os, this.own.info.arch);
+      if (!found) throw new Error(`There is no release ${version} for ${this.own.info.os}-${this.own.info.arch}.`);
+      this.note(`downloading ${version} (asked for)`);
+      this.setUpdate({ phase: "downloading", version, received: 0 });
+      try {
+        await fetchRelease(this.install, found, (received, total) => {
+          this.update = { phase: "downloading", version, received, ...(total ? { total } : {}) };
+          this.push();
+        });
+      } catch (error) {
+        this.setUpdate({ phase: "error", message: (error as Error).message, at: new Date().toISOString() });
+        throw error;
+      }
+    }
+    this.install.choose({ kept: version });
+    if (version === current) {
+      this.setUpdate({ phase: "current", checkedAt: new Date().toISOString() });
+      return { ...this.update, kept: version };
+    }
+    await this.switchTo(version);
+    if (this.update.phase === "failed") this.install.choose({ kept: undefined });
+    this.push();
+    return { ...this.update, ...(this.install.choices().kept ? { kept: version } : {}) };
   }
 
   // ---- Switching versions ----

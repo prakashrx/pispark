@@ -19,6 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/prakashrx/pispark/main/install/inst
 Options:
 - **Channel:** Stable (tagged releases, the default) or Latest (every change merged to main): `$env:PISPARK_CHANNEL = "latest"` before the Windows line, `| sh -s -- --channel latest` on Linux.
 - **Port:** 3000, or the next free port; set it with `PISPARK_PORT` or `--port`.
+- **Version:** a specific version, `PISPARK_VERSION=0.2.0` or `--version 0.2.0`. It installs that release (any channel) and keeps PiSpark there until you resume updates.
 - **Data folder:** `PISPARK_HOME`.
 - **Login start:** `--no-autostart` (`PISPARK_NO_AUTOSTART=1` on Windows) skips starting at login.
 
@@ -62,7 +63,14 @@ The newest two versions are kept, so a failed update can switch straight back.
 
 ```text
 pispark start | open | status | stop | restart | update | logs | uninstall [--purge]
+pispark install <version>
 ```
+
+## A specific version
+
+`pispark install <version>` installs that version, older or newer, from either channel, then keeps PiSpark there: no update checks until you press **Resume updates** in Settings → About. A version that doesn't start rolls back like any update and is not kept. Asking for a version by name clears its earlier failure.
+
+Going back works within the same data layout. A version older than your data folder's layout refuses to start rather than misread your data, so it rolls back.
 
 `uninstall` keeps your data; `--purge` removes it too.
 

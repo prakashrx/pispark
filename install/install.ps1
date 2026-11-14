@@ -4,6 +4,7 @@
 #
 # Options, as environment variables set before running it:
 #   $env:PISPARK_CHANNEL = "latest"   # "stable" (default): tested releases; "latest": every change merged to main
+#   $env:PISPARK_VERSION = "0.2.0"    # that version (any channel), kept there until you resume updates
 #   $env:PISPARK_PORT = "3000"        # default 3000, or the next free port
 #   $env:PISPARK_HOME = "..."         # the data folder, default ~\.pispark
 #   $env:PISPARK_INSTALL_DIR = "..."  # another folder (then your PATH and an earlier install are left alone)
@@ -20,7 +21,7 @@ $ProgressPreference = "SilentlyContinue"
   $channel = if ($env:PISPARK_CHANNEL) { $env:PISPARK_CHANNEL } else { "stable" }
   if ($channel -notin "stable", "latest") { throw "PISPARK_CHANNEL must be stable or latest" }
   $root = if ($env:PISPARK_INSTALL_DIR) { $env:PISPARK_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\PiSpark" }
-  $releases = if ($env:PISPARK_RELEASES_URL) { $env:PISPARK_RELEASES_URL } else { "https://api.github.com/repos/prakashrx/pispark/releases?per_page=30" }
+  $releases = if ($env:PISPARK_RELEASES_URL) { $env:PISPARK_RELEASES_URL } else { "https://api.github.com/repos/prakashrx/pispark/releases?per_page=100" }
   $tar = Join-Path $env:SystemRoot "System32\tar.exe"
   if (-not (Test-Path $tar)) { throw "This Windows has no tar.exe (Windows 10 1803 or later has it)." }
 
@@ -37,18 +38,21 @@ $ProgressPreference = "SilentlyContinue"
     } else { Write-Host "Install it from https://git-scm.com/download/win; continuing." }
   }
 
-  # The newest release on the channel with a Windows archive. Releases are listed newest first.
-  Write-Host "Finding the newest $channel release..."
+  # The newest release on the channel with a Windows archive (releases are listed newest first), or the one asked for.
+  $wanted = if ($env:PISPARK_VERSION) { $env:PISPARK_VERSION -replace "^v", "" } else { $null }
+  if ($wanted) { Write-Host "Finding PiSpark $wanted..." } else { Write-Host "Finding the newest $channel release..." }
   $list = Invoke-RestMethod -Uri $releases -Headers @{ "User-Agent" = "pispark-installer"; Accept = "application/vnd.github+json" }
   $pick = $null
   foreach ($r in $list) {
-    if ($r.draft -or ($r.prerelease -and $channel -eq "stable")) { continue }
     $version = $r.tag_name -replace "^v", ""
+    if ($r.draft) { continue }
+    if ($wanted) { if ($version -ne $wanted) { continue } }
+    elseif ($r.prerelease -and $channel -eq "stable") { continue }
     $archive = $r.assets | Where-Object { $_.name -eq "pispark-$version-win-x64.tar.gz" } | Select-Object -First 1
     $sums = $r.assets | Where-Object { $_.name -eq "SHA256SUMS" } | Select-Object -First 1
     if ($archive -and $sums) { $pick = @{ version = $version; archive = $archive; sums = $sums }; break }
   }
-  if (-not $pick) { throw "No $channel release for Windows was found at $releases" }
+  if (-not $pick) { if ($wanted) { throw "There is no release $wanted for Windows." } else { throw "No $channel release for Windows was found at $releases" } }
   $version = $pick.version
   $target = Join-Path $root "versions\$version"
 
@@ -100,6 +104,7 @@ $ProgressPreference = "SilentlyContinue"
   $setup = @($launcher, "setup", "--channel", $channel)
   if ($env:PISPARK_PORT) { $setup += @("--port", $env:PISPARK_PORT) }
   if ($env:PISPARK_HOME) { $setup += @("--home", $env:PISPARK_HOME) }
+  if ($wanted) { $setup += "--keep" }
   if ($env:PISPARK_NO_AUTOSTART) { $setup += "--no-autostart" }
   if ($env:PISPARK_NO_OPEN) { $setup += "--no-open" }
   & $node @setup

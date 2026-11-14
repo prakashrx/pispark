@@ -6,6 +6,7 @@ import { RELEASE_CHANNELS, compareVersions, type ReleaseChannel } from "../../se
 /** Bumped when the launcher changes; a release whose launcher differs switches launchers too. */
 export const LAUNCHER_VERSION = 1;
 export const windows = process.platform === "win32";
+export const VERSION = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
 
 /** `release.json`: what a release folder is. */
 export interface ReleaseInfo {
@@ -75,6 +76,8 @@ export interface Choices {
   autoUpdate: boolean;
   /** A data folder other than `~/.pispark`. */
   home?: string;
+  /** Kept at this version: no update checks until resumed. */
+  kept?: string;
   /** Where releases are listed, if not this repository's GitHub Releases (a mirror, or a test feed). */
   releases?: string;
 }
@@ -146,6 +149,7 @@ export class Install {
         port: Number.isInteger(saved.port) && saved.port! > 0 && saved.port! < 65536 ? saved.port! : fallback.port,
         autoUpdate: saved.autoUpdate === true,
         ...(typeof saved.home === "string" && saved.home ? { home: saved.home } : {}),
+        ...(typeof saved.kept === "string" && VERSION.test(saved.kept) ? { kept: saved.kept } : {}),
         ...(typeof saved.releases === "string" && /^https?:\/\//.test(saved.releases) ? { releases: saved.releases } : {}),
       };
     } catch {
@@ -160,6 +164,10 @@ export class Install {
   /** Versions that failed to start; never offered again. */
   failed(): string[] {
     return this.readLines("failed");
+  }
+  /** Asked for by name: no longer counted as failed. */
+  unmarkFailed(version: string) {
+    if (this.failed().includes(version)) this.writeLines("failed", this.failed().filter((v) => v !== version));
   }
   markFailed(version: string) {
     if (!this.failed().includes(version)) this.writeLines("failed", [...this.failed(), version]);

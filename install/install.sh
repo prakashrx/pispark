@@ -4,7 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/prakashrx/pispark/main/install/install.sh | sh
 #   curl -fsSL https://raw.githubusercontent.com/prakashrx/pispark/main/install/install.sh | sh -s -- --channel latest --port 3000
 #
-# Options: --channel stable|latest, --port <n>, --no-autostart, --no-open; or PISPARK_CHANNEL, PISPARK_PORT,
+# Options: --channel stable|latest, --version <v> (that version, kept there until you resume updates), --port <n>, --no-autostart, --no-open; or PISPARK_CHANNEL, PISPARK_PORT,
 # PISPARK_HOME (data folder, default ~/.pispark) and PISPARK_INSTALL_DIR in the environment.
 #
 # What it does: downloads the newest release for this CPU from GitHub Releases, checks it against
@@ -15,14 +15,16 @@
 set -eu
 
 channel="${PISPARK_CHANNEL:-stable}"
+wanted="${PISPARK_VERSION:-}"
 port="${PISPARK_PORT:-}"
 autostart="yes"
 open="yes"
 root="${PISPARK_INSTALL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/pispark}"
-releases="${PISPARK_RELEASES_URL:-https://api.github.com/repos/prakashrx/pispark/releases?per_page=30}"
+releases="${PISPARK_RELEASES_URL:-https://api.github.com/repos/prakashrx/pispark/releases?per_page=100}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --channel) channel="$2"; shift 2 ;;
+    --version) wanted="$2"; shift 2 ;;
     --port) port="$2"; shift 2 ;;
     --no-autostart) autostart="no"; shift ;;
     --no-open) open="no"; shift ;;
@@ -49,15 +51,18 @@ elif command -v shasum >/dev/null; then sum() { shasum -a 256 "$1" | cut -d' ' -
 else fail "sha256sum is needed"; fi
 
 say "PiSpark installer"
-say "Finding the newest $channel release for linux-$arch..."
+wanted="${wanted#v}"
+if [ -n "$wanted" ]; then say "Finding PiSpark $wanted for linux-$arch..."; else say "Finding the newest $channel release for linux-$arch..."; fi
 # Releases are listed newest first. A stable version has no "-" (0.4.2); a build of main does (0.4.3-main.…).
 urls=$(get "$releases" | tr ',' '\n' | sed -n 's/.*"browser_download_url": *"\([^"]*pispark-[^"]*-linux-'"$arch"'\.tar\.gz\)".*/\1/p')
 url=""
 for u in $urls; do
   v=$(basename "$u" | sed 's/^pispark-\(.*\)-linux-'"$arch"'\.tar\.gz$/\1/')
-  if [ "$channel" = "latest" ] || ! printf '%s' "$v" | grep -q -- '-'; then url="$u"; version="$v"; break; fi
+  if [ -n "$wanted" ]; then
+    if [ "$v" = "$wanted" ]; then url="$u"; version="$v"; break; fi
+  elif [ "$channel" = "latest" ] || ! printf '%s' "$v" | grep -q -- '-'; then url="$u"; version="$v"; break; fi
 done
-[ -n "$url" ] || fail "no $channel release for linux-$arch was found"
+[ -n "$url" ] || { [ -n "$wanted" ] && fail "there is no release $wanted for linux-$arch"; fail "no $channel release for linux-$arch was found"; }
 target="$root/versions/$version"
 
 if [ -f "$target/release.json" ]; then
@@ -86,6 +91,7 @@ set -- "$target/app/apps/launcher/dist/pispark.mjs" setup --channel "$channel"
 [ -n "${PISPARK_HOME:-}" ] && set -- "$@" --home "$PISPARK_HOME"
 [ "$autostart" = "no" ] && set -- "$@" --no-autostart
 [ "$open" = "no" ] && set -- "$@" --no-open
+[ -n "$wanted" ] && set -- "$@" --keep
 "$target/node/bin/node" "$@"
 
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) say "Add ~/.local/bin to your PATH to use the pispark command." ;; esac

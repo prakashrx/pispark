@@ -32,6 +32,8 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           base=$(node -p "require('./package.json').version")
           if [ "${{ github.event_name }}" = "push" ]; then
@@ -39,6 +41,10 @@ jobs:
             [ "$version" = "$base" ] || { echo "Tag $GITHUB_REF_NAME does not match package.json version $base"; exit 1; }
             channel=stable
           else
+            # A build of main must sort after the newest Stable release: raise package.json after tagging.
+            if gh release view "v$base" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "v$base is already released; raise the version in package.json so builds of main are newer."; exit 1
+            fi
             version="$base-main.${{ github.run_number }}"
             channel=latest
           fi
@@ -95,8 +101,8 @@ jobs:
         run: |
           flags=""
           [ "$CHANNEL" = "latest" ] && flags="--prerelease"
-          gh release create "v$VERSION" release/* --repo "$GITHUB_REPOSITORY" --target "$SHA" --title "PiSpark $VERSION" $flags \
-            --notes "PiSpark $VERSION ($CHANNEL channel). Install: see docs/install.md. Built from $SHA."
+          gh release create "v$VERSION" release/* --repo "$GITHUB_REPOSITORY" --target "$SHA" --title "PiSpark $VERSION" $flags --generate-notes \
+            --notes "PiSpark $VERSION ($CHANNEL channel). Install or update: https://github.com/$GITHUB_REPOSITORY/blob/main/docs/install.md"
       - name: Keep the newest 10 builds of main
         if: needs.version.outputs.channel == 'latest'
         env:

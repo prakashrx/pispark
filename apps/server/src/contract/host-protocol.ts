@@ -32,6 +32,8 @@ export interface LauncherStatus {
   program: string;
   logs: string;
   startsAtLogin: boolean;
+  /** Kept at this version (`pispark install <version>`, or installed as a specific version): no updates until resumed. */
+  kept?: string;
 }
 
 export interface HostStatus {
@@ -56,6 +58,8 @@ export type HostAction =
   | { action: "check" }
   | { action: "apply"; when: "idle" | "now" }
   | { action: "cancel" }
+  /** Stop keeping a version: updates resume. */
+  | { action: "resume" }
   | { action: "configure"; channel?: ReleaseChannel; autoUpdate?: boolean };
 
 /** Launcher to server, over Node's parent–child channel. */
@@ -78,6 +82,7 @@ export function validHostAction(value: unknown): HostAction | undefined {
   switch (v.action) {
     case "check":
     case "cancel":
+    case "resume":
       return only("action") ? { action: v.action } : undefined;
     case "apply":
       return only("action", "when") && (v.when === "idle" || v.when === "now") ? { action: "apply", when: v.when } : undefined;
