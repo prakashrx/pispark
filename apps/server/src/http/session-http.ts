@@ -8,7 +8,8 @@ import type { Catalog, Command, LiveEvent, Receipt } from "../contract/protocol.
 import type { Json } from "../contract/stream-ops.js";
 import type { ScheduleInput } from "../contract/schedule-protocol.js";
 import type { ProviderHttp } from "./provider-http.js";
-import type { HostHttp } from "./host-http.js";
+import { HostHttp } from "./host-http.js";
+import { HostLink } from "../core/host-link.js";
 import { validChoice } from "../core/runtime/provider-storage.js";
 import {
   correlated,
@@ -186,13 +187,16 @@ export class SessionHttp {
   private requests = 0;
   private closed = false;
   private readonly personas: PersonaHttp;
+  private readonly host: HostHttp;
   constructor(
     readonly runtime: SessionRuntime,
     private readonly developmentOrigin?: string,
     private readonly providers?: ProviderHttp,
     private readonly logger: SafeLogger = silentLogger,
-    private readonly host?: HostHttp,
+    host?: HostHttp,
   ) {
+    // Every server answers /api/host; one the launcher did not start is simply not managed.
+    this.host = host ?? new HostHttp(new HostLink(() => runtime.runningWork(), () => {}), runtime.dataFolder, () => runtime.runningWork());
     this.personas = new PersonaHttp(runtime.personas, (target) => runtime.discoverTools(target));
   }
   private secure(request: IncomingMessage) {
@@ -378,7 +382,7 @@ export class SessionHttp {
         await this.personas.handle(request, response);
         return;
       }
-      if (path === "/api/host" && !url.search && this.host) {
+      if (path === "/api/host" && !url.search) {
         await this.host.handle(request, response);
         return;
       }

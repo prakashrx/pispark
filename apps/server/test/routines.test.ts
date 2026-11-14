@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -68,7 +69,8 @@ test("a routine is off until switched on; each run is a new session of its perso
     await eventually(() => f.runs(f.runtime).length === 1);
     const [run] = f.runs(f.runtime);
     assert.equal(run!.title, "Morning check · Sat 14 Nov");
-    assert.equal(run!.folder, join(f.home, "apps", "scout"));
+    // The same folder, however the temporary path is spelled (Windows may give an 8.3 short name).
+    assert.equal(realpathSync.native(run!.folder), realpathSync.native(join(f.home, "apps", "scout")));
     await eventually(() => f.runtime.items(run!.id, {}).items.some((item) => item.role === "assistant"));
     const woken = f.runtime.items(run!.id, {}).items.find((item) => item.customType === WOKEN_ENTRY)!;
     assert.deepEqual((woken.details as { source: unknown }).source, { kind: "schedule", id: "scout/morning", label: "Morning check · Every day at 7:00 am" });

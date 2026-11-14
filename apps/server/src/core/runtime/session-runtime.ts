@@ -837,6 +837,10 @@ export class SessionRuntime {
     this.storage.read(sessionId);
     return this.processes.list(sessionId);
   }
+  /** The data folder this runtime reads and writes. */
+  get dataFolder(): string {
+    return homePaths(this.configuration.home).root;
+  }
   /** What a restart would interrupt now: replies in progress and background processes. */
   runningWork(): RunningWork {
     const replies = this.list()

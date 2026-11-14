@@ -387,7 +387,7 @@ test("SessionRuntime: managed native config cancellation before compaction dispa
   t.after(async () => {
     await sessions.shutdown();
     await f.settings.close();
-    await rm(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
   const request = {
     folder: root,
