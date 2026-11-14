@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { PROCESS_TOOL, validProcessMessage } from "../src/core/runtime/process-tool.js";
+import { gitPs } from "../src/core/runtime/processes.js";
 import { STATUS_ENTRY, WOKEN_ENTRY } from "../src/contract/wake-protocol.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
@@ -150,4 +151,12 @@ test("the agent's stop answers once the process has ended", async () => {
   } finally {
     await f.cleanup();
   }
+});
+
+const GIT = String.raw`C:\Program Files\Git`;
+test("Windows: Stop finds Git's ps.exe from either Git Bash, and none for another bash", { skip: process.platform !== "win32" || !existsSync(join(GIT, "usr", "bin", "ps.exe")) }, () => {
+  const ps = join(GIT, "usr", "bin", "ps.exe");
+  assert.equal(gitPs(join(GIT, "bin", "bash.exe")), ps);
+  assert.equal(gitPs(join(GIT, "usr", "bin", "bash.exe")), ps);
+  assert.equal(gitPs(String.raw`C:\Windows\System32\bash.exe`), undefined);
 });
