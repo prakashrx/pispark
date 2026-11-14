@@ -22,7 +22,13 @@
   let closed = false;
   let now = $state(Date.now());
 
+  // One loop at a time: a poll asked for while one runs happens right after it.
+  let polling = false;
+  let again = false;
   async function poll() {
+    if (polling) return void (again = true);
+    polling = true;
+    clearTimeout(timer);
     try {
       processes = (await client.processes.of(sessionId)).reverse();
       loaded = true;
@@ -42,6 +48,11 @@
       error = (failure as Error).message;
     }
     now = Date.now();
+    polling = false;
+    if (again) {
+      again = false;
+      return void poll();
+    }
     if (!closed) timer = setTimeout(() => void poll(), processes.some((p) => p.state === "running") ? 1000 : 5000);
   }
   $effect(() => {
@@ -56,7 +67,6 @@
     if (next.has(id)) next.delete(id);
     else next.add(id);
     shown = next;
-    clearTimeout(timer);
     void poll();
   }
   // Output follows its end while you are at the end.

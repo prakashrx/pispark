@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import Icon from "../../../lib/ui/Icon.svelte";
   import { useSession, useSessions } from "../session-client.svelte";
   import { showProcess } from "../../background/background-client.svelte";
@@ -13,7 +14,9 @@
   // Not among the running ones (or not yet listed): ask the session's own list.
   let known = $state<ProcessInfo>();
   $effect(() => {
+    // Asked when it is not (or no longer) among the running ones; what it last knew is not a reason to ask again.
     if (running || !session) return;
+    if (untrack(() => known && known.state !== "running")) return;
     void client.processes
       .of(session.id)
       .then((list) => (known = list.find((p) => p.id === segment.processId)))

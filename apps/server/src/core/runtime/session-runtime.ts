@@ -35,6 +35,14 @@ import type { ProcessRequest } from "./process-tool.js";
 import type { ProcessInfo, ProcessList, ProcessOutput } from "../../contract/process-protocol.js";
 
 type Stored = ReturnType<Processes["get"]>;
+
+/** A child's result data as the parent's agent reads it, if it fits in `room` characters. */
+function dataText(data: unknown, room: number): string {
+  if (data === undefined) return "";
+  for (const text of [JSON.stringify(data, null, 2), JSON.stringify(data)])
+    if (text.length + 16 <= room) return `\n\nIts data:\n${text}`;
+  return "\n\n(It also set data, too large to show here; this session's extensions received it.)";
+}
 import type { ChatMetadata } from "./storage.js";
 
 /**
@@ -637,7 +645,7 @@ export class SessionRuntime {
     });
     void this.wakes.deliver(parent.id, {
       source: { kind: "session", id: chat.id, label: `${title} · ${how}` },
-      text: `The session "${title}" you started ${how}:\n\n${body}${data !== undefined ? `\n\nIts data:\n${JSON.stringify(data, null, 2)}` : ""}`,
+      text: `The session "${title}" you started ${how}:\n\n${body}${dataText(data, 56 * 1024 - body.length)}`,
       due: new Date(this.now()).toISOString(),
       policy: "queue",
       report,
@@ -706,15 +714,13 @@ export class SessionRuntime {
    * nobody are archived (and can be restored).
    */
   private async pruneRuns(schedule: string, keep: string): Promise<void> {
-    const runs = this.storage
-      .list()
-      .filter((metadata) => metadata.schedule?.id === schedule && !metadata.archived && metadata.id !== keep)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    const older = this.runsOf(schedule)
+      .filter((run) => !run.archived && run.session !== keep)
       .slice(SessionRuntime.RUNS_KEPT - 1);
-    for (const old of runs) {
-      const chat = this.live.get(old.id);
+    for (const { session } of older) {
+      const chat = this.live.get(session);
       if (chat && (!chat.settled || chat.asking)) continue;
-      await this.archive(old.id).catch(() => {});
+      await this.archive(session).catch(() => {});
     }
   }
 
@@ -789,7 +795,8 @@ export class SessionRuntime {
         const process = this.processes.get(request.id, this.processSessions(sessionId));
         if (process.state !== "running") return { ok: true, text: "It is not running." };
         this.processes.stop(process.id, "agent");
-        await this.processes.wait(process, /$^/, process.written, 5000);
+        await this.processes.wait(process, /(?!)/, process.written, 5000);
+        if (this.processes.get(process.id, [process.sessionId]).state === "running") return { ok: true, text: "Stopping; it has not ended yet (list shows when it has)." };
         return { ok: true, text: "Stopped." };
       }
     }

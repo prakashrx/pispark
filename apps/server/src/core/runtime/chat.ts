@@ -608,7 +608,9 @@ export class Chat {
   /** Adds a status line to the conversation without starting a turn; the agent reads it next time. */
   addStatus(text: string, details: StatusDetails): void {
     if (!this.session || this.closed) throw new RuntimeError("not-found");
-    void this.session.sendCustomMessage({ customType: STATUS_ENTRY, content: text, display: true, details }, { triggerTurn: false });
+    this.session
+      .sendCustomMessage({ customType: STATUS_ENTRY, content: text, display: true, details }, { triggerTurn: false })
+      .catch(() => this.ui?.failed("A status line could not be added to this chat."));
     this.changed();
   }
   /** The extension files the session loaded, for naming where a tool came from. */

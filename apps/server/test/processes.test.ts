@@ -137,3 +137,17 @@ test("Stop ends everything a command started, such as npm and the server it runs
     await f.cleanup();
   }
 });
+
+test("the agent's stop answers once the process has ended", async () => {
+  const f = await fixture();
+  try {
+    const chat = await f.runtime.create({ folder: f.folder });
+    await f.runtime.start(chat.id, call({ action: "start", command: SERVER, wait_for: "ready", timeout_seconds: 30 })).completion;
+    const [process] = f.runtime.listProcesses(chat.id);
+    await f.runtime.start(chat.id, call({ action: "stop", id: process!.id })).completion;
+    assert.equal(f.lastTool(f.runtime, chat.id), "Stopped.");
+    assert.equal(f.runtime.listProcesses(chat.id)[0]!.state, "stopped");
+  } finally {
+    await f.cleanup();
+  }
+});

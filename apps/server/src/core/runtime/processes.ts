@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, closeSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, closeSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getShellConfig } from "@earendil-works/pi-coding-agent";
 import type { ProcessInfo, ProcessOutput } from "../../contract/process-protocol.js";
@@ -14,6 +14,8 @@ const MAX_LOG = 2 * 1024 * 1024;
 const KEEP = 1024 * 1024;
 /** A watch wakes its session at most this often. */
 const WATCH_EVERY_MS = 60_000;
+/** Ended processes kept per session, with their output; older ones go as new ones start. */
+const KEPT_ENDED = 20;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
 /** How a process ended, for its session: the process, how it reads, and its last output. */
@@ -143,7 +145,7 @@ export class Processes {
     // Under Git Bash, the shell first writes its MSYS process id, which is also the group everything
     // it starts belongs to, so Stop can find them all (see `descendants`).
     const group = join(dir, `${id}.group`);
-    const command = gitBash(shell) ? `echo $$ > '${group.replace(/\\/g, "/")}'; ${input.command}` : input.command;
+    const command = gitBash(shell) ? `echo $$ > ${quote(group.replace(/\\/g, "/"))}; ${input.command}` : input.command;
     const stdin = commandTransport === "stdin";
     const child = spawn(shell, stdin ? args : [...args, command], {
       cwd: input.folder,
@@ -168,7 +170,7 @@ export class Processes {
       offset: 0,
       cursors: {},
     };
-    this.stored.set(sessionId, [...(this.stored.get(sessionId) ?? []), record]);
+    this.stored.set(sessionId, [...this.pruned(sessionId), record]);
     const live: Live = { child, partial: "", waiters: new Set(), lastWatch: new Map(), group };
     this.live.set(id, live);
     const output = (chunk: Buffer) => this.output(record, live, chunk);
@@ -180,6 +182,23 @@ export class Processes {
       live.timer = setTimeout(() => this.stop(id, "timeout"), Math.min(input.stopAfterSeconds, 7 * 86_400) * 1000).unref();
     this.save(sessionId);
     return view(record);
+  }
+  /**
+   * A session's processes, keeping the newest ended ones: older ones go with their logs, as runs and
+   * wake records keep only the newest.
+   */
+  private pruned(sessionId: string): Stored[] {
+    const list = this.stored.get(sessionId) ?? [];
+    const ended = list.filter((p) => p.state !== "running" && !p.untold);
+    const drop = new Set(ended.slice(0, Math.max(0, ended.length - KEPT_ENDED)).map((p) => p.id));
+    for (const id of drop)
+      for (const file of [`${id}.log`, `${id}.group`])
+        try {
+          unlinkSync(join(this.host.directory(sessionId), "processes", file));
+        } catch {
+          /* Already gone. */
+        }
+    return list.filter((p) => !drop.has(p.id));
   }
   /** Stops a process and everything it started. */
   stop(id: string, by: "agent" | "person" | "timeout"): void {
@@ -320,9 +339,13 @@ export class Processes {
    */
   async wait(process: Stored, pattern: RegExp | undefined, since: number, timeoutMs: number, signal?: AbortSignal): Promise<"matched" | "ended" | "timeout"> {
     const live = this.live.get(process.id);
+    // Only what came since the last look is read, with a little before it so a match split
+    // across two chunks is still seen.
+    let from = since;
     const matched = () => {
-      const text = this.read(process, since, MAX_LOG).text;
-      return pattern ? pattern.test(text) : text.length > 0;
+      const out = this.read(process, Math.max(since, from - 1024), MAX_LOG);
+      from = out.next;
+      return pattern ? pattern.test(out.text) : out.next > since;
     };
     if (matched()) return "matched";
     if (!live) return "ended";
@@ -364,6 +387,11 @@ export class Processes {
   }
 }
 
+/** A Windows program by its full path, so a different one on PATH is never run. */
+const system32 = (program: string) => join(process.env.SystemRoot || "C:\\Windows", "System32", program);
+/** One argument for a POSIX shell. */
+const quote = (text: string) => `'${text.replace(/'/g, `'\\''`)}'`;
+
 /** Whether the shell is Git Bash (MSYS), whose processes `ps -W` lists with their Windows ids. */
 const gitBash = (shell: string) => process.platform === "win32" && /[\\/]git[\\/]/i.test(shell);
 
@@ -386,7 +414,7 @@ function output(command: string, args: string[]): Promise<string> {
  */
 async function descendants(root: number, groupFile?: string): Promise<number[]> {
   const children = new Map<number, number[]>();
-  const table = await output("powershell.exe", [
+  const table = await output(system32("WindowsPowerShell\\v1.0\\powershell.exe"), [
     "-NoProfile",
     "-NonInteractive",
     "-Command",
@@ -444,7 +472,7 @@ async function killTree(child: ChildProcess, groupFile?: string): Promise<void> 
     // reach of `taskkill /T`. So the whole tree is found first, then every process in it is ended.
     const pids = [pid, ...(await descendants(pid, groupFile))];
     await new Promise<void>((done) => {
-      const taskkill = spawn("taskkill", ["/F", "/T", ...pids.flatMap((each) => ["/PID", String(each)])], { windowsHide: true, stdio: "ignore" });
+      const taskkill = spawn(system32("taskkill.exe"), ["/F", "/T", ...pids.flatMap((each) => ["/PID", String(each)])], { windowsHide: true, stdio: "ignore" });
       taskkill.on("error", () => (child.kill(), done()));
       taskkill.on("close", () => done());
     });
