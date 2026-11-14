@@ -61,7 +61,7 @@
                 class="text-xs text-subtle">{sessions.personas.items.length}</span
               >{:else if link.page === "schedules" && backgroundCount}<span
                 class="text-xs text-subtle">{backgroundCount}</span
-              >{/if}
+              >{:else if link.page === "about" && sessions.host.ready}<span class="text-xs text-[var(--interactive-text)]">Update</span>{/if}
           </a>
           {#if link.page === "persona" && page === "persona" && sessions.personas.items.length}
             <div class="ml-[1.375rem] pl-3 my-1 border-l border-[var(--sidebar-border)] space-y-px">

@@ -33,6 +33,7 @@ import { Routines } from "./routines.js";
 import { Processes, type ProcessEnd } from "./processes.js";
 import type { ProcessRequest } from "./process-tool.js";
 import type { ProcessInfo, ProcessList, ProcessOutput } from "../../contract/process-protocol.js";
+import type { RunningWork } from "../../contract/host-protocol.js";
 
 type Stored = ReturnType<Processes["get"]>;
 
@@ -835,6 +836,14 @@ export class SessionRuntime {
     validateId(sessionId);
     this.storage.read(sessionId);
     return this.processes.list(sessionId);
+  }
+  /** What a restart would interrupt now: replies in progress and background processes. */
+  runningWork(): RunningWork {
+    const replies = this.list()
+      .filter((s) => ["running", "queued", "stopping"].includes(s.status) || s.waiting || s.queued)
+      .map((s) => ({ session: s.id, title: s.title ?? "New chat" }));
+    const processes = this.runningProcesses().processes.map((p) => ({ session: p.sessionId, title: p.session.title ?? "New chat", name: p.title || p.command }));
+    return { replies, processes };
   }
   /** Every process still running, with its session's title. */
   runningProcesses(): ProcessList {

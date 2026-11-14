@@ -1,0 +1,107 @@
+name: Release
+
+# Stable: pushing a tag v<version> (e.g. v0.2.0) publishes a release.
+# Latest: every push to main that passes CI publishes a prerelease <package version>-main.<run>.
+# Each holds pispark-<version>-<os>-<arch>.tar.gz for Windows x64, Linux x64 and Linux arm64, and
+# SHA256SUMS. PiSpark's launcher and the install scripts read these (docs/install.md).
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    if: github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      channel: ${{ steps.v.outputs.channel }}
+      sha: ${{ steps.v.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - id: v
+        run: |
+          base=$(node -p "require('./package.json').version")
+          if [ "${{ github.event_name }}" = "push" ]; then
+            version="${GITHUB_REF_NAME#v}"
+            [ "$version" = "$base" ] || { echo "Tag $GITHUB_REF_NAME does not match package.json version $base"; exit 1; }
+            channel=stable
+          else
+            version="$base-main.${{ github.run_number }}"
+            channel=latest
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { runner: windows-latest, os: win, arch: x64 }
+          - { runner: ubuntu-24.04, os: linux, arch: x64 }
+          - { runner: ubuntu-24.04-arm, os: linux, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.23.4"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/release.mjs --os ${{ matrix.os }} --arch ${{ matrix.arch }} --version ${{ needs.version.outputs.version }} --channel ${{ needs.version.outputs.channel }} --out release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          path: release/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release
+      - name: Checksums
+        working-directory: release
+        run: sha256sum *.tar.gz > SHA256SUMS && cat SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          CHANNEL: ${{ needs.version.outputs.channel }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          flags=""
+          [ "$CHANNEL" = "latest" ] && flags="--prerelease"
+          gh release create "v$VERSION" release/* --repo "$GITHUB_REPOSITORY" --target "$SHA" --title "PiSpark $VERSION" $flags \
+            --notes "PiSpark $VERSION ($CHANNEL channel). Install: see docs/install.md. Built from $SHA."
+      - name: Keep the newest 10 builds of main
+        if: needs.version.outputs.channel == 'latest'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,isPrerelease,createdAt \
+            --jq '[.[] | select(.isPrerelease and (.tagName | test("-main\\.")))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
+            while read -r tag; do gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes; done

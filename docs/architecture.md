@@ -23,7 +23,9 @@ In development, Vite serves the UI on loopback port 5173 and proxies `/api` to p
 | `core/` | The hosting layer: `runtime/` (chats, run slots, storage, providers), `personas/`, `extensions/`, the data folder and the logger. No HTTP, no browser, nothing about how a client draws a chat | `contract` |
 | `http/` | The local server for the workspace: routes, static files, the host's configuration and the names of the contribution points the workspace draws for extensions | `core`, `contract` |
 
-`index.ts` wires them. `apps/web` imports the server only through `contract/`.
+`index.ts` wires them. `apps/web` and `apps/launcher` import the server only through `contract/`.
+
+**The launcher** (`apps/launcher`, the installed `pispark` program) is a separate process that runs the server as its child: it restarts it after a crash, switches versions on update and rolls back a version that does not start. The two talk over Node's parent–child channel (`contract/host-protocol.ts`); the server's side is `core/host-link.ts`, and `GET`/`POST /api/host` (`http/host-http.ts`) passes its state and the browser's requests. A server started any other way is not managed and has no updates. See [install](install.md).
 
 **What belongs in the core:** something an app with no conversation on screen would still need (sessions, personas, run slots, calls). How a conversation looks (turn grouping, tool wording, which `session.*` points are drawn, Ask) is the workspace's. The core knows "chat", "persona", "extension", "point", "view" and "call", and no tool name except Pi's own.
 

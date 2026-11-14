@@ -8,6 +8,7 @@ import { ProviderClient } from "../settings/provider-client.svelte";
 import { PersonaClient } from "../persona/persona-client.svelte";
 import { ScheduleClient } from "../schedules/schedule-client.svelte";
 import { ProcessClient, RoutineClient } from "../background/background-client.svelte";
+import { HostClient } from "../about/host-client.svelte";
 const context = Symbol("session-client");
 
 /** How many chats stay in memory as they were last shown, so opening one again shows it at once. */
@@ -54,6 +55,8 @@ export class SessionClient {
   readonly schedules = new ScheduleClient(this.transport);
   readonly routines = new RoutineClient(this.transport);
   readonly processes = new ProcessClient(this.transport);
+  /** This PiSpark and its updates; after an update restart, the window reconnects by itself. */
+  readonly host = new HostClient(this.transport, () => this.reconnect());
   /** Chats that have been opened, least recently shown first. */
   private readonly opened = new Map<string, Session>();
   private disposed = false;
@@ -134,6 +137,7 @@ export class SessionClient {
     void this.schedules.refresh().catch(() => {});
     void this.routines.refresh().catch(() => {});
     void this.processes.refresh().catch(() => {});
+    void this.host.refresh().catch(() => {});
     if (this.archived && this.archived.length !== this.archivedCount) void this.loadArchived();
     const apps = new Set(this.personas.items.filter((persona) => persona.home).map((persona) => persona.id));
     if (this.personas.items.length && result.sessions.some((session) => !!session.persona.home !== apps.has(session.persona.id)))
@@ -360,6 +364,7 @@ export class SessionClient {
     return true;
   }
   dispose() {
+    this.host.dispose();
     this.providers.dispose();
     this.disposed = true;
     for (const session of this.opened.values()) session.hide();

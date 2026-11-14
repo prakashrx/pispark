@@ -84,9 +84,38 @@
   </div>
 
   <div class="px-3 py-2.5" style="border-top:1px solid var(--sidebar-border)">
+    {#if client.host.ready}<a href="#/about" class="update-ready" data-purpose="update-ready"
+        ><Icon name="arrowUp" class="w-4 h-4 shrink-0 text-muted-foreground" /><span class="flex-1 truncate">Update ready · v{client.host.ready}</span><span
+          class="restart">Restart</span
+        ></a
+      >{/if}
     <a href="#/settings" class="nav-item">
       <Icon name="settings" class="w-[18px] h-[18px] text-muted-foreground" />
       <span>Settings</span>
     </a>
   </div>
 </div>
+
+<style>
+  .update-ready {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--background);
+    font-size: 0.8125rem;
+    color: var(--foreground);
+  }
+  .update-ready:focus-visible {
+    outline: 2px solid var(--ring, var(--interactive-text));
+    outline-offset: 2px;
+  }
+  .restart {
+    color: var(--interactive-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+</style>

@@ -5,6 +5,7 @@ export const routes = {
   persona: { title: "Personas" },
   schedules: { title: "Schedules" },
   sources: { title: "Sources" },
+  about: { title: "About" },
 } as const;
 
 export type Page = keyof typeof routes;

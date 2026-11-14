@@ -213,7 +213,10 @@
         onclick={() => session.reload()}>Reload chat</Button
       >
     </p>{/if}
-  {#if info && connection === "Disconnected"}<p role="alert" class="conversation-notice">
+  {#if info && client.host.restarting}<p role="status" class="conversation-notice flex items-center gap-2" data-purpose="updating">
+      <span class="updating-spin" aria-hidden="true"></span><span><strong>Updating PiSpark to v{client.host.restarting}…</strong> Back in a few seconds. Your draft is kept.</span>
+    </p>
+  {:else if info && connection === "Disconnected"}<p role="alert" class="conversation-notice">
       Connection lost. Your chat may still be running. <Button class={button} onclick={() => client.reconnect()}>Reconnect</Button>
     </p>
   {:else if info && connection === "Unloaded"}<p role="status" class="conversation-notice">
@@ -233,6 +236,26 @@
 {/if}
 
 <style>
+  .updating-spin {
+    width: 0.75rem;
+    height: 0.75rem;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    border: 2px solid var(--interactive-text);
+    border-right-color: transparent;
+    animation: updating-spin 1s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .updating-spin {
+      animation: none;
+      border-right-color: var(--interactive-text);
+    }
+  }
+  @keyframes updating-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
   .chat-status {
     display: inline-flex;
     align-items: center;

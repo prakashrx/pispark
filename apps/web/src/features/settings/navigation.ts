@@ -8,4 +8,5 @@ export const settingsLinks: { label: string; icon: IconName; page?: Page }[] = [
   { label: "Sources", icon: "settingsFolder", page: "sources" },
   { label: "Channels", icon: "channels" },
   { label: "Keybindings & Shortcuts", icon: "shortcuts" },
+  { label: "About", icon: "info", page: "about" },
 ];

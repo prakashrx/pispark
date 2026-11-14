@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
  */
 const src = fileURLToPath(new URL("../src/", import.meta.url));
 const web = fileURLToPath(new URL("../../web/", import.meta.url));
+const launcher = fileURLToPath(new URL("../../launcher/", import.meta.url));
 const ALLOWED: Record<string, string[]> = {
   contract: ["contract"],
   core: ["core", "contract"],
@@ -61,9 +62,9 @@ test("the contract depends on nothing but itself", () => {
     );
 });
 
-test("the web imports the server only through its contract", () => {
+test("the web and the launcher import the server only through its contract", () => {
   const broken: string[] = [];
-  for (const root of ["src", "tests"].map((name) => join(web, name)).filter((dir) => existsSync(dir) && statSync(dir).isDirectory()))
+  for (const root of [...["src", "tests"].map((name) => join(web, name)), ...["src", "test"].map((name) => join(launcher, name))].filter((dir) => existsSync(dir) && statSync(dir).isDirectory()))
     for (const file of walk(root))
       for (const spec of imports(file)) {
         const target = resolve(dirname(file), spec);

@@ -8,6 +8,7 @@ import type { Catalog, Command, LiveEvent, Receipt } from "../contract/protocol.
 import type { Json } from "../contract/stream-ops.js";
 import type { ScheduleInput } from "../contract/schedule-protocol.js";
 import type { ProviderHttp } from "./provider-http.js";
+import type { HostHttp } from "./host-http.js";
 import { validChoice } from "../core/runtime/provider-storage.js";
 import {
   correlated,
@@ -190,6 +191,7 @@ export class SessionHttp {
     private readonly developmentOrigin?: string,
     private readonly providers?: ProviderHttp,
     private readonly logger: SafeLogger = silentLogger,
+    private readonly host?: HostHttp,
   ) {
     this.personas = new PersonaHttp(runtime.personas, (target) => runtime.discoverTools(target));
   }
@@ -374,6 +376,10 @@ export class SessionHttp {
       const path = url.pathname;
       if (path === "/api/personas" || path.startsWith("/api/personas/")) {
         await this.personas.handle(request, response);
+        return;
+      }
+      if (path === "/api/host" && !url.search && this.host) {
+        await this.host.handle(request, response);
         return;
       }
       if (path.startsWith("/api/providers") && this.providers) {

@@ -12,7 +12,10 @@ const contentTypes: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".woff2": "font/woff2",
+  ".webmanifest": "application/manifest+json",
 };
+/** Files at the root of the built web app that are served as they are (the PWA's manifest, worker and icons). */
+const ROOT_FILES = new Set(["/favicon.svg", "/manifest.webmanifest", "/sw.js", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png"]);
 
 function json(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, {
@@ -38,7 +41,7 @@ async function serveStatic(
   head: boolean,
 ) {
   // Only the built entry, icon, and assets are served directly.
-  if (path !== "/" && path !== "/favicon.svg" && !path.startsWith("/assets/"))
+  if (path !== "/" && !ROOT_FILES.has(path) && !path.startsWith("/assets/"))
     return false;
   const file = resolve(webRoot, path === "/" ? "index.html" : `.${path}`);
   if (!isInside(webRoot, file)) return false;

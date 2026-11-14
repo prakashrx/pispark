@@ -20,6 +20,18 @@ Every hosted session loads an ordinary built-in PiSpark integration extension. I
 
 Styles, other settings saves, source connections/marketplace and extension Svelte hosting remain deferred. General settings saves appearance preferences in this browser and links to the Default persona; Sources explains that connections are unavailable. Ask, reply and persona drafts survive route changes but reset on reload. Credentials persist server-side; the browser stores the selected session UUID and appearance preferences.
 
+## Install
+
+One line installs PiSpark for your user, keeps it running in the background (tray on Windows, a systemd user service on Linux) and updates it from Settings → About. See [installing, running and updating](docs/install.md).
+
+```powershell
+irm https://raw.githubusercontent.com/prakashrx/pispark/main/install/install.ps1 | iex
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/prakashrx/pispark/main/install/install.sh | sh
+```
+
 ## Run locally
 
 Requires **Node 22 (22.23.4+), Node 24, or Node 26+** and **npm 10+**. No terminal Pi installation, credentials, or environment file is needed. Startup also checks Node's bundled undici security version on every supported major; see the protocol guide.
@@ -48,12 +60,15 @@ GNU Make wrappers are available (`make install`, `make dev`, `make check`, `make
 ```text
 apps/server/    Node HTTP/session host, Pi runtime and backend tests
 apps/web/       Svelte 5 + Vite + Tailwind UI, unit and browser tests
+apps/launcher/  The installed `pispark` program: runs the server, the tray, updates
+install/        The one-line install scripts (Windows, Linux)
 VISION.md      Authoritative product direction and architectural principles
 docs/          Implemented architecture and development instructions
-scripts/       Production HTTP smoke check
+scripts/       Production HTTP smoke check, release build
 .github/       Cross-platform CI and pull request template
 ```
 
+- [Install](docs/install.md) — the installers, the launcher, updates and releases
 - [Architecture](docs/architecture.md) — implemented boundaries and next integration seam
 - [Development](docs/development.md) — scripts, configuration, testing, dependency notes
 - [Vision](VISION.md) — authoritative direction, not a shipped-feature list or implementation specification

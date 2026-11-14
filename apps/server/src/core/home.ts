@@ -47,10 +47,30 @@ export function resolveHome(value = process.env.PISPARK_HOME): string {
   return resolve(expanded);
 }
 
+/**
+ * The layout of the data folder this PiSpark reads and writes, recorded in `home.json`. A change to
+ * the layout raises it and migrates forward at start. A PiSpark that finds a newer layout than it
+ * knows (after going back to an older version) refuses to start rather than misread it.
+ */
+export const HOME_FORMAT = 1;
+
 export function prepareHome(root: string): HomePaths {
   const paths = homePaths(root);
   for (const dir of [paths.root, paths.chats, paths.personas, paths.providers])
     mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const file = join(paths.root, "home.json");
+  let format: unknown;
+  try {
+    format = (JSON.parse(readFileSync(file, "utf8")) as { format?: unknown }).format;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error(`${file} cannot be read. It records the layout of this data folder.`);
+  }
+  if (format === undefined) writeFileSync(file, JSON.stringify({ format: HOME_FORMAT }, null, 2) + "\n");
+  else if (!Number.isInteger(format) || (format as number) < 1) throw new Error(`${file} names no layout this PiSpark knows.`);
+  else if ((format as number) > HOME_FORMAT)
+    throw new Error(
+      `${paths.root} was written by a newer PiSpark (data layout ${format}; this version reads up to ${HOME_FORMAT}). Update PiSpark, or point PISPARK_HOME at another folder.`,
+    );
   return paths;
 }
 

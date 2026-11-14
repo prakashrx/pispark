@@ -8,6 +8,8 @@ import { SessionRuntime } from "./core/runtime/session-runtime.js";
 import { SessionHttp } from "./http/session-http.js";
 import { ProviderSettings } from "./core/runtime/provider-settings.js";
 import { ProviderHttp } from "./http/provider-http.js";
+import { HostHttp } from "./http/host-http.js";
+import { HostLink } from "./core/host-link.js";
 
 const host = process.env.HOST ?? "127.0.0.1";
 if (!["127.0.0.1", "::1"].includes(host))
@@ -37,11 +39,15 @@ if (
     "PISPARK_DEV_ORIGIN must be an explicit loopback HTTP origin.",
   );
 const providers = await ProviderSettings.create(configuration);
+const runtime = new SessionRuntime(configuration, providers, logger);
+// The launcher (when it started this server) asks for a graceful shutdown over its channel.
+const link = new HostLink(() => runtime.runningWork(), () => shutdown());
 const sessions = new SessionHttp(
-  new SessionRuntime(configuration, providers, logger),
+  runtime,
   developmentOrigin,
   new ProviderHttp(providers),
   logger,
+  new HostHttp(link, paths.root, () => runtime.runningWork()),
 );
 const server = createAppServer({ webRoot, sessions, logger });
 server.maxConnections = 64;
@@ -84,7 +90,10 @@ function shutdown(): void {
       );
       process.exitCode = 1;
     })
-    .finally(() => logger.close());
+    .finally(() => {
+      logger.close();
+      link.close();
+    });
   const timeout = setTimeout(() => server.closeAllConnections(), 5000);
   timeout.unref();
   server.close((error) => {
