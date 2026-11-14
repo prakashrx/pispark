@@ -40,7 +40,7 @@ Types: `apps/server/src/contract/protocol.ts`, `provider-protocol.ts` and `agent
 | `GET /api/sessions` | `{sessions, truncated, unreadable?, archived}`: the newest 256 sessions in use, and how many are archived; `?archived` lists the archived ones instead. A [child session](session-runtime.md#child-sessions) carries `parent` |
 | `POST /api/commands` | Exact typed JSON command, UUID `commandId`; HTTP 202 correlated receipt |
 | `GET /api/receipts/:commandId` | Current accepted/settled receipt;404 `unknown-receipt` after expiry/restart or unknown ID |
-| `GET /api/sessions/:uuid` | The session's session document: status, model, queue, error, what extensions show and the commands they registered (`commands: {name, description?}[]`, at most 50); no history |
+| `GET /api/sessions/:uuid` | The session document: status, model, queue, error, what extensions show and the commands they registered (`commands: {name, description?}[]`, at most 50); no history |
 | `GET /api/sessions/:uuid/items?before=ID&limit=N` / `?after=ID` | Finalized items on Pi's active branch, oldest first, read straight from Pi's session; bounded by count and bytes; `head` is the session's last entry id, `more` says whether the page was cut |
 | `GET /api/sessions/:uuid/live` | SSE: one `snapshot` of the live document, then `ops` batches (see below). A session that is not loaded answers one `unloaded` event: open it, then reconnect |
 | `GET /api/sessions/:uuid/items/:id/parts/:n` | An image part's bytes, or with `?offset=` a chunk of a clipped text part |

@@ -154,7 +154,7 @@ export class SessionClient {
     }
   }
 
-  /** The session's session object, kept from when it was last open or made now. */
+  /** The Session object, kept from when it was last open or made now. */
   session(id: string): Session {
     let session = this.opened.get(id);
     if (!session) {

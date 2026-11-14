@@ -137,7 +137,7 @@ A view is an ordinary component: `session` for the session itself, `props` for w
 
 ### Keeping state
 
-PiSpark keeps no copy of what a component showed: props are drawn from the extension's state, and that state lives where Pi keeps an extension's state, in the session's session. Save it with `pi.appendEntry(customType, data)` when it changes (saved with the transcript, never sent to the model) and read it back on `session_start`, which Pi sends for a new session and when a session is resumed:
+PiSpark keeps no copy of what a component showed: props are drawn from the extension's state, and that state lives where Pi keeps an extension's state, in the session's transcript. Save it with `pi.appendEntry(customType, data)` when it changes (saved with the transcript, never sent to the model) and read it back on `session_start`, which Pi sends for a new session and when a session is resumed:
 
 ```js
 let count = 0;

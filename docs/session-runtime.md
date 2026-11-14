@@ -23,7 +23,7 @@ Every session gets a separate `ModelRuntime`, `SettingsManager`, `ResourceLoader
 | `open(id)` | Reopen a known session's native history (or an empty session) with its agent resolved now. Never accepts a session-file path. Never prompts/replays tools. |
 | `reload(id)` | Stop an idle session and open it again, so agent changes apply. Busy while running. |
 | `list()` | Stored metadata summaries, including empty/unloaded sessions and interrupted status. |
-| `session(id)` | The session's session document: status, model, queue, safe error and what extensions show; no history. |
+| `session(id)` | The session document: status, model, queue, safe error and what extensions show; no history. |
 | `items(id, {before?, after?, limit?})` / `image(id, itemId, part)` / `text(id, itemId, part, offset)` | Finalized items on Pi's active branch read straight from the session, bounded by count and bytes; an image's bytes; a chunk of a clipped text part. Pi's entry ids are the cursors. |
 | `liveDoc(id)` | The live document: the session document, the items not yet saved (including the message being written) and what running tools reported. |
 | `observeLive(id)` | A per-connection live view (the document of unpersisted items and session state, diffed into operations on each tick) plus the invalidation iterator that says when to ask it. |

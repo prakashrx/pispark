@@ -211,7 +211,7 @@ export class ExtensionUI {
     this.changed();
   }
 
-  /** Pi's extension UI for this session's session. */
+  /** Pi's extension UI for this session. */
   readonly context: ExtensionUIContext = {
     select: (title, options, opts) =>
       this.ask(
