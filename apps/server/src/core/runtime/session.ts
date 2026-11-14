@@ -443,7 +443,7 @@ export class Session {
         ],
       },
       cwd,
-      agentDir: join(dir, "agent"),
+      agentDir: join(dir, "pi"),
       managed,
       fixed,
       admission: {
@@ -489,7 +489,7 @@ export class Session {
     try {
       ({ session } = await createAgentSession({
         cwd,
-        agentDir: join(dir, "agent"),
+        agentDir: join(dir, "pi"),
         model: services.model,
         modelRuntime: services.modelRuntime,
         settingsManager: services.settingsManager,
