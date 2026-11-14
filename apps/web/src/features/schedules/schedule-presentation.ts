@@ -82,10 +82,10 @@ export function whenOf(choice: WhenChoice, now = new Date()): ScheduleWhen | { e
 
 /** "Next Mon 16 Nov, 9:00 am", or why it will not run. */
 export function nextText(schedule: Schedule, paused: boolean, now = new Date()): string {
-  if (schedule.held === "archived") return "Paused: chat archived";
+  if (schedule.held === "archived") return "Paused: session archived";
   if (!schedule.on) return "Off";
   if (paused) return "Paused";
-  if (schedule.waiting) return "Waiting for the chat to be free";
+  if (schedule.waiting) return "Waiting for the session to be free";
   return schedule.next ? `Next ${shortDate(new Date(schedule.next), now)}` : "No next run";
 }
 
@@ -96,7 +96,7 @@ export function runText(run: WakeRecord, now = new Date()): string {
   switch (run.outcome) {
     case "ran":
       if (run.manual) return "Ran now, by hand";
-      if (run.reason === "busy") return late >= 1 ? `Waited ${late} min for the chat, then ran` : "Waited for the chat, then ran";
+      if (run.reason === "busy") return late >= 1 ? `Waited ${late} min for the session, then ran` : "Waited for the session, then ran";
       if (run.reason === "off") return `Ran late: PiSpark wasn’t running at ${clockTime(due.getHours(), due.getMinutes())}`;
       return "Ran";
     case "failed":

@@ -48,34 +48,34 @@ async function fixture() {
 test("a schedule is checked, kept in its session's folder, and read again after a restart", async () => {
   const f = await fixture();
   try {
-    const chat = await f.runtime.create({ folder: f.folder });
+    const session = await f.runtime.create({ folder: f.folder });
     for (const bad of [
-      { sessionId: chat.id, prompt: "x" },
-      { sessionId: chat.id, cron: "0 9 * * *", at: new Date(f.clock.now + HOUR).toISOString(), prompt: "x" },
-      { sessionId: chat.id, cron: "every morning", prompt: "x" },
-      { sessionId: chat.id, cron: "0 0 30 2 *", prompt: "x" },
-      { sessionId: chat.id, at: new Date(f.clock.now - HOUR).toISOString(), prompt: "x" },
-      { sessionId: chat.id, cron: "0 9 * * *", prompt: "  " },
-      { sessionId: chat.id, cron: "0 9 * * *", prompt: "x", limit: 5 },
-      { sessionId: chat.id, cron: "0 9 * * *", prompt: "x", extra: 1 },
+      { sessionId: session.id, prompt: "x" },
+      { sessionId: session.id, cron: "0 9 * * *", at: new Date(f.clock.now + HOUR).toISOString(), prompt: "x" },
+      { sessionId: session.id, cron: "every morning", prompt: "x" },
+      { sessionId: session.id, cron: "0 0 30 2 *", prompt: "x" },
+      { sessionId: session.id, at: new Date(f.clock.now - HOUR).toISOString(), prompt: "x" },
+      { sessionId: session.id, cron: "0 9 * * *", prompt: "  " },
+      { sessionId: session.id, cron: "0 9 * * *", prompt: "x", limit: 5 },
+      { sessionId: session.id, cron: "0 9 * * *", prompt: "x", extra: 1 },
     ])
       assert.throws(() => f.runtime.addSchedule(bad as never), code("invalid-input"));
     assert.throws(() => f.runtime.addSchedule({ sessionId: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b", cron: "0 9 * * *", prompt: "x" }), code("not-found"));
 
-    const added = f.runtime.addSchedule({ sessionId: chat.id, cron: "0 9 * * 1-5", prompt: "Summarise yesterday." });
+    const added = f.runtime.addSchedule({ sessionId: session.id, cron: "0 9 * * 1-5", prompt: "Summarise yesterday." });
     assert.equal(added.on, true);
     assert.equal(added.by, "person");
     assert.equal(added.next, new Date(local("2026-11-13T09:00")).toISOString());
-    const file = JSON.parse(await readFile(join(f.home, "chats", chat.id, "schedules.json"), "utf8"));
+    const file = JSON.parse(await readFile(join(f.home, "sessions", session.id, "schedules.json"), "utf8"));
     assert.equal(file.schedules[0].prompt, "Summarise yesterday.");
     const list = f.runtime.listSchedules();
     assert.equal(list.paused, false);
-    assert.equal(list.schedules[0]!.session.persona.id, "default");
+    assert.equal(list.schedules[0]!.session.agent.id, "default");
 
     // Changing the time starts counting from now; switching off has no next run.
     assert.equal(f.runtime.updateSchedule(added.id, { on: false }).next, undefined);
     assert.equal(f.runtime.updateSchedule(added.id, { on: true, prompt: "Changed." }).prompt, "Changed.");
-    assert.throws(() => f.runtime.updateSchedule(added.id, { sessionId: chat.id } as never), code("invalid-input"));
+    assert.throws(() => f.runtime.updateSchedule(added.id, { sessionId: session.id } as never), code("invalid-input"));
 
     await f.runtime.shutdown();
     const again = f.make();
@@ -91,9 +91,9 @@ test("a schedule is checked, kept in its session's folder, and read again after 
 test("at its time a schedule sends its prompt to its session, which says the turn was scheduled", async () => {
   const f = await fixture();
   try {
-    const chat = await f.runtime.create({ folder: f.folder });
-    await f.runtime.stop(chat.id);
-    const schedule = f.runtime.addSchedule({ sessionId: chat.id, cron: "0 9 * * *", prompt: "good morning" });
+    const session = await f.runtime.create({ folder: f.folder });
+    await f.runtime.stop(session.id);
+    const schedule = f.runtime.addSchedule({ sessionId: session.id, cron: "0 9 * * *", prompt: "good morning" });
     await f.runtime.checkWakes();
     assert.equal(f.provider.requests.length, 0);
 
@@ -107,13 +107,13 @@ test("at its time a schedule sends its prompt to its session, which says the tur
     assert.equal(run.due, new Date(local("2026-11-13T09:00")).toISOString());
     assert.equal(run.reason, undefined);
     assert.equal(f.one().next, new Date(local("2026-11-14T09:00")).toISOString());
-    const items = f.runtime.items(chat.id, {}).items;
+    const items = f.runtime.items(session.id, {}).items;
     const marker = items.findIndex((item) => item.customType === WOKEN_ENTRY);
     assert.ok(marker >= 0);
     assert.deepEqual(items[marker]!.details, { source: { kind: "schedule", id: schedule.id, label: "Every day at 9:00 am · Fri 13 Nov" }, due: run.due });
     assert.equal(items[marker + 1]!.role, "user");
     // The run is recorded with the wakes, beside the schedule in the session's folder.
-    const wakes = JSON.parse(await readFile(join(f.home, "chats", chat.id, "wakes.json"), "utf8"));
+    const wakes = JSON.parse(await readFile(join(f.home, "sessions", session.id, "wakes.json"), "utf8"));
     assert.equal(wakes.records[schedule.id][0].outcome, "ran");
 
     // Looking again in the same minute sends nothing more.
@@ -127,10 +127,10 @@ test("at its time a schedule sends its prompt to its session, which says the tur
 test("a run due while the session is busy waits for it, and only one waits", async () => {
   const f = await fixture();
   try {
-    const chat = await f.runtime.create({ folder: f.folder });
-    f.runtime.addSchedule({ sessionId: chat.id, cron: "*/10 * * * *", prompt: "check" });
+    const session = await f.runtime.create({ folder: f.folder });
+    f.runtime.addSchedule({ sessionId: session.id, cron: "*/10 * * * *", prompt: "check" });
     f.provider.automatic = false;
-    const mine = f.runtime.start(chat.id, "a long task");
+    const mine = f.runtime.start(session.id, "a long task");
     await eventually(() => f.provider.active === 1);
 
     f.clock.now = local("2026-11-13T08:10:05");
@@ -140,7 +140,7 @@ test("a run due while the session is busy waits for it, and only one waits", asy
     await f.runtime.checkWakes();
     assert.equal(f.provider.requests.length, 1);
 
-    // Once the chat is free the waiting run goes, without waiting for the next check.
+    // Once the session is free the waiting run goes, without waiting for the next check.
     f.provider.automatic = true;
     f.provider.requests[0]!.release();
     await mine.completion;
@@ -159,8 +159,8 @@ test("a run due while the session is busy waits for it, and only one waits", asy
 test("missed while PiSpark was off: sent once if within a day, else recorded as missed", async () => {
   const f = await fixture();
   try {
-    const chat = await f.runtime.create({ folder: f.folder });
-    f.runtime.addSchedule({ sessionId: chat.id, cron: "0 9 * * *", prompt: "daily" });
+    const session = await f.runtime.create({ folder: f.folder });
+    f.runtime.addSchedule({ sessionId: session.id, cron: "0 9 * * *", prompt: "daily" });
     await f.runtime.shutdown();
 
     // Back at 11:00 the same day: the 9:00 run is sent, late.
@@ -190,8 +190,8 @@ test("missed while PiSpark was off: sent once if within a day, else recorded as 
 test("no daily limit; Pause all, and archived sessions", async () => {
   const f = await fixture();
   try {
-    const chat = await f.runtime.create({ folder: f.folder });
-    f.runtime.addSchedule({ sessionId: chat.id, cron: "*/30 * * * *", prompt: "often" });
+    const session = await f.runtime.create({ folder: f.folder });
+    f.runtime.addSchedule({ sessionId: session.id, cron: "*/30 * * * *", prompt: "often" });
     f.clock.now = local("2026-11-13T08:30:01");
     await f.runtime.checkWakes();
     await eventually(() => f.one().runs.length === 1);
@@ -209,19 +209,19 @@ test("no daily limit; Pause all, and archived sessions", async () => {
     f.runtime.updateSettings({ unattendedPaused: false });
 
     // Archived: held, nothing runs, nothing is caught up on restore.
-    await f.runtime.archive(chat.id);
+    await f.runtime.archive(session.id);
     assert.equal(f.one().held, "archived");
     assert.equal(f.one().next, undefined);
     f.clock.now = local("2026-11-13T10:00:01");
     await f.runtime.checkWakes();
-    f.runtime.restore(chat.id);
+    f.runtime.restore(session.id);
     await f.runtime.checkWakes();
     assert.equal(f.provider.requests.length, 2);
     assert.equal(f.one().held, undefined);
     // Adding to an archived session is refused; deleting the session takes its schedules.
-    await f.runtime.archive(chat.id);
-    assert.throws(() => f.runtime.addSchedule({ sessionId: chat.id, cron: "0 9 * * *", prompt: "x" }), code("busy"));
-    f.runtime.delete(chat.id);
+    await f.runtime.archive(session.id);
+    assert.throws(() => f.runtime.addSchedule({ sessionId: session.id, cron: "0 9 * * *", prompt: "x" }), code("busy"));
+    f.runtime.delete(session.id);
     assert.deepEqual(f.runtime.listSchedules().schedules, []);
   } finally {
     await f.cleanup();
@@ -231,21 +231,21 @@ test("no daily limit; Pause all, and archived sessions", async () => {
 test("a one-off schedule goes once it ran; Run now runs at once and is refused while busy", async () => {
   const f = await fixture();
   try {
-    const chat = await f.runtime.create({ folder: f.folder });
-    f.runtime.addSchedule({ sessionId: chat.id, at: new Date(local("2026-11-13T08:30")).toISOString(), prompt: "check back" });
+    const session = await f.runtime.create({ folder: f.folder });
+    f.runtime.addSchedule({ sessionId: session.id, at: new Date(local("2026-11-13T08:30")).toISOString(), prompt: "check back" });
     f.clock.now = local("2026-11-13T08:30:30");
     await f.runtime.checkWakes();
     await eventually(() => f.runtime.listSchedules().schedules.length === 0);
     assert.equal(f.provider.requests.length, 1);
 
-    const daily = f.runtime.addSchedule({ sessionId: chat.id, cron: "0 9 * * *", prompt: "now please" });
+    const daily = f.runtime.addSchedule({ sessionId: session.id, cron: "0 9 * * *", prompt: "now please" });
     await f.runtime.runSchedule(daily.id);
     await eventually(() => f.one().runs.length === 1);
     assert.equal(f.one().runs[0]!.manual, true);
     assert.equal(f.provider.requests.length, 2);
 
     f.provider.automatic = false;
-    const run = f.runtime.start(chat.id, "busy now");
+    const run = f.runtime.start(session.id, "busy now");
     await eventually(() => f.provider.active === 1);
     await assert.rejects(f.runtime.runSchedule(daily.id), code("busy"));
     f.provider.automatic = true;
@@ -259,21 +259,21 @@ test("a one-off schedule goes once it ran; Run now runs at once and is refused w
 test("the agent's schedule tool adds to its own session only after the person says yes", async () => {
   const f = await fixture();
   try {
-    const chat = await f.runtime.create({ folder: f.folder });
+    const session = await f.runtime.create({ folder: f.folder });
     const ask = async (answer: boolean) => {
-      const run = f.runtime.start(chat.id, `tool:pispark_schedule:${JSON.stringify({ action: "add", cron: "0 9 * * 1-5", prompt: "digest" })}`);
-      await eventually(() => f.runtime.session(chat.id).extensions.dialogs.length === 1);
-      const dialog = f.runtime.session(chat.id).extensions.dialogs[0]!;
+      const run = f.runtime.start(session.id, `tool:pispark_schedule:${JSON.stringify({ action: "add", cron: "0 9 * * 1-5", prompt: "digest" })}`);
+      await eventually(() => f.runtime.session(session.id).extensions.dialogs.length === 1);
+      const dialog = f.runtime.session(session.id).extensions.dialogs[0]!;
       assert.equal(dialog.kind, "confirm");
       assert.match(dialog.kind === "confirm" ? dialog.message : "", /Every weekday at 9:00 am: digest/);
-      f.runtime.answer(chat.id, dialog.id, answer);
+      f.runtime.answer(session.id, dialog.id, answer);
       await run.completion;
     };
     await ask(false);
     assert.deepEqual(f.runtime.listSchedules().schedules, []);
     await ask(true);
     assert.equal(f.one().by, "agent");
-    assert.equal(f.one().sessionId, chat.id);
+    assert.equal(f.one().sessionId, session.id);
     assert.equal(f.one().prompt, "digest");
   } finally {
     await f.cleanup();
@@ -290,11 +290,11 @@ test("schedules over HTTP: list, add, change, run now and remove", async () => {
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const post = (path: string, body?: unknown) =>
       fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify(body ?? {}) });
-    const chat = await f.runtime.create({ folder: f.folder });
-    const added = await post("/api/schedules", { sessionId: chat.id, cron: "0 9 * * *", prompt: "hi" });
+    const session = await f.runtime.create({ folder: f.folder });
+    const added = await post("/api/schedules", { sessionId: session.id, cron: "0 9 * * *", prompt: "hi" });
     assert.equal(added.status, 201);
     const { id } = (await added.json()) as Schedule;
-    assert.equal((await post("/api/schedules", { sessionId: chat.id, cron: "nope", prompt: "hi" })).status, 400);
+    assert.equal((await post("/api/schedules", { sessionId: session.id, cron: "nope", prompt: "hi" })).status, 400);
     const list = await (await fetch(base + "/api/schedules")).json();
     assert.equal(list.schedules.length, 1);
     assert.equal((await (await post(`/api/schedules/${id}`, { on: false })).json()).on, false);
@@ -302,7 +302,7 @@ test("schedules over HTTP: list, add, change, run now and remove", async () => {
     await eventually(() => f.one().runs.length === 1);
     assert.equal((await post(`/api/schedules/${id}/remove`)).status, 200);
     assert.equal((await post(`/api/schedules/${id}/remove`)).status, 400);
-    assert.equal(existsSync(join(f.home, "chats", chat.id, "schedules.json")), true);
+    assert.equal(existsSync(join(f.home, "sessions", session.id, "schedules.json")), true);
   } finally {
     await http.shutdown();
     server.close();
@@ -310,28 +310,28 @@ test("schedules over HTTP: list, add, change, run now and remove", async () => {
   }
 });
 
-test("a schedule can run each time in a new session under its chat, which tells the chat a status line", async () => {
+test("a schedule can run each time in a new session under its session, which tells the session a status line", async () => {
   const f = await fixture();
   try {
-    const chat = await f.runtime.create({ folder: f.folder });
-    assert.throws(() => f.runtime.addSchedule({ sessionId: chat.id, cron: "0 9 * * *", prompt: "x", report: "status" }), code("invalid-input"));
-    const added = f.runtime.addSchedule({ sessionId: chat.id, cron: "0 9 * * *", prompt: "run the tests", run: "new" });
+    const session = await f.runtime.create({ folder: f.folder });
+    assert.throws(() => f.runtime.addSchedule({ sessionId: session.id, cron: "0 9 * * *", prompt: "x", report: "status" }), code("invalid-input"));
+    const added = f.runtime.addSchedule({ sessionId: session.id, cron: "0 9 * * *", prompt: "run the tests", run: "new" });
     assert.equal(added.run, "new");
     assert.equal(added.report, "status");
 
     f.clock.now = local("2026-11-13T09:00");
     await f.runtime.checkWakes();
-    const run = () => f.runtime.list().filter((s) => s.parent === chat.id);
+    const run = () => f.runtime.list().filter((s) => s.parent === session.id);
     await eventually(() => run().length === 1);
     const [child] = run();
     assert.equal(child!.title, "9:00 am run · Fri 13 Nov");
     assert.equal(f.one().runs[0]!.outcome, "started");
     assert.equal(f.one().runs[0]!.session, child!.id);
-    // The run session got the prompt, labelled as the schedule's; the chat got a line, no turn.
-    await eventually(() => f.runtime.items(chat.id, {}).items.some((item) => item.customType === STATUS_ENTRY));
+    // The run session got the prompt, labelled as the schedule's; the session got a line, no turn.
+    await eventually(() => f.runtime.items(session.id, {}).items.some((item) => item.customType === STATUS_ENTRY));
     const sent = f.runtime.items(child!.id, {}).items.find((item) => item.customType === WOKEN_ENTRY)!;
     assert.equal((sent.details as { source: { kind: string } }).source.kind, "schedule");
-    assert.ok(!f.runtime.items(chat.id, {}).items.some((item) => item.customType === WOKEN_ENTRY));
+    assert.ok(!f.runtime.items(session.id, {}).items.some((item) => item.customType === WOKEN_ENTRY));
 
     // A session another one started cannot run schedules in new sessions.
     assert.throws(() => f.runtime.addSchedule({ sessionId: child!.id, cron: "0 9 * * *", prompt: "x", run: "new" }), code("invalid-input"));

@@ -1,6 +1,6 @@
 <script lang="ts">
   import ExtensionBlock from "../ExtensionBlock.svelte";
-  import type { Segment } from "../chat-turns";
+  import type { Segment } from "../session-turns";
 
   let { segment }: { segment: Extract<Segment, { kind: "notice" }> } = $props();
 </script>

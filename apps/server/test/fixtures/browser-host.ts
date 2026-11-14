@@ -10,7 +10,7 @@ import { createAppServer } from "../../src/http/server.js";
 import { localProviderSettings } from "./provider-settings.js";
 import { ProviderHttp } from "../../src/http/provider-http.js";
 import { WORKSPACE_POINTS } from "../../src/http/workspace-points.js";
-import { addControlledExtension, addFrontendExtension, addViewExtension, writePersona } from "./home.js";
+import { addControlledExtension, addFrontendExtension, addViewExtension, writeAgent } from "./home.js";
 
 // Optional harness-owned persistent state; never a production configuration switch.
 const persistentRoot = process.argv[2];
@@ -21,22 +21,22 @@ await mkdir(home, { recursive: true });
 const workspace = join(root, "workspace");
 await mkdir(workspace, { recursive: true });
 await writeFile(join(workspace, "sample.txt"), "native browser tool result");
-// Ask starts chats in the host's home folder. The harness points HOME at a temporary folder;
+// Ask starts sessions in the host's home folder. The harness points HOME at a temporary folder;
 // only then is the sample file placed there too.
 const testHome = homedir();
 if (testHome.startsWith(tmpdir()) && existsSync(testHome))
   await writeFile(join(testHome, "sample.txt"), "native browser tool result");
 // First start of this data folder: a Default with read and the controlled extension,
-// and a Review persona with a skill and a command.
-if (!existsSync(join(home, "personas", "default", "persona.json"))) {
-  await writePersona(
+// and a Review agent with a skill and a command.
+if (!existsSync(join(home, "agents", "default", "agent.json"))) {
+  await writeAgent(
     home,
     "default",
-    { name: "Default", description: "The base of every persona.", on: ["tool:read"] },
+    { name: "Default", description: "The base of every agent.", on: ["tool:read"] },
     { "instructions/local.md": "Local test only. No network provider." },
   );
   await addControlledExtension(home, "default");
-  await writePersona(
+  await writeAgent(
     home,
     "review",
     { name: "Review", description: "Careful code review" },
@@ -48,17 +48,17 @@ if (!existsSync(join(home, "personas", "default", "persona.json"))) {
     },
   );
   // An extension that places Svelte components at the session's points through Pi's bus.
-  await writePersona(home, "views", { name: "Extension views", description: "Components placed by an extension" });
+  await writeAgent(home, "views", { name: "Extension views", description: "Components placed by an extension" });
   await addViewExtension(home, "views");
-  // An extension whose one component is its own frontend for the chat.
-  await writePersona(home, "frontend", { name: "Custom frontend", description: "A chat frontend supplied by an extension" });
+  // An extension whose one component is its own frontend for the session.
+  await writeAgent(home, "frontend", { name: "Custom frontend", description: "A session frontend supplied by an extension" });
   await addFrontendExtension(home, "frontend");
-  // An app persona: opened from the sidebar, its sessions show the Log view first.
-  await writePersona(home, "log-app", { name: "Log app", description: "An app that opens on its Log view", home: "log" });
+  // An app agent: opened from the sidebar, its sessions show the Log view first.
+  await writeAgent(home, "log-app", { name: "Log app", description: "An app that opens on its Log view", home: "log" });
   await addFrontendExtension(home, "log-app");
 }
 const settingsFixture = await localProviderSettings(join(home, "providers"));
-// The local auth provider is signed in and the default, so chats can start without setup.
+// The local auth provider is signed in and the default, so sessions can start without setup.
 await writeFile(
   settingsFixture.authPath,
   JSON.stringify({ "pispark-local-test": { type: "api_key", key: "test-key" } }),

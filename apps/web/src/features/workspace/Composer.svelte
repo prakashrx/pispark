@@ -8,7 +8,7 @@
   import type { Session } from "./session.svelte";
   import { useSession, useSessions } from "./session-client.svelte";
   const sessions = useSessions();
-  // The reply box belongs to a chat; Ask, in the shell, has none.
+  // The reply box belongs to a session; Ask, in the shell, has none.
   const session: Session | undefined = useSession();
   let {
     mode = "ask",
@@ -17,26 +17,26 @@
   }: {
     mode?: "ask" | "reply";
     draft?: string;
-    // A chat is open: the reply is the primary input, so Ask recedes until used.
+    // A session is open: the reply is the primary input, so Ask recedes until used.
     quiet?: boolean;
   } = $props();
   let draftRevision = 0;
   let folder = $state("");
   let model = $state("");
-  // A project persona works in its own folder; Ask's choice waits for the next other persona.
-  const bound = $derived(sessions.personas.items.find((p) => p.id === sessions.personas.selected)?.folder);
-  const personaOptions = $derived([
-    ...(sessions.personas.selected &&
-    !sessions.personas.items.some((p) => p.id === sessions.personas.selected)
+  // A project agent works in its own folder; Ask's choice waits for the next other agent.
+  const bound = $derived(sessions.agents.items.find((p) => p.id === sessions.agents.selected)?.folder);
+  const agentOptions = $derived([
+    ...(sessions.agents.selected &&
+    !sessions.agents.items.some((p) => p.id === sessions.agents.selected)
       ? [
           {
-            value: sessions.personas.selected,
-            label: "Unavailable persona",
+            value: sessions.agents.selected,
+            label: "Unavailable agent",
             disabled: true,
           },
         ]
       : []),
-    ...sessions.personas.items
+    ...sessions.agents.items
       .filter((p) => p.valid)
       .map((p) => ({ value: p.id, label: p.name })),
   ]);
@@ -80,37 +80,37 @@
       : mode === "ask"
         ? !bound && !folder
           ? "Choose a working folder."
-          : sessions.personas.selected &&
-              !sessions.personas.items.some(
-                (p) => p.id === sessions.personas.selected && p.valid,
+          : sessions.agents.selected &&
+              !sessions.agents.items.some(
+                (p) => p.id === sessions.agents.selected && p.valid,
               ) &&
-              sessions.personas.items.length
-            ? "This persona isn’t available. Choose another."
+              sessions.agents.items.length
+            ? "This agent isn’t available. Choose another."
             : !model &&
                 !defaultChoice &&
                 !sessions.providers.loading
               ? "Choose a model in Providers & models."
               : undefined
         : session?.doc?.status !== "idle"
-          ? "Open a chat that is ready for a message."
+          ? "Open a session that is ready for a message."
           : session.connection !== "Live"
-            ? "Waiting for the chat to reconnect."
+            ? "Waiting for the session to reconnect."
             : undefined,
   );
   async function send() {
     if (unavailable) return;
     if (mode === "ask") {
       const revision = draftRevision;
-      const context = JSON.stringify([folder, model, sessions.personas.selected]);
+      const context = JSON.stringify([folder, model, sessions.agents.selected]);
       if (
         (await sessions.ask(
           draft,
           bound ? undefined : folder,
           model && selected ? JSON.parse(selected.value) : undefined,
-          sessions.personas.selected || undefined,
+          sessions.agents.selected || undefined,
         )) &&
         revision === draftRevision &&
-        context === JSON.stringify([folder, model, sessions.personas.selected])
+        context === JSON.stringify([folder, model, sessions.agents.selected])
       )
         draft = "";
     } else await session?.send();
@@ -121,7 +121,7 @@
   class="composer w-full flex items-center gap-2 transition-all"
   class:composer-reply={mode === "reply"}
   class:composer-quiet={quiet && !draft}
-  aria-label={mode === "ask" ? "New chat" : "Reply to chat"}
+  aria-label={mode === "ask" ? "New session" : "Reply to session"}
   onsubmit={(event) => {
     event.preventDefault();
     void send();
@@ -132,7 +132,7 @@
       (mode === "ask" ? " pl-2" : " pl-2")}
   >
     <Input
-      label={mode === "ask" ? "Ask anything" : "Reply to chat"}
+      label={mode === "ask" ? "Ask anything" : "Reply to session"}
       maxlength={65536}
       value={mode === "ask"
         ? draft
@@ -145,7 +145,7 @@
         } else session?.setDraft(text);
       }}
       appearance="composer"
-      placeholder={mode === "reply" ? "Message…" : quiet ? "Start a new chat…" : "Ask anything…"}
+      placeholder={mode === "reply" ? "Message…" : quiet ? "Start a new session…" : "Ask anything…"}
     />
   </div>
   <div
@@ -154,13 +154,13 @@
       : "flex items-center flex-shrink-0"}
   >
     {#if mode === "ask"}
-      {#if bound}<FolderChoice value={bound} locked="Set by the persona" />{:else}<FolderChoice
+      {#if bound}<FolderChoice value={bound} locked="Set by the agent" />{:else}<FolderChoice
           bind:value={folder}
         />{/if}
       <Selector
-        label="Persona"
-        options={personaOptions}
-        bind:value={sessions.personas.selected}
+        label="Agent"
+        options={agentOptions}
+        bind:value={sessions.agents.selected}
       >
         {#snippet children(value)}<Icon
             name="person"
@@ -170,11 +170,11 @@
         {#snippet footer()}
           <a
             class="text-sm font-medium text-[var(--interactive-text)] hover:underline"
-            href="#/persona"
-            onclick={() => sessions.personas.collection()}>Manage personas</a
+            href="#/agent"
+            onclick={() => sessions.agents.collection()}>Manage agents</a
           >
-          {#if sessions.personas.error}<p role="alert" class="text-xs text-[var(--danger-foreground)] mt-2">
-              {sessions.personas.error}
+          {#if sessions.agents.error}<p role="alert" class="text-xs text-[var(--danger-foreground)] mt-2">
+              {sessions.agents.error}
             </p>{/if}
         {/snippet}
       </Selector>
@@ -193,7 +193,7 @@
     {/if}
     {#if mode === "reply"}<ContributionPoint point="session.input.actions" />{/if}
     <Button
-      aria-label={mode === "reply" ? "Send message" : "Start chat"}
+      aria-label={mode === "reply" ? "Send message" : "Start session"}
       type="submit"
       {unavailable}
       class="send-btn flex-shrink-0"

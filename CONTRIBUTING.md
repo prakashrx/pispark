@@ -10,6 +10,6 @@ Small, readable changes with clear boundaries are welcome.
 4. **Test what changed.** Tests use real Pi sessions with a deterministic local provider. Don't present unbuilt features as working.
 5. **Before a PR:** `npm run check`, `npm test`, `npm run build` and `npm run smoke`. For UI changes, also the browser suite in [development](docs/development.md), at narrow and wide widths and with the keyboard. Update the docs when behavior, commands or boundaries change.
 
-Commit the root lockfile when dependencies change. Never commit credentials, environment files, private work records, runtime data or personal screenshots, and keep machine-specific paths out of public docs.
+Commit the root lockfile when dependencies change. Never commit credentials, environment files, private work records, runtime data or private screenshots, and keep machine-specific paths out of public docs.
 
 Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.

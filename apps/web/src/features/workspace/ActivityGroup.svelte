@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Segment, ToolCall } from "./chat-turns";
+  import type { Segment, ToolCall } from "./session-turns";
   import ToolDetail from "./ToolDetail.svelte";
   import { describeCall, summarizeCalls } from "./tool-views";
   import { resolveToolView } from "./views.svelte";

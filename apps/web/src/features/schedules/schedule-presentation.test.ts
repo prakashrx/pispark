@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { choiceOf, nextText, runText, whenOf, type WhenChoice } from "./schedule-presentation";
-import { buildTurns, wokenFrom, wokenLabel } from "../workspace/chat-turns";
+import { buildTurns, wokenFrom, wokenLabel } from "../workspace/session-turns";
 import type { Schedule } from "../../../../server/src/contract/schedule-protocol";
 import { WOKEN_ENTRY } from "../../../../server/src/contract/wake-protocol";
 
@@ -35,7 +35,7 @@ test("what a run did and when the next one is, in words", () => {
   const due = new Date("2026-11-13T09:00").toISOString();
   const at = (minutes: number) => new Date(new Date(due).getTime() + minutes * 60_000).toISOString();
   expect(runText({ due, at: at(0), outcome: "ran" }, now)).toBe("Ran");
-  expect(runText({ due, at: at(4), outcome: "ran", reason: "busy" }, now)).toBe("Waited 4 min for the chat, then ran");
+  expect(runText({ due, at: at(4), outcome: "ran", reason: "busy" }, now)).toBe("Waited 4 min for the session, then ran");
   expect(runText({ due, at: at(120), outcome: "ran", reason: "off" }, now)).toBe("Ran late: PiSpark wasn’t running at 9:00 am");
   expect(runText({ due, at: at(0), outcome: "ran", manual: true }, now)).toBe("Ran now, by hand");
   expect(runText({ due, at: at(0), outcome: "missed", reason: "paused" }, now)).toBe("Missed: unattended runs were paused");
@@ -46,8 +46,8 @@ test("what a run did and when the next one is, in words", () => {
   expect(nextText(schedule, false, now)).toBe("Next Mon 16 Nov, 9:00 am");
   expect(nextText(schedule, true, now)).toBe("Paused");
   expect(nextText({ ...schedule, on: false }, false, now)).toBe("Off");
-  expect(nextText({ ...schedule, held: "archived" }, false, now)).toBe("Paused: chat archived");
-  expect(nextText({ ...schedule, waiting: true }, false, now)).toBe("Waiting for the chat to be free");
+  expect(nextText({ ...schedule, held: "archived" }, false, now)).toBe("Paused: session archived");
+  expect(nextText({ ...schedule, waiting: true }, false, now)).toBe("Waiting for the session to be free");
 });
 
 test("a woken turn's message is labelled with its source in the conversation", () => {

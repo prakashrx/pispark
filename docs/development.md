@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-The root dev command starts both workspaces and stops the other when either exits. Alternatively run `npm run dev -w @pispark/server` and `npm run dev -w @pispark/web` in separate terminals. Open the Vite URL, not the backend URL, for hot reload. The backend restarts when a file under `apps/server/src` is edited (`apps/server/dev.mjs`); a file that is only read, as Pi reads the built-in extension for each chat, does not count.
+The root dev command starts both workspaces and stops the other when either exits. Alternatively run `npm run dev -w @pispark/server` and `npm run dev -w @pispark/web` in separate terminals. Open the Vite URL, not the backend URL, for hot reload. The backend restarts when a file under `apps/server/src` is edited (`apps/server/dev.mjs`); a file that is only read, as Pi reads the built-in extension for each session, does not count.
 
 ## Commands
 
@@ -46,7 +46,7 @@ Remove-Item Env:PORT
 
 Vite defaults to `http://127.0.0.1:3000`; `PISPARK_API_TARGET` overrides its proxy target. Both dev ports fail clearly if occupied. The backend serves health/catalog before the frontend is built and prints instructions when the build is absent.
 
-See [setup and protocol](session-protocol.md) for `PISPARK_HOME`, exact development origins, loopback-only binding and the hard Node-bundled transport security gate. There is no configuration file: the data folder is created on first start with a Default persona. Set `PISPARK_HOME=~/.pispark-dev` in the ignored `.env` to keep development data separate. Terminal Pi files are never loaded. Host process environment/cloud auth semantics are intentionally native.
+See [setup and protocol](session-protocol.md) for `PISPARK_HOME`, exact development origins, loopback-only binding and the hard Node-bundled transport security gate. There is no configuration file: the data folder is created on first start with a Default agent. Set `PISPARK_HOME=~/.pispark-dev` in the ignored `.env` to keep development data separate. Terminal Pi files are never loaded. Host process environment/cloud auth semantics are intentionally native.
 
 ## Tests
 
@@ -54,9 +54,9 @@ Every test runs real Pi sessions against a deterministic local provider: no paid
 
 | Where | What |
 | --- | --- |
-| `apps/server/test/` | The server, one file per area: sessions and their lifecycle, the HTTP protocol, providers, personas, extensions and their views, schedules, routines, child sessions, background processes, the launcher link, static files and the import boundaries between `contract/`, `core/` and `http/` |
-| `apps/web/src/**/*.test.ts` | The web in jsdom: routes, the chat client, controls and their keyboard behavior |
-| `apps/web/tests/` | Real-browser checks of every screen: layout at narrow and wide widths, keyboard focus, chats, personas, extensions, schedules and background work (below) |
+| `apps/server/test/` | The server, one file per area: sessions and their lifecycle, the HTTP protocol, providers, agents, extensions and their views, schedules, routines, child sessions, background processes, the launcher link, static files and the import boundaries between `contract/`, `core/` and `http/` |
+| `apps/web/src/**/*.test.ts` | The web in jsdom: routes, the session client, controls and their keyboard behavior |
+| `apps/web/tests/` | Real-browser checks of every screen: layout at narrow and wide widths, keyboard focus, sessions, agents, extensions, schedules and background work (below) |
 | `apps/launcher/test/` | The installed launcher: release choice, checksums, install folders, version switches |
 | `scripts/smoke.mjs` | The built server on a free port, over real HTTP |
 
@@ -86,7 +86,7 @@ npm run test:browser -w @pispark/web
 Remove-Item Env:PISPARK_TEST_PRODUCTION
 ```
 
-CI installs Chromium and runs the production browser suite after the core checks and HTTP smoke. For a manual UI pass, test narrow layouts, Tab/Shift+Tab focus, Enter/Space activation, Escape dismissal/focus return, the skip link, sidebar toggle, independent Ask/reply drafts, real persona collection/create/editor and file-save/compose/validate/save/conflict states, session streaming/cancel/reconnect, concise Chat info and actual native title changes. Sources remains truthfully unavailable. The status dot reports client connectivity, not model-provider health, and adds "Offline" or "Connecting…" text when not connected. Drafts intentionally disappear on reload.
+CI installs Chromium and runs the production browser suite after the core checks and HTTP smoke. For a manual UI pass, test narrow layouts, Tab/Shift+Tab focus, Enter/Space activation, Escape dismissal/focus return, the skip link, sidebar toggle, independent Ask/reply drafts, real agent collection/create/editor and file-save/compose/validate/save/conflict states, session streaming/cancel/reconnect, concise Session info and actual native title changes. Sources remains truthfully unavailable. The status dot reports client connectivity, not model-provider health, and adds "Offline" or "Connecting…" text when not connected. Drafts intentionally disappear on reload.
 
 ## Dependency findings
 

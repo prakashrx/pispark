@@ -6,7 +6,7 @@ import { getShellConfig } from "@earendil-works/pi-coding-agent";
 import type { ProcessInfo, ProcessOutput } from "../../contract/process-protocol.js";
 import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
-import { writeAtomic } from "../personas/store.js";
+import { writeAtomic } from "../agents/store.js";
 import { RuntimeError } from "./errors.js";
 
 /** The newest output kept per process; when the log grows past it, it is cut to `KEEP`. */
@@ -66,8 +66,8 @@ const clean = (text: string) => text.replace(/\r\n?/g, "\n").replace(/[\x00-\x08
 
 /**
  * Processes sessions started: commands that run on this host beside the session, owned here so they
- * keep running while their session unloads. Output goes to `chats/<id>/processes/<pid>.log`; the
- * list to `chats/<id>/processes.json`. A process ends by itself, by Stop, after its own time limit,
+ * keep running while their session unloads. Output goes to `sessions/<id>/processes/<pid>.log`; the
+ * list to `sessions/<id>/processes.json`. A process ends by itself, by Stop, after its own time limit,
  * or when PiSpark stops; its session is told as its mode says (after a restart, for that last case).
  */
 export class Processes {

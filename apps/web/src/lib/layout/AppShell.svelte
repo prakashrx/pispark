@@ -9,7 +9,7 @@
     commandUncertainty,
   } from "../../features/workspace/session-presentation";
   const sessions = useSessions();
-  const displayedChat = $derived(sessions.current?.info);
+  const displayedSession = $derived(sessions.current?.info);
   const backend = $derived(
     ["Connected", "Live", "Unloaded"].includes(sessions.connection)
       ? "ok"
@@ -18,7 +18,7 @@
         : "connecting",
   );
   const reconnectWorkspace = $derived(
-    sessions.connection === "Disconnected" && !displayedChat,
+    sessions.connection === "Disconnected" && !displayedSession,
   );
   let { sidebar, children }: { sidebar: Snippet; children: Snippet } = $props();
   let sidebarOpen = $state(true);
@@ -140,12 +140,12 @@
         class="notice break-words" data-tone="danger"
       >
         <p>
-          {sessionName(displayedChat)}:
+          {sessionName(displayedSession)}:
           <span
             >{commandUncertainty(
               sessions.current.errorKind,
               true,
-            ) || "Something went wrong. Reopen this chat to try again."}</span
+            ) || "Something went wrong. Reopen this session to try again."}</span
           >
         </p>
         <details class="mt-1">

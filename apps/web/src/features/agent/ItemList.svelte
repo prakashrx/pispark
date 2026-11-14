@@ -4,17 +4,17 @@
   import Button from "../../lib/ui/Button.svelte";
   import Input from "../../lib/ui/Input.svelte";
   import Textarea from "../../lib/ui/Textarea.svelte";
-  import type { PersonaClient } from "./persona-client.svelte";
+  import type { AgentClient } from "./agent-client.svelte";
   import type {
     ItemType,
     ResolvedItem,
-  } from "../../../../server/src/contract/persona-protocol";
+  } from "../../../../server/src/contract/agent-protocol";
   import {
     ITEM_LABELS,
     originLabel,
     switchLabel,
     template,
-  } from "./persona-presentation";
+  } from "./agent-presentation";
   let {
     client,
     type,
@@ -22,10 +22,10 @@
     viewing,
     help,
   }: {
-    client: PersonaClient;
+    client: AgentClient;
     type: ItemType;
     description: string;
-    /** ID of the layer being edited ("chat" for a chat's own layer). */
+    /** ID of the layer being edited ("session" for a session's own layer). */
     viewing: string;
     help?: string;
   } = $props();
@@ -62,9 +62,9 @@
       const local = client.local(item);
       const file = await client.readFile(
         item.path!,
-        local || item.origin.id === "chat"
+        local || item.origin.id === "session"
           ? client.target
-          : { persona: item.origin.id },
+          : { agent: item.origin.id },
       );
       text = baseline = file.text;
       revision = local ? file.revision : null;
@@ -115,7 +115,7 @@
                 {#if !item.on}<span class="text-xs font-medium text-muted-foreground">· Off</span>{/if}
               </div>
               {#if item.description}<p class="text-sm text-muted-foreground mt-0.5 break-words">{item.description}</p>{/if}
-              {#if type === "mcp"}<p class="text-xs text-muted-foreground mt-0.5">Saved in the persona; not connected to chats yet.</p>{/if}
+              {#if type === "mcp"}<p class="text-xs text-muted-foreground mt-0.5">Saved in the agent; not connected to sessions yet.</p>{/if}
             </div>
             {#if editable && item.path}<Button
                 size="compact"
@@ -149,7 +149,7 @@
                       variant="ghost"
                       size="compact"
                       onclick={() => {
-                        if (confirm(`Remove ${labels.one} “${item.name}” from this persona?`))
+                        if (confirm(`Remove ${labels.one} “${item.name}” from this agent?`))
                           void client.deleteFile(item.path!).then(() => (open = undefined));
                       }}>Remove</Button
                     >

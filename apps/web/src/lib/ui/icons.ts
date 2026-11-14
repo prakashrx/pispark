@@ -502,7 +502,7 @@ export const icons = {
       },
     },
   ],
-  personaSearch: [
+  agentSearch: [
     {
       tag: "circle",
       attrs: {

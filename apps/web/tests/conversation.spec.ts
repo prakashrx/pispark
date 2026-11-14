@@ -4,7 +4,7 @@ import { hostedTest as test } from "./isolated-host";
 test("tool calls in one answer read as one activity that opens into its calls", async ({ page }) => {
   await page.goto("/");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
-  await expect(page.getByRole("button", { name: "Start chat" })).not.toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByRole("button", { name: "Start session" })).not.toHaveAttribute("aria-disabled", "true");
   await ask.fill('tools:[{"name":"read","args":{"path":"sample.txt"}},{"name":"read","args":{"path":"sample.txt"}}]');
   await ask.press("Enter");
   // Two calls, no words between them: one line, closed, and the reply follows it.
@@ -41,8 +41,8 @@ test("older messages read in as you scroll up and the view stays where it was", 
   for (let n = 1; n <= 22; n++) await command({ type: "start", sessionId, text: `turn ${n}` });
 
   await page.goto("/");
-  const main = page.getByRole("main", { name: "Chat conversation" });
-  // The newest end of the chat, scrolled to the bottom, without the oldest turns.
+  const main = page.getByRole("main", { name: "Session conversation" });
+  // The newest end of the session, scrolled to the bottom, without the oldest turns.
   await expect(page.getByText("local:turn 22", { exact: true })).toBeVisible();
   await expect(page.getByText("local:turn 1", { exact: true })).toHaveCount(0);
   await expect.poll(() => main.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThan(5);
@@ -79,7 +79,7 @@ test("following the end survives late growth, and stops only when you scroll up"
   const { sessionId } = await command({ type: "create", folder: home });
   for (let n = 1; n <= 8; n++) await command({ type: "start", sessionId, text: `turn ${n}` });
   await page.goto("/");
-  const main = page.getByRole("main", { name: "Chat conversation" });
+  const main = page.getByRole("main", { name: "Session conversation" });
   await expect(page.getByText("local:turn 8", { exact: true })).toBeVisible();
   const fromBottom = () => main.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
   const grow = () =>
@@ -88,7 +88,7 @@ test("following the end survives late growth, and stops only when you scroll up"
       tall.style.height = "600px";
       el.querySelector("[data-purpose=turn]:last-of-type")?.append(tall);
     });
-  // Something late (an image, a diff) makes the chat taller while you follow: the end stays in view.
+  // Something late (an image, a diff) makes the session taller while you follow: the end stays in view.
   await grow();
   await expect.poll(fromBottom).toBeLessThan(5);
   // Scrolling up stops following; more growth leaves you where you are.

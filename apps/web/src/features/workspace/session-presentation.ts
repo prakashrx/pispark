@@ -1,14 +1,14 @@
 import type { SessionInfo } from "../../../../server/src/contract/protocol";
-import { validChatTitle } from "../../../../server/src/contract/chat-title";
+import { validSessionTitle } from "../../../../server/src/contract/session-title";
 
 export type CommandUncertaintyKind =
   | "acceptance-unknown"
   | "settlement-unknown";
 export function commandUncertainty(
   kind: CommandUncertaintyKind | undefined,
-  hasChat: boolean,
+  hasSession: boolean,
 ): string {
-  const target = hasChat ? "this chat" : "your chats";
+  const target = hasSession ? "this session" : "your sessions";
   if (kind === "acceptance-unknown")
     return `We couldn’t confirm whether that action went through. Check ${target} before trying again.`;
   if (kind === "settlement-unknown")
@@ -19,9 +19,9 @@ export function commandUncertainty(
 /** What the server's code for a refused or failed command means, in words. */
 const COMMAND_ERRORS: Record<string, string> = {
   folder: "That working folder doesn’t exist on the server.",
-  persona: "That persona can’t be used: it is missing or can’t be resolved. Check it under Personas.",
-  busy: "The chat is busy. Try again when it has finished.",
-  "not-found": "That chat isn’t open on the server.",
+  agent: "That agent can’t be used: it is missing or can’t be resolved. Check it under Agents.",
+  busy: "The session is busy. Try again when it has finished.",
+  "not-found": "That session isn’t open on the server.",
   storage: "Couldn’t read or save on the server.",
   execution: "The run failed on the server.",
   timeout: "The server took too long to answer.",
@@ -36,13 +36,13 @@ export function folderName(path: string): string {
 }
 
 /** An app's session with no title of its own goes by the app's name. */
-export const goesByApp = (session: SessionInfo): boolean => !!session.persona?.home && !validChatTitle(session.title);
+export const goesByApp = (session: SessionInfo): boolean => !!session.agent?.home && !validSessionTitle(session.title);
 export function sessionName(session?: SessionInfo): string {
-  if (!session) return "This chat";
-  if (validChatTitle(session.title)) return session.title;
-  if (goesByApp(session)) return session.persona.name;
-  if (session.hasHistory === false) return "New chat";
-  return "Untitled chat";
+  if (!session) return "This session";
+  if (validSessionTitle(session.title)) return session.title;
+  if (goesByApp(session)) return session.agent.name;
+  if (session.hasHistory === false) return "New session";
+  return "Untitled session";
 }
 
 /** A session's state in words, for its mark or its header; empty when there is nothing to say. */

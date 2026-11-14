@@ -13,7 +13,7 @@ const session = { id: "s", status: "idle" } as unknown as SessionDoc;
 const snapshot: LiveEvent = { type: "snapshot", sessionId: "s", head: null, doc: { session, tail: [], progress: {} } };
 const stream = (body: string) => new Response(body, { headers: { "Content-Type": "text/event-stream" } });
 
-test("a live stream the server ends on purpose is followed on at once, and the chat stays Live", async () => {
+test("a live stream the server ends on purpose is followed on at once, and the session stays Live", async () => {
   const states: string[] = [];
   let streams = 0;
   let hold!: () => void;
@@ -23,7 +23,7 @@ test("a live stream the server ends on purpose is followed on at once, and the c
       if (url.startsWith("/api/sessions/s/items")) return new Response(JSON.stringify({ items: [], head: null, more: false }));
       if (url === "/api/sessions/s/live") {
         streams++;
-        // The first stream sends the chat and ends, as the server does after its lifetime; the next stays open.
+        // The first stream sends the session and ends, as the server does after its lifetime; the next stays open.
         if (streams === 1) return stream(`event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`);
         return new Promise<Response>((resolve) => (hold = () => resolve(stream(""))));
       }
@@ -52,7 +52,7 @@ test("a live stream the server ends on purpose is followed on at once, and the c
   }
 });
 
-test("a chat the server unloads is followed on when a reply sent meanwhile already loaded it again", async () => {
+test("a session the server unloads is followed on when a reply sent meanwhile already loaded it again", async () => {
   let streams = 0;
   let hold!: () => void;
   vi.stubGlobal(
@@ -61,7 +61,7 @@ test("a chat the server unloads is followed on when a reply sent meanwhile alrea
       if (url.startsWith("/api/sessions/s/items")) return new Response(JSON.stringify({ items: [], head: null, more: false }));
       if (url === "/api/sessions/s/live") {
         streams++;
-        // The first stream sends the chat, then says the server unloaded it; the next stays open.
+        // The first stream sends the session, then says the server unloaded it; the next stays open.
         if (streams === 1)
           return stream(
             `event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\nevent: unloaded\ndata: ${JSON.stringify({ type: "unloaded", sessionId: "s" })}\n\n`,
@@ -90,8 +90,8 @@ test("a chat the server unloads is followed on when a reply sent meanwhile alrea
 });
 
 /**
- * A chat on screen whose live stream the test feeds: each `offer` is the session's views now.
- * `home` makes it the session of an app persona with that home view.
+ * A session on screen whose live stream the test feeds: each `offer` is the session's views now.
+ * `home` makes it the session of an app agent with that home view.
  */
 function followed(id: string, home?: string) {
   let feed!: ReadableStreamDefaultController<Uint8Array>;
@@ -119,7 +119,7 @@ function followed(id: string, home?: string) {
           id,
           status: "idle",
           title,
-          ...(home ? { persona: { id: "app", name: "App", layered: false, home } } : {}),
+          ...(home ? { agent: { id: "app", name: "App", layered: false, home } } : {}),
           extensions: {
             views: views.map((view) => {
               const [key, attention] = view.split(":");

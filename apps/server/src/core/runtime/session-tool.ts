@@ -24,7 +24,7 @@ export const CHILD_ENDED_CHANNEL = "pispark:child-ended";
 
 export type SessionRequest =
   /** Start a child session with a first message; `report` says how it tells this one when it ends. */
-  | { action: "start"; prompt: string; persona?: string; title?: string; report?: ReportMode }
+  | { action: "start"; prompt: string; agent?: string; title?: string; report?: ReportMode }
   | { action: "list" }
   /** Send one of its children another message. */
   | { action: "send"; id: string; text: string }
@@ -66,7 +66,7 @@ export function validSessionMessage(value: unknown): value is SessionMessage {
     case "start":
       return (
         text(request.prompt, 64 * 1024) &&
-        (request.persona === undefined || text(request.persona, 64)) &&
+        (request.agent === undefined || text(request.agent, 64)) &&
         (request.title === undefined || text(request.title, 4096)) &&
         (request.report === undefined || validReportMode(request.report))
       );

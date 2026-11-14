@@ -29,10 +29,10 @@ export default function (pi) {
 test("a live view turns a growing answer into appends and a commit keeps the item's key", async () => {
   const h = await testHome("pispark-live-");
   try {
-    await h.persona("default", { name: "Default" }, { "instructions/test.md": "test only" });
+    await h.agent("default", { name: "Default" }, { "instructions/test.md": "test only" });
     const runtime = new SessionRuntime(h.configuration);
-    const chat = await runtime.create({ folder: await h.folder("work") });
-    const { view, events } = runtime.observeLive(chat.id);
+    const session = await runtime.create({ folder: await h.folder("work") });
+    const { view, events } = runtime.observeLive(session.id);
     const state = { doc: (view.snapshot() as { doc: unknown }).doc as { [key: string]: Json }, head: (view.snapshot() as { head: string | null }).head };
     const committed: Item[] = [];
     const ops: LiveOp[] = [];
@@ -48,7 +48,7 @@ test("a live view turns a growing answer into appends and a commit keeps the ite
         } else applyOp(state.doc, op);
       }
     };
-    const run = runtime.start(chat.id, "stream-me");
+    const run = runtime.start(session.id, "stream-me");
     await eventually(() => h.provider.requests.length === 1);
     pump();
     const tailKey = (state.doc.tail as { key: string }[]).find((item) => (item as unknown as Item).role === "assistant")?.key;
@@ -74,7 +74,7 @@ test("a live view turns a growing answer into appends and a commit keeps the ite
     assert(assistant.id, "and the item now has Pi's entry id");
     pump();
     assert.deepEqual(state.doc.tail, [], "nothing is left in flight");
-    assert.equal(state.head, runtime.items(chat.id, { limit: 1 }).head);
+    assert.equal(state.head, runtime.items(session.id, { limit: 1 }).head);
     events.close();
     await runtime.shutdown();
   } finally {
@@ -85,18 +85,18 @@ test("a live view turns a growing answer into appends and a commit keeps the ite
 test("a new connection starts from what is in flight and the head, not from history", async () => {
   const h = await testHome("pispark-live-");
   try {
-    await h.persona("default", { name: "Default" }, { "instructions/test.md": "test only" });
+    await h.agent("default", { name: "Default" }, { "instructions/test.md": "test only" });
     h.provider.automatic = true;
     const runtime = new SessionRuntime(h.configuration);
-    const chat = await runtime.create({ folder: await h.folder("work") });
-    for (const word of ["one", "two", "three"]) await runtime.start(chat.id, word).completion;
-    const { view, events } = runtime.observeLive(chat.id);
+    const session = await runtime.create({ folder: await h.folder("work") });
+    for (const word of ["one", "two", "three"]) await runtime.start(session.id, word).completion;
+    const { view, events } = runtime.observeLive(session.id);
     const snapshot = view.snapshot();
     assert(snapshot.type === "snapshot");
-    assert.deepEqual(snapshot.doc.tail, [], "an idle chat has nothing in flight");
-    assert.equal(snapshot.head, runtime.items(chat.id, {}).head);
-    assert(JSON.stringify(snapshot).length < 4000, "and the snapshot stays small however long the chat is");
-    assert.equal(view.next(), undefined, "an unchanged chat produces no batch");
+    assert.deepEqual(snapshot.doc.tail, [], "an idle session has nothing in flight");
+    assert.equal(snapshot.head, runtime.items(session.id, {}).head);
+    assert(JSON.stringify(snapshot).length < 4000, "and the snapshot stays small however long the session is");
+    assert.equal(view.next(), undefined, "an unchanged session produces no batch");
     events.close();
     await runtime.shutdown();
   } finally {
@@ -107,23 +107,23 @@ test("a new connection starts from what is in flight and the head, not from hist
 test("images are described in items and served as bytes with a sandboxing policy", async () => {
   const h = await testHome("pispark-live-");
   try {
-    await h.persona("default", { name: "Default" }, { "extensions/pictures.mjs": PICTURES });
+    await h.agent("default", { name: "Default" }, { "extensions/pictures.mjs": PICTURES });
     h.provider.automatic = true;
     const runtime = new SessionRuntime(h.configuration);
-    const chat = await runtime.create({ folder: await h.folder("work") });
-    await runtime.start(chat.id, "tool:pictures:{}").completion;
-    const result = runtime.items(chat.id, {}).items.find((item) => item.role === "toolResult")!;
+    const session = await runtime.create({ folder: await h.folder("work") });
+    await runtime.start(session.id, "tool:pictures:{}").completion;
+    const result = runtime.items(session.id, {}).items.find((item) => item.role === "toolResult")!;
     assert.deepEqual(
       result.parts.map((part) => part.type === "image" ? [part.type, part.mimeType] : [part.type]),
       [["text"], ["image", "image/png"], ["image", "image/svg+xml"]],
     );
     assert(!JSON.stringify(result).includes("iVBOR"), "no base64 travels in the item");
-    const png = runtime.image(chat.id, result.id!, 1);
+    const png = runtime.image(session.id, result.id!, 1);
     assert.equal(png.mimeType, "image/png");
     assert.deepEqual([...png.data.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
-    assert.equal(runtime.image(chat.id, result.id!, 2).mimeType, "image/svg+xml");
-    assert.throws(() => runtime.image(chat.id, result.id!, 0), /not-found/);
-    assert.throws(() => runtime.image(chat.id, "missing", 1), /not-found/);
+    assert.equal(runtime.image(session.id, result.id!, 2).mimeType, "image/svg+xml");
+    assert.throws(() => runtime.image(session.id, result.id!, 0), /not-found/);
+    assert.throws(() => runtime.image(session.id, "missing", 1), /not-found/);
     await runtime.shutdown();
   } finally {
     await h.remove();
@@ -150,14 +150,14 @@ export default function (pi) {
 test("a running tool's progress streams in the live document and leaves when the call ends", async () => {
   const h = await testHome("pispark-live-");
   try {
-    await h.persona("default", { name: "Default" }, { "extensions/steps.mjs": PROGRESS });
+    await h.agent("default", { name: "Default" }, { "extensions/steps.mjs": PROGRESS });
     h.provider.automatic = true;
     const runtime = new SessionRuntime(h.configuration);
-    const chat = await runtime.create({ folder: await h.folder("work") });
-    const { view, events } = runtime.observeLive(chat.id);
+    const session = await runtime.create({ folder: await h.folder("work") });
+    const { view, events } = runtime.observeLive(session.id);
     const doc = (view.snapshot() as unknown as { doc: { [key: string]: Json } }).doc;
     const seen: string[] = [];
-    const run = runtime.start(chat.id, "tool:steps:{}");
+    const run = runtime.start(session.id, "tool:steps:{}");
     let done = false;
     void run.completion.then(() => (done = true));
     while (!done) {

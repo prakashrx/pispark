@@ -5,22 +5,22 @@ import type { CommandUncertaintyKind } from "./session-presentation";
 import { forgetViewChoice, Session } from "./session.svelte";
 import { CommandFailed, CommandUncertainty, Transport } from "./transport";
 import { ProviderClient } from "../settings/provider-client.svelte";
-import { PersonaClient } from "../persona/persona-client.svelte";
+import { AgentClient } from "../agent/agent-client.svelte";
 import { ScheduleClient } from "../schedules/schedule-client.svelte";
 import { ProcessClient, RoutineClient } from "../background/background-client.svelte";
 import { HostClient } from "../about/host-client.svelte";
 const context = Symbol("session-client");
 
-/** How many chats stay in memory as they were last shown, so opening one again shows it at once. */
+/** How many sessions stay in memory as they were last shown, so opening one again shows it at once. */
 const KEPT = 8;
 
 /**
- * The app around the chats: the chat list, which chat is open, starting a new one, and PiSpark's
- * settings. Each chat that has been opened is a `Session`, which owns everything about it.
+ * The app around the sessions: the session list, which session is open, starting a new one, and PiSpark's
+ * settings. Each session that has been opened is a `Session`, which owns everything about it.
  */
 export class SessionClient {
   readonly providers = new ProviderClient();
-  readonly personas = new PersonaClient();
+  readonly agents = new AgentClient();
   catalog = $state<Catalog>({ home: "", recentFolders: [] });
   /** PiSpark's own settings; undefined until loaded. */
   settings = $state<HostSettings>();
@@ -30,21 +30,21 @@ export class SessionClient {
   /** How many sessions are archived, and which, once the Archived list has been opened. */
   archivedCount = $state(0);
   archived = $state<SessionInfo[]>();
-  /** The open chat. */
+  /** The open session. */
   current = $state<Session>();
   get selected(): string {
     return this.current?.id ?? "";
   }
   /** The server as a whole: "Loading", "Connected" or "Disconnected". */
   private backend = $state("Loading");
-  /** What the shell shows: the open chat's connection once the server is reached. */
+  /** What the shell shows: the open session's connection once the server is reached. */
   get connection(): string {
     return this.backend === "Connected" && this.current ? this.current.connection : this.backend;
   }
   error = $state("");
   errorKind = $state<CommandUncertaintyKind>();
   listNotice = $state("");
-  /** A new chat is being created. */
+  /** A new session is being created. */
   private asking = $state(false);
   /** Something is being sent; the composers wait. */
   get busy(): boolean {
@@ -57,7 +57,7 @@ export class SessionClient {
   readonly processes = new ProcessClient(this.transport);
   /** This PiSpark and its updates; after an update restart, the window reconnects by itself. */
   readonly host = new HostClient(this.transport, () => this.reconnect());
-  /** Chats that have been opened, least recently shown first. */
+  /** Sessions that have been opened, least recently shown first. */
   private readonly opened = new Map<string, Session>();
   private disposed = false;
   private refreshTimer?: ReturnType<typeof setInterval>;
@@ -66,7 +66,7 @@ export class SessionClient {
   private offline = () => this.current?.offline();
   private online = () => this.reconnect();
   private beforeUnload = (event: BeforeUnloadEvent) => {
-    if (this.personas.unsaved) {
+    if (this.agents.unsaved) {
       event.preventDefault();
       event.returnValue = "";
     }
@@ -83,7 +83,7 @@ export class SessionClient {
     this.error = "";
     this.errorKind = undefined;
     void this.providers.refresh();
-    void this.personas.refresh();
+    void this.agents.refresh();
     window.addEventListener("beforeunload", this.beforeUnload);
     window.addEventListener("offline", this.offline);
     window.addEventListener("online", this.online);
@@ -139,22 +139,22 @@ export class SessionClient {
     void this.processes.refresh().catch(() => {});
     void this.host.refresh().catch(() => {});
     if (this.archived && this.archived.length !== this.archivedCount) void this.loadArchived();
-    const apps = new Set(this.personas.items.filter((persona) => persona.home).map((persona) => persona.id));
-    if (this.personas.items.length && result.sessions.some((session) => !!session.persona.home !== apps.has(session.persona.id)))
-      void this.personas.refresh();
+    const apps = new Set(this.agents.items.filter((agent) => agent.home).map((agent) => agent.id));
+    if (this.agents.items.length && result.sessions.some((session) => !!session.agent.home !== apps.has(session.agent.id)))
+      void this.agents.refresh();
     for (const row of result.sessions) {
       const session = this.opened.get(row.id);
       if (session) session.row = row;
     }
     this.listNotice = result.truncated
-      ? "Showing your latest 256 chats. Older chats are still saved."
+      ? "Showing your latest 256 sessions. Older sessions are still saved."
       : "";
     if (result.unreadable) {
-      this.listNotice = [this.listNotice, `${result.unreadable} chat records could not be read.`].filter(Boolean).join(" ");
+      this.listNotice = [this.listNotice, `${result.unreadable} session records could not be read.`].filter(Boolean).join(" ");
     }
   }
 
-  /** The chat's session object, kept from when it was last open or made now. */
+  /** The session's session object, kept from when it was last open or made now. */
   session(id: string): Session {
     let session = this.opened.get(id);
     if (!session) {
@@ -168,7 +168,7 @@ export class SessionClient {
         },
       });
     }
-    // Most recently used last. A chat with an unsent draft is never dropped.
+    // Most recently used last. A session with an unsent draft is never dropped.
     this.opened.delete(id);
     this.opened.set(id, session);
     for (const [other, kept] of this.opened) {
@@ -178,7 +178,7 @@ export class SessionClient {
     session.row = this.sessions.find((s) => s.id === id) ?? session.row;
     return session;
   }
-  /** Opens a chat: it shows at once as it was last seen, and the live stream brings it up to date. */
+  /** Opens a session: it shows at once as it was last seen, and the live stream brings it up to date. */
   async select(id: string) {
     const session = this.session(id);
     if (this.current !== session) this.current?.hide();
@@ -188,7 +188,7 @@ export class SessionClient {
     } catch { /* In-memory selection still works. */ }
     await session.show();
   }
-  /** Keep the chat list's row in step with what the open chat reports. */
+  /** Keep the session list's row in step with what the open session reports. */
   private track(id: string, session: SessionDoc) {
     const row = this.sessions.find((s) => s.id === id);
     const next = {
@@ -196,12 +196,12 @@ export class SessionClient {
       hasHistory: session.hasHistory,
       status: session.status,
       interrupted: session.interrupted,
-      persona: session.persona,
-      personaChanged: session.personaChanged,
+      agent: session.agent,
+      agentChanged: session.agentChanged,
       waiting: session.waiting,
       queued: session.queued,
     };
-    if (row && JSON.stringify(next) !== JSON.stringify({ title: row.title, hasHistory: row.hasHistory, status: row.status, interrupted: row.interrupted, persona: row.persona, personaChanged: row.personaChanged, waiting: row.waiting, queued: row.queued }))
+    if (row && JSON.stringify(next) !== JSON.stringify({ title: row.title, hasHistory: row.hasHistory, status: row.status, interrupted: row.interrupted, agent: row.agent, agentChanged: row.agentChanged, waiting: row.waiting, queued: row.queued }))
       this.sessions = this.sessions.map((s) => (s.id === id ? { ...s, ...next } : s));
   }
   /** Saves a settings change; rejects when the server refused it. */
@@ -216,12 +216,12 @@ export class SessionClient {
     if (this.current) void this.current.reconnect();
     else void this.mount();
   }
-  /** Starts a new chat with a first message, in `folder` or, without one, in its project persona's. */
+  /** Starts a new session with a first message, in `folder` or, without one, in its project agent's. */
   async ask(
     text: string,
     folder: string | undefined,
     model?: ModelChoice,
-    persona?: string,
+    agent?: string,
   ): Promise<boolean> {
     if (this.busy || !text.trim()) return false;
     this.asking = true;
@@ -233,7 +233,7 @@ export class SessionClient {
         type: "create",
         ...(folder?.trim() ? { folder: folder.trim() } : {}),
         ...(model ? { model } : {}),
-        ...(persona ? { persona } : {}),
+        ...(agent ? { agent } : {}),
       });
       id = created.sessionId!;
       await this.refresh();
@@ -262,27 +262,27 @@ export class SessionClient {
       this.asking = false;
     }
   }
-  /** The sessions of an app persona, newest first. */
-  appSessions(persona: string): SessionInfo[] {
+  /** The sessions of an app agent, newest first. */
+  appSessions(agent: string): SessionInfo[] {
     // A session another one started is listed under that one, not as one of the app's own.
     const listed = new Set(this.sessions.map((session) => session.id));
     return this.sessions
-      .filter((session) => session.persona?.id === persona && !(session.parent && listed.has(session.parent)))
+      .filter((session) => session.agent?.id === agent && !(session.parent && listed.has(session.parent)))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
   /**
-   * Opens an app persona: its newest session or, with none (or when a fresh one is asked for), a
+   * Opens an app agent: its newest session or, with none (or when a fresh one is asked for), a
    * new one in the app's own place. No message is sent; the session shows the app's home view.
    */
-  async openApp(persona: string, fresh = false): Promise<void> {
-    const newest = fresh ? undefined : this.appSessions(persona)[0];
+  async openApp(agent: string, fresh = false): Promise<void> {
+    const newest = fresh ? undefined : this.appSessions(agent)[0];
     if (newest) return this.select(newest.id);
     if (this.busy) return;
     this.asking = true;
     this.error = "";
     this.errorKind = undefined;
     try {
-      const created = await this.transport.run({ type: "create", persona });
+      const created = await this.transport.run({ type: "create", agent });
       await this.refresh();
       await this.select(created.sessionId!);
     } catch (error) {
@@ -314,7 +314,7 @@ export class SessionClient {
     }
   }
   /**
-   * An extension asked to keep a session loaded: allow it (for the session's persona) or not now.
+   * An extension asked to keep a session loaded: allow it (for the session's agent) or not now.
    * Or let go of a hold. The list is read again so the session's marks follow.
    */
   async hold(id: string, type: "allow-hold" | "deny-hold" | "release-hold"): Promise<boolean> {
@@ -384,13 +384,13 @@ export function useSessions(): SessionClient {
   return getContext(context);
 }
 
-const sessionContext = Symbol("chat-session");
-/** Gives one chat to everything that draws it. */
+const sessionContext = Symbol("session-session");
+/** Gives one session to everything that draws it. */
 export function provideSession(session: Session) {
   setContext(sessionContext, session);
   return session;
 }
-/** The chat this component is drawing. */
+/** The session this component is drawing. */
 export function useSession(): Session {
   return getContext(sessionContext);
 }

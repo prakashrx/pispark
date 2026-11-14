@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { toolGroups } from "./persona-presentation";
-import type { ResolvedTool } from "../../../../server/src/contract/persona-protocol";
+import { toolGroups } from "./agent-presentation";
+import type { ResolvedTool } from "../../../../server/src/contract/agent-protocol";
 
 test("tools are shown in groups: PiSpark first, then each extension, then switches nothing provides", () => {
   const tools: ResolvedTool[] = [

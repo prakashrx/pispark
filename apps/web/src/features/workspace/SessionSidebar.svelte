@@ -6,11 +6,11 @@
   import { useSessions } from "./session-client.svelte";
   import { sessionName } from "./session-presentation";
   const client = useSessions();
-  // App personas are opened from their own section, and their sessions are listed there.
-  const apps = $derived(client.personas.items.filter((persona) => persona.valid && persona.home));
+  // App agents are opened from their own section, and their sessions are listed there.
+  const apps = $derived(client.agents.items.filter((agent) => agent.valid && agent.home));
   // A session started by another is listed under it (when that one is listed), not on its own.
   const listed = $derived(new Set(client.sessions.map((session) => session.id)));
-  const chats = $derived(client.sessions.filter((session) => !session.persona?.home && !(session.parent && listed.has(session.parent))));
+  const sessions = $derived(client.sessions.filter((session) => !session.agent?.home && !(session.parent && listed.has(session.parent))));
 
   function groupByDate(sessions: typeof client.sessions) {
     const now = new Date();
@@ -41,7 +41,7 @@
     ].filter(g => g.items.length > 0);
   }
 
-  const groups = $derived(groupByDate(chats));
+  const groups = $derived(groupByDate(sessions));
 </script>
 
 <div class="workspace flex-1 min-h-0 flex flex-col justify-between">
@@ -55,9 +55,9 @@
           </div>
         </nav>
       {/if}
-      <nav aria-label="Chats" class="space-y-3">
-        {#if chats.length === 0}
-          <p class="px-3 py-3 text-sm text-muted-foreground">No chats yet.</p>
+      <nav aria-label="Sessions" class="space-y-3">
+        {#if sessions.length === 0}
+          <p class="px-3 py-3 text-sm text-muted-foreground">No sessions yet.</p>
         {:else}
           {#each groups as group}
             <div>
@@ -68,8 +68,8 @@
                   <SessionTree {session} {name}>
                     <span class="min-w-0 flex-1">
                       <span class="block truncate">{name}</span>
-                      {#if session.persona?.name}
-                        <span class="block truncate text-xs text-subtle mt-0.5">{session.persona.name}</span>
+                      {#if session.agent?.name}
+                        <span class="block truncate text-xs text-subtle mt-0.5">{session.agent.name}</span>
                       {/if}
                     </span>
                   </SessionTree>

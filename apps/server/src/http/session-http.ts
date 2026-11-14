@@ -17,8 +17,8 @@ import {
   silentLogger,
   type SafeLogger,
 } from "../core/logger.js";
-import { PersonaHttp } from "./persona-http.js";
-import { validPersonaId } from "../core/personas/format.js";
+import { AgentHttp } from "./agent-http.js";
+import { validAgentId } from "../core/agents/format.js";
 import { homedir } from "node:os";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
@@ -83,7 +83,7 @@ function validate(value: unknown): Command {
       ? [
           ...(c.folder === undefined ? [] : ["folder"]),
           ...(c.model === undefined ? [] : ["model"]),
-          ...(c.persona === undefined ? [] : ["persona"]),
+          ...(c.agent === undefined ? [] : ["agent"]),
         ]
       : ["open", "reload", "cancel", "stop", "archive", "restore", "delete", "allow-hold", "deny-hold", "release-hold"].includes(String(c.type))
         ? ["sessionId"]
@@ -98,9 +98,9 @@ function validate(value: unknown): Command {
     throw new RuntimeError("invalid-input");
   if (c.model !== undefined && !validChoice(c.model))
     throw new RuntimeError("invalid-input");
-  if (c.persona !== undefined && !validPersonaId(c.persona))
+  if (c.agent !== undefined && !validAgentId(c.agent))
     throw new RuntimeError("invalid-input");
-  for (const key of keys.filter((key) => key !== "model" && key !== "persona"))
+  for (const key of keys.filter((key) => key !== "model" && key !== "agent"))
     if (typeof c[key] !== "string" || !(c[key] as string).trim())
       throw new RuntimeError("invalid-input");
   if ("sessionId" in c && !uuid.test(String(c.sessionId)))
@@ -186,7 +186,7 @@ export class SessionHttp {
   private streams = new Set<ServerResponse>();
   private requests = 0;
   private closed = false;
-  private readonly personas: PersonaHttp;
+  private readonly agents: AgentHttp;
   private readonly host: HostHttp;
   constructor(
     readonly runtime: SessionRuntime,
@@ -197,7 +197,7 @@ export class SessionHttp {
   ) {
     // Every server answers /api/host; one the launcher did not start is simply not managed.
     this.host = host ?? new HostHttp(new HostLink(() => runtime.runningWork(), () => {}), runtime.dataFolder, () => runtime.runningWork());
-    this.personas = new PersonaHttp(runtime.personas, (target) => runtime.discoverTools(target));
+    this.agents = new AgentHttp(runtime.agents, (target) => runtime.discoverTools(target));
   }
   private secure(request: IncomingMessage) {
     const local = request.socket.localAddress;
@@ -251,7 +251,7 @@ export class SessionHttp {
     const pool = [...this.receipts.values()].filter(
       (e) => Boolean(e.lifecycle) === Boolean(lifecycle),
     );
-    // A start stays pending while its prompt waits for a turn and runs; there is at most one per chat.
+    // A start stays pending while its prompt waits for a turn and runs; there is at most one per session.
     if (
       pool.length >= (lifecycle ? 32 : 256) ||
       (command.type !== "start" && pool.filter((e) => e.receipt.state === "accepted" && !e.start).length >= 16)
@@ -277,7 +277,7 @@ export class SessionHttp {
             await this.runtime.create({
               ...(command.folder === undefined ? {} : { folder: command.folder }),
               ...(command.model ? { model: command.model } : {}),
-              ...(command.persona ? { persona: command.persona } : {}),
+              ...(command.agent ? { agent: command.agent } : {}),
             })
           ).id;
           break;
@@ -288,7 +288,7 @@ export class SessionHttp {
           await this.runtime.reload(command.sessionId);
           break;
         case "start": {
-          // A chat is loaded when it is used; nobody opens or stops chats by hand.
+          // A session is loaded when it is used; nobody opens or stops sessions by hand.
           await this.runtime.ensure(command.sessionId);
           let run;
           try {
@@ -378,8 +378,8 @@ export class SessionHttp {
     try {
       const url = new URL(request.url!, "http://localhost");
       const path = url.pathname;
-      if (path === "/api/personas" || path.startsWith("/api/personas/")) {
-        await this.personas.handle(request, response);
+      if (path === "/api/agents" || path.startsWith("/api/agents/")) {
+        await this.agents.handle(request, response);
         return;
       }
       if (path === "/api/host" && !url.search) {
@@ -434,18 +434,18 @@ export class SessionHttp {
           return;
         }
       }
-      // Routines personas offer: every one (`GET`), switch one on or off (`POST {on}`), run one now.
+      // Routines agents offer: every one (`GET`), switch one on or off (`POST {on}`), run one now.
       if (path === "/api/routines" && !url.search && request.method === "GET") {
         sendJson(response, 200, this.runtime.listRoutines(), 1024 * 1024);
         return;
       }
       const routine = /^\/api\/routines\/([a-z0-9-]+)\/([A-Za-z0-9._-]+)(?:\/(run))?$/.exec(path);
       if (routine && request.method === "POST" && !url.search) {
-        const [, persona, id, action] = routine;
+        const [, agent, id, action] = routine;
         if (action === "run") {
-          await this.runtime.runRoutine(persona!, id!);
+          await this.runtime.runRoutine(agent!, id!);
           sendJson(response, 202, {});
-        } else sendJson(response, 200, this.runtime.setRoutine(persona!, id!, ((await body(request)) as { on?: unknown } | undefined)?.on));
+        } else sendJson(response, 200, this.runtime.setRoutine(agent!, id!, ((await body(request)) as { on?: unknown } | undefined)?.on));
         return;
       }
       if (
@@ -653,7 +653,7 @@ export class SessionHttp {
       observation = this.runtime.observeLive(id);
     } catch (error) {
       if (!(error instanceof RuntimeError) || error.code !== "not-found") throw error;
-      // Not an error: chats unload when idle. The client opens it again and reconnects.
+      // Not an error: sessions unload when idle. The client opens it again and reconnects.
       response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store" });
       response.end(`event: unloaded
 data: ${JSON.stringify({ type: "unloaded", sessionId: id } satisfies LiveEvent)}

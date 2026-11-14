@@ -20,7 +20,7 @@ import {
 } from "../src/core/runtime/native-model-runtime.js";
 
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { Setup } from "../src/core/personas/resolve.js";
+import type { Setup } from "../src/core/agents/resolve.js";
 import { createSessionServices } from "../src/core/runtime/configuration.js";
 
 const provider = "pispark-local-test";
@@ -149,11 +149,11 @@ for (const kind of ["modelOverrides", "models"] as const)
       publicValues,
       /PRIVATE_|"headers"\s*:|"baseUrl"\s*:|test-key/,
     );
-    const chat = join(root, "pispark", "chats", a.id);
-    for (const file of await readdir(chat)) {
-      if (file === "chat.json" || file.endsWith(".jsonl"))
+    const session = join(root, "pispark", "sessions", a.id);
+    for (const file of await readdir(session)) {
+      if (file === "session.json" || file.endsWith(".jsonl"))
         assert.doesNotMatch(
-          await readFile(join(chat, file), "utf8"),
+          await readFile(join(session, file), "utf8"),
           /PRIVATE_|"headers"\s*:|test-key/,
         );
     }
@@ -397,7 +397,7 @@ test("SessionRuntime: managed native config cancellation before compaction dispa
   for (let i = 0; i < 2; i++)
     await sessions.start(a.id, "history".repeat(8000)).completion;
   await sessions.stop(a.id);
-  const dir = join(home, "chats", a.id);
+  const dir = join(home, "sessions", a.id);
   const native = join(
     dir,
     (await readdir(dir)).find((name) => name.endsWith(".jsonl"))!,

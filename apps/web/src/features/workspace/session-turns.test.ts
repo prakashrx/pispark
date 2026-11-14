@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Item, ItemPart } from "../../../../server/src/contract/protocol";
-import { buildTurns, clippedPart, itemText, reportBody } from "./chat-turns";
+import { buildTurns, clippedPart, itemText, reportBody } from "./session-turns";
 import { artifactsOf, describeCall, summarizeCalls } from "./tool-views";
 import { pointOf } from "./extension-views";
 
@@ -95,7 +95,7 @@ test("extension notices land where they happened; one ahead of your message ends
 test("custom entries, summaries and clipped parts keep their identity", () => {
   n = 0;
   const clipped = item("assistant", [text("start", 500)]);
-  const turns = buildTurns([item("user", [text("q")]), clipped, item("entry", [], { rendered: { body: [[{ text: "note" }]] } }), item("summary", [text("earlier chat")])], { running: false });
+  const turns = buildTurns([item("user", [text("q")]), clipped, item("entry", [], { rendered: { body: [[{ text: "note" }]] } }), item("summary", [text("earlier session")])], { running: false });
   expect(turns[0]!.segments.map((s) => s.kind)).toEqual(["text", "custom", "summary"]);
   const body = turns[0]!.segments[0]!;
   expect(body.kind === "text" && body.detail).toEqual({ id: clipped.id, part: 0 });
@@ -187,7 +187,7 @@ test("a tool an extension placed a component for is drawn by it alone; custom it
   expect(pointOf(plain[0]!.segments[0]!)).toBeUndefined();
 });
 
-test("a notice kept in the chat's history is a notice where it happened", () => {
+test("a notice kept in the session's history is a notice where it happened", () => {
   n = 0;
   const [turn] = buildTurns(
     [

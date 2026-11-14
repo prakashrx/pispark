@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
-import { validateDefinition, PersonaError } from "../src/core/personas/format.js";
+import { validateDefinition, AgentError } from "../src/core/agents/format.js";
 import { WOKEN_ENTRY } from "../src/contract/wake-protocol.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
@@ -15,7 +15,7 @@ const MORNING = { id: "morning", name: "Morning check", cron: "0 7 * * *", promp
 async function fixture() {
   const h = await testHome("pispark-routines-");
   h.provider.automatic = true;
-  await h.persona("scout", { name: "Home Scout", home: "listings", routines: [MORNING] });
+  await h.agent("scout", { name: "Home Scout", home: "listings", routines: [MORNING] });
   const clock = { now: local("2026-11-13T06:00") };
   const runtimes: SessionRuntime[] = [];
   const make = () => {
@@ -28,7 +28,7 @@ async function fixture() {
     clock,
     runtime: make(),
     make,
-    runs: (runtime: SessionRuntime) => runtime.list().filter((session) => session.persona.id === "scout"),
+    runs: (runtime: SessionRuntime) => runtime.list().filter((session) => session.agent.id === "scout"),
     cleanup: async () => {
       await Promise.allSettled(runtimes.map((r) => r.shutdown()));
       await h.remove();
@@ -36,33 +36,33 @@ async function fixture() {
   };
 }
 
-test("a routine is declared by its persona and checked like any definition", () => {
-  assert.throws(() => validateDefinition({ name: "X", routines: [{ ...MORNING, cron: "every morning" }] }), PersonaError);
-  assert.throws(() => validateDefinition({ name: "X", routines: [MORNING, MORNING] }), PersonaError);
-  assert.throws(() => validateDefinition({ name: "X", routines: [{ ...MORNING, extra: 1 }] }), PersonaError);
-  assert.throws(() => validateDefinition({ routines: [MORNING] }, { chatLayer: true }), PersonaError);
+test("a routine is declared by its agent and checked like any definition", () => {
+  assert.throws(() => validateDefinition({ name: "X", routines: [{ ...MORNING, cron: "every morning" }] }), AgentError);
+  assert.throws(() => validateDefinition({ name: "X", routines: [MORNING, MORNING] }), AgentError);
+  assert.throws(() => validateDefinition({ name: "X", routines: [{ ...MORNING, extra: 1 }] }), AgentError);
+  assert.throws(() => validateDefinition({ routines: [MORNING] }, { sessionLayer: true }), AgentError);
   assert.deepEqual(validateDefinition({ name: "X", routines: [MORNING], on: ["routine:morning", "hold:telegram"] }).routines, [MORNING]);
 });
 
-test("a routine is off until switched on; each run is a new session of its persona", async () => {
+test("a routine is off until switched on; each run is a new session of its agent", async () => {
   const f = await fixture();
   try {
     let [routine] = f.runtime.listRoutines().routines;
     assert.equal(routine!.on, false);
     assert.equal(routine!.next, undefined);
-    assert.deepEqual(routine!.persona, { id: "scout", name: "Home Scout", home: "listings" });
+    assert.deepEqual(routine!.agent, { id: "scout", name: "Home Scout", home: "listings" });
 
     // Off: its time passes without a run.
     f.clock.now = local("2026-11-13T07:00");
     await f.runtime.checkWakes();
     assert.equal(f.runs(f.runtime).length, 0);
 
-    // Switched on: an ordinary switch in the persona, counting from now.
+    // Switched on: an ordinary switch in the agent, counting from now.
     routine = f.runtime.setRoutine("scout", "morning", true);
     assert.equal(routine.on, true);
     assert.equal(routine.next, new Date(local("2026-11-14T07:00")).toISOString());
-    const persona = JSON.parse(await readFile(join(f.home, "personas", "scout", "persona.json"), "utf8"));
-    assert.deepEqual(persona.on, ["routine:morning"]);
+    const agent = JSON.parse(await readFile(join(f.home, "agents", "scout", "agent.json"), "utf8"));
+    assert.deepEqual(agent.on, ["routine:morning"]);
 
     f.clock.now = local("2026-11-14T07:00");
     await f.runtime.checkWakes();
@@ -105,7 +105,7 @@ test("a run missed while PiSpark was off is caught up within a day, counting fro
     const again = f.make();
     await again.checkWakes();
     await eventually(() => f.runs(again).length === 2);
-    assert.equal(f.runs(again).find((s) => s.title === "Morning check · Sun 15 Nov")?.persona.id, "scout");
+    assert.equal(f.runs(again).find((s) => s.title === "Morning check · Sun 15 Nov")?.agent.id, "scout");
   } finally {
     await f.cleanup();
   }

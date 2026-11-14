@@ -7,7 +7,7 @@ export type RuntimeErrorCode =
   | "credentials"
   | "resources"
   | "folder"
-  | "persona"
+  | "agent"
   | "storage"
   | "owned"
   | "sdk-version"

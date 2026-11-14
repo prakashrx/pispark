@@ -17,23 +17,23 @@ import { dirname, join } from "node:path";
 import type {
   ItemFile,
   ItemType,
-  PersonaDefinition,
-  PersonaSummary,
-  PersonaTarget,
-} from "../../contract/persona-protocol.js";
+  AgentDefinition,
+  AgentSummary,
+  AgentTarget,
+} from "../../contract/agent-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import {
-  DEFAULT_PERSONA,
+  DEFAULT_AGENT,
   DEFAULT_TOOLS,
   digest,
   fail,
   frontmatter,
   itemPath,
-  PersonaError,
+  AgentError,
   slug,
   validateDefinition,
   validItemName,
-  validPersonaId,
+  validAgentId,
 } from "./format.js";
 
 const UUID =
@@ -41,7 +41,7 @@ const UUID =
 const MAX_FILE = 256 * 1024;
 const MAX_ITEMS = 64;
 
-/** An item a layer's folder (or persona.json) provides. */
+/** An item a layer's folder (or agent.json) provides. */
 export interface LayerItem {
   type: ItemType;
   name: string;
@@ -76,10 +76,10 @@ const readText = (path: string): string => {
   return buffer.toString("utf8");
 };
 
-/** What a layer's persona.json may hold: Default and a chat's own layer name no folder and no home view. */
-const rules = (target: PersonaTarget) => ({
-  chatLayer: "chat" in target,
-  binds: "persona" in target && target.persona !== DEFAULT_PERSONA,
+/** What a layer's agent.json may hold: Default and a session's own layer name no folder and no home view. */
+const rules = (target: AgentTarget) => ({
+  sessionLayer: "session" in target,
+  binds: "agent" in target && target.agent !== DEFAULT_AGENT,
 });
 const isFolder = (path: string): boolean => {
   try {
@@ -90,42 +90,42 @@ const isFolder = (path: string): boolean => {
 };
 
 /**
- * Persona folders live in `<home>/personas/<id>/`; a chat's own layer in `<home>/chats/<id>/persona/`.
- * Plain files, no copies: chats read personas live.
+ * Agent folders live in `<home>/agents/<id>/`; a session's own layer in `<home>/sessions/<id>/agent/`.
+ * Plain files, no copies: sessions read agents live.
  */
-export class PersonaStore {
-  private listeners = new Set<(target: PersonaTarget) => void>();
+export class AgentStore {
+  private listeners = new Set<(target: AgentTarget) => void>();
   private watcher?: FSWatcher;
   private readonly pending = new Set<string>();
   private timer?: ReturnType<typeof setTimeout>;
   constructor(
-    readonly personasDir: string,
-    readonly chatsDir: string,
-    /** The persona a chat started with; the base of its layer. */
-    private readonly chatPersona: (chatId: string) => string,
+    readonly agentsDir: string,
+    readonly sessionsDir: string,
+    /** The agent a session started with; the base of its layer. */
+    private readonly sessionAgent: (sessionId: string) => string,
     readonly logger: SafeLogger = silentLogger,
   ) {
-    mkdirSync(personasDir, { recursive: true, mode: 0o700 });
+    mkdirSync(agentsDir, { recursive: true, mode: 0o700 });
     this.ensureDefault();
     this.watch();
   }
 
   /**
    * Edits made outside PiSpark (an extension's code or component, an instruction in an editor)
-   * count as changes too, so open chats can offer to reload. A burst is reported once.
+   * count as changes too, so open sessions can offer to reload. A burst is reported once.
    */
   private watch(): void {
     try {
-      this.watcher = watch(this.personasDir, { recursive: true }, (_event, file) => {
+      this.watcher = watch(this.agentsDir, { recursive: true }, (_event, file) => {
         const path = file ? String(file) : "";
         const id = path.split(/[\\/]/)[0];
-        if (!id || !validPersonaId(id) || /\.tmp$/.test(path)) return;
+        if (!id || !validAgentId(id) || /\.tmp$/.test(path)) return;
         this.pending.add(id);
         clearTimeout(this.timer);
         this.timer = setTimeout(() => {
           const ids = [...this.pending];
           this.pending.clear();
-          for (const persona of ids) this.changed({ persona });
+          for (const agent of ids) this.changed({ agent });
         }, 300);
       });
       this.watcher.on("error", () => this.watcher?.close());
@@ -135,55 +135,55 @@ export class PersonaStore {
     }
   }
 
-  onChange(listener: (target: PersonaTarget) => void): () => void {
+  onChange(listener: (target: AgentTarget) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
-  private changed(target: PersonaTarget): void {
+  private changed(target: AgentTarget): void {
     for (const listener of this.listeners) listener(target);
   }
 
-  /** First start: a Default persona with Pi's built-in tools, so a new chat has full access. */
+  /** First start: a Default agent with Pi's built-in tools, so a new session has full access. */
   ensureDefault(): void {
-    const dir = join(this.personasDir, DEFAULT_PERSONA);
-    if (existsSync(join(dir, "persona.json"))) return;
+    const dir = join(this.agentsDir, DEFAULT_AGENT);
+    if (existsSync(join(dir, "agent.json"))) return;
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const definition: PersonaDefinition = {
+    const definition: AgentDefinition = {
       name: "Default",
-      description: "The base of every persona.",
+      description: "The base of every agent.",
       on: DEFAULT_TOOLS.map((tool) => `tool:${tool}`),
     };
     writeAtomic(
-      join(dir, "persona.json"),
+      join(dir, "agent.json"),
       JSON.stringify(definition, null, 2) + "\n",
     );
   }
 
-  dir(target: PersonaTarget): string {
-    if ("persona" in target) {
-      if (!validPersonaId(target.persona)) fail("invalid-input");
-      return join(this.personasDir, target.persona);
+  dir(target: AgentTarget): string {
+    if ("agent" in target) {
+      if (!validAgentId(target.agent)) fail("invalid-input");
+      return join(this.agentsDir, target.agent);
     }
-    if (typeof target.chat !== "string" || !UUID.test(target.chat))
+    if (typeof target.session !== "string" || !UUID.test(target.session))
       fail("invalid-input");
-    return join(this.chatsDir, target.chat, "persona");
+    return join(this.sessionsDir, target.session, "agent");
   }
-  /** Whether the persona (or chat layer) exists on disk. */
-  exists(target: PersonaTarget): boolean {
-    return existsSync(join(this.dir(target), "persona.json"));
+  /** Whether the agent (or session layer) exists on disk. */
+  exists(target: AgentTarget): boolean {
+    return existsSync(join(this.dir(target), "agent.json"));
   }
 
-  read(target: PersonaTarget): {
-    definition: PersonaDefinition;
+  read(target: AgentTarget): {
+    definition: AgentDefinition;
     revision: string;
   } {
-    const path = join(this.dir(target), "persona.json");
+    const path = join(this.dir(target), "agent.json");
     if (!existsSync(path)) {
-      if ("chat" in target) {
-        // A chat's layer builds on its persona; Default is always first and never listed.
-        const persona = this.chatPersona(target.chat);
+      if ("session" in target) {
+        // A session's layer builds on its agent; Default is always first and never listed.
+        const agent = this.sessionAgent(target.session);
         return {
-          definition: persona === DEFAULT_PERSONA ? {} : { base: [persona] },
+          definition: agent === DEFAULT_AGENT ? {} : { base: [agent] },
           revision: "",
         };
       }
@@ -202,13 +202,13 @@ export class PersonaStore {
     };
   }
 
-  list(): PersonaSummary[] {
-    const summaries: PersonaSummary[] = [];
-    for (const id of readdirSync(this.personasDir)) {
-      if (!validPersonaId(id)) continue;
-      if (!existsSync(join(this.personasDir, id, "persona.json"))) continue;
+  list(): AgentSummary[] {
+    const summaries: AgentSummary[] = [];
+    for (const id of readdirSync(this.agentsDir)) {
+      if (!validAgentId(id)) continue;
+      if (!existsSync(join(this.agentsDir, id, "agent.json"))) continue;
       try {
-        const { definition } = this.read({ persona: id });
+        const { definition } = this.read({ agent: id });
         summaries.push({
           id,
           name: definition.name ?? id,
@@ -216,7 +216,7 @@ export class PersonaStore {
             ? { description: definition.description }
             : {}),
           base: definition.base ?? [],
-          builtIn: id === DEFAULT_PERSONA,
+          builtIn: id === DEFAULT_AGENT,
           valid: true,
         });
       } catch (error) {
@@ -224,9 +224,9 @@ export class PersonaStore {
           id,
           name: id,
           base: [],
-          builtIn: id === DEFAULT_PERSONA,
+          builtIn: id === DEFAULT_AGENT,
           valid: false,
-          error: error instanceof PersonaError ? error.code : "storage",
+          error: error instanceof AgentError ? error.code : "storage",
         });
       }
     }
@@ -250,36 +250,36 @@ export class PersonaStore {
       ...(input.base?.length ? { base: input.base } : {}),
     });
     const id = slug(definition.name!, (candidate) =>
-      existsSync(join(this.personasDir, candidate)),
+      existsSync(join(this.agentsDir, candidate)),
     );
     for (const parent of definition.base ?? [])
-      if (!this.exists({ persona: parent })) fail("missing-parent", 400, parent);
-    const dir = join(this.personasDir, id);
+      if (!this.exists({ agent: parent })) fail("missing-parent", 400, parent);
+    const dir = join(this.agentsDir, id);
     mkdirSync(dir, { mode: 0o700 });
     const content = JSON.stringify(definition, null, 2) + "\n";
-    writeAtomic(join(dir, "persona.json"), content);
-    this.logger.event("persona.save", { personaId: id, outcome: "completed" });
-    this.changed({ persona: id });
+    writeAtomic(join(dir, "agent.json"), content);
+    this.logger.event("agent.save", { agentId: id, outcome: "completed" });
+    this.changed({ agent: id });
     return { id, revision: digest(content) };
   }
 
   /**
-   * Replace persona.json if it still has `expectedRevision`. For a chat with no layer yet,
+   * Replace agent.json if it still has `expectedRevision`. For a session with no layer yet,
    * `expectedRevision` is "" and the layer is created.
    */
   save(
-    target: PersonaTarget,
+    target: AgentTarget,
     expectedRevision: string,
     input: unknown,
-    check?: (definition: PersonaDefinition) => void,
+    check?: (definition: AgentDefinition) => void,
   ): { revision: string } {
     const definition = validateDefinition(input, rules(target));
-    if ("persona" in target && definition.base?.includes(target.persona))
-      fail("cycle", 400, target.persona);
+    if ("agent" in target && definition.base?.includes(target.agent))
+      fail("cycle", 400, target.agent);
     // Default is always the first layer; it has no parents.
     if (
-      "persona" in target &&
-      target.persona === DEFAULT_PERSONA &&
+      "agent" in target &&
+      target.agent === DEFAULT_AGENT &&
       definition.base?.length
     )
       fail("invalid-definition", 400, "base");
@@ -292,9 +292,9 @@ export class PersonaStore {
     const dir = this.dir(target);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const content = JSON.stringify(definition, null, 2) + "\n";
-    writeAtomic(join(dir, "persona.json"), content);
-    this.logger.event("persona.save", {
-      personaId: "persona" in target ? target.persona : "chat",
+    writeAtomic(join(dir, "agent.json"), content);
+    this.logger.event("agent.save", {
+      agentId: "agent" in target ? target.agent : "session",
       outcome: "completed",
     });
     this.changed(target);
@@ -302,16 +302,16 @@ export class PersonaStore {
   }
 
   remove(id: string): void {
-    if (!validPersonaId(id)) fail("invalid-input");
-    if (id === DEFAULT_PERSONA) fail("built-in");
-    if (!this.exists({ persona: id })) fail("not-found", 404);
+    if (!validAgentId(id)) fail("invalid-input");
+    if (id === DEFAULT_AGENT) fail("built-in");
+    if (!this.exists({ agent: id })) fail("not-found", 404);
     const dependent = this.list().find((p) => p.base.includes(id));
     if (dependent) fail("in-use", 409, dependent.id);
-    rmSync(join(this.personasDir, id), { recursive: true, force: true });
-    this.changed({ persona: id });
+    rmSync(join(this.agentsDir, id), { recursive: true, force: true });
+    this.changed({ agent: id });
   }
 
-  readFile(target: PersonaTarget, path: string): ItemFile {
+  readFile(target: AgentTarget, path: string): ItemFile {
     itemPath(path);
     const full = join(this.dir(target), path);
     if (!existsSync(full)) fail("not-found", 404);
@@ -321,7 +321,7 @@ export class PersonaStore {
 
   /** Create (expectedRevision null) or replace an instruction, prompt or SKILL.md. */
   writeFile(
-    target: PersonaTarget,
+    target: AgentTarget,
     path: string,
     expectedRevision: string | null,
     text: string,
@@ -330,7 +330,7 @@ export class PersonaStore {
     if (typeof text !== "string" || text.includes("\0")) fail("invalid-input");
     if (Buffer.byteLength(text) > MAX_FILE) fail("limit");
     if (!this.exists(target)) {
-      if ("persona" in target) fail("not-found", 404);
+      if ("agent" in target) fail("not-found", 404);
       this.save(target, "", this.read(target).definition);
     }
     const full = join(this.dir(target), path);
@@ -342,7 +342,7 @@ export class PersonaStore {
     return { text, revision: digest(text) };
   }
 
-  deleteFile(target: PersonaTarget, path: string, expectedRevision: string) {
+  deleteFile(target: AgentTarget, path: string, expectedRevision: string) {
     const item = itemPath(path);
     const full = join(this.dir(target), path);
     if (!existsSync(full)) fail("not-found", 404);
@@ -356,7 +356,7 @@ export class PersonaStore {
   }
 
   /** Items a layer folder provides, plus its MCP servers. */
-  items(target: PersonaTarget, definition: PersonaDefinition): LayerItem[] {
+  items(target: AgentTarget, definition: AgentDefinition): LayerItem[] {
     const dir = this.dir(target);
     const found: LayerItem[] = [];
     const entries = (name: string) => {

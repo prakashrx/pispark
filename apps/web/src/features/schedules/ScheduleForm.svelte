@@ -16,7 +16,7 @@
     oncancel,
   }: {
     schedule?: Schedule;
-    /** The chat was started by another session, so its runs stay in it. */
+    /** The session was started by another session, so its runs stay in it. */
     child?: boolean;
     /** Saves; a refusal is thrown in words and shown here. */
     onsave: (input: ScheduleInput) => Promise<void>;
@@ -71,7 +71,7 @@
     { value: "cron", label: "Cron" },
   ];
   const runs = [
-    { value: "here", label: "In this chat" },
+    { value: "here", label: "In this session" },
     { value: "new", label: "In a new session" },
   ];
   const reports = [
@@ -80,9 +80,9 @@
     { value: "none", label: "Nothing" },
   ];
   const reportHelp: Record<string, string> = {
-    result: "Each run’s answer comes back here and this chat’s agent carries on with it.",
-    status: "A line here when each run finishes. A run that finds something needing this chat can still raise it.",
-    none: "Nothing comes back here; the runs are listed under this chat.",
+    result: "Each run’s answer comes back here and this session’s agent carries on with it.",
+    status: "A line here when each run finishes. A run that finds something needing this session can still raise it.",
+    none: "Nothing comes back here; the runs are listed under this session.",
   };
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label, index) => ({ value: String(index), label }));
 </script>
@@ -132,7 +132,7 @@
     <label for="{id}-prompt" class="block text-sm font-medium">Prompt</label>
     <Textarea id="{id}-prompt" rows={3} bind:value={prompt} aria-describedby="{id}-prompt-help" class="w-full" />
     <p id="{id}-prompt-help" class="note">
-      {run === "new" ? "Sent as the first message of each run’s session; /commands work." : "Sent to this chat as if you typed it; /commands work."}
+      {run === "new" ? "Sent as the first message of each run’s session; /commands work." : "Sent to this session as if you typed it; /commands work."}
     </p>
   </div>
   {#if !child}
@@ -140,20 +140,20 @@
       <span class="block text-sm font-medium">Each run</span>
       <Segmented label="Each run" options={runs} bind:value={run} />
       <p class="note">
-        {run === "new" ? "Each run is its own session under this chat, so this conversation stays clean." : "Each run is a turn in this chat."}
+        {run === "new" ? "Each run is its own session under this session, so this conversation stays clean." : "Each run is a turn in this session."}
       </p>
     </div>
     {#if run === "new"}
       <div class="space-y-1.5">
-        <span class="block text-sm font-medium">Tell this chat</span>
-        <Segmented label="Tell this chat" options={reports} bind:value={report} />
+        <span class="block text-sm font-medium">Tell this session</span>
+        <Segmented label="Tell this session" options={reports} bind:value={report} />
         <p class="note">{reportHelp[report]}</p>
       </div>
     {/if}
   {/if}
   <p class="note flex items-start gap-2">
     <Icon name="alert" class="h-4 w-4 mt-0.5 shrink-0" /><span
-      >Runs while you’re away use this chat’s persona and tools, with this server’s permissions.{schedule ? "" : " It starts switched on."}</span
+      >Runs while you’re away use this session’s agent and tools, with this server’s permissions.{schedule ? "" : " It starts switched on."}</span
     >
   </p>
   {#if error}<p role="alert" class="text-sm text-[var(--danger-foreground)]">{error}</p>{/if}

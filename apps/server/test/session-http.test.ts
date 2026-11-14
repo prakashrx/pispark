@@ -15,7 +15,7 @@ import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
 import type { ItemsPage, PartPage, Receipt } from "../src/contract/protocol.js";
 
-/** An ordinary Pi extension whose tool returns far more than a chat shows inline. */
+/** An ordinary Pi extension whose tool returns far more than a session shows inline. */
 const BIG = `
 export default function (pi) {
   pi.registerTool({
@@ -33,7 +33,7 @@ async function fixture(t: TestContext, extensions: Record<string, string> = {}, 
   const h = await testHome("pispark-http-");
   const root = h.root;
   const folders = { a: await h.folder("a"), b: await h.folder("b") };
-  await h.persona("default", { name: "Default" }, { "instructions/test.md": "test only", ...extensions });
+  await h.agent("default", { name: "Default" }, { "instructions/test.md": "test only", ...extensions });
   const provider = h.provider;
   const configuration = { ...h.configuration, ...options };
   const runtime = new SessionRuntime(configuration);
@@ -164,7 +164,7 @@ test("SessionHttp: strict Host/Origin/JSON/identity, explicit failures, receipts
       folder: "/tmp",
       apiKey: "NEVER",
     },
-    { commandId: randomUUID(), type: "create", folder: "/tmp", persona: "../x" },
+    { commandId: randomUUID(), type: "create", folder: "/tmp", agent: "../x" },
     {
       commandId: randomUUID(),
       type: "start",
@@ -285,7 +285,7 @@ test("history is read from Pi's session: byte-bounded pages, cursors both ways, 
   assert.equal((await fetch(`${f.base}/api/sessions/${id}/items/${result.id}/parts/0?x=1`)).status, 400);
 });
 
-test("a bad metadata record is counted, a rejected new chat is never published, and sending loads an unloaded chat", async (t) => {
+test("a bad metadata record is counted, a rejected new session is never published, and sending loads an unloaded session", async (t) => {
   const f = await fixture(t);
   const rejected = new SessionRuntime({
     ...f.configuration,
@@ -294,14 +294,14 @@ test("a bad metadata record is counted, a rejected new chat is never published, 
   await assert.rejects(rejected.create({ folder: f.folders.a }));
   await rejected.shutdown();
   const id = await f.create("a");
-  const damaged = join(f.home, "chats", randomUUID());
+  const damaged = join(f.home, "sessions", randomUUID());
   await mkdir(damaged);
-  await writeFile(join(damaged, "chat.json"), "{");
+  await writeFile(join(damaged, "session.json"), "{");
   const list = await (await fetch(f.base + "/api/sessions")).json();
   assert.equal(list.unreadable, 1);
   assert.deepEqual(list.sessions.map((s: { id: string }) => s.id), [id]);
   assert.equal(f.provider.requests.length, 0);
-  // A start on an unloaded chat loads it first, then sends.
+  // A start on an unloaded session loads it first, then sends.
   await f.runtime.stop(id);
   f.provider.automatic = true;
   const sent = await f.settle(await f.post({ type: "start", sessionId: id, text: "sent after unload" }));
@@ -476,7 +476,7 @@ test("bundledTransportPatched: numeric patched branches and unknown/prerelease f
 
 for (const boundary of ["retained", "pending"] as const) {
   test(`SessionHttp: lifecycle remains available at ordinary ${boundary} saturation and coalesces bounded controls`, async (t) => {
-    // A start may wait for its turn, so only other commands fill the pending reserve: 16 chats, each with a pending steer.
+    // A start may wait for its turn, so only other commands fill the pending reserve: 16 sessions, each with a pending steer.
     const f = await fixture(t, {}, boundary === "pending" ? { maxLiveSessions: 16, maxRunning: 16 } : {});
     let release!: () => void;
     if (boundary === "pending") {
@@ -486,7 +486,7 @@ for (const boundary of ["retained", "pending"] as const) {
       const key = `pispark-http-input:${f.root}`;
       const globals = globalThis as unknown as Record<string, unknown>;
       globals[key] = () => gate;
-      const dir = join(f.home, "personas", "default", "extensions");
+      const dir = join(f.home, "agents", "default", "extensions");
       await mkdir(dir, { recursive: true });
       await writeFile(
         join(dir, "pending-input.mjs"),
@@ -573,14 +573,14 @@ test("SessionHttp: repeated pending lifecycle controls share a retained canonica
   );
 });
 
-test("SessionHttp: a create command for a project persona carries no folder", async (t) => {
+test("SessionHttp: a create command for a project agent carries no folder", async (t) => {
   const f = await fixture(t);
-  await mkdir(join(f.home, "personas", "project"), { recursive: true });
-  await writeFile(join(f.home, "personas", "project", "persona.json"), JSON.stringify({ name: "Project", folder: f.folders.a }));
-  const made = await f.settle(await f.post({ type: "create", persona: "project" }));
+  await mkdir(join(f.home, "agents", "project"), { recursive: true });
+  await writeFile(join(f.home, "agents", "project", "agent.json"), JSON.stringify({ name: "Project", folder: f.folders.a }));
+  const made = await f.settle(await f.post({ type: "create", agent: "project" }));
   assert.equal(made.outcome, "completed");
   assert.equal(f.runtime.session(made.sessionId!).folder, await realpath(f.folders.a));
-  const named = await f.settle(await f.post({ type: "create", persona: "project", folder: f.folders.b }));
+  const named = await f.settle(await f.post({ type: "create", agent: "project", folder: f.folders.b }));
   assert.equal(named.error, "invalid-input");
   const none = await f.settle(await f.post({ type: "create" }));
   assert.equal(none.error, "invalid-input");

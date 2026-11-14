@@ -20,7 +20,7 @@ export type InputCommand = Command extends infer C ? (C extends Command ? Omit<C
 
 /**
  * How the browser talks to the server: bounded JSON requests, and commands with their receipts.
- * Nothing here knows about chats or screens.
+ * Nothing here knows about sessions or screens.
  */
 export class Transport {
   private readonly controller = new AbortController();
@@ -84,7 +84,7 @@ export class Transport {
       } catch (error) {
         throw new CommandUncertainty(
           "settlement-unknown",
-          `${(error as Error).message}${receipt.sessionId ? ` (chat ${receipt.sessionId})` : ""}`,
+          `${(error as Error).message}${receipt.sessionId ? ` (session ${receipt.sessionId})` : ""}`,
         );
       }
     }

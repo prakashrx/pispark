@@ -9,13 +9,14 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
+import { upgradeToLayout2 } from "./home-upgrade.js";
 
 /** Every PiSpark folder comes from one data root. Nothing is read from terminal Pi. */
 export interface HomePaths {
   root: string;
-  chats: string;
-  personas: string;
-  /** `apps/<persona id>/`: the place of an app persona that has no folder of its own. */
+  sessions: string;
+  agents: string;
+  /** `apps/<agent id>/`: the place of an app agent that has no folder of its own. */
   apps: string;
   providers: string;
   logs: string;
@@ -27,8 +28,8 @@ export function homePaths(root: string): HomePaths {
   const base = resolve(root);
   return {
     root: base,
-    chats: join(base, "chats"),
-    personas: join(base, "personas"),
+    sessions: join(base, "sessions"),
+    agents: join(base, "agents"),
     apps: join(base, "apps"),
     providers: join(base, "providers"),
     logs: join(base, "logs"),
@@ -52,12 +53,11 @@ export function resolveHome(value = process.env.PISPARK_HOME): string {
  * the layout raises it and migrates forward at start. A PiSpark that finds a newer layout than it
  * knows (after going back to an older version) refuses to start rather than misread it.
  */
-export const HOME_FORMAT = 1;
+export const HOME_FORMAT = 2;
 
 export function prepareHome(root: string): HomePaths {
   const paths = homePaths(root);
-  for (const dir of [paths.root, paths.chats, paths.personas, paths.providers])
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
+  mkdirSync(paths.root, { recursive: true, mode: 0o700 });
   const file = join(paths.root, "home.json");
   let format: unknown;
   try {
@@ -65,12 +65,15 @@ export function prepareHome(root: string): HomePaths {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error(`${file} cannot be read. It records the layout of this data folder.`);
   }
-  if (format === undefined) writeFileSync(file, JSON.stringify({ format: HOME_FORMAT }, null, 2) + "\n");
-  else if (!Number.isInteger(format) || (format as number) < 1) throw new Error(`${file} names no layout this PiSpark knows.`);
-  else if ((format as number) > HOME_FORMAT)
+  if (format !== undefined && (!Number.isInteger(format) || (format as number) < 1)) throw new Error(`${file} names no layout this PiSpark knows.`);
+  if ((format as number) > HOME_FORMAT)
     throw new Error(
       `${paths.root} was written by a newer PiSpark (data layout ${format}; this version reads up to ${HOME_FORMAT}). Update PiSpark, or point PISPARK_HOME at another folder.`,
     );
+  // Layout 1, or a folder from before layouts were recorded: upgrade it, then record the layout.
+  if (format !== HOME_FORMAT) upgradeToLayout2(paths.root);
+  for (const dir of [paths.sessions, paths.agents, paths.providers]) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (format !== HOME_FORMAT) writeFileSync(file, JSON.stringify({ format: HOME_FORMAT }, null, 2) + "\n");
   return paths;
 }
 

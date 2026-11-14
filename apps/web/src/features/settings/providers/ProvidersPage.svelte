@@ -47,7 +47,7 @@
   async function setDefault(model: { provider: string; id: string } | null) {
     if (await client.change("/default", { model }))
       notice = model
-        ? "Default saved. Used for new chats; existing chats keep their model."
+        ? "Default saved. Used for new sessions; existing sessions keep their model."
         : "Default cleared.";
   }
   async function disconnect(provider: string) {
@@ -59,10 +59,10 @@
 
 <SettingsPage
   title="Providers & models"
-  description="Connect an account and choose the model new chats start with."
+  description="Connect an account and choose the model new sessions start with."
   label="Providers and models"
 >
-  <Section title="Default model" description="Used for new chats. Existing chats keep their model.">
+  <Section title="Default model" description="Used for new sessions. Existing sessions keep their model.">
     <div class="settings-card !overflow-visible mt-4">
       <div class="px-5 py-4 flex items-center gap-4 flex-wrap form-row">
         <div class="min-w-[12rem] flex-1">

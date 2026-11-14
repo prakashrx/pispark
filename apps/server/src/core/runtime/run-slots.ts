@@ -1,5 +1,5 @@
 /**
- * How many chats may run at once, and who waits for a turn. A chat holds a slot while its agent
+ * How many sessions may run at once, and who waits for a turn. A session holds a slot while its agent
  * works; one waiting on a person gives it up. Waiters start in order, except that a run resuming
  * after an answer goes before prompts that have not started.
  */
@@ -19,7 +19,7 @@ export class RunSlots {
   holds(id: string): boolean {
     return this.holders.has(id);
   }
-  /** Whether this chat waits for a slot. */
+  /** Whether this session waits for a slot. */
   queued(id: string): boolean {
     return this.waiting.some((waiter) => waiter.id === id);
   }
@@ -31,7 +31,7 @@ export class RunSlots {
     this.holders.add(id);
     return true;
   }
-  /** Runs `go` once this chat has a slot, holding it from then on. */
+  /** Runs `go` once this session has a slot, holding it from then on. */
   wait(id: string, go: () => void, resuming = false): void {
     const waiter = { id, go, resuming };
     if (resuming) {
@@ -45,7 +45,7 @@ export class RunSlots {
   withdraw(id: string): void {
     this.waiting = this.waiting.filter((waiter) => waiter.id !== id);
   }
-  /** Gives a slot back; the next waiter starts. Whether this chat held one. */
+  /** Gives a slot back; the next waiter starts. Whether this session held one. */
   release(id: string): boolean {
     if (!this.holders.delete(id)) return false;
     this.drain();

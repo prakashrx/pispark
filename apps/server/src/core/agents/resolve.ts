@@ -4,31 +4,31 @@ import type {
   DiscoveredTool,
   ItemType,
   LayerRef,
-  PersonaDefinition,
-  PersonaSummary,
-  PersonaTarget,
-  PersonaView,
+  AgentDefinition,
+  AgentSummary,
+  AgentTarget,
+  AgentView,
   ResolvedItem,
   ResolvedTool,
   RoutineDefinition,
-} from "../../contract/persona-protocol.js";
+} from "../../contract/agent-protocol.js";
 import {
   BUILTIN_TOOLS,
-  DEFAULT_PERSONA,
+  DEFAULT_AGENT,
   digest,
   fail,
   frontmatter,
   parseSwitch,
-  PersonaError,
+  AgentError,
 } from "./format.js";
-import type { LayerItem, PersonaStore } from "./store.js";
+import type { LayerItem, AgentStore } from "./store.js";
 
 const MAX_LAYERS = 16;
 
 interface Layer {
   ref: LayerRef;
-  target: PersonaTarget;
-  definition: PersonaDefinition;
+  target: AgentTarget;
+  definition: AgentDefinition;
   revision: string;
 }
 interface Entry {
@@ -41,10 +41,10 @@ export interface Setup {
   layers: LayerRef[];
   items: ResolvedItem[];
   tools: ResolvedTool[];
-  settings: PersonaDefinition["settings"] & {};
-  /** The folder the persona works in, when it is a project persona. */
+  settings: AgentDefinition["settings"] & {};
+  /** The folder the agent works in, when it is a project agent. */
   folder?: string;
-  /** The view an app persona's sessions open on. For clients: Pi has no use for it. */
+  /** The view an app agent's sessions open on. For clients: Pi has no use for it. */
   home?: string;
   instructions: { name: string; text: string }[];
   skillDirs: string[];
@@ -69,28 +69,28 @@ export interface Setup {
 }
 
 /**
- * Default → parents (flattened: each persona once, ancestors first, in listed order) → target.
+ * Default → parents (flattened: each agent once, ancestors first, in listed order) → target.
  * Each layer adds its items (a same-name item replaces the earlier one), then applies its
  * `on` and `off` switches. Later layers win.
  */
 export function resolveLayers(
-  store: PersonaStore,
-  target: PersonaTarget,
-  override?: PersonaDefinition,
+  store: AgentStore,
+  target: AgentTarget,
+  override?: AgentDefinition,
 ): Layer[] {
-  const load = (layerTarget: PersonaTarget): Layer => {
+  const load = (layerTarget: AgentTarget): Layer => {
     const viewing =
       JSON.stringify(layerTarget) === JSON.stringify(target) && override;
-    if ("persona" in layerTarget && !store.exists(layerTarget))
-      fail("missing-parent", 400, layerTarget.persona);
+    if ("agent" in layerTarget && !store.exists(layerTarget))
+      fail("missing-parent", 400, layerTarget.agent);
     const { definition, revision } = viewing
       ? { definition: override, revision: "" }
       : store.read(layerTarget);
-    const id = "persona" in layerTarget ? layerTarget.persona : "chat";
+    const id = "agent" in layerTarget ? layerTarget.agent : "session";
     return {
       ref: {
         id,
-        name: "chat" in layerTarget ? "This chat" : (definition.name ?? id),
+        name: "session" in layerTarget ? "This session" : (definition.name ?? id),
       },
       target: layerTarget,
       definition,
@@ -98,31 +98,31 @@ export function resolveLayers(
     };
   };
   const ordered: Layer[] = [];
-  const done = new Set<string>([DEFAULT_PERSONA]);
+  const done = new Set<string>([DEFAULT_AGENT]);
   const visit = (layer: Layer, stack: string[]) => {
     for (const parent of layer.definition.base ?? []) {
       if (stack.includes(parent)) fail("cycle", 400, parent);
       if (done.has(parent)) continue;
-      visit(load({ persona: parent }), [...stack, parent]);
+      visit(load({ agent: parent }), [...stack, parent]);
     }
     const key = layer.ref.id;
-    if (!done.has(key) || key === "chat") {
+    if (!done.has(key) || key === "session") {
       done.add(key);
       ordered.push(layer);
     }
     if (ordered.length > MAX_LAYERS) fail("limit", 400, "layers");
   };
   const top = load(target);
-  const isDefault = "persona" in target && target.persona === DEFAULT_PERSONA;
-  const first = isDefault ? top : load({ persona: DEFAULT_PERSONA });
+  const isDefault = "agent" in target && target.agent === DEFAULT_AGENT;
+  const first = isDefault ? top : load({ agent: DEFAULT_AGENT });
   if (!isDefault)
-    visit(top, ["persona" in target ? target.persona : "chat"]);
+    visit(top, ["agent" in target ? target.agent : "session"]);
   return [first, ...ordered];
 }
 
 /**
- * What binds a persona: the folder it works in (a project persona) and the view its sessions open
- * on (an app persona). For each, the nearest layer that names one.
+ * What binds an agent: the folder it works in (a project agent) and the view its sessions open
+ * on (an app agent). For each, the nearest layer that names one.
  */
 function bound(layers: Layer[]): { folder?: string; home?: string } {
   const nearest = (key: "folder" | "home") => layers.findLast((layer) => layer.definition[key])?.definition[key];
@@ -130,15 +130,15 @@ function bound(layers: Layer[]): { folder?: string; home?: string } {
   const home = nearest("home");
   return { ...(folder ? { folder } : {}), ...(home ? { home } : {}) };
 }
-export const bindingOf = (store: PersonaStore, target: PersonaTarget) => bound(resolveLayers(store, target));
+export const bindingOf = (store: AgentStore, target: AgentTarget) => bound(resolveLayers(store, target));
 
-/** Every persona, each with its folder and home view. */
-export function listPersonas(store: PersonaStore): PersonaSummary[] {
+/** Every agent, each with its folder and home view. */
+export function listAgents(store: AgentStore): AgentSummary[] {
   return store.list().map((summary) => {
     try {
-      return summary.valid ? { ...summary, ...bindingOf(store, { persona: summary.id }) } : summary;
+      return summary.valid ? { ...summary, ...bindingOf(store, { agent: summary.id }) } : summary;
     } catch {
-      // A missing parent or a cycle: the persona's own view says so.
+      // A missing parent or a cycle: the agent's own view says so.
       return summary;
     }
   });
@@ -146,7 +146,7 @@ export function listPersonas(store: PersonaStore): PersonaSummary[] {
 
 const switchKey = (type: ItemType, name: string) => `${type}:${name}`;
 
-function fold(store: PersonaStore, layers: Layer[]) {
+function fold(store: AgentStore, layers: Layer[]) {
   const entries = new Map<string, Entry>();
   const tools = new Map<string, ResolvedTool>();
   let settings: Setup["settings"] = {};
@@ -246,17 +246,17 @@ function unattended(layers: Layer[]): Pick<Setup, "routines" | "holds"> {
   }));
   return { routines, holds: [...switches.hold].filter(([, on]) => on).map(([name]) => name) };
 }
-/** `unattended` for a persona or a chat's layer, without reading its files. */
-export const unattendedOf = (store: PersonaStore, target: PersonaTarget) => unattended(resolveLayers(store, target));
+/** `unattended` for an agent or a session's layer, without reading its files. */
+export const unattendedOf = (store: AgentStore, target: AgentTarget) => unattended(resolveLayers(store, target));
 
 export function resolveSetup(
-  store: PersonaStore,
-  target: PersonaTarget,
+  store: AgentStore,
+  target: AgentTarget,
 ): Setup {
-  // A chat with no layer of its own simply uses its persona.
+  // A session with no layer of its own simply uses its agent.
   const effective =
-    "chat" in target && !store.exists(target)
-      ? { persona: store.read(target).definition.base?.[0] ?? DEFAULT_PERSONA }
+    "session" in target && !store.exists(target)
+      ? { agent: store.read(target).definition.base?.[0] ?? DEFAULT_AGENT }
       : target;
   const layers = resolveLayers(store, effective);
   const { entries, tools, settings } = fold(store, layers);
@@ -303,7 +303,7 @@ export function resolveSetup(
       toolsOn,
       toolsOff,
       settings,
-      // A project persona's sessions read their folder's context files (AGENTS.md).
+      // A project agent's sessions read their folder's context files (AGENTS.md).
       ...(folder ? { project: true } : {}),
     }),
   );
@@ -328,7 +328,7 @@ export function resolveSetup(
 }
 
 /**
- * Every tool the persona has, in groups: core first (Pi's built-in tools, then PiSpark's own), then
+ * Every tool the agent has, in groups: core first (Pi's built-in tools, then PiSpark's own), then
  * each extension's, then switches naming tools nothing provides now. A discovered tool is on
  * unless a layer switched it off, as in a session.
  */
@@ -352,11 +352,11 @@ function withDiscovered(switched: ResolvedTool[], discovered: DiscoveredTool[]):
 const sourceName = (tool: ResolvedTool) => (tool.source && tool.source.kind !== "core" ? tool.source.name : "");
 
 /** The editor's view of one layer: its own definition plus everything it resolves to. */
-export function viewPersona(
-  store: PersonaStore,
-  target: PersonaTarget,
+export function viewAgent(
+  store: AgentStore,
+  target: AgentTarget,
   discovered?: { tools: DiscoveredTool[]; incomplete: boolean },
-): PersonaView {
+): AgentView {
   const { definition, revision } = store.read(target);
   try {
     const setup = resolveSetup(store, target);
@@ -373,7 +373,7 @@ export function viewPersona(
       ...(setup.home ? { home: setup.home } : {}),
     };
   } catch (error) {
-    if (!(error instanceof PersonaError)) throw error;
+    if (!(error instanceof AgentError)) throw error;
     return {
       target,
       definition,
@@ -390,15 +390,15 @@ export function viewPersona(
 
 /** Throws if saving `definition` to `target` would leave it unresolvable through a cycle. */
 export function checkCycles(
-  store: PersonaStore,
-  target: PersonaTarget,
-  definition: PersonaDefinition,
+  store: AgentStore,
+  target: AgentTarget,
+  definition: AgentDefinition,
 ): void {
   try {
     resolveLayers(store, target, definition);
   } catch (error) {
     // A missing parent is reported in the view, not refused: it may be created next.
-    if (error instanceof PersonaError && error.code === "missing-parent") return;
+    if (error instanceof AgentError && error.code === "missing-parent") return;
     throw error;
   }
 }

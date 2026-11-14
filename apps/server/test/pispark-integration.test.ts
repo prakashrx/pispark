@@ -17,12 +17,12 @@ import {
   SessionRuntime,
   type RuntimeConfiguration,
 } from "../src/core/runtime/session-runtime.js";
-import { TITLE_TOOL, toolChatTitle } from "../src/core/runtime/chat-title.js";
+import { TITLE_TOOL, toolSessionTitle } from "../src/core/runtime/session-title.js";
 import { SCHEDULE_TOOL } from "../src/core/runtime/schedule-tool.js";
 import { SESSION_TOOL } from "../src/core/runtime/session-tool.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
-import { chatItems, chatNotices, chatText } from "./fixtures/chat.js";
+import { sessionItems, sessionNotices, sessionText } from "./fixtures/session.js";
 
 async function fixture() {
   const h = await testHome("pispark-integration-");
@@ -31,9 +31,9 @@ async function fixture() {
   const control = h.provider;
   control.automatic = true;
   // Default grants no tools, so the built-in title tool is the only one.
-  await h.persona("default", { name: "Default" }, { "instructions/host.md": "PRESERVE-HOST-PROMPT" });
+  await h.agent("default", { name: "Default" }, { "instructions/host.md": "PRESERVE-HOST-PROMPT" });
   const configuration: RuntimeConfiguration = h.configuration;
-  const chats = join(h.home, "chats");
+  const sessions = join(h.home, "sessions");
   const logs: string[] = [];
   const logger = new SafeLogger({
     sink: async (line) => {
@@ -44,9 +44,9 @@ async function fixture() {
   return {
     root,
     home: h.home,
-    chats,
+    sessions,
     cwd,
-    persona: h.persona,
+    agent: h.agent,
     configuration,
     control,
     runtime,
@@ -61,22 +61,22 @@ async function fixture() {
 }
 const command = (title: unknown) => `title:${JSON.stringify({ title })}`;
 
-test("PiSpark integration: real native title-only calls, persona/no-persona isolation, observers, persistence and reopen", async () => {
+test("PiSpark integration: real native title-only calls, agent/no-agent isolation, observers, persistence and reopen", async () => {
   const f = await fixture();
   try {
-    await f.persona("fixture", { name: "Fixture" }, { "instructions/context.md": "PRESERVE-PERSONA-PROMPT" });
+    await f.agent("fixture", { name: "Fixture" }, { "instructions/context.md": "PRESERVE-AGENT-PROMPT" });
     const [a, b] = await Promise.all([
       f.runtime.create({ folder: f.cwd }),
-      f.runtime.create({ folder: f.cwd, persona: "fixture" }),
+      f.runtime.create({ folder: f.cwd, agent: "fixture" }),
     ]);
     const observer = f.runtime.observeLive(a.id);
     const other = f.runtime.observeLive(b.id);
     await Promise.all([
       f.runtime.start(a.id, command("  Native\nfixture  ")).completion,
-      f.runtime.start(b.id, command("Persona fixture")).completion,
+      f.runtime.start(b.id, command("Agent fixture")).completion,
     ]);
     assert.equal(f.runtime.session(a.id).title, "Native");
-    assert.equal(f.runtime.session(b.id).title, "Persona fixture");
+    assert.equal(f.runtime.session(b.id).title, "Agent fixture");
     assert.equal((await observer.events.next()).value?.sessionId, a.id);
     assert.equal((await other.events.next()).value?.sessionId, b.id);
     for (const request of f.control.requests)
@@ -94,12 +94,12 @@ test("PiSpark integration: real native title-only calls, persona/no-persona isol
       ),
     );
     assert(prompts.includes("PRESERVE-HOST-PROMPT"));
-    assert(prompts.includes("PRESERVE-PERSONA-PROMPT"));
+    assert(prompts.includes("PRESERVE-AGENT-PROMPT"));
     assert(prompts.includes("when its purpose is clear"));
     await f.runtime.start(a.id, "later ordinary message").completion;
     assert.equal(f.runtime.session(a.id).title, "Native");
     const durable = JSON.parse(
-      await readFile(join(f.chats, a.id, "chat.json"), "utf8"),
+      await readFile(join(f.sessions, a.id, "session.json"), "utf8"),
     );
     assert.equal(durable.title, "Native");
     await f.runtime.stop(a.id);
@@ -132,7 +132,7 @@ test("PiSpark integration: invalid model arguments do not replace fallback; no t
       await f.runtime.start(a.id, command(title)).completion;
       assert.equal(f.runtime.session(a.id).title, "fallback purpose");
       assert(
-        chatItems(f.runtime, a.id).some((m) => m.role === "toolResult" && m.isError),
+        sessionItems(f.runtime, a.id).some((m) => m.role === "toolResult" && m.isError),
       );
     }
     await f.runtime.start(a.id, command(12)).completion;
@@ -146,7 +146,7 @@ test("PiSpark integration: invalid model arguments do not replace fallback; no t
       `title:${JSON.stringify({ title: "must not persist", sessionId: a.id })}`,
     ).completion;
     assert.equal(f.runtime.session(a.id).title, "12");
-    assert.equal(Array.from(toolChatTitle("😀".repeat(90))).length, 80);
+    assert.equal(Array.from(toolSessionTitle("😀".repeat(90))).length, 80);
   } finally {
     await f.cleanup();
   }
@@ -155,7 +155,7 @@ test("PiSpark integration: invalid model arguments do not replace fallback; no t
 test("PiSpark integration: reserved native tool collision fails before session execution", async () => {
   const f = await fixture();
   try {
-    const extensions = join(f.home, "personas", "default", "extensions");
+    const extensions = join(f.home, "agents", "default", "extensions");
     await mkdir(extensions, { recursive: true });
     const extension = join(extensions, "collision.mjs");
     await writeFile(
@@ -179,12 +179,12 @@ test("PiSpark integration: persist-first failure leaves current title and observ
   try {
     const a = await f.runtime.create({ folder: f.cwd });
     await f.runtime.start(a.id, "existing fixture").completion;
-    // The chat's own title step is exercised directly to isolate metadata effects from native stream events.
+    // The session's own title step is exercised directly to isolate metadata effects from native stream events.
     const internal = f.runtime as unknown as { live: Map<string, { setTitle: (title: string) => void }> };
     const host = internal.live.get(a.id)!;
     const setTitle = (owner: typeof host, title: string) => owner.setTitle(title);
     const before = f.runtime.session(a.id);
-    const path = join(f.chats, a.id, "chat.json");
+    const path = join(f.sessions, a.id, "session.json");
     await rename(path, path + ".saved");
     await mkdir(path);
     try {
@@ -223,7 +223,7 @@ test("PiSpark integration: persist-first failure leaves current title and observ
   }
 });
 
-test("PiSpark integration: a title that cannot be saved is said in the chat, and operational logs omit titles", async () => {
+test("PiSpark integration: a title that cannot be saved is said in the session, and operational logs omit titles", async () => {
   const f = await fixture();
   const sensitive = "PRIVATE-TITLE-FIXTURE";
   try {
@@ -233,15 +233,15 @@ test("PiSpark integration: a title that cannot be saved is said in the chat, and
     const count = f.control.requests.length;
     const run = f.runtime.start(a.id, command(sensitive));
     await eventually(() => f.control.requests.length === count + 1);
-    const path = join(f.chats, a.id, "chat.json");
+    const path = join(f.sessions, a.id, "session.json");
     await rename(path, path + ".saved");
     await mkdir(path);
     try {
       f.control.requests.at(-1)!.release();
       await eventually(() => f.control.requests.length === count + 2);
-      // Pi named the session; saving it as the chat's title failed, and the chat says so.
-      const notices = JSON.stringify(chatNotices(f.runtime, a.id));
-      assert.match(notices, /The chat title could not be saved/);
+      // Pi named the session; saving it as the session's title failed, and the session says so.
+      const notices = JSON.stringify(sessionNotices(f.runtime, a.id));
+      assert.match(notices, /The session title could not be saved/);
       assert(!notices.includes(sensitive));
       assert(!notices.includes(f.root));
       assert.equal(f.runtime.session(a.id).title, "prior name");
@@ -258,7 +258,7 @@ test("PiSpark integration: a title that cannot be saved is said in the chat, and
     assert.equal(f.runtime.session(a.id).title, "prior name");
     // Canonical native history normally includes tool arguments, unlike operational logging.
     assert(
-      chatText(f.runtime, a.id).includes(sensitive),
+      sessionText(f.runtime, a.id).includes(sensitive),
     );
   } finally {
     await f.cleanup();
@@ -273,9 +273,9 @@ test("PiSpark integration: legacy unmentioned tool activates on reopen; explicit
     await f.runtime.start(a.id, "legacy fixture").completion;
     await f.runtime.stop(a.id);
     const path = join(
-      f.chats,
+      f.sessions,
       a.id,
-      (await readdir(join(f.chats, a.id))).find((n) => n.endsWith(".jsonl"))!,
+      (await readdir(join(f.sessions, a.id))).find((n) => n.endsWith(".jsonl"))!,
     );
     const original = (await readFile(path, "utf8"))
       .trim()
@@ -291,7 +291,7 @@ test("PiSpark integration: legacy unmentioned tool activates on reopen; explicit
           for (const key of Object.keys(entry.message.sections))
             if (
               String(entry.message.sections[key]).includes(
-                "PiSpark hosts this chat",
+                "PiSpark hosts this session",
               )
             )
               delete entry.message.sections[key];

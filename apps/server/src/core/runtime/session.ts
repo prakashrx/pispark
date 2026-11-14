@@ -9,11 +9,11 @@ import { ExtensionRendering } from "../extensions/extension-render.js";
 import { ExtensionViews } from "../extensions/views.js";
 import type { Json } from "../../contract/stream-ops.js";
 import type { SafeLogger } from "../logger.js";
-import type { Setup } from "../personas/resolve.js";
-import type { ChatPersona } from "../../contract/persona-protocol.js";
-import { chatTitle } from "../../contract/chat-title.js";
-import { toolChatTitle } from "./chat-title.js";
-import { validItemName } from "../personas/format.js";
+import type { Setup } from "../agents/resolve.js";
+import type { SessionAgent } from "../../contract/agent-protocol.js";
+import { sessionTitle } from "../../contract/session-title.js";
+import { toolSessionTitle } from "./session-title.js";
+import { validItemName } from "../agents/format.js";
 import { PROCESS_CHANNEL, validProcessMessage, type ProcessRequest } from "./process-tool.js";
 import { createSessionServices, resolveFolder } from "./configuration.js";
 import { deadline, RuntimeError, runtimeError, unsupported } from "./errors.js";
@@ -24,7 +24,7 @@ import { SessionChanges } from "./observation.js";
 import type { SessionChange } from "./observation.js";
 import type { ProviderSettings } from "./provider-settings.js";
 import type { RunSlots } from "./run-slots.js";
-import type { ChatMetadata, ChatStorage } from "./storage.js";
+import type { SessionMetadata, SessionStorage } from "./storage.js";
 import { STATUS_ENTRY, WOKEN_ENTRY, type StatusDetails, type WokenDetails } from "../../contract/wake-protocol.js";
 import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
 import { describeSchedule, parseCron } from "../../contract/cron.js";
@@ -60,9 +60,9 @@ export interface SessionSummary {
   hasHistory?: boolean;
   status: SessionStatus | "unloaded";
   interrupted: boolean;
-  persona: ChatPersona;
-  /** The persona changed since this session started; reload to apply. */
-  personaChanged?: boolean;
+  agent: SessionAgent;
+  /** The agent changed since this session started; reload to apply. */
+  agentChanged?: boolean;
   /** An extension asked a question and the run waits for an answer. */
   waiting?: boolean;
   /** Waits for a free run slot: a prompt that has not started, or a run resuming after an answer. */
@@ -85,9 +85,9 @@ export interface RunHandle {
 }
 type ModelSelection = Awaited<ReturnType<ProviderSettings["select"]>>;
 
-/** What a chat needs from the runtime that holds it. */
-export interface ChatHost {
-  readonly storage: ChatStorage;
+/** What a session needs from the runtime that holds it. */
+export interface SessionHost {
+  readonly storage: SessionStorage;
   readonly slots: RunSlots;
   readonly logger: SafeLogger;
   readonly timeout: number;
@@ -97,33 +97,33 @@ export interface ChatHost {
   readonly points?: readonly string[];
   /** Whether the runtime still takes new work. */
   accepting(): boolean;
-  /** Whether this chat is the one the runtime holds for its id. */
-  holds(chat: Chat): boolean;
-  /** The chat's persona, resolved now. */
-  setup(metadata: ChatMetadata): Setup;
-  /** The model the chat runs: a provider's (chosen as Ask, persona and defaults say) or the tests' fixed one. */
-  model(metadata: ChatMetadata, setup: Setup): Promise<{ managed?: ModelSelection; fixed?: { provider: Provider; id: string } }>;
-  /** The chat as the list shows it. */
-  summary(chat: Chat): SessionSummary;
-  /** The chat has stopped and is no longer held. */
-  released(chat: Chat): void;
-  /** The chat became free (`settled`), so a waiting wake can go. Called outside Pi's listeners. */
-  freed?(chat: Chat): void;
-  /** The processes a chat starts and follows, for its agent (`pispark_process`). */
+  /** Whether this session is the one the runtime holds for its id. */
+  holds(session: Session): boolean;
+  /** The session's agent, resolved now. */
+  setup(metadata: SessionMetadata): Setup;
+  /** The model the session runs: a provider's (chosen as Ask, agent and defaults say) or the tests' fixed one. */
+  model(metadata: SessionMetadata, setup: Setup): Promise<{ managed?: ModelSelection; fixed?: { provider: Provider; id: string } }>;
+  /** The session as the list shows it. */
+  summary(session: Session): SessionSummary;
+  /** The session has stopped and is no longer held. */
+  released(session: Session): void;
+  /** The session became free (`settled`), so a waiting wake can go. Called outside Pi's listeners. */
+  freed?(session: Session): void;
+  /** The processes a session starts and follows, for its agent (`pispark_process`). */
   readonly processes?: {
     request(sessionId: string, request: ProcessRequest, signal?: AbortSignal): Promise<{ ok: boolean; text: string }>;
   };
   /** The tools a running session of a setup has (`fingerprint`), from Pi's `getAllTools`. */
   toolsSeen?(fingerprint: string, extensionPaths: string[], tools: { name: string; description?: string; sourceInfo?: { path?: string } }[]): void;
-  /** An extension asks to keep the chat loaded (or lets go). */
-  hold?(chat: Chat, request: { extension: string; hold: boolean; reason: string }): { state: "held" | "asked" | "released" | "refused"; text: string };
-  /** One of the chat's runs ended (a child reports back). Called outside Pi's listeners. */
-  ended?(chat: Chat, result: RunResult): void;
-  /** The sessions a chat starts and follows, for its agent (`pispark_session`). */
+  /** An extension asks to keep the session loaded (or lets go). */
+  hold?(session: Session, request: { extension: string; hold: boolean; reason: string }): { state: "held" | "asked" | "released" | "refused"; text: string };
+  /** One of the session's runs ended (a child reports back). Called outside Pi's listeners. */
+  ended?(session: Session, result: RunResult): void;
+  /** The sessions a session starts and follows, for its agent (`pispark_session`). */
   readonly sessions?: {
     request(parentId: string, request: SessionRequest): Promise<{ ok: boolean; text: string }>;
   };
-  /** The schedules of a chat, for its agent (`pispark_schedule`). */
+  /** The schedules of a session, for its agent (`pispark_schedule`). */
   readonly schedules?: {
     of(sessionId: string): Schedule[];
     add(sessionId: string, input: ScheduleInput, by: "agent"): Schedule;
@@ -164,7 +164,7 @@ export function validateText(text: string): void {
 }
 
 /**
- * One chat while it is loaded: its Pi session, what its extensions show, and its lifecycle.
+ * One session while it is loaded: its Pi session, what its extensions show, and its lifecycle.
  *
  *   starting → idle ⇄ (queued →) running → cancelling → idle | error
  *   any → stopping → stopped (released)
@@ -172,20 +172,20 @@ export function validateText(text: string): void {
  * A run holds one of the runtime's run slots while its agent works, gives it up while an extension
  * waits for a person, and needs one again to go on.
  */
-export class Chat {
+export class Session {
   status: SessionStatus = "starting";
-  metadata: ChatMetadata;
+  metadata: SessionMetadata;
   error?: RuntimeErrorCode;
   /** Opened from history (or already published), as opposed to being created now. */
   published: boolean;
-  /** When the chat was last used: shown, sent to, answered, called. Idle chats unload after a while. */
+  /** When the session was last used: shown, sent to, answered, called. Idle sessions unload after a while. */
   lastUsed = Date.now();
   setupChanged = false;
   loading?: Promise<SessionDoc>;
   stopping?: Promise<void>;
   readonly observers = new Set<SessionChanges>();
 
-  private session?: AgentSession;
+  private pi?: AgentSession;
   private ui?: ExtensionUI;
   private views?: ExtensionViews;
   private items?: ItemProjector;
@@ -198,7 +198,7 @@ export class Chat {
   private runDone?: Promise<RunResult>;
   /** Ends a run Pi started by itself (see `adopt`). */
   private settleAdopted?: () => void;
-  /** Whether the chat was settled at the last change, to tell the host when it becomes free. */
+  /** Whether the session was settled at the last change, to tell the host when it becomes free. */
   private wasSettled = true;
   /** Steer or follow-up input being prepared. */
   private input?: Promise<unknown>;
@@ -217,12 +217,12 @@ export class Chat {
   private bus?: EventBus;
   /** Data an extension set for this session's result (`RESULT_CHANNEL`). */
   resultData?: unknown;
-  /** An extension asked to keep this session loaded; the persona does not allow it yet. */
+  /** An extension asked to keep this session loaded; the agent does not allow it yet. */
   holdAsked?: { extension: string; reason: string };
 
   constructor(
-    private readonly host: ChatHost,
-    metadata: ChatMetadata,
+    private readonly host: SessionHost,
+    metadata: SessionMetadata,
     reopening: boolean,
   ) {
     this.metadata = metadata;
@@ -234,9 +234,9 @@ export class Chat {
   }
   /** Loaded and ready for clients. */
   get ready(): boolean {
-    return !!this.session && !!this.items;
+    return !!this.pi && !!this.items;
   }
-  /** Pi has written the chat's transcript; once it has, it always has. */
+  /** Pi has written the session's transcript; once it has, it always has. */
   get hasHistory(): boolean {
     return (this.historySeen ||= this.host.storage.hasHistory(this.id));
   }
@@ -259,7 +259,7 @@ export class Chat {
     if (settled && !this.wasSettled) setImmediate(() => this.host.freed?.(this));
     this.wasSettled = settled;
   }
-  /** Nothing runs, waits or is queued in the chat, and no question is open. */
+  /** Nothing runs, waits or is queued in the session, and no question is open. */
   get settled(): boolean {
     return (
       (this.status === "idle" || this.status === "error") &&
@@ -271,13 +271,13 @@ export class Chat {
       !this.host.slots.queued(this.id)
     );
   }
-  /** Whether the chat can be unloaded without anyone noticing: settled, and nobody has it on screen. */
+  /** Whether the session can be unloaded without anyone noticing: settled, and nobody has it on screen. */
   get unloadable(): boolean {
     return this.settled && this.observers.size === 0;
   }
-  /** After a persona edit: whether the resolved setup still matches the one the session started with. */
+  /** After an agent edit: whether the resolved setup still matches the one the session started with. */
   checkSetup(fingerprint: string): void {
-    if (!this.session || this.status === "stopping") return;
+    if (!this.pi || this.status === "stopping") return;
     const changed = fingerprint !== this.metadata.setup;
     if (changed !== this.setupChanged) {
       this.setupChanged = changed;
@@ -288,10 +288,10 @@ export class Chat {
   // ---- What clients read ----------------------------------------------------------------------
 
   private loaded(): { session: AgentSession; items: ItemProjector } {
-    if (!this.session || !this.items) throw new RuntimeError("not-found");
-    return { session: this.session, items: this.items };
+    if (!this.pi || !this.items) throw new RuntimeError("not-found");
+    return { session: this.pi, items: this.items };
   }
-  /** Everything about the chat except its history: status, model, queue and what extensions show. */
+  /** Everything about the session except its history: status, model, queue and what extensions show. */
   doc(): SessionDoc {
     const { session } = this.loaded();
     return {
@@ -313,7 +313,7 @@ export class Chat {
   liveDoc(): LiveDoc {
     return { session: this.doc(), tail: this.loaded().items.tail(), progress: progressOf(this.running) };
   }
-  /** Finalized items on the chat's active branch, read straight from Pi's session. */
+  /** Finalized items on the session's active branch, read straight from Pi's session. */
   page(options: { before?: string; after?: string; limit?: number }): ItemsPage {
     return this.loaded().items.page(options);
   }
@@ -323,7 +323,7 @@ export class Chat {
   text(itemId: string, part: number, offset: number): PartPage {
     return this.loaded().items.text(itemId, part, offset);
   }
-  /** A connection's live view of the chat, and the invalidations that say when to ask it for more. */
+  /** A connection's live view of the session, and the invalidations that say when to ask it for more. */
   observe(): { view: LiveView; events: AsyncIterableIterator<SessionChange> & { close(): void } } {
     const { items } = this.loaded();
     if (this.observers.size >= 16) throw new RuntimeError("limit");
@@ -365,7 +365,7 @@ export class Chat {
 
   // ---- Loading --------------------------------------------------------------------------------
 
-  /** Starts Pi's session for the chat, bounded by the operation timeout; setup keeps ownership until it really ends. */
+  /** Starts Pi's session for the session, bounded by the operation timeout; setup keeps ownership until it really ends. */
   async load(): Promise<SessionDoc> {
     const operation = this.initialize().catch(async (error: unknown) => {
       this.error = runtimeError(error, "configuration").code;
@@ -397,7 +397,7 @@ export class Chat {
     try {
       setup = host.setup(metadata);
     } catch {
-      throw new RuntimeError("persona");
+      throw new RuntimeError("agent");
     }
     const { managed, fixed } = await host.model(metadata, setup);
     metadata.model = managed ? managed.choice : { provider: fixed!.provider.id, id: fixed!.id };
@@ -416,13 +416,13 @@ export class Chat {
     // Before extensions load: they may place components and raise notices while loading.
     const ui = (this.ui = new ExtensionUI({
       changed: () => this.changed(),
-      position: () => this.session?.messages.length ?? 0,
+      position: () => this.pi?.messages.length ?? 0,
       cwd,
       paused: () => this.pause(),
       resume: (go) => this.resume(go),
       save: (notice) => {
-        if (!this.published || !this.session || this.closed) return false;
-        this.session.sessionManager.appendCustomEntry(NOTICE_ENTRY, notice);
+        if (!this.published || !this.pi || this.closed) return false;
+        this.pi.sessionManager.appendCustomEntry(NOTICE_ENTRY, notice);
         this.changed();
         return true;
       },
@@ -504,7 +504,7 @@ export class Chat {
       services.resourceLoader.getExtensions().runtime.invalidate("Session creation failed");
       throw error;
     }
-    this.session = session;
+    this.pi = session;
     if (session.model?.provider !== metadata.model.provider || session.model?.id !== metadata.model.id)
       throw new RuntimeError("configuration");
     if (this.error) throw new RuntimeError(this.error);
@@ -527,7 +527,7 @@ export class Chat {
       shutdownHandler: () => setImmediate(() => void this.stop().catch(() => {})),
       onError: (failure) => {
         this.extensionErrors++;
-        // Once the chat is open, a failing handler is reported and the chat keeps working, as in Pi.
+        // Once the session is open, a failing handler is reported and the session keeps working, as in Pi.
         if (this.published) ui.extensionFailed(extensionName(failure.extensionPath), failure.event, failure.error);
         else this.error = "extension";
         this.changed();
@@ -543,8 +543,8 @@ export class Chat {
     this.changed();
     host.storage.write(metadata);
     this.published = true;
-    host.logger.event(reopening ? "session.recover" : "session.create", { sessionId: metadata.id, personaId: metadata.persona, outcome: "completed" });
-    // A prompt that was waiting when PiSpark stopped rejoins the queue now that the chat is open.
+    host.logger.event(reopening ? "session.recover" : "session.create", { sessionId: metadata.id, agentId: metadata.agent, outcome: "completed" });
+    // A prompt that was waiting when PiSpark stopped rejoins the queue now that the session is open.
     if (reopening && metadata.queued !== undefined) this.restoreQueued(metadata.queued);
     return this.doc();
   }
@@ -586,7 +586,7 @@ export class Chat {
       .then((answer) => value.reply(answer));
   }
   /**
-   * Tells this chat's extensions that one of its children ended or raised something, before the
+   * Tells this session's extensions that one of its children ended or raised something, before the
    * agent hears of it. Their synchronous reply decides (see `CHILD_ENDED_CHANNEL`).
    */
   offerChildEnded(event: Omit<ChildEnded, "reply">): { action: "skip" } | { action: "send"; text: string } | undefined {
@@ -607,26 +607,26 @@ export class Chat {
   }
   /** Adds a status line to the conversation without starting a turn; the agent reads it next time. */
   addStatus(text: string, details: StatusDetails): void {
-    if (!this.session || this.closed) throw new RuntimeError("not-found");
-    this.session
+    if (!this.pi || this.closed) throw new RuntimeError("not-found");
+    this.pi
       .sendCustomMessage({ customType: STATUS_ENTRY, content: text, display: true, details }, { triggerTurn: false })
-      .catch(() => this.ui?.failed("A status line could not be added to this chat."));
+      .catch(() => this.ui?.failed("A status line could not be added to this session."));
     this.changed();
   }
   /** The extension files the session loaded, for naming where a tool came from. */
   private extensionPaths: string[] = [];
-  /** Tells the host which tools the running session has, so the persona editor knows them too. */
+  /** Tells the host which tools the running session has, so the agent editor knows them too. */
   private reportTools(): void {
-    if (!this.session || !this.metadata.setup) return;
+    if (!this.pi || !this.metadata.setup) return;
     try {
-      this.host.toolsSeen?.(this.metadata.setup, this.extensionPaths, this.session.getAllTools());
+      this.host.toolsSeen?.(this.metadata.setup, this.extensionPaths, this.pi.getAllTools());
     } catch {
       /* Only a listing. */
     }
   }
-  /** The agent's last answer in this chat: the text of its last reply that has any. */
+  /** The agent's last answer in this session: the text of its last reply that has any. */
   lastReply(): string | undefined {
-    const messages = (this.session?.messages ?? []) as { role?: string; content?: unknown }[];
+    const messages = (this.pi?.messages ?? []) as { role?: string; content?: unknown }[];
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i]!;
       if (message.role !== "assistant" || !Array.isArray(message.content)) continue;
@@ -655,10 +655,10 @@ export class Chat {
           ok: true,
           text: mine.length
             ? mine.map((s) => `${s.id}: ${describeSchedule(s)} (${s.on ? "on" : "off"}): ${s.prompt}`).join("\n")
-            : "This chat has no schedules.",
+            : "This session has no schedules.",
         };
       if (request.action === "remove") {
-        if (!mine.some((s) => s.id === request.id)) return { ok: false, text: "This chat has no schedule with that id." };
+        if (!mine.some((s) => s.id === request.id)) return { ok: false, text: "This session has no schedule with that id." };
         schedules.remove(request.id);
         return { ok: true, text: "Schedule removed." };
       }
@@ -666,10 +666,10 @@ export class Chat {
       const when = { cron: input.cron, at: input.at };
       if (input.cron !== undefined ? !parseCron(input.cron) : Number.isNaN(new Date(input.at ?? "").getTime()) || new Date(input.at!).getTime() <= Date.now())
         return { ok: false, text: "That is not a time that can be scheduled." };
-      const yes = await this.ui.context.confirm("Schedule this in this chat?", `${describeSchedule(when)}: ${input.prompt ?? ""}`);
+      const yes = await this.ui.context.confirm("Schedule this in this session?", `${describeSchedule(when)}: ${input.prompt ?? ""}`);
       if (!yes) return { ok: true, text: "The person declined; nothing was scheduled." };
       const added = schedules.add(this.id, { ...when, prompt: input.prompt }, "agent");
-      return { ok: true, text: `Scheduled: ${describeSchedule(added)} (id ${added.id}). The person can change it under Chat info → Schedules.` };
+      return { ok: true, text: `Scheduled: ${describeSchedule(added)} (id ${added.id}). The person can change it under Session info → Schedules.` };
     };
     void answer()
       .catch((error: unknown) => ({ ok: false, text: `Scheduling failed (${runtimeError(error, "execution").code}).` }))
@@ -693,13 +693,13 @@ export class Chat {
       this.settleAdopted = undefined;
       settle();
     }
-    // Pi's session name is the chat title: an extension's pi.setSessionName renames the chat.
+    // Pi's session name is the session title: an extension's pi.setSessionName renames the session.
     if (event.type === "session_info_changed" && event.name)
       try {
         this.setTitle(event.name);
       } catch (error) {
-        // A closing chat or an invalid name keeps the current title; a failed save is said.
-        if (error instanceof RuntimeError && error.code === "storage") this.ui?.failed("The chat title could not be saved.");
+        // A closing session or an invalid name keeps the current title; a failed save is said.
+        if (error instanceof RuntimeError && error.code === "storage") this.ui?.failed("The session title could not be saved.");
       }
     // A provider error is a failed run, unless the run was cancelled: then it is the cancel's result
     // (Pi records an error message for a run aborted before it reached the provider).
@@ -713,28 +713,28 @@ export class Chat {
       !this.host.accepting() ||
       this.closed ||
       !this.host.holds(this) ||
-      !this.session ||
+      !this.pi ||
       !["idle", "running"].includes(this.status) ||
       this.cancelling ||
       (this.status === "running" && this.run?.cancelled)
     )
       throw new RuntimeError("closed");
-    const metadata = { ...this.metadata, title: toolChatTitle(input) };
+    const metadata = { ...this.metadata, title: toolSessionTitle(input) };
     this.host.storage.write(metadata);
     this.metadata = metadata;
     this.changed();
   }
-  /** An empty, never-started chat is named after its first message until the agent names it. */
-  private firstTitle(metadata: ChatMetadata, text: string): void {
-    if (!metadata.title && !this.host.storage.hasHistory(metadata.id) && !this.session!.messages.length)
-      metadata.title = chatTitle(text) || "New chat";
+  /** An empty, never-started session is named after its first message until the agent names it. */
+  private firstTitle(metadata: SessionMetadata, text: string): void {
+    if (!metadata.title && !this.host.storage.hasHistory(metadata.id) && !this.pi!.messages.length)
+      metadata.title = sessionTitle(text) || "New session";
   }
 
   // ---- Runs and the queue ---------------------------------------------------------------------
 
   /**
    * Sends a prompt: it runs now if a run slot is free, else it waits for one in order. A waiting
-   * prompt is saved with the chat, so a restart keeps it.
+   * prompt is saved with the session, so a restart keeps it.
    */
   start(text: string, marker?: WokenDetails): RunHandle {
     validateText(text);
@@ -755,13 +755,13 @@ export class Chat {
       const run = this.host.slots.take(this.id) ? this.begin(text) : this.enqueue(text, true);
       void run.catch(() => {});
     } catch {
-      // The prompt stays saved; it is offered again the next time the chat opens.
+      // The prompt stays saved; it is offered again the next time the session opens.
       this.host.slots.release(this.id);
     }
   }
   private enqueue(text: string, restored = false, marker?: WokenDetails): Promise<RunResult> {
     const metadata = { ...this.metadata, queued: text };
-    // A waiting first message already names the chat, so the list can tell queued chats apart.
+    // A waiting first message already names the session, so the list can tell queued sessions apart.
     this.firstTitle(metadata, text);
     this.host.storage.write(metadata);
     this.metadata = metadata;
@@ -787,7 +787,7 @@ export class Chat {
       });
     }).then((result) => result);
   }
-  /** Takes a queued prompt off the queue; a stopping chat keeps it saved for its next start. */
+  /** Takes a queued prompt off the queue; a stopping session keeps it saved for its next start. */
   private unqueue(keep: boolean): void {
     this.host.slots.withdraw(this.id);
     const resolve = this.queuedRun;
@@ -797,7 +797,7 @@ export class Chat {
       try {
         this.host.storage.write(metadata);
       } catch {
-        /* The prompt stays saved; it is offered again when the chat opens. */
+        /* The prompt stays saved; it is offered again when the session opens. */
       }
       this.metadata = metadata;
     }
@@ -807,7 +807,7 @@ export class Chat {
     this.changed();
   }
   /**
-   * The chat starts working: saved as active before any model or tool side effect, shown as
+   * The session starts working: saved as active before any model or tool side effect, shown as
    * running, bounded by the run deadline. `settle` ends the run, once.
    */
   private mark(text?: string): { run: Run; settle: () => RunResult } {
@@ -861,7 +861,7 @@ export class Chat {
     };
     return { run, settle };
   }
-  /** Runs a prompt; the chat holds a run slot. A wake says what woke it in the session first. */
+  /** Runs a prompt; the session holds a run slot. A wake says what woke it in the session first. */
   private begin(text: string, marker?: WokenDetails): Promise<RunResult> {
     const session = this.loaded().session;
     const { settle } = this.mark(text);
@@ -870,7 +870,7 @@ export class Chat {
     if (marker) session.sessionManager.appendCustomEntry(WOKEN_ENTRY, marker);
     this.runDone = (async (): Promise<RunResult> => {
       try {
-        // The persona's prompts work as /commands, as in terminal Pi. A cancel that arrives while Pi
+        // The agent's prompts work as /commands, as in terminal Pi. A cancel that arrives while Pi
         // prepares the run is caught where the provider would be called (beforeProviderDispatch).
         await session.prompt(text, { expandPromptTemplates: true, source: "rpc" });
         await session.waitForIdle();
@@ -888,14 +888,14 @@ export class Chat {
    * past the limit the run waits here for its slot. Pi's `agent_settled` ends it.
    */
   private async adopt(): Promise<void> {
-    // A prompt PiSpark sent is already a run. A chat that is closing or failed takes none.
-    if (this.status !== "idle" || this.closed || !this.session || !this.host.accepting()) return;
-    let marked: ReturnType<Chat["mark"]>;
+    // A prompt PiSpark sent is already a run. A session that is closing or failed takes none.
+    if (this.status !== "idle" || this.closed || !this.pi || !this.host.accepting()) return;
+    let marked: ReturnType<Session["mark"]>;
     try {
       marked = this.mark();
     } catch {
-      // The chat could not be saved as active; the run goes on as Pi started it.
-      this.ui?.failed("The chat could not be saved before an extension's run.");
+      // The session could not be saved as active; the run goes on as Pi started it.
+      this.ui?.failed("The session could not be saved before an extension's run.");
       return;
     }
     this.runDone = new Promise<RunResult>((resolve) => (this.settleAdopted = () => resolve(marked.settle())));
@@ -911,7 +911,7 @@ export class Chat {
       this.changed();
     });
   }
-  /** Waiting for a person, the run gives its slot to the next chat. */
+  /** Waiting for a person, the run gives its slot to the next session. */
   private pause(): void {
     if (this.host.slots.release(this.id)) {
       this.paused = true;
@@ -1018,7 +1018,7 @@ export class Chat {
 
   // ---- Stopping -------------------------------------------------------------------------------
 
-  /** Stop the chat: end any run, let extensions shut down, release it. History stays. */
+  /** Stop the session: end any run, let extensions shut down, release it. History stays. */
   stop(): Promise<void> {
     if (!this.stopping) {
       this.status = "stopping";
@@ -1038,7 +1038,7 @@ export class Chat {
     this.ui?.close();
     this.views?.close();
     let cleanupError: RuntimeErrorCode | undefined;
-    const session = this.session;
+    const session = this.pi;
     if (session) {
       await this.drain(session);
       await this.runDone;

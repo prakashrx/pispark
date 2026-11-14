@@ -55,14 +55,14 @@ export default function (pi) {
 test("extension renderers draw tool calls and results, custom messages and entries without a terminal", async () => {
   const h = await testHome("pispark-render-");
   try {
-    await h.persona("default", { name: "Default" }, { "extensions/render.mjs": RENDERING });
+    await h.agent("default", { name: "Default" }, { "extensions/render.mjs": RENDERING });
     h.provider.automatic = true;
     const runtime = new SessionRuntime(h.configuration);
-    const chat = await runtime.create({ folder: await h.folder("work") });
-    await runtime.start(chat.id, 'tool:shout:{"word":"hi"}').completion;
-    await runtime.start(chat.id, "/note saved").completion;
-    await runtime.start(chat.id, "/card shown").completion;
-    const { items, head } = runtime.items(chat.id, {});
+    const session = await runtime.create({ folder: await h.folder("work") });
+    await runtime.start(session.id, 'tool:shout:{"word":"hi"}').completion;
+    await runtime.start(session.id, "/note saved").completion;
+    await runtime.start(session.id, "/card shown").completion;
+    const { items, head } = runtime.items(session.id, {});
     const tool = items.find((m) => m.role === "toolResult");
     assert.deepEqual(tool?.rendered, {
       call: [[{ text: "shout ", bold: true }, { text: "hi", fg: "accent" }]],

@@ -1,6 +1,6 @@
 import type { ScheduleInput } from "../../contract/schedule-protocol.js";
 
-/** The built-in extension's schedule tool; no persona extension may register the same name. */
+/** The built-in extension's schedule tool; no agent extension may register the same name. */
 export const SCHEDULE_TOOL = "pispark_schedule";
 /**
  * How the built-in tool reaches the host, on the session's own event bus. Not an extension API: the

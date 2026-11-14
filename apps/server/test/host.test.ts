@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compareVersions, validHostAction } from "../src/contract/host-protocol.js";
@@ -41,6 +41,43 @@ test("data folder layout: recorded on first start, kept, and a newer one refused
   assert.throws(() => prepareHome(paths.root), /written by a newer PiSpark/);
   writeFileSync(file, "{not json");
   assert.throws(() => prepareHome(paths.root), /cannot be read/);
+});
+
+test("data folder layout 1 upgrades to agents and sessions, also after an upgrade that stopped half way", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pispark-upgrade-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const data = join(root, "data");
+  const write = (path: string, text: string) => {
+    mkdirSync(join(data, path, ".."), { recursive: true });
+    writeFileSync(join(data, path), text);
+  };
+  // Layout 1, as written before agents and sessions got their names.
+  write("home.json", JSON.stringify({ format: 1 }));
+  write("personas/default/persona.json", JSON.stringify({ name: "Default" }));
+  write("personas/dev/persona.json", JSON.stringify({ name: "Dev", base: [] }));
+  write("personas/dev/instructions/tone.md", "Be brief.");
+  write("chats/a/chat.json", JSON.stringify({ version: 2, id: "a", cwd: root, persona: "dev", createdAt: "2026-11-01T00:00:00.000Z", active: false, interrupted: false }));
+  write("chats/a/2026-11-01_a.jsonl", "{}\n");
+  write("chats/a/persona/persona.json", JSON.stringify({ base: ["dev"] }));
+  write("chats/b/chat.json", JSON.stringify({ version: 2, id: "b", cwd: root, persona: "default", createdAt: "2026-11-01T00:00:00.000Z", active: false, interrupted: false }));
+  // An earlier upgrade stopped after making the new folder and moving one session.
+  write("sessions/c/chat.json", JSON.stringify({ version: 2, id: "c", cwd: root, persona: "default", createdAt: "2026-11-01T00:00:00.000Z", active: false, interrupted: false }));
+
+  const paths = prepareHome(data);
+  assert.deepEqual(JSON.parse(readFileSync(join(data, "home.json"), "utf8")), { format: HOME_FORMAT });
+  assert.deepEqual(readdirSync(data).sort(), ["agents", "home.json", "providers", "sessions"]);
+  assert.deepEqual(readdirSync(paths.agents).sort(), ["default", "dev"]);
+  assert.deepEqual(readdirSync(join(paths.agents, "dev")).sort(), ["agent.json", "instructions"]);
+  assert.deepEqual(readdirSync(paths.sessions).sort(), ["a", "b", "c"]);
+  assert.deepEqual(readdirSync(join(paths.sessions, "a")).sort(), ["2026-11-01_a.jsonl", "agent", "session.json"]);
+  assert.deepEqual(readdirSync(join(paths.sessions, "a", "agent")), ["agent.json"]);
+  const a = JSON.parse(readFileSync(join(paths.sessions, "a", "session.json"), "utf8"));
+  assert.deepEqual(Object.keys(a), ["version", "id", "cwd", "agent", "createdAt", "active", "interrupted"]);
+  assert.equal(a.agent, "dev");
+  assert.equal(JSON.parse(readFileSync(join(paths.sessions, "c", "session.json"), "utf8")).agent, "default");
+  // Nothing changes on the next start.
+  prepareHome(data);
+  assert.deepEqual(readdirSync(data).sort(), ["agents", "home.json", "providers", "sessions"]);
 });
 
 test("/api/host: version and what runs; changes refused when no launcher runs this server", async (t) => {

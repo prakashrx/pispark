@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Wakes, type Wake, type WakeHost } from "../src/core/runtime/wakes.js";
 import { RuntimeError } from "../src/core/runtime/errors.js";
-import type { RunResult } from "../src/core/runtime/chat.js";
+import type { RunResult } from "../src/core/runtime/session.js";
 import type { WokenDetails } from "../src/contract/wake-protocol.js";
 
 const SESSION = "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b";

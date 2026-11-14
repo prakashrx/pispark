@@ -7,7 +7,7 @@ const routes = [
   "workspace",
   "settings",
   "providers",
-  "persona",
+  "agent",
   "sources",
 ] as const;
 
@@ -31,13 +31,13 @@ for (const width of [1920, 3840]) {
     await expect(
       folderButton(page),
     ).toBeVisible();
-    // Ask recedes once a chat is open; measure after the initial selection settles.
+    // Ask recedes once a session is open; measure after the initial selection settles.
     await expect
       .poll(() =>
         page.evaluate(
           () =>
             !!localStorage.getItem("pispark-session") ||
-            document.body.innerText.includes("No chats yet."),
+            document.body.innerText.includes("No sessions yet."),
         ),
       )
       .toBe(true);
@@ -86,7 +86,7 @@ for (const width of [1920, 3840]) {
         const header = document.querySelector(".global-header")!;
         const sidebar = document.querySelector(".app-sidebar")!;
         const brand = document.querySelector(".header-brand")!;
-        const composer = document.querySelector('[aria-label="New chat"]')!;
+        const composer = document.querySelector('[aria-label="New session"]')!;
         return {
           route: window.location.hash,
           header: measure(header),
@@ -138,24 +138,24 @@ test("one global Ask retains draft and all selectors through routes, history and
 }) => {
   await page.goto("/#/workspace");
   await expect(
-    page.getByRole("button", { name: "Start chat", exact: true }),
+    page.getByRole("button", { name: "Start session", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");
   const ask = page.getByRole("textbox", { name: "Ask anything" });
   const mountedAsk = await ask.elementHandle();
-  await ask.fill("Open a chat to reply to");
-  await page.getByRole("button", { name: "Start chat", exact: true }).click();
+  await ask.fill("Open a session to reply to");
+  await page.getByRole("button", { name: "Start session", exact: true }).click();
   await expect(
-    page.getByRole("textbox", { name: /Reply to chat/ }),
+    page.getByRole("textbox", { name: /Reply to session/ }),
   ).toBeVisible();
   await expect(ask).toHaveValue("");
   await ask.fill("Persistent global question");
   await page
-    .getByRole("textbox", { name: /Reply to chat/ })
+    .getByRole("textbox", { name: /Reply to session/ })
     .fill("Independent session follow-up");
   await useFolder(page);
   await page
     .getByRole("button", {
-      name: "Persona: Default",
+      name: "Agent: Default",
     })
     .click();
   await page.keyboard.press("Escape");
@@ -166,14 +166,14 @@ test("one global Ask retains draft and all selectors through routes, history and
         (el) => el === document.querySelector('[aria-label="Ask anything"]'),
       ),
     ).toBe(true);
-    for (const label of [otherFolderLabel, "Persona: Default"]) {
+    for (const label of [otherFolderLabel, "Agent: Default"]) {
       await expect(
         page.getByRole("button", { name: label, exact: true }),
       ).toBeVisible();
     }
-    await expect(page.getByRole("form", { name: "New chat" })).toHaveCount(1);
+    await expect(page.getByRole("form", { name: "New session" })).toHaveCount(1);
   }
-  for (const route of ["settings", "persona", "sources", "workspace"]) {
+  for (const route of ["settings", "agent", "sources", "workspace"]) {
     await navigate(page, route);
     await retained();
     await page.getByRole("button", { name: "Collapse sidebar" }).click();
@@ -188,19 +188,19 @@ test("one global Ask retains draft and all selectors through routes, history and
     ).toBeFocused();
     await retained();
   }
-  for (const route of ["sources", "persona", "settings", "workspace"]) {
+  for (const route of ["sources", "agent", "settings", "workspace"]) {
     await page.goBack();
     await expect(page).toHaveURL(new RegExp(`#/${route}$`));
     await expect(page.getByRole("main")).toBeFocused();
     await retained();
   }
-  for (const route of ["settings", "persona", "sources", "workspace"]) {
+  for (const route of ["settings", "agent", "sources", "workspace"]) {
     await page.goForward();
     await expect(page).toHaveURL(new RegExp(`#/${route}$`));
     await expect(page.getByRole("main")).toBeFocused();
     await retained();
   }
-  const reply = page.getByRole("textbox", { name: /Reply to chat/ });
+  const reply = page.getByRole("textbox", { name: /Reply to session/ });
   await expect(reply).toHaveValue("Independent session follow-up");
   await reply.fill("Changed reply only");
   await retained();
@@ -258,10 +258,10 @@ test("Ask remains typeable and controls stay inside its surface at mobile/tablet
       await ask.fill(`Question at ${width}`);
       expect((await ask.boundingBox())!.width).toBeGreaterThan(100);
       const surface = await page
-        .getByRole("form", { name: "New chat" })
+        .getByRole("form", { name: "New session" })
         .boundingBox();
       const run = await page
-        .getByRole("button", { name: "Start chat", exact: true })
+        .getByRole("button", { name: "Start session", exact: true })
         .boundingBox();
       expect(run!.x + run!.width).toBeLessThanOrEqual(
         surface!.x + surface!.width,

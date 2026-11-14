@@ -11,7 +11,7 @@ const PAGE = 40;
 type Get = <T>(path: string) => Promise<T>;
 
 /**
- * One open chat as the browser holds it: history read by cursor from Pi's session, plus the live
+ * One open session as the browser holds it: history read by cursor from Pi's session, plus the live
  * document (session state and the items in flight) kept current by the server's operations.
  */
 export class LiveSession {
@@ -64,7 +64,7 @@ export class LiveSession {
       try {
         page = await this.get<ItemsPage>(`/api/sessions/${id}/items?after=${cursor}&limit=100`);
       } catch (error) {
-        // A saved head the chat no longer has (it was reloaded or moved branch): read it afresh.
+        // A saved head the session no longer has (it was reloaded or moved branch): read it afresh.
         if (cursor !== this.head) throw error;
         return this.load(id);
       }

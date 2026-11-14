@@ -172,7 +172,7 @@ export const boundTail = (items: Item[]): Item[] => (size(items) > TAIL_BYTES ? 
 const fit = (item: Item): Item => (size(item) > ITEM_BYTES ? shrink(item) : item);
 
 /**
- * Projects Pi's session into the chat's items. Pi is the only store: history is read from its
+ * Projects Pi's session into the session's items. Pi is the only store: history is read from its
  * entries, and the in-flight tail from the agent state that has not been persisted yet.
  */
 export class ItemProjector {
@@ -224,7 +224,7 @@ export class ItemProjector {
     return key;
   }
 
-  /** One Pi message as an item; `undefined` for messages the chat does not show. */
+  /** One Pi message as an item; `undefined` for messages the session does not show. */
   private message(message: Raw, id: string | undefined, pos: number | undefined, claim = false): Item | undefined {
     const role = message.role;
     const base = { ...(id ? { id } : {}), key: this.key(message, id, claim), ...(pos === undefined ? {} : { pos }) };

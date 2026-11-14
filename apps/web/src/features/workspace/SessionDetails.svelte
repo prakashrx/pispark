@@ -7,15 +7,15 @@
   import { nextText } from "../schedules/schedule-presentation";
   import { sessionName, sessionStatus } from "./session-presentation";
   /**
-   * Facts about the open chat, anchored to an info button in the chat header so the
+   * Facts about the open session, anchored to an info button in the session header so the
    * conversation never moves.
    */
   let {
-    oneditpersona,
+    oneditagent,
     onschedules,
     onroutines,
     onprocesses,
-  }: { oneditpersona?: () => void; onschedules?: () => void; onroutines?: () => void; onprocesses?: () => void } = $props();
+  }: { oneditagent?: () => void; onschedules?: () => void; onroutines?: () => void; onprocesses?: () => void } = $props();
   const client = useSessions();
   const session = useSession();
   const snapshot = $derived(session.doc);
@@ -24,8 +24,8 @@
   const schedules = $derived(info ? client.schedules.of(info.id) : []);
   // The sessions this one started, with their state; one at work can be stopped from here.
   const started = $derived(info ? client.sessions.filter((each) => each.parent === info.id) : []);
-  // What the session's persona offers to run on a schedule, and the processes it has running.
-  const routines = $derived(info ? client.routines.of(info.persona.id) : []);
+  // What the session's agent offers to run on a schedule, and the processes it has running.
+  const routines = $derived(info ? client.routines.of(info.agent.id) : []);
   const running = $derived(info ? client.processes.running.filter((p) => p.sessionId === info.id) : []);
   const modelName = $derived(
     client.providers.catalog.providers
@@ -35,20 +35,20 @@
 </script>
 
 {#if info}
-  <Popover label="Chat info">
+  <Popover label="Session info">
     {#snippet trigger()}<Icon name="info" class="h-[18px] w-[18px]" />{/snippet}
     {#snippet children(close)}
       <section
-        aria-label="Chat info"
+        aria-label="Session info"
         tabindex="-1"
         data-autofocus
         class="w-[min(19rem,80vw)] space-y-3 p-3 outline-none"
       >
-        <h2 class="text-sm font-semibold">Chat info</h2>
+        <h2 class="text-sm font-semibold">Session info</h2>
         <dl class="grid grid-cols-[max-content_1fr] gap-x-5 gap-y-2 text-sm">
-          <dt class="text-muted-foreground">Persona</dt>
+          <dt class="text-muted-foreground">Agent</dt>
           <dd class="break-words">
-            {info.persona.name}{#if info.persona.layered}<span class="text-muted-foreground"> · edited for this chat</span>{/if}
+            {info.agent.name}{#if info.agent.layered}<span class="text-muted-foreground"> · edited for this session</span>{/if}
           </dd>
           <dt class="text-muted-foreground">Model</dt>
           <dd class="break-words">{modelName ?? "Not available"}</dd>
@@ -81,7 +81,7 @@
                       ></span
                     >
                   </li>{/each}
-              </ul>{:else}<p class="text-xs text-muted-foreground">Send a prompt to this chat at a time, once or repeating.</p>{/if}
+              </ul>{:else}<p class="text-xs text-muted-foreground">Send a prompt to this session at a time, once or repeating.</p>{/if}
           </div>{/if}
         {#if started.length}<div class="space-y-2 border-t border-[var(--border)] pt-3">
             <h3 class="text-sm font-semibold">Sessions it started</h3>
@@ -104,7 +104,7 @@
                 </li>
               {/each}
             </ul>
-            <p class="text-xs text-muted-foreground">Each tells this chat when it ends, as it was started to.</p>
+            <p class="text-xs text-muted-foreground">Each tells this session when it ends, as it was started to.</p>
           </div>{/if}
         {#if onroutines && routines.length}<div class="space-y-2 border-t border-[var(--border)] pt-3">
             <div class="flex items-center justify-between gap-3">
@@ -152,19 +152,19 @@
               <Icon name="terminal" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />{running.length || info.processes} running
             </p>
           </div>{/if}
-        {#if snapshot && oneditpersona}<div
+        {#if snapshot && oneditagent}<div
             class="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3"
           >
             <p class="text-xs text-muted-foreground">
-              Add or turn off skills, tools and instructions for this chat only.
+              Add or turn off skills, tools and instructions for this session only.
             </p>
             <Button
               size="compact"
               class="shrink-0 whitespace-nowrap"
               onclick={() => {
                 close();
-                oneditpersona();
-              }}>Edit persona</Button
+                oneditagent();
+              }}>Edit for this session</Button
             >
           </div>{/if}
       </section>

@@ -14,7 +14,7 @@ const session: SessionInfo = {
   id: "private-uuid",
   createdAt: "2026-01-02T03:04:00Z",
   folder: "/home/me/project",
-  persona: { id: "default", name: "Default", layered: false },
+  agent: { id: "default", name: "Default", layered: false },
   status: "idle",
   interrupted: false,
 };
@@ -22,21 +22,21 @@ test("one friendly title policy handles new, legacy, unavailable dates and expli
   expect(
     sessionName({ ...session, title: "My first question", hasHistory: false }),
   ).toBe("My first question");
-  expect(sessionName({ ...session, hasHistory: false })).toBe("New chat");
+  expect(sessionName({ ...session, hasHistory: false })).toBe("New session");
   for (const hasHistory of [true, undefined]) {
-    expect(sessionName({ ...session, hasHistory })).toBe("Untitled chat");
+    expect(sessionName({ ...session, hasHistory })).toBe("Untitled session");
     expect(sessionName({ ...session, hasHistory, createdAt: "invalid" })).toBe(
-      "Untitled chat",
+      "Untitled session",
     );
     expect(sessionName({ ...session, hasHistory, createdAt: "" })).toBe(
-      "Untitled chat",
+      "Untitled session",
     );
   }
-  expect(sessionName()).toBe("This chat");
+  expect(sessionName()).toBe("This session");
   expect(sessionName(session)).not.toMatch(/private-uuid|revision-setup/);
 });
 test("an app's session goes by the app's name until it has a title of its own", () => {
-  const app = { ...session, hasHistory: false, persona: { id: "desk", name: "Desk project", layered: false, home: "desk" } };
+  const app = { ...session, hasHistory: false, agent: { id: "desk", name: "Desk project", layered: false, home: "desk" } };
   expect(goesByApp(app)).toBe(true);
   expect(sessionName(app)).toBe("Desk project");
   expect(goesByApp({ ...app, title: "Plan the release" })).toBe(false);
@@ -63,7 +63,7 @@ test("normal status is quiet and cancellation/agent errors remain distinct", () 
 });
 test("a refused command is said in words; an unknown code is still named", () => {
   expect(commandError("folder")).toBe("That working folder doesn’t exist on the server.");
-  expect(commandError("busy")).toBe("The chat is busy. Try again when it has finished.");
+  expect(commandError("busy")).toBe("The session is busy. Try again when it has finished.");
   expect(commandError("sdk-version")).toBe("The server could not do that (sdk-version).");
 });
 test("a start time says the year only when it is not this year's", () => {
@@ -73,18 +73,18 @@ test("a start time says the year only when it is not this year's", () => {
   expect(sessionStarted({ ...session, createdAt: "invalid" })).toBe("");
 });
 
-test("uncertainty primary copy distinguishes acceptance, settlement and known-chat scope without interpreting raw errors", () => {
+test("uncertainty primary copy distinguishes acceptance, settlement and known-session scope without interpreting raw errors", () => {
   expect(commandUncertainty("acceptance-unknown", true)).toBe(
-    "We couldn’t confirm whether that action went through. Check this chat before trying again.",
+    "We couldn’t confirm whether that action went through. Check this session before trying again.",
   );
   expect(commandUncertainty("acceptance-unknown", false)).toBe(
-    "We couldn’t confirm whether that action went through. Check your chats before trying again.",
+    "We couldn’t confirm whether that action went through. Check your sessions before trying again.",
   );
   expect(commandUncertainty("settlement-unknown", true)).toBe(
-    "That action may still be running. Check this chat before trying again.",
+    "That action may still be running. Check this session before trying again.",
   );
   expect(commandUncertainty("settlement-unknown", false)).toBe(
-    "That action may still be running. Check your chats before trying again.",
+    "That action may still be running. Check your sessions before trying again.",
   );
   expect(commandUncertainty(undefined, true)).toBe("");
 });

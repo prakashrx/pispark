@@ -244,7 +244,7 @@ for (const width of [1920, 3840, 390])
     });
     await page.goto("/#/providers");
     await expect(summary(page, "Anthropic")).toBeVisible();
-    await expect(page.getByRole("form", { name: "New chat" })).toHaveCount(1);
+    await expect(page.getByRole("form", { name: "New session" })).toHaveCount(1);
     await expect(
       page.getByText(/Design preview|simulator|simulated|Verified ·/),
     ).toHaveCount(0);

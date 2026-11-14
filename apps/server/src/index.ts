@@ -23,7 +23,7 @@ if (!/^\d+$/.test(portInput) || Number(portInput) > 65535) {
 }
 const webRoot = fileURLToPath(new URL("../../web/dist/", import.meta.url));
 const configuration = hostConfiguration();
-// First start creates the folders (and the Default persona, via the runtime).
+// First start creates the folders (and the Default agent, via the runtime).
 const paths = prepareHome(configuration.home);
 const releaseHome = lockHome(paths);
 process.on("exit", releaseHome);

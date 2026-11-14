@@ -14,7 +14,7 @@
     void sessions.mount();
     const navigate = async () => {
       page = pageFromHash(window.location.hash);
-      if (page === "persona") sessions.personas.enterRoute();
+      if (page === "agent") sessions.agents.enterRoute();
       await tick();
       document.documentElement.scrollTop = 0;
       focusMain();

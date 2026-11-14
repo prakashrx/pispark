@@ -12,11 +12,11 @@ import { eventually } from "./fixtures/local-provider.js";
 
 async function fixture(maxRunning: number) {
   const h = await testHome("pispark-queue-");
-  await h.persona("default", { name: "Default" });
+  await h.agent("default", { name: "Default" });
   await addControlledExtension(h.home, "default");
   const runtime = new SessionRuntime({ ...h.configuration, maxRunning });
   const folder = await h.folder("work");
-  const saved = async (id: string) => JSON.parse(await readFile(join(h.home, "chats", id, "chat.json"), "utf8"));
+  const saved = async (id: string) => JSON.parse(await readFile(join(h.home, "sessions", id, "session.json"), "utf8"));
   return {
     ...h,
     runtime,
@@ -31,7 +31,7 @@ async function fixture(maxRunning: number) {
   };
 }
 
-test("past the limit a prompt waits for a turn, in order, saved with its chat; cancelling takes it off", async () => {
+test("past the limit a prompt waits for a turn, in order, saved with its session; cancelling takes it off", async () => {
   const f = await fixture(1);
   try {
     const [a, b, c] = [await f.create(), await f.create(), await f.create()];
@@ -45,18 +45,18 @@ test("past the limit a prompt waits for a turn, in order, saved with its chat; c
       assert.equal(f.runtime.session(id).status, "queued");
       assert.equal(f.runtime.session(id).queued, true);
     }
-    assert.equal((await f.saved(b.id)).queued, "second", "a waiting prompt is saved with its chat");
-    assert.equal(f.runtime.session(b.id).title, "second", "and already names the chat");
-    assert.equal(f.runtime.list().find((chat) => chat.id === c.id)?.queued, true);
+    assert.equal((await f.saved(b.id)).queued, "second", "a waiting prompt is saved with its session");
+    assert.equal(f.runtime.session(b.id).title, "second", "and already names the session");
+    assert.equal(f.runtime.list().find((session) => session.id === c.id)?.queued, true);
     assert.equal(f.provider.requests.length, 1, "nothing else reached the model");
 
-    // Cancelling a waiting prompt takes it off the queue and out of the chat's file.
+    // Cancelling a waiting prompt takes it off the queue and out of the session's file.
     await f.runtime.cancel(c.id);
     assert.deepEqual(await runC.completion, { outcome: "cancelled" });
     assert.equal(f.runtime.session(c.id).status, "idle");
     assert.equal((await f.saved(c.id)).queued, undefined);
 
-    // When the running chat finishes, the next one starts.
+    // When the running session finishes, the next one starts.
     f.provider.requests[0]!.release();
     assert.deepEqual(await runA.completion, { outcome: "completed" });
     await eventually(() => f.runtime.session(b.id).status === "running");
@@ -70,7 +70,7 @@ test("past the limit a prompt waits for a turn, in order, saved with its chat; c
   }
 });
 
-test("a chat waiting on a question gives its slot up, and goes first when answered", async () => {
+test("a session waiting on a question gives its slot up, and goes first when answered", async () => {
   const f = await fixture(1);
   try {
     const [a, b, c] = [await f.create(), await f.create(), await f.create()];
@@ -132,7 +132,7 @@ test("cancelling a run that waits for a slot after an answer ends it at once", a
 
 test("the run limit is a setting: saved in the data folder, applied at once, validated", async () => {
   const h = await testHome("pispark-queue-settings-");
-  await h.persona("default", { name: "Default" });
+  await h.agent("default", { name: "Default" });
   const runtimes: SessionRuntime[] = [];
   const make = () => {
     const runtime = new SessionRuntime(h.configuration);
@@ -197,22 +197,22 @@ test("settings over HTTP: read, change, refuse a bad value", async () => {
   }
 });
 
-test("an idle chat nobody shows unloads after a while, and loads again when used; busy or shown chats stay", async () => {
+test("an idle session nobody shows unloads after a while, and loads again when used; busy or shown sessions stay", async () => {
   const h = await testHome("pispark-queue-idle-");
-  await h.persona("default", { name: "Default" });
+  await h.agent("default", { name: "Default" });
   await addControlledExtension(h.home, "default");
   const runtime = new SessionRuntime({ ...h.configuration, idleUnloadMs: 1000, maxLiveSessions: 3 });
   const http = new SessionHttp(runtime);
-  const status = (id: string) => runtime.list().find((chat) => chat.id === id)?.status;
+  const status = (id: string) => runtime.list().find((session) => session.id === id)?.status;
   try {
     h.provider.automatic = true;
     const folder = await h.folder("work");
     const [idle, shown, asking] = [await runtime.create({ folder }), await runtime.create({ folder }), await runtime.create({ folder })];
     const watching = runtime.observeLive(shown.id);
-    // A fourth past a backstop of three: the least recently used idle chat unloads to make room.
+    // A fourth past a backstop of three: the least recently used idle session unloads to make room.
     const extra = await runtime.create({ folder });
     assert.equal(status(idle.id), "unloaded");
-    assert.equal(status(shown.id), "idle", "a chat on screen stays");
+    assert.equal(status(shown.id), "idle", "a session on screen stays");
     await runtime.stop(extra.id);
     await runtime.open(idle.id);
     await runtime.start(idle.id, "hello").completion;
@@ -220,12 +220,12 @@ test("an idle chat nobody shows unloads after a while, and loads again when used
     const run = runtime.start(asking.id, "ui-select");
     await eventually(() => runtime.session(asking.id).extensions.dialogs.length === 1);
 
-    // After the idle time only the chat nobody uses unloads.
+    // After the idle time only the session nobody uses unloads.
     await eventually(() => status(idle.id) === "unloaded", 5000);
     assert.equal(status(shown.id), "idle");
     assert.equal(status(asking.id), "running");
 
-    // Sending to an unloaded chat loads it first (as the HTTP layer does for every start).
+    // Sending to an unloaded session loads it first (as the HTTP layer does for every start).
     h.provider.automatic = true;
     await runtime.ensure(idle.id);
     assert.equal((await runtime.start(idle.id, "again").completion).outcome, "completed");
@@ -240,9 +240,9 @@ test("an idle chat nobody shows unloads after a while, and loads again when used
   }
 });
 
-test("a prompt waiting when PiSpark stops is kept, and rejoins the queue when its chat is opened", async () => {
+test("a prompt waiting when PiSpark stops is kept, and rejoins the queue when its session is opened", async () => {
   const h = await testHome("pispark-queue-restart-");
-  await h.persona("default", { name: "Default" });
+  await h.agent("default", { name: "Default" });
   const runtimes: SessionRuntime[] = [];
   const make = () => {
     const runtime = new SessionRuntime({ ...h.configuration, maxRunning: 1 });
@@ -261,8 +261,8 @@ test("a prompt waiting when PiSpark stops is kept, and rejoins the queue when it
     await first.shutdown();
 
     const second = make();
-    // Unloaded, the chat says its prompt is waiting.
-    assert.equal(second.list().find((chat) => chat.id === b.id)?.queued, true);
+    // Unloaded, the session says its prompt is waiting.
+    assert.equal(second.list().find((session) => session.id === b.id)?.queued, true);
     // With the one slot taken, opening it queues the prompt again, saying where it came from.
     await second.open(a.id);
     void second.start(a.id, "takes the slot").completion;
@@ -276,7 +276,7 @@ test("a prompt waiting when PiSpark stops is kept, and rejoins the queue when it
     for (const request of h.provider.requests) request.release();
     await eventually(() => second.session(b.id).status === "idle");
     assert.match(JSON.stringify(second.items(b.id, {}).items), /waiting b/);
-    assert.equal(JSON.parse(await readFile(join(h.home, "chats", b.id, "chat.json"), "utf8")).queued, undefined);
+    assert.equal(JSON.parse(await readFile(join(h.home, "sessions", b.id, "session.json"), "utf8")).queued, undefined);
   } finally {
     h.provider.automatic = true;
     for (const request of h.provider.requests) request.release();
@@ -285,22 +285,22 @@ test("a prompt waiting when PiSpark stops is kept, and rejoins the queue when it
   }
 });
 
-test("the live stream of a chat that is not loaded says so as an event, not an error", async () => {
+test("the live stream of a session that is not loaded says so as an event, not an error", async () => {
   const h = await testHome("pispark-queue-unloaded-");
   const runtime = new SessionRuntime(h.configuration);
   const http = new SessionHttp(runtime);
   const server = createAppServer({ sessions: http });
   try {
-    await h.persona("default", { name: "Default" });
+    await h.agent("default", { name: "Default" });
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    const chat = await runtime.create({ folder: await h.folder("work") });
-    await runtime.stop(chat.id);
-    const response = await fetch(`${base}/api/sessions/${chat.id}/live`);
+    const session = await runtime.create({ folder: await h.folder("work") });
+    await runtime.stop(session.id);
+    const response = await fetch(`${base}/api/sessions/${session.id}/live`);
     assert.equal(response.status, 200);
     assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/);
-    assert.equal(await response.text(), `event: unloaded\ndata: {"type":"unloaded","sessionId":"${chat.id}"}\n\n`);
+    assert.equal(await response.text(), `event: unloaded\ndata: {"type":"unloaded","sessionId":"${session.id}"}\n\n`);
   } finally {
     await http.shutdown();
     server.closeAllConnections();
