@@ -5,6 +5,9 @@
   import Segmented from "../../lib/ui/Segmented.svelte";
   import PersonaEditor from "../persona/PersonaEditor.svelte";
   import SchedulesPanel from "../schedules/SchedulesPanel.svelte";
+  import ProcessesPanel from "../background/ProcessesPanel.svelte";
+  import RoutinesPanel from "../background/RoutinesPanel.svelte";
+  import { processPanel, showProcess } from "../background/background-client.svelte";
   import SessionDetails from "./SessionDetails.svelte";
   import StyledText from "./StyledText.svelte";
   import ContributionPoint from "./ContributionPoint.svelte";
@@ -25,6 +28,13 @@
   // Editing the persona inside a chat edits this chat's own layer; closing applies it.
   let editingPersona = $state(false);
   let schedulesOpen = $state(false);
+  let routinesOpen = $state(false);
+  // Opened from Chat info, or from a process row in the conversation (on that process).
+  const processesOpen = $derived(!!session && processPanel.sessionId === session.id);
+  function closeProcesses() {
+    processPanel.sessionId = undefined;
+    processPanel.processId = undefined;
+  }
   async function closePersona() {
     editingPersona = false;
     // The Personas page shares the editor; give it back its list, not this chat's layer.
@@ -135,7 +145,12 @@
             aria-label="Cancel queued message"
             onclick={() => session.stop()}>Cancel</Button
           >{/if}
-        <SessionDetails oneditpersona={() => (editingPersona = true)} onschedules={() => (schedulesOpen = true)} />
+        <SessionDetails
+          oneditpersona={() => (editingPersona = true)}
+          onschedules={() => (schedulesOpen = true)}
+          onroutines={() => (routinesOpen = true)}
+          onprocesses={() => showProcess(session.id)}
+        />
         {#if commands.length}<Menu label="Commands" items={commands} />{/if}
       </div>{/if}
   </div>
@@ -161,6 +176,35 @@
     >
       <SchedulesPanel sessionId={session.id} />
     </InlinePanel>{/if}
+  {#if routinesOpen && info}<InlinePanel
+      label="Routines of {info.persona.name}"
+      title="Routines of {info.persona.name}"
+      help="Each run is a new session of {info.persona.name}{info.persona.home ? ', listed under the app' : ''}."
+      size="wide"
+      onclose={() => (routinesOpen = false)}
+    >
+      <RoutinesPanel persona={info.persona.id} />
+    </InlinePanel>{/if}
+  {#if processesOpen && info}<InlinePanel
+      label="Processes in this chat"
+      title="Processes in this chat"
+      help="Commands this chat started. They keep running while no one watches; PiSpark stopping ends them."
+      size="wide"
+      onclose={closeProcesses}
+    >
+      {#key processPanel.processId}<ProcessesPanel sessionId={session.id} focus={processPanel.processId} />{/key}
+    </InlinePanel>{/if}
+  {#if doc?.holdAsked}<div role="status" class="conversation-notice flex flex-wrap items-center gap-3">
+      <span class="min-w-0 flex-[1_1_20rem]"
+        ><strong>{doc.holdAsked.extension}</strong> (an extension of {info?.persona.name}) wants to keep this chat running when no one is
+        watching: <em>{doc.holdAsked.reason}</em>.
+        <span class="block text-[0.8125rem] text-muted-foreground"
+          >Allowed, it stays loaded and starts again after PiSpark restarts. Pause all stops it.</span
+        ></span
+      >
+      <Button class={button} variant="primary" onclick={() => void client.hold(session.id, "allow-hold")}>Allow for {info?.persona.name}</Button>
+      <Button class={button} onclick={() => void client.hold(session.id, "deny-hold")}>Not now</Button>
+    </div>{/if}
   {#if doc?.personaChanged && !editingPersona}<p role="status" class="conversation-notice flex flex-wrap items-center gap-3">
       <span class="flex-1">The persona changed. Reload to apply it; your messages stay.</span>
       <Button

@@ -59,6 +59,14 @@
   {#if scheduled}<span class="scheduled" title={`Scheduled: ${describeSchedule(scheduled)}`}
       ><Icon name="clock" class="h-3.5 w-3.5" /><span class="sr-only">Scheduled: {describeSchedule(scheduled)}</span></span
     >{/if}
+  {#if session.held}<span class="scheduled kept" title={`Kept running by ${session.held.extension}: ${session.held.reason}`}
+      ><Icon name="pin" class="h-3.5 w-3.5" /><span class="sr-only">Kept running by {session.held.extension}</span></span
+    >{/if}
+  {#if session.processes}<span class="scheduled kept" title={`${session.processes} ${session.processes === 1 ? "process" : "processes"} running`}
+      ><Icon name="terminal" class="h-3.5 w-3.5" /><span class="sr-only"
+        >{session.processes} {session.processes === 1 ? "process" : "processes"} running</span
+      ></span
+    >{/if}
   <SessionMark status={status ?? sessionStatus(session)} />
   {#if archivable}<button type="button" class="row-action" aria-label={`Archive ${name}`} title="Archive" onclick={archive}
       ><Icon name="archive" class="h-4 w-4" /></button
@@ -74,6 +82,9 @@
     display: inline-grid;
     place-items: center;
     color: var(--subtle-foreground);
+  }
+  .kept {
+    color: var(--interactive-text);
   }
   .session-row:focus-within {
     background: var(--sidebar-hover);

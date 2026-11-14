@@ -64,15 +64,20 @@
     void cancel();
   };
   function openChat() {
-    void client.select(schedule.sessionId);
+    openSession(schedule.sessionId);
+  }
+  function openSession(id: string) {
+    void client.select(id);
     window.location.hash = "/workspace";
   }
+  const REPORTS = { result: "its result comes back to the chat", status: "tells the chat a status line", none: "tells the chat nothing" } as const;
 </script>
 
 <li class="schedule-card" bind:this={card}>
   {#if editing}
     <ScheduleForm
       {schedule}
+      child={!!client.sessions.find((session) => session.id === schedule.sessionId)?.parent}
       oncancel={() => void stopEditing()}
       onsave={async (input) => {
         await schedules.update(schedule.id, input);
@@ -92,7 +97,7 @@
       <div class="min-w-0" style="flex: 1 1 12rem">
         <p class="text-sm font-medium">{when}</p>
         <p class="text-xs text-muted-foreground mt-0.5">
-          {nextText(schedule, schedules.paused)}{schedule.by === "agent" ? " · Added by the agent after you said yes" : ""}
+          {nextText(schedule, schedules.paused)}{schedule.run === "new" ? ` · each run in a new session · ${REPORTS[schedule.report ?? "status"]}` : ""}{schedule.by === "agent" ? " · Added by the agent after you said yes" : ""}
         </p>
         <p class="text-sm mt-2 whitespace-pre-wrap break-words">{schedule.prompt}</p>
         {#if withSession}<p class="text-[0.8125rem] mt-1.5">
@@ -127,6 +132,11 @@
             <dt>{shortDate(new Date(run.at))}</dt>
             <dd class:failed={runFailed(run)}>
               {#if runFailed(run)}<Icon name="alert" class="h-3.5 w-3.5 shrink-0" />{/if}<span>{runText(run)}</span>
+              {#if run.session && client.sessions.some((session) => session.id === run.session)}<button
+                  type="button"
+                  class="link"
+                  onclick={() => openSession(run.session!)}>Open<span class="sr-only"> the session of this run</span></button
+                >{/if}
             </dd>
           {/each}
         </dl>

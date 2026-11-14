@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Item, ItemPart } from "../../../../server/src/contract/protocol";
-import { buildTurns, clippedPart, itemText } from "./chat-turns";
+import { buildTurns, clippedPart, itemText, reportBody } from "./chat-turns";
 import { artifactsOf, describeCall, summarizeCalls } from "./tool-views";
 import { pointOf } from "./extension-views";
 
@@ -214,4 +214,61 @@ test("PiSpark's session tool: words for each action, and the session a start mad
   expect(summarizeCalls([call, call])).toBe("Started 2 sessions");
   expect(artifactsOf(call)).toEqual([{ kind: "session", key: "session.c1", sessionId: id, title: "Zustand research" }]);
   expect(artifactsOf({ ...call, args: { action: "list" } })).toEqual([]);
+});
+
+test("sessions started one after another are one list under one activity line", () => {
+  n = 0;
+  const a = "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b";
+  const b = "7f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b";
+  const turns = buildTurns(
+    [
+      item("user", [text("research both")]),
+      item("assistant", [call("c1", "pispark_session", { action: "start", title: "Math" }), call("c2", "pispark_session", { action: "start", title: "Capital" })]),
+      item("toolResult", [text(`Started "Math" (id ${a}).`)], { callId: "c1", toolName: "pispark_session" }),
+      item("toolResult", [text(`Started "Capital" (id ${b}).`)], { callId: "c2", toolName: "pispark_session" }),
+    ],
+    { running: false },
+  );
+  expect(turns[0]!.segments.map((s) => s.kind)).toEqual(["activity", "session", "session"]);
+  const activity = turns[0]!.segments[0]!;
+  expect(activity.kind === "activity" && activity.calls).toHaveLength(2);
+});
+
+test("a status line is its own segment; a report card drops the line the agent needs", () => {
+  n = 0;
+  const turns = buildTurns(
+    [
+      item("user", [text("go")]),
+      item("assistant", [text("ok")]),
+      item("custom", [text('The session "Quiet" you started finished.')], {
+        customType: "pispark:status",
+        details: { session: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b", title: "Quiet", how: "finished" },
+      }),
+    ],
+    { running: false },
+  );
+  expect(turns[0]!.segments.at(-1)).toEqual({
+    kind: "status",
+    key: turns[0]!.segments.at(-1)!.key,
+    title: "Quiet",
+    how: "finished",
+    session: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b",
+  });
+  expect(reportBody('The session "Math" you started finished:\n\n391')).toBe("391");
+  expect(reportBody('The process "tests" exited 1.\n\nLast output:\n1 failed')).toBe("1 failed");
+  expect(reportBody("Something else")).toBe("Something else");
+});
+
+test("the process tool: words, and the process a start made as a row", () => {
+  const id = "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b";
+  const started = {
+    id: "p1",
+    name: "pispark_process",
+    args: { action: "start", command: "npm run dev", title: "dev server" },
+    status: "done" as const,
+    result: item("toolResult", [text(`Started ${id}: dev server (npm run dev) — running since now in /work.`)]),
+  };
+  expect(describeCall(started)).toEqual({ doing: "Starting", done: "Started", object: "dev server" });
+  expect(summarizeCalls([started])).toBe("Started 1 process");
+  expect(artifactsOf(started)).toEqual([{ kind: "process", key: "process.p1", processId: id, title: "dev server" }]);
 });

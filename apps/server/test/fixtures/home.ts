@@ -88,7 +88,8 @@ export async function testHome(prefix = "pispark-test-") {
     history,
     persona: (id: string, definition: PersonaDefinition, files?: Record<string, string>) =>
       writePersona(home, id, definition, files),
-    remove: () => rm(root, { recursive: true, force: true }),
+    // Windows releases a folder a moment after the last process in it has gone.
+    remove: () => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }),
   };
 }
 

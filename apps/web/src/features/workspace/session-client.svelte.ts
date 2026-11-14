@@ -7,6 +7,7 @@ import { CommandFailed, CommandUncertainty, Transport } from "./transport";
 import { ProviderClient } from "../settings/provider-client.svelte";
 import { PersonaClient } from "../persona/persona-client.svelte";
 import { ScheduleClient } from "../schedules/schedule-client.svelte";
+import { ProcessClient, RoutineClient } from "../background/background-client.svelte";
 const context = Symbol("session-client");
 
 /** How many chats stay in memory as they were last shown, so opening one again shows it at once. */
@@ -51,6 +52,8 @@ export class SessionClient {
   private readonly transport = new Transport();
   /** Every schedule, read with the session list. */
   readonly schedules = new ScheduleClient(this.transport);
+  readonly routines = new RoutineClient(this.transport);
+  readonly processes = new ProcessClient(this.transport);
   /** Chats that have been opened, least recently shown first. */
   private readonly opened = new Map<string, Session>();
   private disposed = false;
@@ -129,6 +132,8 @@ export class SessionClient {
     this.sessions = result.sessions;
     this.archivedCount = result.archived ?? 0;
     void this.schedules.refresh().catch(() => {});
+    void this.routines.refresh().catch(() => {});
+    void this.processes.refresh().catch(() => {});
     if (this.archived && this.archived.length !== this.archivedCount) void this.loadArchived();
     const apps = new Set(this.personas.items.filter((persona) => persona.home).map((persona) => persona.id));
     if (this.personas.items.length && result.sessions.some((session) => !!session.persona.home !== apps.has(session.persona.id)))
@@ -298,6 +303,22 @@ export class SessionClient {
     this.errorKind = undefined;
     try {
       await this.transport.run({ type: "cancel", sessionId: id });
+      return true;
+    } catch (error) {
+      this.fail(error);
+      return false;
+    }
+  }
+  /**
+   * An extension asked to keep a session loaded: allow it (for the session's persona) or not now.
+   * Or let go of a hold. The list is read again so the session's marks follow.
+   */
+  async hold(id: string, type: "allow-hold" | "deny-hold" | "release-hold"): Promise<boolean> {
+    this.error = "";
+    this.errorKind = undefined;
+    try {
+      await this.transport.run({ type, sessionId: id });
+      await this.refresh();
       return true;
     } catch (error) {
       this.fail(error);

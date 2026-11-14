@@ -10,7 +10,12 @@
    * Facts about the open chat, anchored to an info button in the chat header so the
    * conversation never moves.
    */
-  let { oneditpersona, onschedules }: { oneditpersona?: () => void; onschedules?: () => void } = $props();
+  let {
+    oneditpersona,
+    onschedules,
+    onroutines,
+    onprocesses,
+  }: { oneditpersona?: () => void; onschedules?: () => void; onroutines?: () => void; onprocesses?: () => void } = $props();
   const client = useSessions();
   const session = useSession();
   const snapshot = $derived(session.doc);
@@ -19,6 +24,9 @@
   const schedules = $derived(info ? client.schedules.of(info.id) : []);
   // The sessions this one started, with their state; one at work can be stopped from here.
   const started = $derived(info ? client.sessions.filter((each) => each.parent === info.id) : []);
+  // What the session's persona offers to run on a schedule, and the processes it has running.
+  const routines = $derived(info ? client.routines.of(info.persona.id) : []);
+  const running = $derived(info ? client.processes.running.filter((p) => p.sessionId === info.id) : []);
   const modelName = $derived(
     client.providers.catalog.providers
       .find((p) => p.id === model?.provider)
@@ -96,7 +104,53 @@
                 </li>
               {/each}
             </ul>
-            <p class="text-xs text-muted-foreground">Each reports back here when it finishes.</p>
+            <p class="text-xs text-muted-foreground">Each tells this chat when it ends, as it was started to.</p>
+          </div>{/if}
+        {#if onroutines && routines.length}<div class="space-y-2 border-t border-[var(--border)] pt-3">
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-sm font-semibold">Routines</h3>
+              <Button
+                size="compact"
+                onclick={() => {
+                  close();
+                  onroutines();
+                }}>Manage</Button
+              >
+            </div>
+            <ul class="space-y-1.5 text-sm">
+              {#each routines as routine (routine.id)}<li class="flex items-start gap-2">
+                  <Icon name="clock" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span
+                    >{routine.name}<span class="block text-xs text-muted-foreground"
+                      >{describeSchedule({ cron: routine.cron })} · {routine.on ? "On" : "Off"}</span
+                    ></span
+                  >
+                </li>{/each}
+            </ul>
+          </div>{/if}
+        {#if info.held}<div class="space-y-1.5 border-t border-[var(--border)] pt-3">
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="flex items-center gap-1.5 text-sm font-semibold"><Icon name="pin" class="h-3.5 w-3.5" />Kept running</h3>
+              <Button size="compact" variant="ghost" onclick={() => void client.hold(info.id, "release-hold")}>Release</Button>
+            </div>
+            <p class="text-[0.8125rem]"><strong>{info.held.extension}</strong>: {info.held.reason}</p>
+            <p class="text-xs text-muted-foreground">
+              Stays loaded while no one watches and starts again after a restart. Pause all stops it.
+            </p>
+          </div>{/if}
+        {#if onprocesses && (running.length || info.processes)}<div class="space-y-2 border-t border-[var(--border)] pt-3">
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-sm font-semibold">Processes</h3>
+              <Button
+                size="compact"
+                onclick={() => {
+                  close();
+                  onprocesses();
+                }}>Show</Button
+              >
+            </div>
+            <p class="flex items-center gap-2 text-sm">
+              <Icon name="terminal" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />{running.length || info.processes} running
+            </p>
           </div>{/if}
         {#if snapshot && oneditpersona}<div
             class="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3"

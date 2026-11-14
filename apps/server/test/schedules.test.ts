@@ -10,7 +10,7 @@ import { RuntimeError } from "../src/core/runtime/errors.js";
 import { SessionHttp } from "../src/http/session-http.js";
 import { createAppServer } from "../src/http/server.js";
 import type { Schedule } from "../src/contract/schedule-protocol.js";
-import { WOKEN_ENTRY } from "../src/contract/wake-protocol.js";
+import { STATUS_ENTRY, WOKEN_ENTRY } from "../src/contract/wake-protocol.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
 
@@ -306,6 +306,44 @@ test("schedules over HTTP: list, add, change, run now and remove", async () => {
   } finally {
     await http.shutdown();
     server.close();
+    await f.cleanup();
+  }
+});
+
+test("a schedule can run each time in a new session under its chat, which tells the chat a status line", async () => {
+  const f = await fixture();
+  try {
+    const chat = await f.runtime.create({ folder: f.folder });
+    assert.throws(() => f.runtime.addSchedule({ sessionId: chat.id, cron: "0 9 * * *", prompt: "x", report: "status" }), code("invalid-input"));
+    const added = f.runtime.addSchedule({ sessionId: chat.id, cron: "0 9 * * *", prompt: "run the tests", run: "new" });
+    assert.equal(added.run, "new");
+    assert.equal(added.report, "status");
+
+    f.clock.now = local("2026-11-13T09:00");
+    await f.runtime.checkWakes();
+    const run = () => f.runtime.list().filter((s) => s.parent === chat.id);
+    await eventually(() => run().length === 1);
+    const [child] = run();
+    assert.equal(child!.title, "9:00 am run · Fri 13 Nov");
+    assert.equal(f.one().runs[0]!.outcome, "started");
+    assert.equal(f.one().runs[0]!.session, child!.id);
+    // The run session got the prompt, labelled as the schedule's; the chat got a line, no turn.
+    await eventually(() => f.runtime.items(chat.id, {}).items.some((item) => item.customType === STATUS_ENTRY));
+    const sent = f.runtime.items(child!.id, {}).items.find((item) => item.customType === WOKEN_ENTRY)!;
+    assert.equal((sent.details as { source: { kind: string } }).source.kind, "schedule");
+    assert.ok(!f.runtime.items(chat.id, {}).items.some((item) => item.customType === WOKEN_ENTRY));
+
+    // A session another one started cannot run schedules in new sessions.
+    assert.throws(() => f.runtime.addSchedule({ sessionId: child!.id, cron: "0 9 * * *", prompt: "x", run: "new" }), code("invalid-input"));
+
+    // The newest ten runs stay; older ones are archived as new ones start.
+    for (let i = 0; i < 10; i++) {
+      await f.runtime.runSchedule(added.id);
+      await eventually(() => run().every((s) => s.status === "idle" || s.status === "unloaded"));
+    }
+    await eventually(() => run().length === 10);
+    assert.ok(f.runtime.archived().some((s) => s.id === child!.id));
+  } finally {
     await f.cleanup();
   }
 });

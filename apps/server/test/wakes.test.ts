@@ -24,7 +24,7 @@ async function fixture() {
     ids: () => [SESSION],
     directory: (id) => join(root, id),
     free: (id) => !busy.has(id),
-    run: async (id, text, details) => {
+    run: async (id, { text }, details) => {
       if (busy.has(id)) throw new RuntimeError("busy");
       busy.add(id);
       let finish!: (result?: RunResult) => void;

@@ -103,6 +103,12 @@ export function runText(run: WakeRecord, now = new Date()): string {
       return `Failed: ${commandError(run.error ?? "execution")}`;
     case "cancelled":
       return "Stopped before it finished";
+    case "started":
+      if (run.manual) return "Started a new session, by hand";
+      if (run.reason === "off") return `Started late in a new session: PiSpark wasn’t running at ${clockTime(due.getHours(), due.getMinutes())}`;
+      return "Started a new session";
+    case "handled":
+      return "Taken by an extension";
     case "missed":
       if (run.reason === "paused") return "Missed: unattended runs were paused";
       if (run.reason === "full") return "Missed: too many were already waiting";

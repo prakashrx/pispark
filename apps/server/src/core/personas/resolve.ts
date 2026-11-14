@@ -10,6 +10,7 @@ import type {
   PersonaView,
   ResolvedItem,
   ResolvedTool,
+  RoutineDefinition,
 } from "../../contract/persona-protocol.js";
 import {
   BUILTIN_TOOLS,
@@ -61,6 +62,10 @@ export interface Setup {
   toolsOff: string[];
   /** Hash of everything above that affects the agent. */
   fingerprint: string;
+  /** What it offers to run on a schedule (the nearest layer's list), each on only if switched on. */
+  routines: (RoutineDefinition & { on: boolean })[];
+  /** Extensions allowed to keep its sessions loaded while no one watches (`hold:<extension>`). */
+  holds: string[];
 }
 
 /**
@@ -179,6 +184,8 @@ function fold(store: PersonaStore, layers: Layer[]) {
           });
           continue;
         }
+        // What may run unattended is read by `unattendedOf`.
+        if (parsed.type === "routine" || parsed.type === "hold") continue;
         const entry = entries.get(switchKey(parsed.type, parsed.name));
         // Switching an item no earlier layer provides does nothing; it may appear later.
         if (entry) {
@@ -218,6 +225,30 @@ function treeIdentity(dir: string, main: string): string {
 const extensionIdentity = (location: string): string =>
   /^index\.(ts|js|mjs)$/.test(basename(location)) ? treeIdentity(dirname(location), location) : digest(readFileSync(location));
 
+/**
+ * What may run unattended, read from the layers alone: the routines it offers (the nearest layer's
+ * list), each on only if a layer switched it on, and the extensions allowed to hold its sessions.
+ */
+function unattended(layers: Layer[]): Pick<Setup, "routines" | "holds"> {
+  const switches = { routine: new Map<string, boolean>(), hold: new Map<string, boolean>() };
+  for (const layer of layers)
+    for (const [list, on] of [
+      [layer.definition.on ?? [], true],
+      [layer.definition.off ?? [], false],
+    ] as const)
+      for (const value of list) {
+        const parsed = parseSwitch(value);
+        if (parsed?.type === "routine" || parsed?.type === "hold") switches[parsed.type].set(parsed.name, on);
+      }
+  const routines = (layers.findLast((layer) => layer.definition.routines)?.definition.routines ?? []).map((routine) => ({
+    ...structuredClone(routine),
+    on: switches.routine.get(routine.id) === true,
+  }));
+  return { routines, holds: [...switches.hold].filter(([, on]) => on).map(([name]) => name) };
+}
+/** `unattended` for a persona or a chat's layer, without reading its files. */
+export const unattendedOf = (store: PersonaStore, target: PersonaTarget) => unattended(resolveLayers(store, target));
+
 export function resolveSetup(
   store: PersonaStore,
   target: PersonaTarget,
@@ -230,6 +261,7 @@ export function resolveSetup(
   const layers = resolveLayers(store, effective);
   const { entries, tools, settings } = fold(store, layers);
   const { folder, home } = bound(layers);
+  const { routines, holds } = unattended(layers);
   const active = [...entries.values()].filter((e) => e.resolved.on);
   const of = (type: ItemType) => active.filter((e) => e.item.type === type);
   const instructions = of("instructions").map((e) => ({
@@ -290,6 +322,8 @@ export function resolveSetup(
     toolsOn,
     toolsOff,
     fingerprint,
+    routines,
+    holds,
   };
 }
 

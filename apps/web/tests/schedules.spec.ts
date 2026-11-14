@@ -53,9 +53,9 @@ fresh("a chat's schedules: add from Chat info, run now, switch off, see them in 
   await expect(card.getByText("Off", { exact: true })).toBeVisible();
   await expect(chats.getByText(/^Scheduled:/)).toHaveCount(0);
 
-  // Settings → Schedules lists it with its chat; Pause all is saved.
+  // Settings → Background lists it with its chat; Pause all is saved.
   await page.goto("/#/schedules");
-  await expect(page.getByRole("heading", { level: 1, name: "Schedules" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Background" })).toBeVisible();
   const all = page.getByRole("list", { name: "All schedules" }).getByRole("listitem");
   await expect(all).toHaveCount(1);
   await expect(all.getByRole("button", { name: "daily digest" })).toBeVisible();

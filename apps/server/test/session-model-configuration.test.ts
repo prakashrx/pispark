@@ -477,7 +477,7 @@ test("createSessionServices: independently mutable managed runtimes share only e
   const selected = await f.settings.select({ provider, id: "deterministic" });
   const setup: Setup = {
     layers: [], items: [], tools: [], settings: {}, instructions: [], skillDirs: [],
-    prompts: [], extensionPaths: [], mcpServers: {}, toolsOn: [], toolsOff: [], fingerprint: "",
+    prompts: [], extensionPaths: [], mcpServers: {}, toolsOn: [], toolsOff: [], fingerprint: "", routines: [], holds: [],
   };
   const services = (agentDir: string) =>
     createSessionServices({

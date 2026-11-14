@@ -24,7 +24,7 @@ const nativeExtension = join(root, 'explicit.mjs');
 await writeFile(nativeExtension, `export default (pi)=>{pi.events.on('probe',()=>pi.events.emit('observed',{}));pi.on('session_start',(_e,ctx)=>{if(!ctx.hasUI||ctx.mode!=='rpc') throw Error('UI missing')});for(const name of ['reload','newSession','fork','switchSession','navigateTree']) pi.registerCommand(name,{handler:async(_args,ctx)=>{await ctx[name]('not-a-path')}})}`);
 await mkdir(join(root, 'agent', 'extensions'), { recursive: true });
 await writeFile(join(root, 'agent', 'extensions', 'global.js'), `export default ()=>{throw Error('Ambient global extension executed')}`);
-const setup: Setup = { layers: [], items: [], tools: [], settings: {}, instructions: [], skillDirs: [], prompts: [], extensionPaths: [nativeExtension], mcpServers: {}, toolsOn: [], toolsOff: [], fingerprint: '' };
+const setup: Setup = { layers: [], items: [], tools: [], settings: {}, instructions: [], skillDirs: [], prompts: [], extensionPaths: [nativeExtension], mcpServers: {}, toolsOn: [], toolsOff: [], fingerprint: '', routines: [], holds: [] };
 const services = await createSessionServices({
   setup, cwd: join(root, 'cwd'), agentDir: join(root, 'agent'),
   fixed: { provider: provider.provider(), id: 'deterministic' },

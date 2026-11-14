@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describeSchedule, nextRun, parseCron, shortDate } from "../../contract/cron.js";
 import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
+import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { writeAtomic } from "../personas/store.js";
 import { RuntimeError, runtimeError } from "./errors.js";
@@ -10,8 +11,13 @@ import type { Wake, Wakes } from "./wakes.js";
 
 /** What the clock needs from the runtime that holds the sessions. */
 export interface ClockHost {
-  /** Every session there is, and whether it is archived. */
-  sessions(): { id: string; archived: boolean }[];
+  /** Every session there is, whether it is archived, and whether another session started it. */
+  sessions(): { id: string; archived: boolean; child?: boolean }[];
+  /**
+   * A run that goes to a new session: starts a session under `owner` (its persona, folder and
+   * model) and returns its id. The clock then sends the prompt to it as a wake.
+   */
+  spawn?(owner: string, run: { title: string; report: ReportMode; schedule: { id: string; due: string } }): Promise<string>;
   /** The session folders there are, read without loading anything (at start). */
   ids(): string[];
   /** The session's folder, where its `schedules.json` lives beside `chat.json`. */
@@ -29,6 +35,9 @@ interface Stored {
   by: "person" | "agent";
   /** The last due time that was dealt with (delivered, missed or passed over). */
   lastDue: string;
+  /** Each run in a new session under this one, which tells it as `report` says. */
+  run?: "new";
+  report?: ReportMode;
 }
 
 const MAX_PROMPT = 8 * 1024;
@@ -56,10 +65,48 @@ function readStored(value: unknown): Stored | undefined {
     typeof s.on === "boolean" &&
     validTime(s.createdAt) &&
     (s.by === "person" || s.by === "agent") &&
-    validTime(s.lastDue);
+    validTime(s.lastDue) &&
+    (s.run === undefined || s.run === "new") &&
+    (s.report === undefined || (s.run === "new" && validReportMode(s.report)));
   if (!valid) return undefined;
-  const { id, cron, at, prompt, on, createdAt, by, lastDue } = s;
-  return { id, ...(cron !== undefined ? { cron } : { at }), prompt, on, createdAt, by, lastDue };
+  const { id, cron, at, prompt, on, createdAt, by, lastDue, run, report } = s;
+  return {
+    id,
+    ...(cron !== undefined ? { cron } : { at }),
+    prompt,
+    on,
+    createdAt,
+    by,
+    lastDue,
+    ...(run ? { run } : {}),
+    ...(report ? { report } : {}),
+  };
+}
+
+/** A repeating schedule's latest due time after `after`, up to `now`; none when nothing came due. */
+export function latestDue(cronText: string, after: string, now: number): string | undefined {
+  const cron = parseCron(cronText);
+  if (!cron) return undefined;
+  let latest: Date | undefined;
+  let cursor = new Date(time(after));
+  // Bounded: a schedule every minute that was off for days still takes at most this many steps.
+  for (let steps = 0; steps < 10_000; steps++) {
+    const next = nextRun(cron, cursor);
+    if (!next || next.getTime() > now) break;
+    latest = cursor = next;
+  }
+  if (!latest) return undefined;
+  // Past the bound, jump: only the latest due time matters.
+  if (nextRun(cron, latest) && nextRun(cron, latest)!.getTime() <= now) return new Date(now - (now % 60_000)).toISOString();
+  return latest.toISOString();
+}
+/** A run missed while PiSpark was off is still sent if it was due within this long. */
+export const CATCH_UP_MS = 86_400_000;
+
+/** The title of a run's own session: "6:30 am run · Fri 14 Nov". */
+export function runTitle(due: string, now: Date): string {
+  const [day, at] = shortDate(new Date(due), now).split(", ");
+  return `${at} run · ${day}`;
 }
 
 /**
@@ -140,9 +187,9 @@ export class Schedules {
     throw new RuntimeError("not-found");
   }
   /** Validates when, prompt and on; `base` is the schedule being changed. */
-  private validInput(input: ScheduleInput, base?: Stored): Pick<Stored, "cron" | "at" | "prompt" | "on"> {
+  private validInput(input: ScheduleInput, base?: Stored): Pick<Stored, "cron" | "at" | "prompt" | "on" | "run" | "report"> {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new RuntimeError("invalid-input");
-    const allowed = ["cron", "at", "prompt", "on", ...(base ? [] : ["sessionId"])];
+    const allowed = ["cron", "at", "prompt", "on", "run", "report", ...(base ? [] : ["sessionId"])];
     if (Object.keys(input).some((key) => !allowed.includes(key))) throw new RuntimeError("invalid-input");
     const whenGiven = input.cron !== undefined || input.at !== undefined;
     if (input.cron !== undefined && input.at !== undefined) throw new RuntimeError("invalid-input");
@@ -157,13 +204,24 @@ export class Schedules {
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > MAX_PROMPT) throw new RuntimeError("invalid-input");
     const on = input.on ?? base?.on ?? true;
     if (typeof on !== "boolean") throw new RuntimeError("invalid-input");
-    return { ...(cron !== undefined ? { cron } : { at: new Date(at!).toISOString() }), prompt, on };
+    if (input.run !== undefined && input.run !== "here" && input.run !== "new") throw new RuntimeError("invalid-input");
+    const run = input.run !== undefined ? input.run : (base?.run ?? "here");
+    if (input.report !== undefined && (!validReportMode(input.report) || run !== "new")) throw new RuntimeError("invalid-input");
+    const report = run === "new" ? (input.report ?? base?.report ?? "status") : undefined;
+    return {
+      ...(cron !== undefined ? { cron } : { at: new Date(at!).toISOString() }),
+      prompt,
+      on,
+      ...(run === "new" ? { run, report } : {}),
+    };
   }
   add(sessionId: string, input: ScheduleInput, by: "person" | "agent"): Schedule {
     const session = this.host.sessions().find((s) => s.id === sessionId);
     if (!session) throw new RuntimeError("not-found");
     if (session.archived) throw new RuntimeError("busy");
     const valid = this.validInput(input);
+    // A session another one started cannot start sessions, so its runs stay in it.
+    if (valid.run === "new" && (session.child || !this.host.spawn)) throw new RuntimeError("invalid-input");
     const schedules = this.index.get(sessionId) ?? [];
     const now = new Date(this.now()).toISOString();
     const schedule: Stored = { id: randomUUID(), ...valid, createdAt: now, by, lastDue: now };
@@ -176,7 +234,8 @@ export class Schedules {
     const { sessionId, schedule } = this.find(id);
     const valid = this.validInput(input, schedule);
     const restart = input.cron !== undefined || input.at !== undefined || (valid.on && !schedule.on);
-    const { cron: _cron, at: _at, ...kept } = schedule;
+    if (valid.run === "new" && (this.host.sessions().find((s) => s.id === sessionId)?.child || !this.host.spawn)) throw new RuntimeError("invalid-input");
+    const { cron: _cron, at: _at, run: _run, report: _report, ...kept } = schedule;
     const changed: Stored = { ...kept, ...valid, ...(restart ? { lastDue: new Date(this.now()).toISOString() } : {}) };
     if (restart || !valid.on) this.wakes.cancel(sessionId, id);
     this.replace(sessionId, changed);
@@ -193,7 +252,28 @@ export class Schedules {
   /** Run now, with the person watching: refused while the session is busy or archived. */
   async runNow(id: string): Promise<void> {
     const { sessionId, schedule } = this.find(id);
-    await this.wakes.runNow(sessionId, this.wake(schedule, new Date(this.now()).toISOString()));
+    const due = new Date(this.now()).toISOString();
+    if (schedule.run === "new") {
+      if (this.archived(sessionId)) throw new RuntimeError("busy");
+      return this.spawnRun(sessionId, schedule, due, { manual: true });
+    }
+    await this.wakes.runNow(sessionId, this.wake(schedule, due));
+  }
+  /**
+   * A run in a new session under the owner: the session is made, the owner records which one, and
+   * the prompt goes to it as a wake (it is new, so nothing waits). Paused, the run is missed.
+   */
+  private async spawnRun(owner: string, s: Stored, due: string, how: { manual?: true; late?: true } = {}): Promise<void> {
+    if (!how.manual && this.wakes.paused()) return this.wakes.note(owner, s.id, { due, outcome: "missed", reason: "paused" });
+    let session: string;
+    try {
+      session = await this.host.spawn!(owner, { title: runTitle(due, new Date(this.now())), report: s.report ?? "status", schedule: { id: s.id, due } });
+    } catch (error) {
+      if (how.manual) throw error;
+      return this.wakes.note(owner, s.id, { due, outcome: "failed", error: runtimeError(error, "execution").code });
+    }
+    this.wakes.note(owner, s.id, { due, outcome: "started", session, ...(how.manual ? { manual: true as const } : how.late ? { reason: "off" as const } : {}) });
+    await this.wakes.deliver(session, { ...this.wake(s, due), policy: "queue" });
   }
   /** The schedules of one session, for its agent. */
   of(sessionId: string): Schedule[] {
@@ -226,19 +306,7 @@ export class Schedules {
   /** The latest due time after the last one dealt with, up to now. */
   private due(s: Stored, now: number): string | undefined {
     if (s.at !== undefined) return time(s.at) > time(s.lastDue) && time(s.at) <= now ? s.at : undefined;
-    const cron = parseCron(s.cron!)!;
-    let latest: Date | undefined;
-    let cursor = new Date(time(s.lastDue));
-    // Bounded: a schedule every minute that was off for days still takes at most this many steps.
-    for (let steps = 0; steps < 10_000; steps++) {
-      const next = nextRun(cron, cursor);
-      if (!next || next.getTime() > now) break;
-      latest = cursor = next;
-    }
-    if (!latest) return undefined;
-    // Past the bound, jump: only the latest due time matters.
-    if (nextRun(cron, latest) && nextRun(cron, latest)!.getTime() <= now) return new Date(now - (now % 60_000)).toISOString();
-    return latest.toISOString();
+    return latestDue(s.cron!, s.lastDue, now);
   }
   private async consider(sessionId: string, s: Stored, now: number, archived: boolean): Promise<void> {
     const due = this.due(s, now);
@@ -246,6 +314,7 @@ export class Schedules {
     // Archived or switched off: time passes without catching up later.
     if (archived || !s.on) this.wakes.cancel(sessionId, s.id);
     else if (due && now - time(due) > CATCH_UP) this.wakes.note(sessionId, s.id, { due, outcome: "missed", reason: "off" });
+    else if (due && s.run === "new" && this.host.spawn) await this.spawnRun(sessionId, s, due, time(due) < this.startedAt ? { late: true } : {});
     else if (due) await this.wakes.deliver(sessionId, this.wake(s, due, time(due) < this.startedAt));
     this.tidy(sessionId, s);
   }

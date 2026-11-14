@@ -115,6 +115,34 @@ registerToolView("pispark_session", {
   },
 });
 
+// PiSpark's own process tool: words for each action, and the process a start made, as a row.
+const processId = (call: ToolCall) => /^Started ([0-9a-f-]{36}):/.exec((call.result?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""))?.[1];
+registerToolView("pispark_process", {
+  describe(call) {
+    const action = arg(call, "action");
+    const name = arg(call, "title") ?? arg(call, "command");
+    if (action === "start") return { doing: "Starting", done: "Started", object: name && short(name) };
+    if (action === "list") return { doing: "Listing its processes", done: "Listed its processes" };
+    if (action === "output") return { doing: "Reading output", done: "Read output" };
+    if (action === "watch") return { doing: "Watching output", done: "Watching output" };
+    if (action === "unwatch") return { doing: "Stopping a watch", done: "Stopped a watch" };
+    return { doing: "Stopping a process", done: "Stopped a process" };
+  },
+  group: "processes",
+  summarize: (calls) => {
+    const started = calls.filter((call) => arg(call, "action") === "start").length;
+    return started ? `started ${noun(started, "process", "processes")}` : `used ${noun(calls.length, "process action")}`;
+  },
+  artifacts(call) {
+    const id = call.status === "done" && arg(call, "action") === "start" ? processId(call) : undefined;
+    return id ? [{ kind: "process", key: `process.${call.id}`, processId: id, title: arg(call, "title") ?? arg(call, "command") ?? "A process" }] : [];
+  },
+});
+registerToolView("pispark_report", {
+  describe: () => ({ doing: "Raising it with the session that started this one", done: "Raised it with the session that started this one" }),
+  summarize: () => "raised it with the starting session",
+});
+
 /** What a call is doing, in words. */
 export const describeCall = (call: ToolCall): CallWords => resolveToolView(call.name).describe(call);
 

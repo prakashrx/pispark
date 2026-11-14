@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
-import { viewPersona } from "../src/core/personas/resolve.js";
+import { resolveSetup, viewPersona } from "../src/core/personas/resolve.js";
+import { ToolDiscovery } from "../src/core/runtime/tool-discovery.js";
 import { standardDefault, testHome } from "./fixtures/home.js";
 
 const GREET = `export default (pi) => pi.registerTool({
@@ -37,6 +38,31 @@ test("a persona's tools are found by loading its extensions, grouped PiSpark fir
 
     // A persona that cannot be resolved lists nothing; its view says why.
     assert.equal(await runtime.discoverTools({ persona: "missing" }), undefined);
+  } finally {
+    await runtime.shutdown();
+    await h.remove();
+  }
+});
+
+test("tools a running session had (such as an MCP server's) are remembered for the editor", async () => {
+  const h = await testHome("pispark-tools-seen-");
+  await standardDefault(h.home);
+  await h.persona("helper", { name: "Helper" }, { "extensions/greet.mjs": GREET });
+  const runtime = new SessionRuntime({ ...h.configuration, wakeTickMs: 0 });
+  const discovery = new ToolDiscovery(h.home);
+  try {
+    const setup = resolveSetup(runtime.personas, { persona: "helper" });
+    assert.ok(!(await discovery.tools(setup)).tools.some((tool) => tool.name === "mcp__github__search"));
+    discovery.remember(setup.fingerprint, setup.extensionPaths, [
+      { name: "read", sourceInfo: { path: "builtin:read" } },
+      { name: "greet", sourceInfo: { path: setup.extensionPaths.at(-1)! } },
+      { name: "mcp__github__search", description: "Search GitHub." },
+    ]);
+    const tools = (await discovery.tools(setup)).tools;
+    assert.deepEqual(tools.find((tool) => tool.name === "mcp__github__search")?.source, { kind: "mcp", name: "github" });
+    // Known ones are not listed twice; Pi's own are not remembered.
+    assert.equal(tools.filter((tool) => tool.name === "greet").length, 1);
+    assert.ok(!tools.some((tool) => tool.name === "read"));
   } finally {
     await runtime.shutdown();
     await h.remove();

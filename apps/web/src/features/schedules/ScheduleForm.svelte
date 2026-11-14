@@ -6,14 +6,18 @@
   import Icon from "../../lib/ui/Icon.svelte";
   import { describeSchedule } from "../../../../server/src/contract/cron";
   import type { Schedule, ScheduleInput } from "../../../../server/src/contract/schedule-protocol";
+  import type { ReportMode } from "../../../../server/src/contract/wake-protocol";
   import { choiceOf, whenOf, type Repeat } from "./schedule-presentation";
   /** Adds a schedule, or changes one: when (plain choices, or cron) and the prompt. */
   let {
     schedule,
+    child = false,
     onsave,
     oncancel,
   }: {
     schedule?: Schedule;
+    /** The chat was started by another session, so its runs stay in it. */
+    child?: boolean;
     /** Saves; a refusal is thrown in words and shown here. */
     onsave: (input: ScheduleInput) => Promise<void>;
     oncancel: () => void;
@@ -29,6 +33,10 @@
   let cron = $state(start.cron);
   // svelte-ignore state_referenced_locally
   let prompt = $state(schedule?.prompt ?? "");
+  // svelte-ignore state_referenced_locally
+  let run = $state<string>(schedule?.run ?? "here");
+  // svelte-ignore state_referenced_locally
+  let report = $state<string>(schedule?.report ?? "status");
   let error = $state("");
   let saving = $state(false);
   const when = $derived(whenOf({ repeat: repeat as Repeat, time, date, weekday, every, cron }));
@@ -46,7 +54,7 @@
     error = "";
     saving = true;
     try {
-      await onsave({ ...when, prompt });
+      await onsave({ ...when, prompt, ...(child ? {} : { run: run as "here" | "new" }), ...(run === "new" ? { report: report as ReportMode } : {}) });
     } catch (failure) {
       error = (failure as Error).message;
     } finally {
@@ -62,6 +70,20 @@
     { value: "minutes", label: "Every few minutes" },
     { value: "cron", label: "Cron" },
   ];
+  const runs = [
+    { value: "here", label: "In this chat" },
+    { value: "new", label: "In a new session" },
+  ];
+  const reports = [
+    { value: "result", label: "The result" },
+    { value: "status", label: "A status line" },
+    { value: "none", label: "Nothing" },
+  ];
+  const reportHelp: Record<string, string> = {
+    result: "Each run’s answer comes back here and this chat’s agent carries on with it.",
+    status: "A line here when each run finishes. A run that finds something needing this chat can still raise it.",
+    none: "Nothing comes back here; the runs are listed under this chat.",
+  };
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label, index) => ({ value: String(index), label }));
 </script>
 
@@ -109,8 +131,26 @@
   <div class="space-y-1.5">
     <label for="{id}-prompt" class="block text-sm font-medium">Prompt</label>
     <Textarea id="{id}-prompt" rows={3} bind:value={prompt} aria-describedby="{id}-prompt-help" class="w-full" />
-    <p id="{id}-prompt-help" class="note">Sent to this chat as if you typed it; /commands work.</p>
+    <p id="{id}-prompt-help" class="note">
+      {run === "new" ? "Sent as the first message of each run’s session; /commands work." : "Sent to this chat as if you typed it; /commands work."}
+    </p>
   </div>
+  {#if !child}
+    <div class="space-y-1.5">
+      <span class="block text-sm font-medium">Each run</span>
+      <Segmented label="Each run" options={runs} bind:value={run} />
+      <p class="note">
+        {run === "new" ? "Each run is its own session under this chat, so this conversation stays clean." : "Each run is a turn in this chat."}
+      </p>
+    </div>
+    {#if run === "new"}
+      <div class="space-y-1.5">
+        <span class="block text-sm font-medium">Tell this chat</span>
+        <Segmented label="Tell this chat" options={reports} bind:value={report} />
+        <p class="note">{reportHelp[report]}</p>
+      </div>
+    {/if}
+  {/if}
   <p class="note flex items-start gap-2">
     <Icon name="alert" class="h-4 w-4 mt-0.5 shrink-0" /><span
       >Runs while you’re away use this chat’s persona and tools, with this server’s permissions.{schedule ? "" : " It starts switched on."}</span

@@ -18,8 +18,9 @@ fresh("a chat starts a session; its answer comes back as a card; the child sits 
   const report = page.locator('[data-purpose="session-turn"]');
   await expect(report).toHaveCount(1);
   await expect(report).toContainText("From Zustand research · finished");
-  await expect(report).toContainText('The session "Zustand research" you started finished:');
+  // The card shows the answer, not the line the agent needs ("The session … you started finished:").
   await expect(report).toContainText("local:research zustand");
+  await expect(report).not.toContainText("you started finished");
 
   // In the sidebar the child is under its parent, behind a toggle once it is done.
   const chats = page.getByRole("navigation", { name: "Chats" });

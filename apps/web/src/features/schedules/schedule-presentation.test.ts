@@ -60,7 +60,7 @@ test("a woken turn's message is labelled with its source in the conversation", (
   // Another session: its report (or a parent's message) says which session, and links to it.
   const child = { kind: "session", id: "c", label: "Zustand research · finished" };
   expect(wokenLabel({ source: child, due })).toBe("From Zustand research · finished");
-  expect(wokenFrom({ source: child, due })).toEqual({ id: "c", label: "Zustand research · finished" });
+  expect(wokenFrom({ source: child, due })).toEqual({ id: "c", label: "Zustand research · finished", kind: "session" });
   expect(wokenFrom({ source, due })).toBeUndefined();
   const turns = buildTurns(
     [

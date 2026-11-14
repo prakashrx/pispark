@@ -8,6 +8,8 @@
   let { sessionId }: { sessionId: string } = $props();
   const client = useSessions();
   const schedules = $derived(client.schedules.of(sessionId));
+  // A chat another session started keeps its runs in itself.
+  const child = $derived(!!client.sessions.find((session) => session.id === sessionId)?.parent);
   let adding = $state(false);
   let list = $state<HTMLElement>();
   $effect(() => void client.schedules.refresh().catch(() => {}));
@@ -20,7 +22,7 @@
 
 <div class="space-y-3" bind:this={list}>
   {#if client.schedules.paused}<p role="status" class="text-sm text-muted-foreground">
-      Unattended runs are paused in Settings → Schedules.
+      Unattended runs are paused in Settings → Background.
     </p>{/if}
   {#if schedules.length}
     <ul class="space-y-3" aria-label="Schedules">
@@ -31,6 +33,7 @@
     </p>{/if}
   {#if adding}
     <ScheduleForm
+      {child}
       oncancel={() => void stopAdding()}
       onsave={async (input) => {
         await client.schedules.add({ ...input, sessionId });

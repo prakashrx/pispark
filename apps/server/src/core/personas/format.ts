@@ -4,8 +4,10 @@ import { SWITCH_PREFIX } from "../../contract/persona-protocol.js";
 import type {
   ItemType,
   PersonaDefinition,
+  SwitchType,
   ThinkingLevel,
 } from "../../contract/persona-protocol.js";
+import { nextRun, parseCron } from "../../contract/cron.js";
 
 export class PersonaError extends Error {
   constructor(
@@ -76,15 +78,15 @@ export function slug(name: string, taken: (id: string) => boolean): string {
   return id;
 }
 
-/** `skill:review`, `instruction:tone`, `prompt:x`, `extension:x`, `mcp:x` or `tool:bash`. */
+/** `skill:review`, `instruction:tone`, `prompt:x`, `extension:x`, `mcp:x`, `tool:bash`, `routine:x` or `hold:x`. */
 export function parseSwitch(
   value: unknown,
-): { type: ItemType | "tool"; name: string } | undefined {
+): { type: SwitchType; name: string } | undefined {
   if (typeof value !== "string") return undefined;
   const at = value.indexOf(":");
   const prefix = value.slice(0, at);
   const name = value.slice(at + 1);
-  const type = (Object.keys(SWITCH_PREFIX) as (ItemType | "tool")[]).find(
+  const type = (Object.keys(SWITCH_PREFIX) as SwitchType[]).find(
     (key) => SWITCH_PREFIX[key] === prefix,
   );
   if (at < 1 || !type || !validItemName(name)) return;
@@ -128,7 +130,7 @@ export function validateDefinition(
     "off",
     "mcpServers",
     "settings",
-    ...(binds ? ["folder", "home"] : []),
+    ...(binds ? ["folder", "home", "routines"] : []),
   ];
   const unknown = Object.keys(value).find((key) => !allowed.includes(key));
   if (unknown) fail("invalid-definition", 400, unknown);
@@ -184,6 +186,28 @@ export function validateDefinition(
         !THINKING.includes(settings.thinking as ThinkingLevel))
     )
       fail("invalid-definition", 400, "settings");
+  }
+  if (value.routines !== undefined) {
+    const routines = value.routines;
+    if (!Array.isArray(routines) || routines.length > 20) fail("invalid-definition", 400, "routines");
+    const ids = new Set<string>();
+    for (const routine of routines as Record<string, unknown>[]) {
+      if (
+        !plainObject(routine) ||
+        Object.keys(routine).some((key) => !["id", "name", "cron", "prompt"].includes(key)) ||
+        !validItemName(routine.id) ||
+        ids.has(routine.id) ||
+        typeof routine.cron !== "string" ||
+        !parseCron(routine.cron) ||
+        !nextRun(parseCron(routine.cron)!, new Date()) ||
+        typeof routine.prompt !== "string" ||
+        !routine.prompt.trim() ||
+        routine.prompt.length > 8192
+      )
+        fail("invalid-definition", 400, "routines");
+      text(routine.name, 80, true);
+      ids.add(routine.id as string);
+    }
   }
   if (Buffer.byteLength(JSON.stringify(value)) > 64 * 1024) fail("limit");
   return structuredClone(value) as unknown as PersonaDefinition;

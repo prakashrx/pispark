@@ -9,17 +9,36 @@ export type ThinkingLevel =
   | "xhigh"
   | "max";
 
-/** Switch prefixes in persona.json: `skill:review`, `instruction:tone`, `tool:bash`… */
-export const SWITCH_PREFIX: Record<ItemType | "tool", string> = {
+/**
+ * Switch prefixes in persona.json: `skill:review`, `instruction:tone`, `tool:bash`… Two say what
+ * may run unattended and are off unless switched on: `routine:<id>` (one of its routines) and
+ * `hold:<extension>` (that extension may keep its sessions loaded while no one watches).
+ */
+export type SwitchType = ItemType | "tool" | "routine" | "hold";
+export const SWITCH_PREFIX: Record<SwitchType, string> = {
   instructions: "instruction",
   skills: "skill",
   prompts: "prompt",
   extensions: "extension",
   mcp: "mcp",
   tool: "tool",
+  routine: "routine",
+  hold: "hold",
 };
-export const switchName = (type: ItemType | "tool", name: string) =>
+export const switchName = (type: SwitchType, name: string) =>
   `${SWITCH_PREFIX[type]}:${name}`;
+
+/**
+ * What a persona (typically an app) offers to run on a schedule: each run is a new session of the
+ * persona. Off until the person switches it on with `routine:<id>`.
+ */
+export interface RoutineDefinition {
+  id: string;
+  name: string;
+  /** Five fields, the server's local time. */
+  cron: string;
+  prompt: string;
+}
 
 /** Contents of persona.json. Files in the persona folder add instructions, skills, prompts and extensions. */
 export interface PersonaDefinition {
@@ -44,6 +63,8 @@ export interface PersonaDefinition {
    * rather than chatted with. Inherited like the folder.
    */
   home?: string;
+  /** What it offers to run on a schedule; inherited like the folder (the nearest layer's list). */
+  routines?: RoutineDefinition[];
 }
 
 /** A persona by ID, or the layer a chat owns after an in-chat edit. */

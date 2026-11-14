@@ -8,13 +8,13 @@ import type { ChatPersona, PersonaSummary, PersonaTarget } from "../../contract/
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { homePaths } from "../home.js";
 import { PersonaStore } from "../personas/store.js";
-import { bindingOf, listPersonas, resolveSetup, type Setup } from "../personas/resolve.js";
+import { bindingOf, listPersonas, resolveSetup, unattendedOf, type Setup } from "../personas/resolve.js";
 import { DEFAULT_PERSONA, validPersonaId } from "../personas/format.js";
 import type { Json } from "../../contract/stream-ops.js";
-import { Chat, validateText, type ChatHost, type RunHandle, type RunResult, type SessionSummary } from "./chat.js";
+import { Chat, extensionName, validateText, type ChatHost, type RunHandle, type RunResult, type SessionSummary } from "./chat.js";
 import { toolChatTitle } from "./chat-title.js";
 import type { SessionRequest } from "./session-tool.js";
-import type { WokenDetails } from "../../contract/wake-protocol.js";
+import type { ReportMode, StatusDetails, WokenDetails } from "../../contract/wake-protocol.js";
 import type { RuntimeConfiguration } from "./configuration.js";
 import { deadline, RuntimeError, runtimeError } from "./errors.js";
 import { readSettings, validSettings, writeSettings } from "./host-settings.js";
@@ -26,8 +26,15 @@ import { RunSlots } from "./run-slots.js";
 import { ChatStorage, validateId } from "./storage.js";
 import { Schedules } from "./schedules.js";
 import { ToolDiscovery } from "./tool-discovery.js";
-import { Wakes } from "./wakes.js";
-import type { ScheduleInput, ScheduleList } from "../../contract/schedule-protocol.js";
+import { Wakes, type Wake } from "./wakes.js";
+import type { Routine, RoutineList, RoutineRun, ScheduleInput, ScheduleList } from "../../contract/schedule-protocol.js";
+import { switchName } from "../../contract/persona-protocol.js";
+import { Routines } from "./routines.js";
+import { Processes, type ProcessEnd } from "./processes.js";
+import type { ProcessRequest } from "./process-tool.js";
+import type { ProcessInfo, ProcessList, ProcessOutput } from "../../contract/process-protocol.js";
+
+type Stored = ReturnType<Processes["get"]>;
 import type { ChatMetadata } from "./storage.js";
 
 /**
@@ -63,6 +70,10 @@ export class SessionRuntime {
   private readonly wakes: Wakes;
   /** The clock: every session's schedules, delivered as wakes. */
   private readonly schedules: Schedules;
+  /** The routines personas offer, each run a new session of the persona. */
+  private readonly routines: Routines;
+  /** Commands sessions run in the background, owned here so they outlive an idle session. */
+  private readonly processes: Processes;
   private unattendedPaused: boolean;
   private ticker?: ReturnType<typeof setInterval>;
   private checking?: Promise<void>;
@@ -113,6 +124,9 @@ export class SessionRuntime {
         if (!chat.published) this.storage.discardUnpublished(chat.id);
       },
       ended: (chat, result) => this.childEnded(chat, result),
+      hold: (chat, request) => this.holdRequest(chat, request),
+      toolsSeen: (fingerprint, paths, tools) => this.tools.remember(fingerprint, paths, tools),
+      processes: { request: (sessionId, request, signal) => this.processRequest(sessionId, request, signal) },
       sessions: { request: (parentId, request) => this.sessionRequest(parentId, request) },
       // A waiting wake goes as soon as its session is free; the minute check catches anything missed.
       freed: () => {
@@ -125,7 +139,7 @@ export class SessionRuntime {
       },
     };
     const sessions = {
-      sessions: () => this.storage.list().map((metadata) => ({ id: metadata.id, archived: !!metadata.archived })),
+      sessions: () => this.storage.list().map((metadata) => ({ id: metadata.id, archived: !!metadata.archived, child: !!metadata.parent })),
       ids: () => this.storage.ids(),
       directory: (id: string) => this.storage.directory(id),
     };
@@ -136,12 +150,19 @@ export class SessionRuntime {
           const chat = this.live.get(id);
           return !chat || (chat.ready && chat.settled);
         },
-        run: async (id, text, details) => {
+        run: async (id, wake, details) => {
           this.admit();
           // A chat whose last run failed starts again from its transcript, as reopening it would.
           const chat = this.live.get(id);
           if (chat?.ready && chat.settled && chat.status === "error") await this.stop(id);
           await this.ensure(id);
+          let text = wake.text;
+          // A child's report: the session's extensions see it first and may take it or reword it.
+          if (wake.report) {
+            const answer = this.get(id).offerChildEnded(wake.report);
+            if (answer?.action === "skip") return { handled: true as const };
+            if (answer?.action === "send") text = answer.text;
+          }
           validateText(text);
           return this.get(id).start(text, details);
         },
@@ -149,9 +170,29 @@ export class SessionRuntime {
       },
       { now: configuration.now, logger, settled: (sessionId, sourceId) => this.schedules.settled(sessionId, sourceId) },
     );
-    this.schedules = new Schedules(sessions, this.wakes, { now: configuration.now, logger });
+    this.schedules = new Schedules({ ...sessions, spawn: (owner, run) => this.spawnRun(owner, run) }, this.wakes, { now: configuration.now, logger });
+    this.routines = new Routines(
+      {
+        personas: () => this.routinePersonas(),
+        runs: (key) => this.runsOf(key),
+        spawn: async (persona, run) => {
+          const doc = await this.createSession({ persona }, { title: run.title, schedule: run.schedule });
+          await this.pruneRuns(run.schedule.id, doc.id);
+          return doc.id;
+        },
+      },
+      this.wakes,
+      { now: configuration.now, logger },
+    );
+    this.processes = new Processes(
+      { ids: () => this.storage.ids(), directory: (id) => this.storage.directory(id), tell: (sessionId, end) => this.processEnded(sessionId, end) },
+      { logger },
+    );
     this.wakes.start();
     this.schedules.start();
+    this.processes.load();
+    // Processes that ended while PiSpark was stopped are told once everything is in place.
+    setImmediate(() => this.processes.announce());
     const tickMs = configuration.wakeTickMs ?? 60_000;
     if (tickMs > 0) {
       this.ticker = setInterval(() => void this.checkWakes(), tickMs);
@@ -174,6 +215,7 @@ export class SessionRuntime {
     this.slots.setLimit(settings.maxRunning);
     this.unattendedPaused = settings.unattendedPaused;
     for (const chat of this.live.values()) chat.changed();
+    void this.keepHeld();
     return this.settings();
   }
   /** The sessions in use; archived ones are left out. */
@@ -236,6 +278,9 @@ export class SessionRuntime {
       ...(chat?.asking ? { waiting: true } : {}),
       ...(chat?.waitingForSlot || (!chat && metadata.queued !== undefined) ? { queued: true } : {}),
       ...(metadata.parent ? { parent: metadata.parent } : {}),
+      ...(metadata.schedule ? { schedule: { ...metadata.schedule } } : {}),
+      ...(metadata.held ? { held: { ...metadata.held } } : {}),
+      ...(this.processes?.runningIn(metadata.id) ? { processes: this.processes.runningIn(metadata.id) } : {}),
     };
   }
   /** The chat's own layer once it has one, else the persona it started with. */
@@ -289,12 +334,12 @@ export class SessionRuntime {
     if (!this.accepting) return;
     const now = Date.now();
     for (const [id, chat] of this.live)
-      if (chat.unloadable && now - chat.lastUsed >= this.idleUnload) void this.stop(id).catch(() => {});
+      if (chat.unloadable && !this.holding(chat.metadata) && now - chat.lastUsed >= this.idleUnload) void this.stop(id).catch(() => {});
   }
   /** Above the backstop, idle chats unload first, least recently used first. Nobody is refused. */
   private async makeRoom(): Promise<void> {
     while (this.live.size >= this.maxLive) {
-      const idle = [...this.live.values()].filter((chat) => chat.unloadable).sort((a, b) => a.lastUsed - b.lastUsed);
+      const idle = [...this.live.values()].filter((chat) => chat.unloadable && !this.holding(chat.metadata)).sort((a, b) => a.lastUsed - b.lastUsed);
       if (!idle.length) return;
       await this.stop(idle[0]!.id).catch(() => {});
     }
@@ -316,7 +361,7 @@ export class SessionRuntime {
   /** `create`, after its input is checked; a child session also names its parent. */
   private async createSession(
     request: { folder?: string; model?: ModelChoice; persona?: string },
-    child: Pick<ChatMetadata, "parent" | "report" | "title"> = {},
+    child: Pick<ChatMetadata, "parent" | "report" | "title" | "schedule"> = {},
   ): Promise<SessionDoc> {
     this.admit();
     // Only above the backstop is there anything to wait for; below it, admission stays immediate.
@@ -424,7 +469,9 @@ export class SessionRuntime {
       if (this.live.has(each)) await this.stop(each);
       const metadata = this.storage.read(each);
       if (metadata.queued !== undefined || this.live.has(each)) throw new RuntimeError("busy");
-      this.storage.write({ ...metadata, archived: true });
+      const { held: _held, ...kept } = metadata;
+      this.storage.write({ ...kept, archived: true });
+      this.processes.stopSession(each);
     }
   }
   /** Brings a session back, with its children. */
@@ -453,6 +500,7 @@ export class SessionRuntime {
       this.layered.delete(each);
       this.schedules.forget(each);
       this.wakes.forget(each);
+      this.processes.forget(each);
     }
     // A deleted child's reports are no longer kept by its parent.
     if (metadata.parent) this.wakes.forgetSource(metadata.parent, id);
@@ -483,6 +531,7 @@ export class SessionRuntime {
   /** The session tool's requests (the agent's, or an extension's in that session): its own children only. */
   private async sessionRequest(parentId: string, request: SessionRequest): Promise<{ ok: boolean; text: string }> {
     const parent = this.storage.read(parentId);
+    if (request.action === "report") return this.raise(parent, request.text);
     if (request.action === "start") return this.startChild(parent, request);
     if (request.action === "list") {
       const children = this.childrenOf(parentId);
@@ -548,38 +597,419 @@ export class SessionRuntime {
     } catch {
       /* Named from its first message instead. */
     }
+    const report = request.report ?? "result";
     const doc = await this.createSession(
       { ...(ownFolder ? {} : { folder: parent.cwd }), persona, ...(persona === parent.persona && parent.model ? { model: parent.model } : {}) },
-      { parent: parent.id, ...(request.report === false ? { report: false as const } : {}), ...(title ? { title } : {}) },
+      { parent: parent.id, ...(report !== "result" ? { report } : {}), ...(title ? { title } : {}) },
     );
     const chat = this.get(doc.id);
     void chat.start(request.prompt, this.from(parent)).completion.catch(() => {});
-    return {
-      ok: true,
-      text: `Started "${this.titleOf(chat.metadata)}" (id ${doc.id}). It works on its own; ${
-        request.report === false ? "it does not report back (read shows its answer)." : "its answer arrives here as a message when it finishes."
-      }`,
-    };
+    const how = {
+      result: "its answer arrives here as a message when it finishes.",
+      status: "a line here says when it ends, and it raises anything that needs you.",
+      none: "it does not report back (read shows its answer).",
+    }[report];
+    return { ok: true, text: `Started "${this.titleOf(chat.metadata)}" (id ${doc.id}). It works on its own; ${how}` };
   }
-  /** A child's run ended: its answer goes to its parent as a wake, which waits while the parent is busy. */
-  private childEnded(chat: Chat, result: RunResult): void {
-    const { parent, report } = chat.metadata;
-    if (!parent || report === false || !this.accepting) return;
+  /** The parent of a child, while it can be told something: listed and itself not a child. */
+  private parentOf(child: ChatMetadata): ChatMetadata | undefined {
+    if (!child.parent) return undefined;
     try {
-      if (this.storage.read(parent).parent !== undefined) return;
+      const parent = this.storage.read(child.parent);
+      return parent.parent === undefined ? parent : undefined;
     } catch {
-      return;
+      return undefined;
     }
+  }
+  /** A child's run ended: its parent is told as the child's mode says. */
+  private childEnded(chat: Chat, result: RunResult): void {
+    const mode = chat.metadata.report ?? "result";
+    const parent = this.parentOf(chat.metadata);
+    if (!parent || mode === "none" || !this.accepting) return;
     const title = this.titleOf(chat.metadata);
     const how = result.outcome === "completed" ? "finished" : result.outcome === "cancelled" ? "stopped" : "failed";
     const answer = result.outcome === "completed" ? chat.lastReply() : undefined;
     const body = answer ? (answer.length > 8192 ? `${answer.slice(0, 8192)}…\n(cut; read shows all of it)` : answer) : `It ${how} without an answer.`;
-    void this.wakes.deliver(parent, {
+    const data = chat.resultData;
+    const report = { session: chat.id, title, how, mode, text: body, ...(data !== undefined ? { data } : {}) };
+    if (mode === "status") return void this.statusLine(parent, report).catch((error: unknown) => {
+      this.logger.event("wake.failure", { sessionId: parent.id, outcome: "failed", code: runtimeError(error, "execution").code });
+    });
+    void this.wakes.deliver(parent.id, {
       source: { kind: "session", id: chat.id, label: `${title} · ${how}` },
-      text: `The session "${title}" you started ${how}:\n\n${body}`,
+      text: `The session "${title}" you started ${how}:\n\n${body}${data !== undefined ? `\n\nIts data:\n${JSON.stringify(data, null, 2)}` : ""}`,
+      due: new Date(this.now()).toISOString(),
+      policy: "queue",
+      report,
+    });
+  }
+  /**
+   * Status mode: a line in the parent's conversation, without a turn. Its extensions see the end
+   * first and may take it (no line) or turn it into a message that wakes the agent.
+   */
+  private async statusLine(parent: ChatMetadata, report: NonNullable<Wake["report"]>): Promise<void> {
+    if (parent.archived) return;
+    await this.ensure(parent.id);
+    const chat = this.get(parent.id);
+    const answer = chat.offerChildEnded(report);
+    if (answer?.action === "skip") return;
+    if (answer?.action === "send")
+      return this.wakes.deliver(parent.id, {
+        source: { kind: "session", id: report.session, label: `${report.title} · ${report.how}` },
+        text: answer.text,
+        due: new Date(this.now()).toISOString(),
+        policy: "queue",
+      });
+    chat.addStatus(`The session "${report.title}" you started ${report.how}.`, { session: report.session, title: report.title, how: report.how });
+  }
+  /** A child in status mode raises something: its text wakes its parent, whose extensions see it first. */
+  private raise(child: ChatMetadata, text: string): { ok: boolean; text: string } {
+    const parent = this.parentOf(child);
+    if (!parent || child.report !== "status") return { ok: false, text: "Only a session started by another one, in status mode, can raise things with it." };
+    const title = this.titleOf(child);
+    void this.wakes.deliver(parent.id, {
+      source: { kind: "session", id: child.id, label: `${title} · raised` },
+      text: `The session "${title}" you started raises this:\n\n${text}`,
+      due: new Date(this.now()).toISOString(),
+      policy: "queue",
+      report: { session: child.id, title, how: "raised", mode: "status", text },
+    });
+    return { ok: true, text: "Raised with the session that started this one." };
+  }
+
+  // ---- Runs in a new session ------------------------------------------------------------------
+
+  /** Runs of one schedule or routine kept in use; older ones are archived as new ones start. */
+  private static readonly RUNS_KEPT = 10;
+  /**
+   * A schedule's run in its own session: a child of the owner, with the owner's persona, folder and
+   * model, named for the run. The clock sends it the prompt.
+   */
+  private async spawnRun(owner: string, run: { title: string; report: ReportMode; schedule: { id: string; due: string } }): Promise<string> {
+    const parent = this.storage.read(owner);
+    if (parent.parent || parent.archived) throw new RuntimeError("busy");
+    let ownFolder = false;
+    try {
+      ownFolder = !!bindingOf(this.personas, { persona: parent.persona }).folder;
+    } catch {
+      throw new RuntimeError("persona");
+    }
+    const doc = await this.createSession(
+      { ...(ownFolder ? {} : { folder: parent.cwd }), persona: parent.persona, ...(parent.model ? { model: parent.model } : {}) },
+      { parent: owner, title: run.title, schedule: run.schedule, ...(run.report !== "result" ? { report: run.report } : {}) },
+    );
+    await this.pruneRuns(run.schedule.id, doc.id);
+    return doc.id;
+  }
+  /**
+   * Keeps the newest runs of a schedule or routine in use: older ones that have settled and wait for
+   * nobody are archived (and can be restored).
+   */
+  private async pruneRuns(schedule: string, keep: string): Promise<void> {
+    const runs = this.storage
+      .list()
+      .filter((metadata) => metadata.schedule?.id === schedule && !metadata.archived && metadata.id !== keep)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(SessionRuntime.RUNS_KEPT - 1);
+    for (const old of runs) {
+      const chat = this.live.get(old.id);
+      if (chat && (!chat.settled || chat.asking)) continue;
+      await this.archive(old.id).catch(() => {});
+    }
+  }
+
+  // ---- Processes ------------------------------------------------------------------------------
+
+  /** The sessions whose processes a session may see: its own and its children's. */
+  private processSessions(sessionId: string): string[] {
+    return [sessionId, ...this.childrenOf(sessionId).map((child) => child.id)];
+  }
+  /** The process tool's requests (the agent's, or an extension's in that session). */
+  private async processRequest(sessionId: string, request: ProcessRequest, signal?: AbortSignal): Promise<{ ok: boolean; text: string }> {
+    const metadata = this.storage.read(sessionId);
+    const describe = (p: ProcessInfo) =>
+      `${p.id}: ${p.title ? `${p.title} (${p.command})` : p.command} — ${
+        p.state === "running" ? `running since ${p.startedAt}` : `${p.ended ? p.ended.replace("-", " ") : p.state}${p.exitCode !== undefined ? ` (exit ${p.exitCode})` : ""}`
+      }${p.sessionId !== sessionId ? ` [started by ${this.titleOf(this.storage.read(p.sessionId))}]` : ""}`;
+    const waited = async (process: Stored, wait: { waitFor?: string; timeoutSeconds?: number }, since: number) => {
+      if (wait.waitFor === undefined) return "";
+      let pattern: RegExp;
+      try {
+        pattern = new RegExp(wait.waitFor, "i");
+      } catch {
+        throw new RuntimeError("invalid-input");
+      }
+      const result = await this.processes.wait(process, pattern, since, wait.timeoutSeconds! * 1000, signal);
+      // What follows the line it waited for (a server's URL after "ready") usually comes at once:
+      // a moment more of output, until it goes quiet for a quarter second, at most half a second.
+      if (result === "matched")
+        for (const end = Date.now() + 500; Date.now() < end; ) {
+          const before = process.written;
+          await new Promise((done) => setTimeout(done, 250));
+          if (process.written === before) break;
+        }
+      return { matched: `The output shows /${wait.waitFor}/.`, ended: "It ended before the output showed that.", timeout: `Not seen within ${wait.timeoutSeconds} s.` }[result] + "\n";
+    };
+    const output = (process: Stored) => {
+      const out = this.processes.unread(process, sessionId);
+      return `${out.cut ? "(older output was cut)\n" : ""}${out.text.trim() ? out.text : "(no new output)"}`;
+    };
+    switch (request.action) {
+      case "start": {
+        const folder = request.folder ? (isAbsolute(request.folder) ? request.folder : join(metadata.cwd, request.folder)) : metadata.cwd;
+        const started = this.processes.start(sessionId, {
+          command: request.command,
+          folder,
+          ...(request.title ? { title: request.title } : {}),
+          report: request.report ?? "result",
+          ...(request.stopAfterSeconds ? { stopAfterSeconds: request.stopAfterSeconds } : {}),
+        });
+        this.live.get(sessionId)?.changed();
+        const process = this.processes.get(started.id, [sessionId]);
+        // Its first output, or what it was asked to wait for.
+        const note = request.waitFor !== undefined ? await waited(process, request, 0) : (await this.processes.wait(process, undefined, 0, 1000, signal), "");
+        return { ok: true, text: `Started ${describe(this.processes.get(started.id, [sessionId]))} in ${folder}.\n${note}${output(process)}` };
+      }
+      case "list": {
+        const all = this.processSessions(sessionId).flatMap((id) => this.processes.list(id));
+        return { ok: true, text: all.length ? all.map(describe).join("\n") : "No processes." };
+      }
+      case "output": {
+        const process = this.processes.get(request.id, this.processSessions(sessionId));
+        const note = await waited(process, request, process.cursors[sessionId] ?? process.written);
+        return { ok: true, text: `${describe(process)}\n${note}${output(process)}` };
+      }
+      case "watch":
+      case "unwatch": {
+        const process = this.processes.get(request.id, this.processSessions(sessionId));
+        this.processes.watch(process, request.pattern, request.action === "unwatch" ? "remove" : (request.report ?? "result"));
+        return { ok: true, text: request.action === "watch" ? `Watching for /${request.pattern}/; at most one wake a minute.` : "No longer watching that." };
+      }
+      case "stop": {
+        const process = this.processes.get(request.id, this.processSessions(sessionId));
+        if (process.state !== "running") return { ok: true, text: "It is not running." };
+        this.processes.stop(process.id, "agent");
+        await this.processes.wait(process, /$^/, process.written, 5000);
+        return { ok: true, text: "Stopped." };
+      }
+    }
+  }
+  /** A process ended (or a watch matched): its session is told as the mode says. */
+  private processEnded(sessionId: string, end: ProcessEnd): void {
+    this.live.get(sessionId)?.changed();
+    if (end.mode === "none" || !this.accepting) return;
+    let metadata: ChatMetadata;
+    try {
+      metadata = this.storage.read(sessionId);
+    } catch {
+      return;
+    }
+    if (metadata.archived) return;
+    const title = end.process.title ?? end.process.command;
+    const short = title.length > 80 ? `${title.slice(0, 79)}…` : title;
+    if (end.mode === "status") {
+      void this.statusIn(sessionId, `The process "${short}" ${end.how}.`, { process: end.process.id, title: short, how: end.how }).catch(() => {});
+      return;
+    }
+    void this.wakes.deliver(sessionId, {
+      source: { kind: "process", id: end.process.id, label: `${short} · ${end.how}`.slice(0, 200) },
+      text: `The process "${short}" ${end.how}${end.watch ? `:\n${end.watch}` : "."}\n\nLast output:\n${end.tail.trim() || "(none)"}`,
       due: new Date(this.now()).toISOString(),
       policy: "queue",
     });
+  }
+  /** A status line in a session's conversation, loading it if needed. */
+  private async statusIn(sessionId: string, text: string, details: StatusDetails): Promise<void> {
+    await this.ensure(sessionId);
+    this.get(sessionId).addStatus(text, details);
+  }
+  /** A session's processes, for clients. */
+  listProcesses(sessionId: string): ProcessInfo[] {
+    validateId(sessionId);
+    this.storage.read(sessionId);
+    return this.processes.list(sessionId);
+  }
+  /** Every process still running, with its session's title. */
+  runningProcesses(): ProcessList {
+    return {
+      processes: this.processes.running().map((p) => {
+        let title: string | undefined;
+        try {
+          title = this.storage.read(p.sessionId).title;
+        } catch {
+          /* Its session is gone. */
+        }
+        return { ...p, session: title ? { title } : {} };
+      }),
+    };
+  }
+  processOutput(sessionId: string, id: string, since: number): ProcessOutput {
+    validateId(sessionId);
+    if (!Number.isSafeInteger(since) || since < 0) throw new RuntimeError("invalid-input");
+    return this.processes.read(this.processes.get(id, [sessionId]), since);
+  }
+  /** The person stops a process; its session is told. */
+  stopProcess(sessionId: string, id: string): void {
+    validateId(sessionId);
+    this.processes.stop(this.processes.get(id, [sessionId]).id, "person");
+  }
+
+  // ---- Hold -----------------------------------------------------------------------------------
+
+  /** Whether a session is kept loaded now: held, and not while unattended work is paused. */
+  private holding(metadata: ChatMetadata): boolean {
+    return !!metadata.held && !this.unattendedPaused;
+  }
+  /** The extension names a session's persona loads. */
+  private extensionsOf(metadata: ChatMetadata): string[] {
+    try {
+      return resolveSetup(this.personas, this.target(metadata)).extensionPaths.map(extensionName);
+    } catch {
+      return [];
+    }
+  }
+  /** Whether the session's persona allows the extension to hold (`hold:<extension>`). */
+  private holdAllowed(metadata: ChatMetadata, extension: string): boolean {
+    try {
+      return unattendedOf(this.personas, this.target(metadata)).holds.includes(extension);
+    } catch {
+      return false;
+    }
+  }
+  /**
+   * An extension asks to keep its session loaded (or lets go). Allowed by the persona, it is held at
+   * once; otherwise the person is asked in the chat (`holdAsked`) and the extension told so.
+   */
+  private holdRequest(chat: Chat, request: { extension: string; hold: boolean; reason: string }) {
+    const metadata = chat.metadata;
+    if (!request.hold) {
+      if (chat.holdAsked?.extension === request.extension) chat.holdAsked = undefined;
+      if (metadata.held?.extension === request.extension) {
+        delete metadata.held;
+        this.storage.write(metadata);
+      }
+      chat.changed();
+      return { state: "released" as const, text: "Released: the session unloads when it is idle." };
+    }
+    if (!this.extensionsOf(metadata).includes(request.extension))
+      return { state: "refused" as const, text: `This session has no extension called "${request.extension}".` };
+    if (metadata.held && metadata.held.extension !== request.extension)
+      return { state: "refused" as const, text: `"${metadata.held.extension}" already keeps this session loaded.` };
+    if (!this.holdAllowed(metadata, request.extension)) {
+      chat.holdAsked = { extension: request.extension, reason: request.reason };
+      chat.changed();
+      return { state: "asked" as const, text: "The person is asked to allow it; until then the session unloads when idle." };
+    }
+    chat.holdAsked = undefined;
+    metadata.held = { extension: request.extension, reason: request.reason };
+    this.storage.write(metadata);
+    chat.changed();
+    return { state: "held" as const, text: "Held: the session stays loaded while no one watches, and is loaded again after a restart." };
+  }
+  /**
+   * The person answers a hold request: allowing it switches `hold:<extension>` on in the persona
+   * (so its other sessions may hold too) and holds this session; "Not now" forgets the request.
+   */
+  answerHold(id: string, allow: unknown): void {
+    if (typeof allow !== "boolean") throw new RuntimeError("invalid-input");
+    const chat = this.get(id);
+    const asked = chat.holdAsked;
+    if (!asked) throw new RuntimeError("not-found");
+    chat.holdAsked = undefined;
+    if (allow) {
+      this.setSwitch(chat.metadata.persona, switchName("hold", asked.extension), true);
+      chat.metadata.held = { ...asked };
+      this.storage.write(chat.metadata);
+    }
+    chat.changed();
+  }
+  /** The person lets go of a hold: the session unloads when idle. The persona still allows it. */
+  releaseHold(id: string): void {
+    validateId(id);
+    const chat = this.live.get(id);
+    const metadata = chat?.metadata ?? this.storage.read(id);
+    if (!metadata.held) return;
+    delete metadata.held;
+    this.storage.write(metadata);
+    chat?.changed();
+  }
+  /**
+   * Held sessions as they should be: loaded (after a restart, or when Pause all ends), unloaded while
+   * paused, and let go once their persona no longer allows it.
+   */
+  private async keepHeld(): Promise<void> {
+    for (const metadata of this.storage.list()) {
+      if (!metadata.held || metadata.archived || !this.accepting) continue;
+      const chat = this.live.get(metadata.id);
+      if (!this.holdAllowed(metadata, metadata.held.extension)) {
+        const { held: _held, ...kept } = chat?.metadata ?? metadata;
+        if (chat) delete chat.metadata.held;
+        this.storage.write(chat?.metadata ?? kept);
+        chat?.changed();
+        continue;
+      }
+      try {
+        if (this.unattendedPaused) {
+          if (chat?.settled && chat.observers.size === 0) await this.stop(metadata.id);
+        } else if (!chat) await this.ensure(metadata.id);
+      } catch (error) {
+        this.logger.event("wake.failure", { sessionId: metadata.id, outcome: "failed", code: runtimeError(error, "execution").code });
+      }
+    }
+  }
+  /** Turns a `type:name` switch on or off in a persona's own definition. */
+  private setSwitch(persona: string, name: string, on: boolean): void {
+    const { definition, revision } = this.personas.read({ persona });
+    const without = (list?: string[]) => (list ?? []).filter((value) => value !== name);
+    const next: typeof definition = { ...definition, on: [...without(definition.on), ...(on ? [name] : [])], off: [...without(definition.off), ...(on ? [] : [name])] };
+    if (!next.on!.length) delete next.on;
+    if (!next.off!.length) delete next.off;
+    this.personas.save({ persona }, revision, next);
+  }
+
+  // ---- Routines -------------------------------------------------------------------------------
+
+  /** Every persona that offers routines, with which are switched on. One that cannot be read offers none. */
+  private routinePersonas() {
+    return listPersonas(this.personas).flatMap((persona) => {
+      if (!persona.valid) return [];
+      try {
+        const { routines } = unattendedOf(this.personas, { persona: persona.id });
+        return routines.length ? [{ id: persona.id, name: persona.name, ...(persona.home ? { home: persona.home } : {}), routines }] : [];
+      } catch {
+        return [];
+      }
+    });
+  }
+  /** The sessions a schedule's or routine's runs made, newest first. */
+  private runsOf(key: string): RoutineRun[] {
+    return this.storage
+      .list()
+      .filter((metadata) => metadata.schedule?.id === key)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((metadata) => ({
+        session: metadata.id,
+        due: metadata.schedule!.due,
+        ...(metadata.title ? { title: metadata.title } : {}),
+        ...(metadata.archived ? { archived: true as const } : {}),
+      }));
+  }
+  listRoutines(): RoutineList {
+    return { paused: this.unattendedPaused, routines: this.routines.list() };
+  }
+  /** Switches a routine on or off: an ordinary switch (`routine:<id>`) in the persona's own definition. */
+  setRoutine(persona: string, id: string, on: unknown): Routine {
+    if (!validPersonaId(persona) || typeof id !== "string" || typeof on !== "boolean") throw new RuntimeError("invalid-input");
+    if (!this.routinePersonas().find((p) => p.id === persona)?.routines.some((r) => r.id === id)) throw new RuntimeError("not-found");
+    this.setSwitch(persona, switchName("routine", id), on);
+    if (on) this.routines.switchedOn(persona, id);
+    return this.routines.list().find((r) => r.persona.id === persona && r.id === id)!;
+  }
+  /** Run now, with the person watching. */
+  runRoutine(persona: string, id: string): Promise<void> {
+    if (!this.accepting) throw new RuntimeError("closed");
+    if (!validPersonaId(persona) || typeof id !== "string") throw new RuntimeError("invalid-input");
+    return this.routines.runNow(persona, id);
   }
 
   // ---- Schedules ------------------------------------------------------------------------------
@@ -623,6 +1053,8 @@ export class SessionRuntime {
     if (!this.accepting) return Promise.resolve();
     return (this.checking ??= (async () => {
       await this.schedules.check();
+      await this.routines.check();
+      await this.keepHeld();
       await this.wakes.drain();
     })().finally(() => (this.checking = undefined)));
   }
@@ -635,6 +1067,7 @@ export class SessionRuntime {
     const results = await Promise.allSettled([
       this.checking?.catch(() => {}).then(() => this.wakes.shutdown()) ?? this.wakes.shutdown(),
       this.personas.shutdown(),
+      this.processes.shutdown(),
       ...[...this.live.keys()].map((id) => this.stop(id)),
     ]);
     const failed = results.find((result) => result.status === "rejected");

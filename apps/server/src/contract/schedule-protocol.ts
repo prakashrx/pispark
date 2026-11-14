@@ -1,5 +1,5 @@
-import type { ChatPersona } from "./persona-protocol.js";
-import type { WakeRecord } from "./wake-protocol.js";
+import type { ChatPersona, RoutineDefinition } from "./persona-protocol.js";
+import type { ReportMode, WakeRecord } from "./wake-protocol.js";
 
 /**
  * A schedule belongs to one session and wakes it (a wake whose source is the clock): at the time, its
@@ -18,6 +18,12 @@ export interface Schedule extends ScheduleWhen {
   createdAt: string;
   /** Who added it: the person, or the agent (after the person said yes). */
   by: "person" | "agent";
+  /**
+   * Where each run goes: `here`, this session (the default), or `new`, a new session under it, which
+   * tells this one how it went as `report` says (default `status`).
+   */
+  run?: "here" | "new";
+  report?: ReportMode;
   /** The last runs, newest first; at most ten. */
   runs: WakeRecord[];
   /** When it next runs, while it can. */
@@ -41,4 +47,26 @@ export interface ScheduleInput extends ScheduleWhen {
   sessionId?: string;
   prompt?: string;
   on?: boolean;
+  run?: "here" | "new";
+  report?: ReportMode;
+}
+
+/** A run of a routine (see `RoutineDefinition`): the session it started. */
+export interface RoutineRun {
+  session: string;
+  title?: string;
+  due: string;
+  archived?: true;
+}
+export interface Routine extends RoutineDefinition {
+  persona: { id: string; name: string; home?: string };
+  on: boolean;
+  next?: string;
+  /** Its newest runs that are still sessions, newest first. */
+  runs: RoutineRun[];
+}
+/** `GET /api/routines`. */
+export interface RoutineList {
+  paused: boolean;
+  routines: Routine[];
 }

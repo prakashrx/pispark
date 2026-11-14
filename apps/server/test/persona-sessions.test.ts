@@ -1,3 +1,4 @@
+import { PROCESS_TOOL } from "../src/core/runtime/process-tool.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdir, realpath, writeFile } from "node:fs/promises";
@@ -50,7 +51,7 @@ test("a fresh data root needs no setup: Default gives every chat Pi's built-in t
     await f.runtime.start(chat.id, "read:value.txt").completion;
     assert.deepEqual(
       toolsOf(f.provider.requests[0]!).sort(),
-      [...DEFAULT_TOOLS, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL].sort(),
+      [...DEFAULT_TOOLS, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL, PROCESS_TOOL].sort(),
     );
     assert.match(chatText(f.runtime, chat.id), /WORK-FILE/);
   } finally {

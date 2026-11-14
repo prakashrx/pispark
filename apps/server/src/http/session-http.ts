@@ -83,7 +83,7 @@ function validate(value: unknown): Command {
           ...(c.model === undefined ? [] : ["model"]),
           ...(c.persona === undefined ? [] : ["persona"]),
         ]
-      : ["open", "reload", "cancel", "stop", "archive", "restore", "delete"].includes(String(c.type))
+      : ["open", "reload", "cancel", "stop", "archive", "restore", "delete", "allow-hold", "deny-hold", "release-hold"].includes(String(c.type))
         ? ["sessionId"]
         : ["start", "steer", "follow-up"].includes(String(c.type))
           ? ["sessionId", "text"]
@@ -320,6 +320,13 @@ export class SessionHttp {
         case "delete":
           this.runtime.delete(command.sessionId);
           break;
+        case "allow-hold":
+        case "deny-hold":
+          this.runtime.answerHold(command.sessionId, command.type === "allow-hold");
+          break;
+        case "release-hold":
+          this.runtime.releaseHold(command.sessionId);
+          break;
         case "answer":
           this.runtime.answer(command.sessionId, command.dialogId, command.value);
           break;
@@ -393,6 +400,42 @@ export class SessionHttp {
           this.runtime.removeSchedule(id!);
           sendJson(response, 200, {});
         } else sendJson(response, 200, this.runtime.updateSchedule(id!, (await body(request)) as ScheduleInput));
+        return;
+      }
+      // Processes: every one still running; a session's; one's output after a point; stop one.
+      if (path === "/api/processes" && !url.search && request.method === "GET") {
+        sendJson(response, 200, this.runtime.runningProcesses(), 1024 * 1024);
+        return;
+      }
+      const processes = /^\/api\/sessions\/([\w-]+)\/processes(?:\/([\w-]+)\/(output|stop))?$/.exec(path);
+      if (processes && uuid.test(processes[1]!)) {
+        const [, sessionId, id, action] = processes;
+        if (!action && request.method === "GET" && !url.search) {
+          sendJson(response, 200, { processes: this.runtime.listProcesses(sessionId!) });
+          return;
+        }
+        if (action === "output" && request.method === "GET") {
+          sendJson(response, 200, this.runtime.processOutput(sessionId!, id!, Number(url.searchParams.get("since") ?? "0")), 1024 * 1024);
+          return;
+        }
+        if (action === "stop" && request.method === "POST" && !url.search) {
+          this.runtime.stopProcess(sessionId!, id!);
+          sendJson(response, 202, {});
+          return;
+        }
+      }
+      // Routines personas offer: every one (`GET`), switch one on or off (`POST {on}`), run one now.
+      if (path === "/api/routines" && !url.search && request.method === "GET") {
+        sendJson(response, 200, this.runtime.listRoutines(), 1024 * 1024);
+        return;
+      }
+      const routine = /^\/api\/routines\/([a-z0-9-]+)\/([A-Za-z0-9._-]+)(?:\/(run))?$/.exec(path);
+      if (routine && request.method === "POST" && !url.search) {
+        const [, persona, id, action] = routine;
+        if (action === "run") {
+          await this.runtime.runRoutine(persona!, id!);
+          sendJson(response, 202, {});
+        } else sendJson(response, 200, this.runtime.setRoutine(persona!, id!, ((await body(request)) as { on?: unknown } | undefined)?.on));
         return;
       }
       if (

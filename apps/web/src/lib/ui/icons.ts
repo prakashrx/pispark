@@ -369,6 +369,30 @@ export const icons = {
       },
     },
   ],
+  /** A command running on the host: a process. */
+  terminal: [
+    {
+      tag: "path",
+      attrs: {
+        d: "M4 6l5 5-5 5M11 18h9",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "stroke-width": "1.8",
+      },
+    },
+  ],
+  /** Kept running while no one watches. */
+  pin: [
+    {
+      tag: "path",
+      attrs: {
+        d: "M12 3v4m0 0a4 4 0 0 1 4 4v2l2 3H6l2-3v-2a4 4 0 0 1 4-4Zm0 13v5",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "stroke-width": "1.8",
+      },
+    },
+  ],
   general: [
     {
       tag: "circle",

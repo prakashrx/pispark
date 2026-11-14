@@ -19,6 +19,27 @@ export interface SessionInfo {
   queued?: boolean;
   /** The session that started this one (a child session). */
   parent?: string;
+  /** The schedule or app routine this session is one run of. */
+  schedule?: { id: string; due: string };
+  /** Kept loaded while no one watches, by one of its extensions, and why (see `HoldRequest`). */
+  held?: { extension: string; reason: string };
+  /** How many processes it started are running (see `process-protocol.ts`). */
+  processes?: number;
+}
+/**
+ * An extension asks on its session's Pi bus (`HOLD_CHANNEL`) to keep the session loaded while no one
+ * watches, so its own live work (a bot's connection, a watcher) keeps going and starts again after a
+ * restart; or lets go. Granted only if the persona allows it (`hold:<extension>`); otherwise the
+ * person is asked in the chat. The reply says what happened.
+ */
+export const HOLD_CHANNEL = "pispark:hold";
+export interface HoldRequest {
+  /** The asking extension's name, as its file or folder is called in the persona. */
+  extension: string;
+  hold: boolean;
+  /** What it does while held, in a few words: "listening for Telegram messages". */
+  reason?: string;
+  reply?: (answer: { state: "held" | "asked" | "released" | "refused"; text: string }) => void;
 }
 /**
  * A notice PiSpark showed in an open chat (an extension's message or failure, an answered question),
@@ -152,6 +173,8 @@ export interface SessionDoc extends SessionInfo {
   extensions: ExtensionView;
   /** The commands extensions registered with Pi (`registerCommand`); sending `/name` runs one. */
   commands: SessionCommand[];
+  /** An extension asked to keep this session loaded and the persona does not allow it yet. */
+  holdAsked?: { extension: string; reason: string };
 }
 export interface SessionCommand {
   name: string;
@@ -197,6 +220,8 @@ export type Command = { commandId: string } & (
       persona?: string;
     }
   | { type: "open" | "reload" | "cancel" | "stop" | "archive" | "restore" | "delete"; sessionId: string }
+  /** The person answers an extension's hold request, or lets go of a hold. */
+  | { type: "allow-hold" | "deny-hold" | "release-hold"; sessionId: string }
   | { type: "start" | "steer" | "follow-up"; sessionId: string; text: string }
   /** Answer an extension's question; null dismisses it. */
   | {

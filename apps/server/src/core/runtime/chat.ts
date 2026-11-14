@@ -1,9 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { basename, dirname, join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, EventBus } from "@earendil-works/pi-coding-agent";
 import type { Provider } from "@earendil-works/pi-ai";
-import { NOTICE_ENTRY, type ItemsPage, type LiveDoc, type PartPage, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
+import { HOLD_CHANNEL, NOTICE_ENTRY, type HoldRequest, type ItemsPage, type LiveDoc, type PartPage, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
 import { ExtensionUI } from "../extensions/extension-ui.js";
 import { ExtensionRendering } from "../extensions/extension-render.js";
 import { ExtensionViews } from "../extensions/views.js";
@@ -13,6 +13,8 @@ import type { Setup } from "../personas/resolve.js";
 import type { ChatPersona } from "../../contract/persona-protocol.js";
 import { chatTitle } from "../../contract/chat-title.js";
 import { toolChatTitle } from "./chat-title.js";
+import { validItemName } from "../personas/format.js";
+import { PROCESS_CHANNEL, validProcessMessage, type ProcessRequest } from "./process-tool.js";
 import { createSessionServices, resolveFolder } from "./configuration.js";
 import { deadline, RuntimeError, runtimeError, unsupported } from "./errors.js";
 import type { RuntimeErrorCode } from "./errors.js";
@@ -23,11 +25,21 @@ import type { SessionChange } from "./observation.js";
 import type { ProviderSettings } from "./provider-settings.js";
 import type { RunSlots } from "./run-slots.js";
 import type { ChatMetadata, ChatStorage } from "./storage.js";
-import { WOKEN_ENTRY, type WokenDetails } from "../../contract/wake-protocol.js";
+import { STATUS_ENTRY, WOKEN_ENTRY, type StatusDetails, type WokenDetails } from "../../contract/wake-protocol.js";
 import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
 import { describeSchedule, parseCron } from "../../contract/cron.js";
 import { SCHEDULE_CHANNEL, validMessage, type ScheduleMessage } from "./schedule-tool.js";
-import { SESSION_CHANNEL, SESSION_TOOL, validSessionMessage, type SessionRequest } from "./session-tool.js";
+import {
+  CHILD_ENDED_CHANNEL,
+  REPORT_TOOL,
+  RESULT_CHANNEL,
+  SESSION_CHANNEL,
+  SESSION_TOOL,
+  validResultData,
+  validSessionMessage,
+  type ChildEnded,
+  type SessionRequest,
+} from "./session-tool.js";
 
 export type SessionStatus =
   | "starting"
@@ -57,6 +69,12 @@ export interface SessionSummary {
   queued?: boolean;
   /** The session that started this one. */
   parent?: string;
+  /** The schedule or app routine this session is one run of. */
+  schedule?: { id: string; due: string };
+  /** Kept loaded while no one watches, by one of its extensions. */
+  held?: { extension: string; reason: string };
+  /** How many processes it started are running. */
+  processes?: number;
 }
 export interface RunResult {
   outcome: "completed" | "cancelled" | "failed";
@@ -91,6 +109,14 @@ export interface ChatHost {
   released(chat: Chat): void;
   /** The chat became free (`settled`), so a waiting wake can go. Called outside Pi's listeners. */
   freed?(chat: Chat): void;
+  /** The processes a chat starts and follows, for its agent (`pispark_process`). */
+  readonly processes?: {
+    request(sessionId: string, request: ProcessRequest, signal?: AbortSignal): Promise<{ ok: boolean; text: string }>;
+  };
+  /** The tools a running session of a setup has (`fingerprint`), from Pi's `getAllTools`. */
+  toolsSeen?(fingerprint: string, extensionPaths: string[], tools: { name: string; description?: string; sourceInfo?: { path?: string } }[]): void;
+  /** An extension asks to keep the chat loaded (or lets go). */
+  hold?(chat: Chat, request: { extension: string; hold: boolean; reason: string }): { state: "held" | "asked" | "released" | "refused"; text: string };
   /** One of the chat's runs ended (a child reports back). Called outside Pi's listeners. */
   ended?(chat: Chat, result: RunResult): void;
   /** The sessions a chat starts and follows, for its agent (`pispark_session`). */
@@ -128,7 +154,7 @@ function commandsOf(session: AgentSession): SessionCommand[] {
 }
 
 /** "extensions/notes.ts" and "extensions/notes/index.ts" are both "notes". */
-function extensionName(path: string): string {
+export function extensionName(path: string): string {
   const name = basename(path).replace(/\.[^.]+$/, "");
   return name === "index" ? basename(dirname(path)) : name;
 }
@@ -187,6 +213,12 @@ export class Chat {
   private paused = false;
   /** Answered, the run waits for a slot to go on; called to go on. */
   private resuming?: () => void;
+  /** The session's event bus, where its extensions listen. */
+  private bus?: EventBus;
+  /** Data an extension set for this session's result (`RESULT_CHANNEL`). */
+  resultData?: unknown;
+  /** An extension asked to keep this session loaded; the persona does not allow it yet. */
+  holdAsked?: { extension: string; reason: string };
 
   constructor(
     private readonly host: ChatHost,
@@ -274,6 +306,7 @@ export class Chat {
         views: this.views?.view() ?? [],
       },
       commands: commandsOf(session),
+      ...(this.holdAsked ? { holdAsked: { ...this.holdAsked } } : {}),
     };
   }
   /** The live document: session state, the items in flight and what running tools reported. */
@@ -399,8 +432,16 @@ export class Chat {
       { changed: () => this.changed(), failed: (message) => ui.failed(message), callTimeoutMs: host.callTimeout, points: host.points },
     ));
     const services = await createSessionServices({
-      // A session started by another session cannot start sessions: one level only.
-      setup: metadata.parent ? { ...setup, toolsOff: [...setup.toolsOff, SESSION_TOOL] } : setup,
+      // A session started by another session cannot start sessions: one level only. Only one in
+      // status mode raises things with its parent.
+      setup: {
+        ...setup,
+        toolsOff: [
+          ...setup.toolsOff,
+          ...(metadata.parent ? [SESSION_TOOL] : []),
+          ...(metadata.parent && metadata.report === "status" ? [] : [REPORT_TOOL]),
+        ],
+      },
       cwd,
       agentDir: join(dir, "agent"),
       managed,
@@ -426,7 +467,21 @@ export class Chat {
       host: {
         views,
         schedules: { bind: (bus) => bus.on(SCHEDULE_CHANNEL, (message) => this.scheduleRequest(message)) },
-        sessions: { bind: (bus) => bus.on(SESSION_CHANNEL, (message) => this.sessionRequest(message)) },
+        sessions: {
+          bind: (bus) => {
+            this.bus = bus;
+            const off = [
+              bus.on(SESSION_CHANNEL, (message) => this.sessionRequest(message)),
+              bus.on(HOLD_CHANNEL, (message) => this.holdRequest(message)),
+              bus.on(PROCESS_CHANNEL, (message) => this.processRequest(message)),
+              bus.on(RESULT_CHANNEL, (message) => {
+                const data = (message as { data?: unknown } | undefined)?.data;
+                if (validResultData(data)) this.resultData = structuredClone(data);
+              }),
+            ];
+            return () => off.forEach((each) => each());
+          },
+        },
       },
     });
     const thinkingLevel = setup.settings.thinking ?? "off";
@@ -480,6 +535,8 @@ export class Chat {
     });
     if (this.error) throw new RuntimeError(this.error);
     if (this.closed) throw new RuntimeError("timeout");
+    this.extensionPaths = setup.extensionPaths;
+    this.reportTools();
     metadata.active = false;
     this.setupChanged = false;
     this.status = "idle";
@@ -492,6 +549,33 @@ export class Chat {
     return this.doc();
   }
 
+  /** An extension asks to keep this session loaded, or lets go (`HOLD_CHANNEL`). */
+  private holdRequest(value: unknown): void {
+    const message = value as HoldRequest | undefined;
+    const reply = typeof message?.reply === "function" ? message.reply : () => {};
+    if (
+      !message ||
+      typeof message !== "object" ||
+      !validItemName(message.extension) ||
+      typeof message.hold !== "boolean" ||
+      (message.hold && (typeof message.reason !== "string" || !message.reason.trim() || message.reason.length > 200))
+    )
+      return reply({ state: "refused", text: "Give the extension's name, hold, and (to hold) a short reason." });
+    const answer = this.host.hold?.(this, { extension: message.extension, hold: message.hold, reason: message.reason?.trim() ?? "" }) ?? {
+      state: "refused" as const,
+      text: "Holding is not available here.",
+    };
+    reply(answer);
+  }
+  /** The built-in process tool (or an extension in this session): its own processes and its children's. */
+  private processRequest(value: unknown): void {
+    if (!validProcessMessage(value)) return;
+    value.taken = true;
+    const processes = this.host.processes;
+    void (processes ? processes.request(this.id, value.request, value.signal) : Promise.resolve({ ok: false, text: "Background processes are not available here." }))
+      .catch((error: unknown) => ({ ok: false, text: `That did not work (${runtimeError(error, "execution").code}).` }))
+      .then((answer) => value.reply(answer));
+  }
   /** The built-in session tool (or an extension in this session): its own children only. */
   private sessionRequest(value: unknown): void {
     if (!validSessionMessage(value)) return;
@@ -500,6 +584,43 @@ export class Chat {
     void (sessions ? sessions.request(this.id, value.request) : Promise.resolve({ ok: false, text: "Starting sessions is not available here." }))
       .catch((error: unknown) => ({ ok: false, text: `That did not work (${runtimeError(error, "execution").code}).` }))
       .then((answer) => value.reply(answer));
+  }
+  /**
+   * Tells this chat's extensions that one of its children ended or raised something, before the
+   * agent hears of it. Their synchronous reply decides (see `CHILD_ENDED_CHANNEL`).
+   */
+  offerChildEnded(event: Omit<ChildEnded, "reply">): { action: "skip" } | { action: "send"; text: string } | undefined {
+    if (!this.bus) return undefined;
+    let answer: { action: "skip" } | { action: "send"; text: string } | undefined;
+    const reply: ChildEnded["reply"] = (value) => {
+      if (answer || !value || typeof value !== "object") return;
+      if (value.action === "skip") answer = { action: "skip" };
+      else if (value.action === "send" && typeof value.text === "string" && value.text.trim() && Buffer.byteLength(value.text, "utf8") <= 64 * 1024)
+        answer = { action: "send", text: value.text };
+    };
+    try {
+      this.bus.emit(CHILD_ENDED_CHANNEL, { ...structuredClone(event), reply } satisfies ChildEnded);
+    } catch {
+      /* A failing listener decides nothing. */
+    }
+    return answer;
+  }
+  /** Adds a status line to the conversation without starting a turn; the agent reads it next time. */
+  addStatus(text: string, details: StatusDetails): void {
+    if (!this.session || this.closed) throw new RuntimeError("not-found");
+    void this.session.sendCustomMessage({ customType: STATUS_ENTRY, content: text, display: true, details }, { triggerTurn: false });
+    this.changed();
+  }
+  /** The extension files the session loaded, for naming where a tool came from. */
+  private extensionPaths: string[] = [];
+  /** Tells the host which tools the running session has, so the persona editor knows them too. */
+  private reportTools(): void {
+    if (!this.session || !this.metadata.setup) return;
+    try {
+      this.host.toolsSeen?.(this.metadata.setup, this.extensionPaths, this.session.getAllTools());
+    } catch {
+      /* Only a listing. */
+    }
   }
   /** The agent's last answer in this chat: the text of its last reply that has any. */
   lastReply(): string | undefined {
@@ -730,7 +851,10 @@ export class Chat {
       });
       this.changed();
       const result: RunResult = this.error ? { outcome: "failed", error: this.error } : { outcome: run.cancelled ? "cancelled" : "completed" };
-      setImmediate(() => host.ended?.(this, result));
+      setImmediate(() => {
+        this.reportTools();
+        host.ended?.(this, result);
+      });
       return result;
     };
     return { run, settle };
@@ -739,6 +863,8 @@ export class Chat {
   private begin(text: string, marker?: WokenDetails): Promise<RunResult> {
     const session = this.loaded().session;
     const { settle } = this.mark(text);
+    // Result data belongs to the run that sets it.
+    this.resultData = undefined;
     if (marker) session.sessionManager.appendCustomEntry(WOKEN_ENTRY, marker);
     this.runDone = (async (): Promise<RunResult> => {
       try {

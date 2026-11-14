@@ -46,8 +46,8 @@ Types: `apps/server/src/contract/protocol.ts`, `provider-protocol.ts` and `perso
 | `GET /api/sessions/:uuid/items/:id/parts/:n` | An image part's bytes, or with `?offset=` a chunk of a clipped text part |
 | `GET /api/settings` / `POST /api/settings {maxRunning?, unattendedPaused?}` | PiSpark's own settings, saved in `<home>/settings.json`: how many chats may have an agent working at once (1–32, default 8), and Pause all unattended runs ([wakes](session-runtime.md#wakes)). A change names only what changes |
 | `GET /api/schedules` | `{paused, schedules}`: every [schedule](session-runtime.md#schedules), with its session's title and persona, `next`, `waiting`, `held: "archived"` and its last ten `runs` |
-| `POST /api/schedules {sessionId, cron \| at, prompt, on?}` | Adds a schedule to a session (201); `invalid-input` for a bad time or prompt, `busy` for an archived session |
-| `POST /api/schedules/:id {cron?, at?, prompt?, on?}` | Changes some fields; a new time, or switching on, counts from now |
+| `POST /api/schedules {sessionId, cron \| at, prompt, on?, run?, report?}` | Adds a schedule to a session (201); `invalid-input` for a bad time or prompt, `busy` for an archived session |
+| `POST /api/schedules/:id {cron?, at?, prompt?, on?, run?, report?}` | Changes some fields; a new time, or switching on, counts from now |
 | `POST /api/schedules/:id/run` / `/remove` | Run now (202; `busy` while the session works or waits) / remove |
 | `POST /api/sessions/:uuid/calls` | An extension component's `host.call` (see below) |
 | `GET /api/views/:hash.js` | An extension's compiled Svelte component, addressed by its content; the session document lists them under `extensions.views` ([extensions](extensions.md)) |

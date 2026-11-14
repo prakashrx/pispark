@@ -17,6 +17,7 @@ import { validChoice } from "./provider-storage.js";
 import type { ModelChoice } from "../../contract/provider-protocol.js";
 import { validChatTitle } from "../../contract/chat-title.js";
 import { validPersonaId } from "../personas/format.js";
+import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";
 
 /** `chat.json`: what PiSpark knows about a chat. Pi's JSONL beside it is the transcript. */
 export interface ChatMetadata {
@@ -38,8 +39,12 @@ export interface ChatMetadata {
   archived?: true;
   /** The session that started this one (a child session); its runs report back to it. */
   parent?: string;
-  /** Started with `report: false`: its runs do not report back to its parent. */
-  report?: false;
+  /** How it tells its parent when a run ends; `result` when not given. */
+  report?: ReportMode;
+  /** The schedule or app routine this session is one run of, and when that run was due. */
+  schedule?: { id: string; due: string };
+  /** An extension keeps it loaded while no one watches (`pispark:hold`), and why. */
+  held?: { extension: string; reason: string };
 }
 
 const UUID =
@@ -95,10 +100,21 @@ export class ChatStorage {
         (value.queued !== undefined && (typeof value.queued !== "string" || value.queued.length > 64 * 1024)) ||
         (value.archived !== undefined && value.archived !== true) ||
         (value.parent !== undefined && (typeof value.parent !== "string" || !UUID.test(value.parent))) ||
-        (value.report !== undefined && value.report !== false)
+        (value.report !== undefined && (value.report as unknown) !== false && !validReportMode(value.report)) ||
+        (value.schedule !== undefined &&
+          (!value.schedule ||
+            typeof value.schedule.id !== "string" ||
+            !value.schedule.id ||
+            value.schedule.id.length > 200 ||
+            typeof value.schedule.due !== "string" ||
+            Number.isNaN(new Date(value.schedule.due).getTime()))) ||
+        (value.held !== undefined &&
+          (!value.held || typeof value.held.extension !== "string" || typeof value.held.reason !== "string" || value.held.reason.length > 200))
       )
         throw new Error();
-      return { ...value, id };
+      // `report: false` was the first form of `none`.
+      const report = (value.report as unknown) === false ? { report: "none" as const } : {};
+      return { ...value, ...report, id };
     } catch (error) {
       if (error instanceof RuntimeError) throw error;
       if ((error as NodeJS.ErrnoException).code === "ENOENT")

@@ -5,6 +5,13 @@
   import type { Page } from "../../routes";
   import { useSessions } from "../workspace/session-client.svelte";
   const sessions = useSessions();
+  // What can run without you: schedules, routines switched on, held sessions and running processes.
+  const backgroundCount = $derived(
+    sessions.schedules.schedules.length +
+      sessions.routines.routines.filter((routine) => routine.on).length +
+      sessions.sessions.filter((session) => session.held).length +
+      sessions.processes.running.length,
+  );
   let { page }: { page: Page } = $props();
   let query = $state("");
   const visible = $derived(
@@ -52,8 +59,8 @@
             <span class="flex-1">{link.label}</span>
             {#if link.page === "persona" && sessions.personas.items.length}<span
                 class="text-xs text-subtle">{sessions.personas.items.length}</span
-              >{:else if link.page === "schedules" && sessions.schedules.schedules.length}<span
-                class="text-xs text-subtle">{sessions.schedules.schedules.length}</span
+              >{:else if link.page === "schedules" && backgroundCount}<span
+                class="text-xs text-subtle">{backgroundCount}</span
               >{/if}
           </a>
           {#if link.page === "persona" && page === "persona" && sessions.personas.items.length}

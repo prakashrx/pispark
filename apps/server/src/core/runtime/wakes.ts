@@ -3,10 +3,13 @@ import { join } from "node:path";
 import {
   MAX_RECORDS_KEPT,
   MAX_WAITING_PER_SOURCE,
+  validReportMode,
+  type ReportMode,
   type WakeRecord,
   type WakeSource,
   type WokenDetails,
 } from "../../contract/wake-protocol.js";
+import { validResultData } from "./session-tool.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { writeAtomic } from "../personas/store.js";
 import { RuntimeError, runtimeError } from "./errors.js";
@@ -24,6 +27,11 @@ export interface Wake {
   policy: "latest" | "queue";
   /** It came due while PiSpark was not running. */
   late?: true;
+  /**
+   * A child's report: what the session's extensions are offered before its agent hears of it (see
+   * `CHILD_ENDED_CHANNEL`), with the data an extension in the child set.
+   */
+  report?: { session: string; title: string; how: string; mode: ReportMode; text: string; data?: unknown };
 }
 
 /** What delivery needs from the runtime that holds the sessions. */
@@ -36,8 +44,11 @@ export interface WakeHost {
   directory(sessionId: string): string;
   /** Whether a message could be sent now: the session is not loaded, or loaded with nothing going on. */
   free(sessionId: string): boolean;
-  /** Loads the session if needed and sends the message, which then runs (or waits for a run slot). Throws `busy`. */
-  run(sessionId: string, text: string, details: WokenDetails): Promise<{ completion: Promise<RunResult> }>;
+  /**
+   * Loads the session if needed and sends the message, which then runs (or waits for a run slot).
+   * Throws `busy`. `handled`: an extension in the session took it, and nothing ran.
+   */
+  run(sessionId: string, wake: Wake, details: WokenDetails): Promise<{ completion: Promise<RunResult> } | { handled: true }>;
   /** Pause all unattended runs, from the host's settings. */
   paused(): boolean;
 }
@@ -51,7 +62,8 @@ interface State {
 }
 
 const MAX_TEXT = 64 * 1024;
-const OUTCOMES = ["ran", "failed", "cancelled", "missed"];
+const OUTCOMES = ["ran", "failed", "cancelled", "missed", "started", "handled"];
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const REASONS = ["busy", "off", "paused", "full"];
 
 /** A source in a session, for the runs in flight. */
@@ -62,7 +74,20 @@ const shortString = (value: unknown, max: number): value is string => typeof val
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
 function validSource(value: unknown): value is WakeSource {
-  return object(value) && (value.kind === "schedule" || value.kind === "session") && shortString(value.id, 100) && shortString(value.label, 200);
+  return object(value) && (value.kind === "schedule" || value.kind === "session" || value.kind === "process") && shortString(value.id, 200) && shortString(value.label, 200);
+}
+function validReport(value: unknown): boolean {
+  return (
+    object(value) &&
+    typeof value.session === "string" &&
+    UUID.test(value.session) &&
+    shortString(value.title, 200) &&
+    shortString(value.how, 40) &&
+    validReportMode(value.mode) &&
+    typeof value.text === "string" &&
+    value.text.length <= MAX_TEXT &&
+    (value.data === undefined || validResultData(value.data))
+  );
 }
 function validWake(value: unknown): value is Wake {
   return (
@@ -71,7 +96,8 @@ function validWake(value: unknown): value is Wake {
     shortString(value.text, MAX_TEXT) &&
     validTime(value.due) &&
     (value.policy === "latest" || value.policy === "queue") &&
-    (value.late === undefined || value.late === true)
+    (value.late === undefined || value.late === true) &&
+    (value.report === undefined || validReport(value.report))
   );
 }
 function validRecord(value: unknown): value is WakeRecord {
@@ -82,7 +108,8 @@ function validRecord(value: unknown): value is WakeRecord {
     OUTCOMES.includes(value.outcome as string) &&
     (value.reason === undefined || REASONS.includes(value.reason as string)) &&
     (value.manual === undefined || value.manual === true) &&
-    (value.error === undefined || shortString(value.error, 100))
+    (value.error === undefined || shortString(value.error, 100)) &&
+    (value.session === undefined || (typeof value.session === "string" && UUID.test(value.session)))
   );
 }
 /** What can be read of a stored file; anything malformed is left out. */
@@ -205,7 +232,14 @@ export class Wakes {
     this.running.add(running);
     let completion: Promise<RunResult>;
     try {
-      ({ completion } = await this.host.run(sessionId, wake.text, { source: wake.source, due: wake.due }));
+      const sent = await this.host.run(sessionId, wake, { source: wake.source, due: wake.due });
+      if ("handled" in sent) {
+        this.running.delete(running);
+        this.note(sessionId, wake.source.id, { due: wake.due, at, outcome: "handled", ...how });
+        this.options.settled?.(sessionId, wake.source.id);
+        return true;
+      }
+      ({ completion } = sent);
     } catch (error) {
       this.running.delete(running);
       if (how.manual) throw error;
