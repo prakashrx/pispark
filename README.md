@@ -2,14 +2,14 @@
 
 **Quiet by default. Powerful when you reach for it.**
 
-PiSpark is an open-source workspace for [Pi](https://github.com/earendil-works/pi-mono) agents, in the browser. It runs on your computer or your own server. You start a chat in a folder, the agent works there, and the chat carries on when the browser is closed.
+PiSpark is an open-source workspace for [Pi](https://github.com/earendil-works/pi-mono) agents, in the browser. It runs on your computer or your own server. You start a session with an agent in a folder; it works there and carries on when the browser is closed.
 
-- **Any model Pi supports:** an API key or your Claude or ChatGPT subscription, chosen per chat or project.
-- **[Personas](docs/personas.md)** shape an agent: instructions, skills, `/commands`, extensions and model, layered on a Default.
-- **[Pi extensions](docs/extensions.md)** run as they are, and can add their own interface to the chat, up to a whole app.
-- **Yours:** chats, settings and sign-ins stay in one folder on your machine.
+- **Composable agents:** an agent is a reusable setup of instructions, skills, `/commands`, extensions and model, built on other agents. Give it a folder and it's a project agent; give it its own screen and it's an app.
+- **Any model Pi supports:** an API key or your Claude or ChatGPT subscription, chosen per session or agent.
+- **[Pi extensions](docs/extensions.md)** run as they are, and can add their own interface to a session, up to a whole app.
+- **Yours:** sessions, settings and sign-ins stay in one folder on your machine.
 
-Several chats run at once; chats can be scheduled, run background processes and hand work to other chats.
+Several sessions run at once; sessions can be scheduled, run background processes and hand work to other sessions.
 
 Pi runs the agent. PiSpark hosts the experience. Extensions make it their own. ([VISION.md](VISION.md))
 
@@ -32,6 +32,6 @@ PiSpark opens in your browser. Sign in under **Settings → Providers & models**
 ## Docs
 
 - [Installing, running and updating](docs/install.md): options, a second install, servers, uninstalling
-- [Personas](docs/personas.md) · [Extensions](docs/extensions.md)
+- [Agents](docs/personas.md) · [Extensions](docs/extensions.md)
 - [Development](docs/development.md): building from source, checks and tests · [Architecture](docs/architecture.md)
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [MIT license](LICENSE)
