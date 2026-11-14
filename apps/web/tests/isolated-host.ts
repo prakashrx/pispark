@@ -40,6 +40,7 @@ export async function isolatedHost(info: TestInfo) {
       "ProgramFiles(x86)",
       "ProgramW6432",
       "LOCALAPPDATA",
+      "PISPARK_DEBUG_PROCESSES",
     ])
       if (process.env[key]) env[key] = process.env[key];
     child = fork(resolve("../server/test/fixtures/browser-host.ts"), [root], {
