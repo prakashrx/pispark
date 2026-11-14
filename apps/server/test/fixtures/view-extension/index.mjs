@@ -4,8 +4,8 @@ const file = (name) => new URL(name, import.meta.url);
 const show = (pi, view) => pi.events.emit("pispark:view", view);
 
 export default function (pi) {
-  // The count is the chat's state: saved in Pi's session with appendEntry, and read back from the
-  // chat's branch when the session starts, so it survives a restart and follows forks.
+  // The count is the session's state: saved in Pi's session with appendEntry, and read back from the
+  // session's branch when the session starts, so it survives a restart and follows forks.
   let count = 0;
   pi.on("session_start", (_event, ctx) => {
     const saved = ctx.sessionManager.getBranch().findLast((entry) => entry.type === "custom" && entry.customType === "counter");

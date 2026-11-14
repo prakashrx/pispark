@@ -3,8 +3,8 @@
   import Input from "../../lib/ui/Input.svelte";
   import Textarea from "../../lib/ui/Textarea.svelte";
   import Selector from "../../lib/ui/Selector.svelte";
-  import type { PersonaClient } from "./persona-client.svelte";
-  let { client }: { client: PersonaClient } = $props();
+  import type { AgentClient } from "./agent-client.svelte";
+  let { client }: { client: AgentClient } = $props();
   let query = $state("");
   let creating = $state(false);
   let name = $state("");
@@ -33,20 +33,20 @@
 </script>
 
 <header
-  class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-6 persona-heading"
+  class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-6 agent-heading"
 >
   <div class="space-y-2">
-    <h1 class="text-[1.75rem] leading-[1.2] font-[650] tracking-[-0.02em]">Personas</h1>
+    <h1 class="text-[1.75rem] leading-[1.2] font-[650] tracking-[-0.02em]">Agents</h1>
     <p class="text-sm text-muted-foreground mt-1">
       Reusable setups of instructions, skills, commands and tools. Each builds on Default.
     </p>
   </div>
-  <Button variant="primary" onclick={() => (creating = true)}>New persona</Button>
+  <Button variant="primary" onclick={() => (creating = true)}>New agent</Button>
 </header>
 {#if creating}
   <form
-    class="new-persona space-y-3"
-    aria-label="New persona"
+    class="new-agent space-y-3"
+    aria-label="New agent"
     onsubmit={(event) => {
       event.preventDefault();
       void create();
@@ -59,50 +59,50 @@
     <div class="flex justify-end gap-2">
       <Button variant="ghost" onclick={() => (creating = false)}>Cancel</Button>
       <Button variant="primary" type="submit" unavailable={!name.trim() ? "Add a name" : client.busy ? "Creating…" : undefined}
-        >Create persona</Button
+        >Create agent</Button
       >
     </div>
   </form>
 {/if}
-{#if client.items.length > 6}<Input label="Search personas" placeholder="Search personas…" bind:value={query} />{/if}
+{#if client.items.length > 6}<Input label="Search agents" placeholder="Search agents…" bind:value={query} />{/if}
 {#if client.error}<p role="alert" class="inline-note" data-tone="danger">{client.error}</p>{/if}
-{#if client.loading && !client.items.length}<p role="status" class="text-sm text-muted-foreground">Loading personas…</p>{/if}
-<ul class="persona-grid">
+{#if client.loading && !client.items.length}<p role="status" class="text-sm text-muted-foreground">Loading agents…</p>{/if}
+<ul class="agent-grid">
   {#each visible as item (item.id)}
     <li>
       <button
         type="button"
-        class="persona-card"
-        onclick={() => void client.open({ persona: item.id })}
+        class="agent-card"
+        onclick={() => void client.open({ agent: item.id })}
       >
         <span class="avatar" aria-hidden="true">{item.name.slice(0, 1)}</span>
         <span class="min-w-0 flex-1">
           <span class="block font-medium text-[0.9375rem] break-words">{item.name}</span>
           <span class="block text-[0.8125rem] text-muted-foreground mt-0.5 break-words line-clamp-2"
             >{item.builtIn
-              ? "The base of every persona."
+              ? "The base of every agent."
               : item.description ?? (item.base.length ? `Builds on ${item.base.join(", ")}` : "Builds on Default")}</span
           >
           {#if !item.valid}<span class="status" data-tone="warning">Needs attention</span>{/if}
         </span>
       </button>
     </li>
-  {:else}{#if !client.loading}<li class="py-6 text-sm text-muted-foreground">No matching personas.</li>{/if}{/each}
+  {:else}{#if !client.loading}<li class="py-6 text-sm text-muted-foreground">No matching agents.</li>{/if}{/each}
 </ul>
 
 <style>
-  .new-persona {
+  .new-agent {
     padding: 1rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--surface-raised);
   }
-  .persona-grid {
+  .agent-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
     gap: 0.75rem;
   }
-  .persona-card {
+  .agent-card {
     width: 100%;
     height: 100%;
     display: flex;
@@ -116,7 +116,7 @@
     color: var(--foreground);
     transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
   }
-  .persona-card:hover {
+  .agent-card:hover {
     border-color: var(--input);
     box-shadow: var(--shadow-sm);
     transform: translateY(-1px);

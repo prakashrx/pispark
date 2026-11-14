@@ -10,7 +10,7 @@ async function post(transport: Transport, path: string, body?: unknown): Promise
   }
 }
 
-/** The routines personas offer, read with the session list and after every change. */
+/** The routines agents offer, read with the session list and after every change. */
 export class RoutineClient {
   routines = $state<Routine[]>([]);
   loaded = $state(false);
@@ -20,19 +20,19 @@ export class RoutineClient {
     this.routines = Array.isArray(list?.routines) ? list.routines : [];
     this.loaded = true;
   }
-  of(persona: string): Routine[] {
-    return this.routines.filter((routine) => routine.persona.id === persona);
+  of(agent: string): Routine[] {
+    return this.routines.filter((routine) => routine.agent.id === agent);
   }
   async set(routine: Routine, on: boolean): Promise<void> {
     try {
-      await post(this.transport, `/api/routines/${routine.persona.id}/${encodeURIComponent(routine.id)}`, { on });
+      await post(this.transport, `/api/routines/${routine.agent.id}/${encodeURIComponent(routine.id)}`, { on });
     } finally {
       await this.refresh().catch(() => {});
     }
   }
   async run(routine: Routine): Promise<void> {
     try {
-      await post(this.transport, `/api/routines/${routine.persona.id}/${encodeURIComponent(routine.id)}/run`);
+      await post(this.transport, `/api/routines/${routine.agent.id}/${encodeURIComponent(routine.id)}/run`);
     } finally {
       await this.refresh().catch(() => {});
     }

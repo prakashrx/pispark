@@ -108,7 +108,7 @@ test("archiving a parent takes its children along; restore brings them back; del
     assert.deepEqual(f.children(parent.id).map((s) => s.id), [child!.id]);
     await f.runtime.archive(parent.id);
     f.runtime.delete(parent.id);
-    assert.equal(existsSync(join(f.home, "chats", child!.id)), false);
+    assert.equal(existsSync(join(f.home, "sessions", child!.id)), false);
     assert.throws(() => f.runtime.restore(child!.id), (e) => e instanceof RuntimeError && e.code === "not-found");
   } finally {
     await f.cleanup();
@@ -170,8 +170,8 @@ export default function (pi) {
 test("the parent's extensions see a child's end first: they may take it or reword it, with the child's data", async () => {
   const f = await fixture();
   try {
-    await f.persona("orchestrator", { name: "Orchestrator" }, { "extensions/orchestrate.mjs": ORCHESTRATE });
-    const parent = await f.runtime.create({ folder: f.folder, persona: "orchestrator" });
+    await f.agent("orchestrator", { name: "Orchestrator" }, { "extensions/orchestrate.mjs": ORCHESTRATE });
+    const parent = await f.runtime.create({ folder: f.folder, agent: "orchestrator" });
     const submit = `tool:submit:${JSON.stringify({ value: "42" })}`;
     await f.runtime.start(parent.id, call({ action: "start", prompt: submit, title: "Reword" })).completion;
     await eventually(() => f.runtime.items(parent.id, {}).items.some((item) => item.customType === WOKEN_ENTRY));
@@ -183,7 +183,7 @@ test("the parent's extensions see a child's end first: they may take it or rewor
     await f.runtime.start(parent.id, call({ action: "start", prompt: "quiet work", title: "Skip me" })).completion;
     const skipped = f.children(parent.id).find((child) => child.title === "Skip me")!;
     await eventually(() => {
-      const file = JSON.parse(readFileSync(join(f.home, "chats", parent.id, "wakes.json"), "utf8"));
+      const file = JSON.parse(readFileSync(join(f.home, "sessions", parent.id, "wakes.json"), "utf8"));
       return file.records[skipped.id]?.[0]?.outcome === "handled";
     });
     assert.equal(f.runtime.items(parent.id, {}).items.filter((item) => item.customType === WOKEN_ENTRY).length, 1);

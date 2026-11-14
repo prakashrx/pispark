@@ -101,7 +101,7 @@ export function reportBody(text: string): string {
 }
 
 /**
- * Groups the chat's items into turns of ordered segments. Presentation only: tool results attach
+ * Groups the session's items into turns of ordered segments. Presentation only: tool results attach
  * to their call, consecutive calls merge into one activity, and extension notices land where they
  * happened. `running` says the agent is still working on the last turn.
  */
@@ -209,7 +209,7 @@ export function buildTurns(
         ...(typeof d.process === "string" ? { process: d.process } : {}),
       });
     } else if (item.role === "entry" && item.customType === NOTICE_ENTRY) {
-      // A notice the chat kept in its history, where it happened.
+      // A notice the session kept in its history, where it happened.
       const saved = (item.details ?? {}) as { kind?: Notice["kind"]; lines?: StyledLine[] };
       emit(turn, { kind: "notice", key: item.key, notice: { kind: saved.kind ?? "info", lines: Array.isArray(saved.lines) ? saved.lines : [] } });
     } else if (item.role === "custom" || item.role === "entry") {

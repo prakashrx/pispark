@@ -2,10 +2,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { body, sendJson } from "./session-http.js";
 import { correlated } from "../core/logger.js";
-import type { DiscoveredTool, PersonaTarget } from "../contract/persona-protocol.js";
-import type { PersonaStore } from "../core/personas/store.js";
-import { PersonaError } from "../core/personas/format.js";
-import { checkCycles, listPersonas, viewPersona } from "../core/personas/resolve.js";
+import type { DiscoveredTool, AgentTarget } from "../contract/agent-protocol.js";
+import type { AgentStore } from "../core/agents/store.js";
+import { AgentError } from "../core/agents/format.js";
+import { checkCycles, listAgents, viewAgent } from "../core/agents/resolve.js";
 import { RuntimeError } from "../core/runtime/errors.js";
 
 const MAXIMUM = 512 * 1024;
@@ -16,36 +16,36 @@ const plain = (value: unknown): value is Record<string, unknown> =>
 
 /** Exactly the keys an operation takes; anything else is refused. */
 function input(value: unknown, keys: string[], optional: string[] = []) {
-  if (!plain(value)) throw new PersonaError("invalid-input");
+  if (!plain(value)) throw new AgentError("invalid-input");
   for (const key of Object.keys(value))
     if (!keys.includes(key) && !optional.includes(key))
-      throw new PersonaError("invalid-input");
+      throw new AgentError("invalid-input");
   for (const key of keys)
-    if (!(key in value)) throw new PersonaError("invalid-input");
+    if (!(key in value)) throw new AgentError("invalid-input");
   return value;
 }
-function target(value: unknown): PersonaTarget {
+function target(value: unknown): AgentTarget {
   if (!plain(value) || Object.keys(value).length !== 1)
-    throw new PersonaError("invalid-input");
-  if (typeof value.persona === "string") return { persona: value.persona };
-  if (typeof value.chat === "string") return { chat: value.chat };
-  throw new PersonaError("invalid-input");
+    throw new AgentError("invalid-input");
+  if (typeof value.agent === "string") return { agent: value.agent };
+  if (typeof value.session === "string") return { session: value.session };
+  throw new AgentError("invalid-input");
 }
 function revision(value: unknown, allowEmpty = false): string {
   if (typeof value !== "string" || !(REVISION.test(value) || (allowEmpty && !value)))
-    throw new PersonaError("invalid-input");
+    throw new AgentError("invalid-input");
   return value;
 }
 
 /**
- * GET /api/personas, then POST /api/personas/{read,create,save,delete,file/read,file/write,file/delete}.
- * A target is `{ persona: id }` or `{ chat: id }` (a chat's own layer).
+ * GET /api/agents, then POST /api/agents/{read,create,save,delete,file/read,file/write,file/delete}.
+ * A target is `{ agent: id }` or `{ session: id }` (a session's own layer).
  */
-export class PersonaHttp {
+export class AgentHttp {
   constructor(
-    readonly store: PersonaStore,
-    /** The tools a persona's extensions register, found without a session. */
-    private readonly tools?: (target: PersonaTarget) => Promise<{ tools: DiscoveredTool[]; incomplete: boolean } | undefined>,
+    readonly store: AgentStore,
+    /** The tools an agent's extensions register, found without a session. */
+    private readonly tools?: (target: AgentTarget) => Promise<{ tools: DiscoveredTool[]; incomplete: boolean } | undefined>,
   ) {}
   async handle(request: IncomingMessage, response: ServerResponse) {
     const requestId = randomUUID(),
@@ -55,25 +55,25 @@ export class PersonaHttp {
       const path = url.pathname;
       try {
         let result: unknown;
-        if (request.method === "GET" && path === "/api/personas" && !url.search)
-          result = { personas: listPersonas(this.store) };
+        if (request.method === "GET" && path === "/api/agents" && !url.search)
+          result = { agents: listAgents(this.store) };
         else {
           if (request.method !== "POST" || url.search)
-            throw new PersonaError("not-found", 404);
-          const operation = path.slice("/api/personas/".length);
+            throw new AgentError("not-found", 404);
+          const operation = path.slice("/api/agents/".length);
           const value = await body(request, MAXIMUM);
           switch (operation) {
             case "read": {
               const i = input(value, ["target"]);
               const viewed = target(i.target);
-              // Listing a persona's tools loads its extensions; a failure leaves the list as switched.
+              // Listing an agent's tools loads its extensions; a failure leaves the list as switched.
               const discovered = await this.tools?.(viewed).catch(() => undefined);
-              result = viewPersona(this.store, viewed, discovered);
+              result = viewAgent(this.store, viewed, discovered);
               break;
             }
             case "create": {
               const i = input(value, ["name"], ["description", "base"]);
-              if (typeof i.name !== "string") throw new PersonaError("invalid-input");
+              if (typeof i.name !== "string") throw new AgentError("invalid-input");
               result = this.store.create({
                 name: i.name,
                 ...(typeof i.description === "string"
@@ -96,7 +96,7 @@ export class PersonaHttp {
             }
             case "delete": {
               const i = input(value, ["id"]);
-              if (typeof i.id !== "string") throw new PersonaError("invalid-input");
+              if (typeof i.id !== "string") throw new AgentError("invalid-input");
               this.store.remove(i.id);
               result = {};
               break;
@@ -127,16 +127,16 @@ export class PersonaHttp {
               break;
             }
             default:
-              throw new PersonaError("not-found", 404);
+              throw new AgentError("not-found", 404);
           }
         }
         // Encode before headers: an oversized response fails truthfully.
         sendJson(response, 200, result, MAXIMUM);
       } catch (error) {
-        const known = error instanceof PersonaError || error instanceof RuntimeError;
+        const known = error instanceof AgentError || error instanceof RuntimeError;
         const code = known ? error.code : "storage";
         const status =
-          error instanceof PersonaError
+          error instanceof AgentError
             ? error.status
             : error instanceof RuntimeError
               ? 400
@@ -152,7 +152,7 @@ export class PersonaHttp {
           {
             error: code,
             requestId,
-            ...(error instanceof PersonaError && error.detail
+            ...(error instanceof AgentError && error.detail
               ? { detail: error.detail }
               : {}),
           },

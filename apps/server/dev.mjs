@@ -1,7 +1,7 @@
 // Development server: runs src/index.ts and restarts it when a file under src/ is edited.
 //
 // Not `node --watch`: on Windows it also restarts when a file is only read (Windows reports the
-// last-access time update as a change), e.g. each time Pi loads extensions/pispark.ts for a chat;
+// last-access time update as a change), e.g. each time Pi loads extensions/pispark.ts for a session;
 // and with --env-file it watches the whole folder of the .env file. Here a change counts only if
 // the file's modification time or size moved.
 import { spawn } from "node:child_process";

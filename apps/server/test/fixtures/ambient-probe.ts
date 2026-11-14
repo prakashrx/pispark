@@ -7,7 +7,7 @@ import { createSessionServices } from '../../src/core/runtime/configuration.js';
 import { createAgentSession, SessionManager } from '@earendil-works/pi-coding-agent';
 import { ExtensionUI } from '../../src/core/extensions/extension-ui.js';
 import { unsupported } from '../../src/core/runtime/errors.js';
-import type { Setup } from '../../src/core/personas/resolve.js';
+import type { Setup } from '../../src/core/agents/resolve.js';
 
 // HOME/USERPROFILE/PI_CODING_AGENT_DIR point at a planted terminal Pi setup; none of it may load.
 const root = process.argv[2]!;

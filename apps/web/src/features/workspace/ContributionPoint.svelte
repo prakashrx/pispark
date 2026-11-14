@@ -52,7 +52,7 @@
     display: flex;
     flex-direction: column;
   }
-  /* Small things in a row: chips beside the chat title, actions beside Send. */
+  /* Small things in a row: chips beside the session title, actions beside Send. */
   .extension-view[data-point="session.title"],
   .extension-view[data-point="session.input.actions"] {
     display: inline-flex;

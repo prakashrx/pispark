@@ -109,7 +109,7 @@
                 ? out.text || "(no output yet)"
                 : "Reading…"}</pre>
             <p class="mt-1.5 text-xs text-muted-foreground">
-              {process.state === "running" ? "Live" : "Ended"} · kept with this chat (the newest 2 MB){out?.cut ? " · older output was cut" : ""}
+              {process.state === "running" ? "Live" : "Ended"} · kept with this session (the newest 2 MB){out?.cut ? " · older output was cut" : ""}
             </p>
           {/if}
         </li>

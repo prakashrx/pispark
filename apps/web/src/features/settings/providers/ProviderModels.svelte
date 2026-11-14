@@ -33,7 +33,7 @@
     <div>
       <h4 class="text-sm font-semibold">Models</h4>
       <p class="text-[0.8125rem] text-muted-foreground mt-0.5">
-        Pick a default for new chats. Availability isn’t proof of account access.
+        Pick a default for new sessions. Availability isn’t proof of account access.
       </p>
     </div>
     <Button
@@ -49,7 +49,7 @@
     />{/if}
   {#if error}<p class="inline-note" data-tone="danger" role="alert">{error}</p>{/if}
   <fieldset class="model-list">
-    <legend class="sr-only">Default model for new chats</legend>
+    <legend class="sr-only">Default model for new sessions</legend>
     {#each visible as model}
       <Radio
         label={model.name}
@@ -79,7 +79,7 @@
       </p>{/each}
   </fieldset>
   <p class="text-xs text-subtle" role="status">
-    {visible.length} of {provider.models.length} models · Existing chats keep their model.
+    {visible.length} of {provider.models.length} models · Existing sessions keep their model.
   </p>
 </section>
 

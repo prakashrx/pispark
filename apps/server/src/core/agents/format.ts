@@ -1,15 +1,15 @@
 import { createHash } from "node:crypto";
 import { isAbsolute } from "node:path";
-import { SWITCH_PREFIX } from "../../contract/persona-protocol.js";
+import { SWITCH_PREFIX } from "../../contract/agent-protocol.js";
 import type {
   ItemType,
-  PersonaDefinition,
+  AgentDefinition,
   SwitchType,
   ThinkingLevel,
-} from "../../contract/persona-protocol.js";
+} from "../../contract/agent-protocol.js";
 import { nextRun, parseCron } from "../../contract/cron.js";
 
-export class PersonaError extends Error {
+export class AgentError extends Error {
   constructor(
     readonly code: string,
     readonly status = 400,
@@ -19,11 +19,11 @@ export class PersonaError extends Error {
   }
 }
 export const fail = (code: string, status = 400, detail?: string): never => {
-  throw new PersonaError(code, status, detail);
+  throw new AgentError(code, status, detail);
 };
 
-export const DEFAULT_PERSONA = "default";
-/** Pi's built-in tools. The Default persona starts with all of them except powershell. */
+export const DEFAULT_AGENT = "default";
+/** Pi's built-in tools. The Default agent starts with all of them except powershell. */
 export const BUILTIN_TOOLS = [
   "read",
   "bash",
@@ -61,7 +61,7 @@ const ID = /^[a-z0-9][a-z0-9-]{0,47}$/;
 const VIEW_KEY = /^[\w.:-]{1,64}$/;
 export const validItemName = (name: unknown): name is string =>
   typeof name === "string" && NAME.test(name) && !name.endsWith(".");
-export const validPersonaId = (id: unknown): id is string =>
+export const validAgentId = (id: unknown): id is string =>
   typeof id === "string" && ID.test(id);
 
 /** "dev", "dev-2"… from a display name. */
@@ -72,8 +72,8 @@ export function slug(name: string, taken: (id: string) => boolean): string {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 40) || "persona";
-  let id = base === DEFAULT_PERSONA ? "default-2" : base;
+      .slice(0, 40) || "agent";
+  let id = base === DEFAULT_AGENT ? "default-2" : base;
   for (let n = 2; taken(id); n++) id = `${base}-${n}`;
   return id;
 }
@@ -115,12 +115,12 @@ const text = (value: unknown, max: number, required = false) => {
 export function validateDefinition(
   value: unknown,
   {
-    chatLayer = false,
-    // A folder and a home view: not for Default, which every persona builds on, nor for a chat's
+    sessionLayer = false,
+    // A folder and a home view: not for Default, which every agent builds on, nor for a session's
     // own layer, whose session already has both.
-    binds = !chatLayer,
-  }: { chatLayer?: boolean; binds?: boolean } = {},
-): PersonaDefinition {
+    binds = !sessionLayer,
+  }: { sessionLayer?: boolean; binds?: boolean } = {},
+): AgentDefinition {
   if (!plainObject(value)) return fail("invalid-definition", 400, "object");
   const allowed = [
     "name",
@@ -134,7 +134,7 @@ export function validateDefinition(
   ];
   const unknown = Object.keys(value).find((key) => !allowed.includes(key));
   if (unknown) fail("invalid-definition", 400, unknown);
-  text(value.name, 120, !chatLayer);
+  text(value.name, 120, !sessionLayer);
   text(value.description, 1024);
   text(value.folder, 4096);
   if (value.folder !== undefined && !isAbsolute(value.folder as string))
@@ -146,7 +146,7 @@ export function validateDefinition(
       !Array.isArray(value.base) ||
       value.base.length > 8 ||
       new Set(value.base).size !== value.base.length ||
-      value.base.some((id) => !validPersonaId(id) || id === DEFAULT_PERSONA)
+      value.base.some((id) => !validAgentId(id) || id === DEFAULT_AGENT)
     )
       fail("invalid-definition", 400, "base");
   }
@@ -210,7 +210,7 @@ export function validateDefinition(
     }
   }
   if (Buffer.byteLength(JSON.stringify(value)) > 64 * 1024) fail("limit");
-  return structuredClone(value) as unknown as PersonaDefinition;
+  return structuredClone(value) as unknown as AgentDefinition;
 }
 
 /** Relative item file paths the UI may read and write inside one layer folder. */

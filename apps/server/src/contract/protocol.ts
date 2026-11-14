@@ -1,4 +1,4 @@
-import type { ChatPersona } from "./persona-protocol.js";
+import type { SessionAgent } from "./agent-protocol.js";
 import type { DocOp, Json } from "./stream-ops.js";
 /** Client-independent v2 contract. No SDK objects, secrets or file paths. */
 export interface SessionInfo {
@@ -10,9 +10,9 @@ export interface SessionInfo {
   hasHistory?: boolean;
   status: string;
   interrupted: boolean;
-  persona: ChatPersona;
-  /** The persona changed since this session started; reload to apply. */
-  personaChanged?: boolean;
+  agent: SessionAgent;
+  /** The agent changed since this session started; reload to apply. */
+  agentChanged?: boolean;
   /** An extension asked a question and the run waits for an answer. */
   waiting?: boolean;
   /** Waits for a free run slot: a prompt that has not started, or a run resuming after an answer. */
@@ -29,12 +29,12 @@ export interface SessionInfo {
 /**
  * An extension asks on its session's Pi bus (`HOLD_CHANNEL`) to keep the session loaded while no one
  * watches, so its own live work (a bot's connection, a watcher) keeps going and starts again after a
- * restart; or lets go. Granted only if the persona allows it (`hold:<extension>`); otherwise the
- * person is asked in the chat. The reply says what happened.
+ * restart; or lets go. Granted only if the agent allows it (`hold:<extension>`); otherwise the
+ * person is asked in the session. The reply says what happened.
  */
 export const HOLD_CHANNEL = "pispark:hold";
 export interface HoldRequest {
-  /** The asking extension's name, as its file or folder is called in the persona. */
+  /** The asking extension's name, as its file or folder is called in the agent. */
   extension: string;
   hold: boolean;
   /** What it does while held, in a few words: "listening for Telegram messages". */
@@ -42,13 +42,13 @@ export interface HoldRequest {
   reply?: (answer: { state: "held" | "asked" | "released" | "refused"; text: string }) => void;
 }
 /**
- * A notice PiSpark showed in an open chat (an extension's message or failure, an answered question),
+ * A notice PiSpark showed in an open session (an extension's message or failure, an answered question),
  * kept as a custom entry of this type in Pi's session so it stays where it happened. Its item is an
  * `entry` whose `details` are `{ kind, lines, at }`.
  */
 export const NOTICE_ENTRY = "pispark:notice";
 /**
- * One thing in the chat, projected from Pi's session: a message, a summary, or a custom entry.
+ * One thing in the session, projected from Pi's session: a message, a summary, or a custom entry.
  * Content keeps Pi's shape; what is large travels by reference and is read on demand.
  */
 export type ItemPart =
@@ -153,7 +153,7 @@ export interface ExtensionView {
   working?: { message?: string; frames?: StyledLine[]; intervalMs?: number; hidden?: true };
   /** Label for collapsed thinking. */
   thinkingLabel?: string;
-  /** The window (browser tab) title; the chat title is Pi's session name. */
+  /** The window (browser tab) title; the session title is Pi's session name. */
   title?: string;
   /** One extension header (top of the conversation) and footer (replaces the status line). */
   header?: StyledLine[];
@@ -161,19 +161,19 @@ export interface ExtensionView {
   /** Text an extension put into the reply box; apply once per id. */
   draft?: { id: string; text: string; at: number };
 }
-/** Everything about a chat except its history: status, model, queue, and what extensions show. */
+/** Everything about a session except its history: status, model, queue, and what extensions show. */
 export interface SessionDoc extends SessionInfo {
   model?: { provider: string; id: string };
-  /** The prompt waiting for a run slot, while the chat is `queued`. */
+  /** The prompt waiting for a run slot, while the session is `queued`. */
   queuedText?: string;
-  /** That prompt was waiting when PiSpark stopped, and was queued again when the chat opened. */
+  /** That prompt was waiting when PiSpark stopped, and was queued again when the session opened. */
   restored?: true;
   queue: { steering: number; followUp: number };
   error?: string;
   extensions: ExtensionView;
   /** The commands extensions registered with Pi (`registerCommand`); sending `/name` runs one. */
   commands: SessionCommand[];
-  /** An extension asked to keep this session loaded and the persona does not allow it yet. */
+  /** An extension asked to keep this session loaded and the agent does not allow it yet. */
   holdAsked?: { extension: string; reason: string };
 }
 export interface SessionCommand {
@@ -194,7 +194,7 @@ export interface LiveDoc {
 }
 /** PiSpark's own settings. */
 export interface HostSettings {
-  /** How many chats may have an agent working at once; more prompts wait for a turn. */
+  /** How many sessions may have an agent working at once; more prompts wait for a turn. */
   maxRunning: number;
   /**
    * Pause all unattended runs: nothing wakes a session but the person. A schedule's run that comes due
@@ -211,13 +211,13 @@ export type Command = { commandId: string } & (
   | {
       type: "create";
       /**
-       * Absolute path of an existing folder on the backend host. Left out for a project persona,
+       * Absolute path of an existing folder on the backend host. Left out for a project agent,
        * which works in its own folder.
        */
       folder?: string;
       model?: { provider: string; id: string };
-      /** Persona ID; Default when omitted. */
-      persona?: string;
+      /** Agent ID; Default when omitted. */
+      agent?: string;
     }
   | { type: "open" | "reload" | "cancel" | "stop" | "archive" | "restore" | "delete"; sessionId: string }
   /** The person answers an extension's hold request, or lets go of a hold. */
@@ -258,7 +258,7 @@ export type LiveOp =
 export type LiveEvent =
   | { type: "snapshot"; sessionId: string; head: string | null; doc: LiveDoc }
   | { type: "ops"; sessionId: string; seq: number; ops: LiveOp[] }
-  /** The chat is not loaded (it unloaded while idle): open it, then reconnect. */
+  /** The session is not loaded (it unloaded while idle): open it, then reconnect. */
   | { type: "unloaded"; sessionId: string };
 export interface ProtocolError {
   error: string;

@@ -5,7 +5,7 @@
 
 <SettingsPage
   title="Sources"
-  description="Places to find personas and skills."
+  description="Places to find agents and skills."
   label="Sources"
 >
   <div class="settings-card">
@@ -16,10 +16,10 @@
       <div>
         <p class="text-[0.9375rem] font-medium">Not available yet</p>
         <p class="text-sm text-muted-foreground mt-1 max-w-md">
-          Source connections aren’t available yet. You can use local personas and
-          skills in Personas.
+          Source connections aren’t available yet. You can use local agents and
+          skills in Agents.
         </p>
-        <a href="#/persona" class="settings-link mt-3">Manage personas<span aria-hidden="true">→</span></a>
+        <a href="#/agent" class="settings-link mt-3">Manage agents<span aria-hidden="true">→</span></a>
       </div>
     </div>
   </div>

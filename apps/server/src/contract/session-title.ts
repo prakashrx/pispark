@@ -1,5 +1,5 @@
-/** A chat title: one printable line of at most 80 code points. User content: never log it. */
-export function chatTitle(input: string): string {
+/** A session title: one printable line of at most 80 code points. User content: never log it. */
+export function sessionTitle(input: string): string {
   const line =
     input
       .split(/\r\n|[\n\r\u2028\u2029]/u)
@@ -8,11 +8,11 @@ export function chatTitle(input: string): string {
   const points = Array.from(line);
   return points.length > 80 ? points.slice(0, 79).join("") + "…" : line;
 }
-export function validChatTitle(value: unknown): value is string {
+export function validSessionTitle(value: unknown): value is string {
   return (
     typeof value === "string" &&
     !!value &&
     Array.from(value).length <= 80 &&
-    chatTitle(value) === value
+    sessionTitle(value) === value
   );
 }

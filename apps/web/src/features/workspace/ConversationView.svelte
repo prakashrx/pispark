@@ -5,7 +5,7 @@
 
   /**
    * PiSpark's own view of a session: the conversation, and the reply box with what extensions
-   * show around it. It reads the chat it is given (`useSession`) and nothing else about chats.
+   * show around it. It reads the session it is given (`useSession`) and nothing else about sessions.
    */
 </script>
 

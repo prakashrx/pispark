@@ -1,6 +1,6 @@
 <script lang="ts">
   import ThoughtCard from "../ThoughtCard.svelte";
-  import type { Segment } from "../chat-turns";
+  import type { Segment } from "../session-turns";
 
   let { segment }: { segment: Extract<Segment, { kind: "thinking" }> } = $props();
 </script>

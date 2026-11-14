@@ -29,11 +29,11 @@ import {
 } from "./native-model-runtime.js";
 import { ProviderError } from "./provider-errors.js";
 import type { ProviderSettings } from "./provider-settings.js";
-import type { Setup } from "../personas/resolve.js";
+import type { Setup } from "../agents/resolve.js";
 
 /** How a server is started. Only `home` is needed; the rest serve tests. */
 export interface RuntimeConfiguration {
-  /** Data root: chats, personas, providers and logs live under it. */
+  /** Data root: sessions, agents, providers and logs live under it. */
   home: string;
   logging?: { directory?: string; console?: boolean };
   providerSettings?: {
@@ -42,11 +42,11 @@ export interface RuntimeConfiguration {
   };
   /** Tests only: one keyless loopback model instead of Providers & models. */
   fixedModel?: { provider: () => Provider; id: string };
-  /** Loaded chats above which idle ones unload early (default 32); never a refusal. */
+  /** Loaded sessions above which idle ones unload early (default 32); never a refusal. */
   maxLiveSessions?: number;
-  /** How long a chat stays loaded while idle and not on screen (default 15 minutes). */
+  /** How long a session stays loaded while idle and not on screen (default 15 minutes). */
   idleUnloadMs?: number;
-  /** How many chats may run at once; more prompts wait for a turn (default 8). */
+  /** How many sessions may run at once; more prompts wait for a turn (default 8). */
   maxRunning?: number;
   /**
    * The contribution points the client draws, besides the items of a session's history (the
@@ -116,7 +116,7 @@ export async function createSessionServices(options: {
     beforeProviderDispatch: () => void;
   };
   host: {
-    /** Extension components placed with `pispark:view` events on the chat's bus. */
+    /** Extension components placed with `pispark:view` events on the session's bus. */
     views: { bind: (bus: EventBus) => () => void };
     /** The built-in schedule tool's requests, on the same bus. */
     schedules?: { bind: (bus: EventBus) => () => void };
@@ -228,7 +228,7 @@ export async function createSessionServices(options: {
       cwd,
       eventBus,
     );
-    // PiSpark's own tools are reserved: a persona extension may not shadow them.
+    // PiSpark's own tools are reserved: an agent extension may not shadow them.
     const reserved = [...(loadedExtensions.extensions[0]?.tools.keys() ?? [])];
     if (
       loadedExtensions.errors.length ||
@@ -270,7 +270,7 @@ export async function createSessionServices(options: {
     shortcuts: new Map(),
   });
   const prompts = promptTemplates(setup);
-  // A project persona's session reads its folder's context files (AGENTS.md) the way Pi does. The
+  // A project agent's session reads its folder's context files (AGENTS.md) the way Pi does. The
   // agent folder is the session's own, so terminal Pi's global file is never among them.
   const agentsFiles = setup.folder ? loadProjectContextFiles({ cwd, agentDir }) : [];
   const resourceLoader: ResourceLoader = {
@@ -279,7 +279,7 @@ export async function createSessionServices(options: {
     getPrompts: () => ({ prompts: structuredClone(prompts), diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
     getAgentsFiles: () => ({ agentsFiles }),
-    // Pi's own system prompt, with the persona's instructions appended.
+    // Pi's own system prompt, with the agent's instructions appended.
     getSystemPrompt: () => undefined,
     getSystemPromptSource: () => undefined,
     getAppendSystemPrompt: () => setup.instructions.map((i) => i.text),

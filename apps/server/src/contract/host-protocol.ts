@@ -48,7 +48,7 @@ export interface HostStatus {
 }
 
 export interface RunningWork {
-  /** Chats with a reply in progress (or waiting for an answer or a run slot). */
+  /** Sessions with a reply in progress (or waiting for an answer or a run slot). */
   replies: { session: string; title: string }[];
   /** Background processes, which end with the server. */
   processes: { session: string; title: string; name: string }[];

@@ -1,7 +1,7 @@
 import { basename, extname } from "node:path";
 import { createEventBus } from "@earendil-works/pi-coding-agent";
-import type { DiscoveredTool } from "../../contract/persona-protocol.js";
-import type { Setup } from "../personas/resolve.js";
+import type { DiscoveredTool } from "../../contract/agent-protocol.js";
+import type { Setup } from "../agents/resolve.js";
 import { builtInExtension } from "./configuration.js";
 import { loadExplicitExtensions } from "./pi-boundary.js";
 
@@ -11,17 +11,17 @@ export interface Discovered {
   incomplete: boolean;
 }
 
-/** An extension's name as the persona lists it: its folder, or its file without the extension. */
+/** An extension's name as the agent lists it: its folder, or its file without the extension. */
 const extensionName = (path: string) => {
   const file = basename(path);
   return /^index\.[cm]?[jt]s$/.test(file) ? basename(path.slice(0, -file.length - 1)) : basename(file, extname(file));
 };
 
 /**
- * The tools a persona's setup provides, found by running its extensions' factories without starting
+ * The tools an agent's setup provides, found by running its extensions' factories without starting
  * a session (Pi allows it: "Extension factories may run in invocations that never start a session").
  * PiSpark's built-in extension comes first and counts as core. Kept per setup fingerprint, which
- * changes when the persona or its extension files change.
+ * changes when the agent or its extension files change.
  */
 export class ToolDiscovery {
   private readonly found = new Map<string, Promise<Discovered>>();

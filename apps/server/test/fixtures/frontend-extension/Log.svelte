@@ -1,5 +1,5 @@
 <script lang="ts">
-  // A chat frontend an extension owns: the chat as a plain log, with its own input. It is built
+  // A session frontend an extension owns: the session as a plain log, with its own input. It is built
   // only from the `session` it is given, not from anything of PiSpark's own conversation.
   type Part = { type: string; text?: string; name?: string };
   type Item = { key: string; role: string; parts: Part[] };

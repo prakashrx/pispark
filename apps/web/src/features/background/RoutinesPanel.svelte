@@ -5,10 +5,10 @@
   import { describeSchedule, shortDate } from "../../../../server/src/contract/cron";
   import type { Routine } from "../../../../server/src/contract/schedule-protocol";
   import { useSessions } from "../workspace/session-client.svelte";
-  /** The routines a persona offers: each with its switch, next run, recent runs and Run now. */
-  let { persona }: { persona: string } = $props();
+  /** The routines an agent offers: each with its switch, next run, recent runs and Run now. */
+  let { agent }: { agent: string } = $props();
   const client = useSessions();
-  const routines = $derived(client.routines.of(persona));
+  const routines = $derived(client.routines.of(agent));
   let error = $state("");
   let busy = $state<string>();
   $effect(() => void client.routines.refresh().catch(() => {}));
@@ -64,11 +64,11 @@
     </ul>
     <p class="flex items-start gap-2 text-[0.8125rem] text-muted-foreground">
       <Icon name="alert" class="mt-0.5 h-4 w-4 shrink-0" /><span
-        >The persona offers these. Each is off until you switch it on. Runs while you’re away use this persona and its tools, with this server’s
+        >The agent offers these. Each is off until you switch it on. Runs while you’re away use this agent and its tools, with this server’s
         permissions. The newest 10 runs stay listed; older ones are archived.</span
       >
     </p>
-  {:else}<p class="text-sm text-muted-foreground">This persona offers no routines.</p>{/if}
+  {:else}<p class="text-sm text-muted-foreground">This agent offers no routines.</p>{/if}
   {#if error}<p role="alert" class="text-sm text-[var(--danger-foreground)]">{error}</p>{/if}
 </div>
 

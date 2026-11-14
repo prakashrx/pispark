@@ -1,7 +1,7 @@
 <script lang="ts">
   import ExtensionBlock from "../ExtensionBlock.svelte";
   import StreamingMarkdown from "../StreamingMarkdown.svelte";
-  import { itemText, type Segment } from "../chat-turns";
+  import { itemText, type Segment } from "../session-turns";
 
   /** A custom message or entry: the extension's own terminal rendering when it has one, else its text. */
   let { segment }: { segment: Extract<Segment, { kind: "custom" }> } = $props();

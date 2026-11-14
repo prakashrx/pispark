@@ -11,8 +11,8 @@ beforeEach(() => {
           JSON.stringify(
             url === "/api/catalog"
               ? { home: "/home/me", recentFolders: [] }
-              : url.startsWith("/api/personas")
-                ? { personas: [] }
+              : url.startsWith("/api/agents")
+                ? { agents: [] }
                 : url === "/api/providers"
                   ? { providers: [], defaultModel: null, networkBlocked: false }
                   : url === "/api/schedules"
@@ -36,23 +36,23 @@ async function navigate(page: string) {
 
 test("renders truthful unconfigured state and never submits a draft without configuration", async () => {
   render(App);
-  expect(screen.getByRole("heading", { name: "New chat" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "New session" })).toBeTruthy();
   expect(screen.getByRole("main").getAttribute("aria-label")).toContain(
-    "Chat conversation",
+    "Session conversation",
   );
   expect(
     screen
-      .getByRole("button", { name: "Start chat" })
+      .getByRole("button", { name: "Start session" })
       .getAttribute("aria-disabled"),
   ).toBe("true");
   const ask = screen.getByRole("textbox", {
     name: "Ask anything",
   });
   await fireEvent.input(ask, { target: { value: "Keep this draft local" } });
-  await fireEvent.submit(screen.getByRole("form", { name: "New chat" }));
+  await fireEvent.submit(screen.getByRole("form", { name: "New session" }));
   expect((ask as HTMLInputElement).value).toBe("Keep this draft local");
-  // With no chat open there is nothing to reply to, so Ask is the only input.
-  expect(screen.queryByRole("textbox", { name: /Reply to chat/ })).toBeNull();
+  // With no session open there is nothing to reply to, so Ask is the only input.
+  expect(screen.queryByRole("textbox", { name: /Reply to session/ })).toBeNull();
   expect(
     vi.mocked(fetch).mock.calls.every((call) => call[1]?.method !== "POST"),
   ).toBe(true);
@@ -60,7 +60,7 @@ test("renders truthful unconfigured state and never submits a draft without conf
 
 test("collapses the sidebar and session group; shortcut ignores editable inputs", async () => {
   render(App);
-  expect(screen.getByText("No chats yet.")).toBeTruthy();
+  expect(screen.getByText("No sessions yet.")).toBeTruthy();
   await fireEvent.keyDown(
     screen.getByRole("textbox", { name: /Ask anything/ }),
     { key: "b", ctrlKey: true },
@@ -86,8 +86,8 @@ test("navigates among only the supplied settings pages and filters navigation", 
   );
   expect(screen.getByRole("link", { name: "Sources" })).toBeTruthy();
   expect(screen.queryByRole("link", { name: /^General$/ })).toBeNull();
-  await navigate("persona");
-  expect(screen.getByRole("heading", { name: "Personas" })).toBeTruthy();
+  await navigate("agent");
+  expect(screen.getByRole("heading", { name: "Agents" })).toBeTruthy();
   await navigate("sources");
   expect(screen.getByRole("heading", { name: /Sources/ })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Sync all" })).toBeNull();
@@ -100,7 +100,7 @@ test("General applies real browser-local themes without fictional preferences, s
   window.location.hash = "/settings";
   render(App);
   expect(
-    await screen.findByText("None yet. New chats start in your home folder."),
+    await screen.findByText("None yet. New sessions start in your home folder."),
   ).toBeTruthy();
   const themes = screen.getByRole("radiogroup", { name: "Theme" });
   expect(
@@ -128,13 +128,13 @@ test("General applies real browser-local themes without fictional preferences, s
   ).toBe("#/providers");
   expect(
     screen
-      .getAllByRole("link", { name: "Manage personas" })
+      .getAllByRole("link", { name: "Manage agents" })
       .at(-1)!
       .getAttribute("href"),
-  ).toBe("#/persona");
+  ).toBe("#/agent");
   expect(
     screen.getByRole("link", { name: "Edit Default" }).getAttribute("href"),
-  ).toBe("#/persona");
+  ).toBe("#/agent");
   expect(screen.queryByRole("combobox", { name: "Workspace font family" })).toBeNull();
   for (const name of ["Save changes", "Reset to defaults"])
     expect(screen.queryByRole("button", { name })).toBeNull();
@@ -143,13 +143,13 @@ test("General applies real browser-local themes without fictional preferences, s
   ).toBeNull();
 });
 
-test("persona empty state is real and offers creation without fixture capabilities", async () => {
-  window.location.hash = "/persona";
+test("agent empty state is real and offers creation without fixture capabilities", async () => {
+  window.location.hash = "/agent";
   render(App);
   expect(
     await screen.findByText(/Each builds on Default/),
   ).toBeTruthy();
-  expect(screen.getByRole("button", { name: "New persona" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "New agent" })).toBeTruthy();
   expect(screen.queryByText("v1.4.2")).toBeNull();
   expect(screen.queryByText("Active in session")).toBeNull();
 });
@@ -162,10 +162,10 @@ test("keeps the mounted Ask and independent reply drafts across every route", as
           JSON.stringify({
             sessions: [
               {
-                id: "open-chat",
+                id: "open-session",
                 createdAt: "2026-01-02T03:04:00Z",
                 folder: "/home/me/project",
-                persona: { id: "default", name: "Default", layered: false },
+                agent: { id: "default", name: "Default", layered: false },
                 status: "idle",
                 interrupted: false,
               },
@@ -173,9 +173,9 @@ test("keeps the mounted Ask and independent reply drafts across every route", as
             truncated: false,
           }),
         )
-      : String(url).startsWith("/api/sessions/open-chat/items")
+      : String(url).startsWith("/api/sessions/open-session/items")
         ? new Response(JSON.stringify({ items: [], head: null, more: false }))
-        : url === "/api/sessions/open-chat/live"
+        : url === "/api/sessions/open-session/live"
           ? new Promise<Response>(() => {})
           : base(url, init),
   );
@@ -183,22 +183,22 @@ test("keeps the mounted Ask and independent reply drafts across every route", as
   const ask = screen.getByRole("textbox", { name: /Ask anything/ });
   await fireEvent.input(ask, { target: { value: "Global unsent question" } });
   await fireEvent.input(
-    await screen.findByRole("textbox", { name: /Reply to chat/ }),
+    await screen.findByRole("textbox", { name: /Reply to session/ }),
     {
       target: { value: "Session-only follow-up" },
     },
   );
-  for (const route of ["settings", "persona", "sources", "workspace"]) {
+  for (const route of ["settings", "agent", "sources", "workspace"]) {
     await navigate(route);
     expect(screen.getByRole("textbox", { name: /Ask anything/ })).toBe(ask);
     expect((ask as HTMLInputElement).value).toBe("Global unsent question");
-    expect(screen.getAllByRole("form", { name: "New chat" })).toHaveLength(1);
+    expect(screen.getAllByRole("form", { name: "New session" })).toHaveLength(1);
     expect(document.activeElement).toBe(screen.getByRole("main"));
   }
   expect(
     (
       screen.getByRole("textbox", {
-        name: /Reply to chat/,
+        name: /Reply to session/,
       }) as HTMLInputElement
     ).value,
   ).toBe("Session-only follow-up");

@@ -20,7 +20,7 @@ VISION.md is the single source of truth for product direction and architectural 
 - **Extensions own their experiences:** ordinary Pi extensions may add their own Svelte components and interactions. PiSpark hosts placement, loading, mounting, updating, disposal, and communication—not domain-specific extension behavior.
 - Do not limit extension UI to built-in widgets or invent a separate mandatory PiSpark extension framework, manifest, or package ecosystem when Pi's native mechanisms suffice. Web presentation is additive; retain terminal compatibility where supported.
 - Treat `host.call()` and `host.on()` in the vision as conceptual communication semantics, not an already implemented or frozen API. Keep transport details out of extension-owned UI and domain semantics out of the host.
-- **Personas compose capabilities**, not just personality prompts. Resolve instructions, skills, extensions, commands, model preferences, and resources through Pi's native capabilities wherever possible. Sources provide discovery/configuration UX, not a competing ecosystem.
+- **Agents compose capabilities**, not just tone prompts. Resolve instructions, skills, extensions, commands, model preferences, and resources through Pi's native capabilities wherever possible. Sources provide discovery/configuration UX, not a competing ecosystem.
 - Isolate PiSpark configuration, credentials, resources, and session history from terminal Pi unless explicitly configured otherwise. Explicit loading is not a security sandbox.
 - Third-party backend code and browser components are deliberate trust boundaries. Validate client inputs, keep secrets server-side, and define resource ownership, errors, cancellation, and cleanup; do not claim isolation that is not implemented.
 
@@ -34,7 +34,7 @@ Start with real agent execution and session interaction, then resource compositi
 
 - **Quiet by default. Powerful when you reach for it.** Preserve the accepted four-screen frontend and shared shell unless a visual change is approved. Keep unapproved prototypes separate; do not expand or redesign the product silently.
 - Keep one shared application shell and persistent global Ask across routes. Use common controls, tokens, geometry, and state ownership—not page-specific copies or cosmetic variants. Ask and reply share a foundation but retain distinct context/drafts.
-- Ask context consists of working directory, persona, optional persona-defined style, and model. Folder paths belong to the backend host, not implicitly the browser machine.
+- Ask context consists of working directory, agent, optional agent-defined style, and model. Folder paths belong to the backend host, not implicitly the browser machine.
 - Prefer small typed Svelte components, semantic elements, and local state unless sharing is required. Generic primitives stay independent of domain/API concerns; feature components supply them.
 - Cover keyboard navigation, labels, focus, dismissal/focus return, empty/error/loading states, and narrow/wide layouts. Status must not depend on color alone.
 - Shared first-party UI foundations must not restrict extension-owned Svelte experiences to a fixed widget catalog.
@@ -46,7 +46,7 @@ Start with real agent execution and session interaction, then resource compositi
 - Read existing code first. Prefer small explicit modules and reusable concrete behavior over giant components, catch-all services, generic factories, speculative abstractions, or unnecessary dependencies.
 - Maintain accurate implemented-state docs; link product direction to VISION.md instead of creating another vision document.
 - When `.work/` records exist, read/update relevant goals, tasks, checkpoints, and evidence. Use descriptive kebab-case names; preserve historical decisions as history, not current authority. Plans stay high-level.
-- `.work/` is private and ignored. Public builds, tests, and contributors must not depend on it or globally installed skills. Never publish credentials, runtime metadata, private feedback, or personal screenshots.
+- `.work/` is private and ignored. Public builds, tests, and contributors must not depend on it or globally installed skills. Never publish credentials, runtime metadata, private feedback, or private screenshots.
 - For code changes, run `npm run check`, `npm test`, `npm run build`, and `npm run smoke`. For UI changes, verify real-browser keyboard behavior, narrow/wide layouts, shared-route consistency, and production asset loading.
 - Before delivery, inspect the final diff for scope, secrets/private artifacts, regressions, and needless complexity. Report actual verification, skips, remaining risks, and vision alignment. Automated checks do not replace visual acceptance.
 - Commit, push, deploy, or publish only with authorization for the current work. Previous publication approval is not blanket permission for future changes.

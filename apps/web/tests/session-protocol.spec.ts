@@ -30,19 +30,19 @@ test("real SDK via shared Ask/reply: streaming, native tools, cancellation, inde
     page.getByRole("img", { name: /^Backend: (Connected|Live)$/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Start chat", exact: true }),
+    page.getByRole("button", { name: "Start session", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await expect(
     page.getByRole("button", {
-      name: "Persona: Default",
+      name: "Agent: Default",
     }),
   ).toBeVisible();
   await ask.fill("hold alpha");
   await ask.press("Enter");
   await expect(page.getByText("partial-local", { exact: true })).toBeVisible();
   const a = await page.evaluate(() => localStorage.getItem("pispark-session"));
-  const reply = page.getByRole("textbox", { name: "Reply to chat" });
+  const reply = page.getByRole("textbox", { name: "Reply to session" });
   await reply.fill("Draft A");
   await ask.fill("hold beta");
   await ask.press("Enter");
@@ -100,7 +100,7 @@ test("real SDK via shared Ask/reply: streaming, native tools, cancellation, inde
   ).not.toHaveAttribute("aria-disabled", "true");
 });
 
-test("a failing extension handler is a visible notice and the chat keeps working", async ({
+test("a failing extension handler is a visible notice and the session keeps working", async ({
   page,
 }) => {
   await page.goto("/");
@@ -108,7 +108,7 @@ test("a failing extension handler is a visible notice and the chat keeps working
     page.getByRole("img", { name: /^Backend: (Connected|Live)$/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Start chat", exact: true }),
+    page.getByRole("button", { name: "Start session", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await ask.fill("ui-fail");
@@ -132,7 +132,7 @@ for (const mode of ["ask", "reply"] as const) {
       page.getByRole("img", { name: /^Backend: (Connected|Live)$/ }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Start chat", exact: true }),
+      page.getByRole("button", { name: "Start session", exact: true }),
     ).not.toHaveAttribute("aria-disabled", "true");
     const ask = page.getByRole("textbox", {
       name: "Ask anything",
@@ -140,7 +140,7 @@ for (const mode of ["ask", "reply"] as const) {
     });
     await expect(
       page.getByRole("button", {
-        name: "Persona: Default",
+        name: "Agent: Default",
       }),
     ).toBeVisible();
     if (mode === "reply") {
@@ -154,7 +154,7 @@ for (const mode of ["ask", "reply"] as const) {
     const input =
       mode === "ask"
         ? ask
-        : page.getByRole("textbox", { name: "Reply to chat" });
+        : page.getByRole("textbox", { name: "Reply to session" });
     let release!: () => void;
     let entered!: () => void;
     const gate = new Promise<void>((r) => {
@@ -195,12 +195,12 @@ test("background receipt failure stays with its originating session across selec
     page.getByRole("img", { name: /^Backend: (Connected|Live)$/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Start chat", exact: true }),
+    page.getByRole("button", { name: "Start session", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await expect(
     page.getByRole("button", {
-      name: "Persona: Default",
+      name: "Agent: Default",
     }),
   ).toBeVisible();
   await ask.fill("session B");
@@ -260,16 +260,16 @@ for (const fail of [false, true]) {
       page.getByRole("img", { name: /^Backend: (Connected|Live)$/ }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Start chat", exact: true }),
+      page.getByRole("button", { name: "Start session", exact: true }),
     ).not.toHaveAttribute("aria-disabled", "true");
     const ask = page.getByRole("textbox", {
       name: "Ask anything",
       exact: true,
     });
-    const reply = page.getByRole("textbox", { name: "Reply to chat" });
+    const reply = page.getByRole("textbox", { name: "Reply to session" });
     await expect(
       page.getByRole("button", {
-        name: "Persona: Default",
+        name: "Agent: Default",
       }),
     ).toBeVisible();
     await ask.fill("switch B");
@@ -325,7 +325,7 @@ for (const fail of [false, true]) {
     release();
     await expect(reply).toHaveValue("B unsent");
     await expect(
-      page.getByRole("button", { name: "Start chat", exact: true }),
+      page.getByRole("button", { name: "Start session", exact: true }),
     ).not.toHaveAttribute("aria-disabled", "true");
     await expect(
       page.getByRole("alert").filter({ hasText: /busy/ }),
@@ -338,7 +338,7 @@ for (const fail of [false, true]) {
     if (fail)
       await expect(
         page.getByText(
-          "We couldn’t confirm whether that action went through. Check this chat before trying again.",
+          "We couldn’t confirm whether that action went through. Check this session before trying again.",
           { exact: true },
         ),
       ).toBeVisible();
@@ -358,7 +358,7 @@ for (const fail of [false, true]) {
       page.getByRole("img", { name: /^Backend: (Connected|Live)$/ }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Start chat", exact: true }),
+      page.getByRole("button", { name: "Start session", exact: true }),
     ).not.toHaveAttribute("aria-disabled", "true");
     const ask = page.getByRole("textbox", {
       name: "Ask anything",
@@ -366,7 +366,7 @@ for (const fail of [false, true]) {
     });
     await expect(
       page.getByRole("button", {
-        name: "Persona: Default",
+        name: "Agent: Default",
       }),
     ).toBeVisible();
     let release!: () => void;
@@ -401,7 +401,7 @@ for (const fail of [false, true]) {
     if (fail)
       await expect(
         page.getByText(
-          "We couldn’t confirm whether that action went through. Check this chat before trying again.",
+          "We couldn’t confirm whether that action went through. Check this session before trying again.",
           { exact: true },
         ),
       ).toBeVisible();
@@ -444,7 +444,7 @@ test("configuration/connectivity failures remain explicitly global, not selected
     page.getByRole("button", { name: "Reconnect", exact: true }),
   ).toHaveCount(1);
   await expect(
-    page.getByText("Connection lost. Your chat may still be running."),
+    page.getByText("Connection lost. Your session may still be running."),
   ).toHaveCount(0);
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await ask.fill("Retained offline draft");
@@ -457,7 +457,7 @@ test("configuration/connectivity failures remain explicitly global, not selected
   fail = false;
   await page.getByRole("button", { name: "Reconnect", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Start chat", exact: true }),
+    page.getByRole("button", { name: "Start session", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");
   await expect(ask).toHaveValue("Retained offline draft");
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -477,7 +477,7 @@ for (const mode of ["ask", "reply"] as const) {
         exact: true,
       });
       await expect(
-        page.getByRole("button", { name: "Start chat", exact: true }),
+        page.getByRole("button", { name: "Start session", exact: true }),
       ).not.toHaveAttribute("aria-disabled", "true");
       if (mode === "reply") {
         const seed = `uncertainty seed ${Date.now()}`;
@@ -493,7 +493,7 @@ for (const mode of ["ask", "reply"] as const) {
       const input =
         mode === "ask"
           ? ask
-          : page.getByRole("textbox", { name: "Reply to chat" });
+          : page.getByRole("textbox", { name: "Reply to session" });
       let starts = 0;
       let commandId = "";
       let sessionId = "";
@@ -537,13 +537,13 @@ for (const mode of ["ask", "reply"] as const) {
       release();
       const copy =
         loss === "acceptance"
-          ? "We couldn’t confirm whether that action went through. Check this chat before trying again."
-          : "That action may still be running. Check this chat before trying again.";
+          ? "We couldn’t confirm whether that action went through. Check this session before trying again."
+          : "That action may still be running. Check this session before trying again.";
       const warning = page.getByText(copy, { exact: true });
       await expect(warning).toBeVisible(); // Text node itself, not an ancestor with hidden diagnostic text.
       const alert = page.getByRole("alert").filter({ has: warning });
       await expect(alert.locator("details")).not.toHaveAttribute("open", "");
-      await expect(alert).not.toContainText("Reopen this chat to try again.");
+      await expect(alert).not.toContainText("Reopen this session to try again.");
       await expect(input).toHaveValue(retained);
       await expect
         .poll(async () => {
@@ -572,7 +572,7 @@ for (const mode of ["ask", "reply"] as const) {
   }
 }
 
-test("successful truncated chat list is visible status without a draft, clears without clearing unrelated errors", async ({
+test("successful truncated session list is visible status without a draft, clears without clearing unrelated errors", async ({
   page,
 }, info) => {
   let truncated = true;
@@ -584,7 +584,7 @@ test("successful truncated chat list is visible status without a draft, clears w
     });
   });
   await page.goto("/");
-  const copy = "Showing your latest 256 chats. Older chats are still saved.";
+  const copy = "Showing your latest 256 sessions. Older sessions are still saved.";
   await expect(page.getByText(copy, { exact: true })).toBeVisible();
   await expect(
     page.getByRole("status").filter({ hasText: copy }),
@@ -603,7 +603,7 @@ test("successful truncated chat list is visible status without a draft, clears w
   await ask.fill("Keep this draft");
   await ask.press("Enter");
   const warning = page.getByText(
-    "We couldn’t confirm whether that action went through. Check your chats before trying again.",
+    "We couldn’t confirm whether that action went through. Check your sessions before trying again.",
     { exact: true },
   );
   await expect(warning).toBeVisible();
@@ -619,16 +619,16 @@ test("successful truncated chat list is visible status without a draft, clears w
   await expect(ask).toHaveValue("Keep this draft");
 });
 
-test("create polling loss with known receipt chat stays global, keeps displayed old chat and draft, and never opens or starts the new chat", async ({
+test("create polling loss with known receipt session stays global, keeps displayed old session and draft, and never opens or starts the new session", async ({
   page,
   request,
 }, info) => {
   await page.goto("/");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await expect(
-    page.getByRole("button", { name: "Start chat", exact: true }),
+    page.getByRole("button", { name: "Start session", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");
-  const seed = `Old displayed chat ${Date.now()}`;
+  const seed = `Old displayed session ${Date.now()}`;
   await ask.fill(seed);
   await ask.press("Enter");
   await expect(page.getByText(`local:${seed}`, { exact: true })).toBeVisible();
@@ -652,7 +652,7 @@ test("create polling loss with known receipt chat stays global, keeps displayed 
     }
     createdId = receipt.sessionId;
     createCommandId = command.commandId;
-    // Protocol edge fixture: accepted receipt already identifies the real newly created empty chat.
+    // Protocol edge fixture: accepted receipt already identifies the real newly created empty session.
     await route.fulfill({ response, json: { ...receipt, state: "accepted" } });
   });
   await page.route("**/api/receipts/*", (route) =>
@@ -663,7 +663,7 @@ test("create polling loss with known receipt chat stays global, keeps displayed 
   await ask.fill("Unsent initial question");
   await ask.press("Enter");
   const warning = page.getByText(
-    "That action may still be running. Check your chats before trying again.",
+    "That action may still be running. Check your sessions before trying again.",
     { exact: true },
   );
   await expect(warning).toBeVisible();

@@ -1,7 +1,7 @@
 <script lang="ts">
   import MessageReader from "./MessageReader.svelte";
   import UserTurn from "./UserTurn.svelte";
-  import { clippedPart, itemText, type Turn } from "./chat-turns";
+  import { clippedPart, itemText, type Turn } from "./session-turns";
   import "./default-views";
   import { resolveSegmentView } from "./views.svelte";
   import ContributionPoint from "./ContributionPoint.svelte";

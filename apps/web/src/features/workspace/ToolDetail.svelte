@@ -1,6 +1,6 @@
 <script lang="ts">
   import StyledText from "./StyledText.svelte";
-  import type { ToolCall } from "./chat-turns";
+  import type { ToolCall } from "./session-turns";
 
   /** What a call did, once opened: its extension's own rendering, else what it returned, else what it was asked. */
   let { call }: { call: ToolCall } = $props();

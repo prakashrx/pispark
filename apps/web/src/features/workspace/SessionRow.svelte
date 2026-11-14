@@ -43,7 +43,7 @@
     await tick();
     const next = neighbour && document.querySelector<HTMLElement>(`[data-session-link="${neighbour}"]`);
     if (next) next.focus();
-    else document.querySelector<HTMLElement>('nav[aria-label="Chats"] button')?.focus();
+    else document.querySelector<HTMLElement>('nav[aria-label="Sessions"] button')?.focus();
   }
 </script>
 

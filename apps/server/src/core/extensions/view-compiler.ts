@@ -167,7 +167,7 @@ export async function compileView(file: string, root: string): Promise<string> {
   const hash = sha(output);
   bundles.delete(hash);
   bundles.set(hash, output);
-  // Keep the most recently compiled; an evicted one is compiled again when a chat reopens.
+  // Keep the most recently compiled; an evicted one is compiled again when a session reopens.
   while (bundles.size > MAX_BUNDLES) bundles.delete(bundles.keys().next().value!);
   return hash;
 }

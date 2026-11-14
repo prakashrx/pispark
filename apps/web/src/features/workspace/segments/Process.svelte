@@ -5,7 +5,7 @@
   import { showProcess } from "../../background/background-client.svelte";
   import { processName, processState } from "../../background/process-presentation";
   import type { ProcessInfo } from "../../../../../server/src/contract/process-protocol";
-  import type { Segment } from "../chat-turns";
+  import type { Segment } from "../session-turns";
   // A process this session started: its name and live state, and a way to see its output.
   let { segment }: { segment: Extract<Segment, { kind: "process" }> } = $props();
   const client = useSessions();

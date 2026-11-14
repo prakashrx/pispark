@@ -15,16 +15,16 @@ import { join, resolve } from "node:path";
 import { RuntimeError } from "./errors.js";
 import { validChoice } from "./provider-storage.js";
 import type { ModelChoice } from "../../contract/provider-protocol.js";
-import { validChatTitle } from "../../contract/chat-title.js";
-import { validPersonaId } from "../personas/format.js";
+import { validSessionTitle } from "../../contract/session-title.js";
+import { validAgentId } from "../agents/format.js";
 import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";
 
-/** `chat.json`: what PiSpark knows about a chat. Pi's JSONL beside it is the transcript. */
-export interface ChatMetadata {
+/** `session.json`: what PiSpark knows about a session. Pi's JSONL beside it is the transcript. */
+export interface SessionMetadata {
   version: 2;
   id: string;
   cwd: string;
-  persona: string;
+  agent: string;
   model?: ModelChoice;
   createdAt: string;
   title?: string;
@@ -54,10 +54,10 @@ export function validateId(id: string): void {
     throw new RuntimeError("invalid-input");
 }
 
-/** `<home>/chats/<id>/`. The chat ID is the folder name and is not repeated in chat.json. */
-export class ChatStorage {
+/** `<home>/sessions/<id>/`. The session ID is the folder name and is not repeated in session.json. */
+export class SessionStorage {
   readonly root: string;
-  private catalog = new Map<string, ChatMetadata>();
+  private catalog = new Map<string, SessionMetadata>();
   private rescanAt = 0;
   unreadable = 0;
   constructor(root: string) {
@@ -82,18 +82,18 @@ export class ChatStorage {
       throw new RuntimeError("storage");
     }
   }
-  read(id: string): ChatMetadata {
+  read(id: string): SessionMetadata {
     try {
       const value = JSON.parse(
-        readFileSync(join(this.directory(id), "chat.json"), "utf8"),
-      ) as Omit<ChatMetadata, "id">;
+        readFileSync(join(this.directory(id), "session.json"), "utf8"),
+      ) as Omit<SessionMetadata, "id">;
       if (
         value.version !== 2 ||
         typeof value.cwd !== "string" ||
-        !validPersonaId(value.persona) ||
+        !validAgentId(value.agent) ||
         (value.model !== undefined && !validChoice(value.model)) ||
         typeof value.createdAt !== "string" ||
-        (value.title !== undefined && !validChatTitle(value.title)) ||
+        (value.title !== undefined && !validSessionTitle(value.title)) ||
         typeof value.active !== "boolean" ||
         typeof value.interrupted !== "boolean" ||
         (value.setup !== undefined && !/^[a-f0-9]{64}$/.test(value.setup)) ||
@@ -122,16 +122,16 @@ export class ChatStorage {
       throw new RuntimeError("storage");
     }
   }
-  write(metadata: ChatMetadata): void {
+  write(metadata: SessionMetadata): void {
     const dir = this.prepare(metadata.id);
-    const temporary = join(dir, `.chat-${randomUUID()}.tmp`);
+    const temporary = join(dir, `.session-${randomUUID()}.tmp`);
     const { id: _id, ...stored } = metadata;
     try {
       writeFileSync(temporary, JSON.stringify(stored, null, 2) + "\n", {
         flag: "wx",
         mode: 0o600,
       });
-      renameSync(temporary, join(dir, "chat.json"));
+      renameSync(temporary, join(dir, "session.json"));
       this.catalog.set(metadata.id, structuredClone(metadata));
     } catch {
       try {
@@ -142,10 +142,10 @@ export class ChatStorage {
       throw new RuntimeError("storage");
     }
   }
-  list(): ChatMetadata[] {
+  list(): SessionMetadata[] {
     try {
       if (Date.now() >= this.rescanAt) {
-        const entries = new Map<string, ChatMetadata>();
+        const entries = new Map<string, SessionMetadata>();
         let unreadable = 0;
         for (const id of readdirSync(this.root)) {
           if (!UUID.test(id)) continue;
@@ -167,7 +167,7 @@ export class ChatStorage {
       throw new RuntimeError("storage");
     }
   }
-  /** The chat folders there are, by name; nothing is read or cached. */
+  /** The session folders there are, by name; nothing is read or cached. */
   ids(): string[] {
     try {
       return readdirSync(this.root).filter((id) => UUID.test(id));
@@ -175,7 +175,7 @@ export class ChatStorage {
       return [];
     }
   }
-  /** Removes a chat for good: its folder holds everything about it (chat.json, Pi's transcript, its persona layer). */
+  /** Removes a session for good: its folder holds everything about it (session.json, Pi's transcript, its agent layer). */
   remove(id: string): void {
     const dir = this.directory(id);
     try {
@@ -185,10 +185,10 @@ export class ChatStorage {
     }
     this.catalog.delete(id);
   }
-  /** Remove a chat folder that never got a chat.json (a failed first start). */
+  /** Remove a session folder that never got a session.json (a failed first start). */
   discardUnpublished(id: string): void {
     const dir = this.directory(id);
-    if (!existsSync(join(dir, "chat.json")))
+    if (!existsSync(join(dir, "session.json")))
       rmSync(dir, { recursive: true, force: true });
   }
   /** Pi names the transcript `<time>_<id>.jsonl`; it's the only such file in the folder. */
@@ -202,7 +202,7 @@ export class ChatStorage {
     return this.transcript(id) !== undefined;
   }
   /** Pi skips malformed lines; refuse a corrupted transcript rather than silently lose history. */
-  validateHistory(metadata: ChatMetadata): string | undefined {
+  validateHistory(metadata: SessionMetadata): string | undefined {
     const path = this.transcript(metadata.id);
     if (!path) return undefined;
     try {

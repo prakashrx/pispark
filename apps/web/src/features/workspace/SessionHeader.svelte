@@ -3,7 +3,7 @@
   import InlinePanel from "../../lib/ui/InlinePanel.svelte";
   import Menu from "../../lib/ui/Menu.svelte";
   import Segmented from "../../lib/ui/Segmented.svelte";
-  import PersonaEditor from "../persona/PersonaEditor.svelte";
+  import AgentEditor from "../agent/AgentEditor.svelte";
   import SchedulesPanel from "../schedules/SchedulesPanel.svelte";
   import ProcessesPanel from "../background/ProcessesPanel.svelte";
   import RoutinesPanel from "../background/RoutinesPanel.svelte";
@@ -19,27 +19,27 @@
   /**
    * What PiSpark always says about a session, whichever view shows it: its name and state, the
    * switch between views, the commands its extensions registered, Stop, and the notices a person
-   * must not miss. With no chat open it is the empty workspace's heading.
+   * must not miss. With no session open it is the empty workspace's heading.
    */
   const client = useSessions();
   const session: Session | undefined = useSession();
   const doc = $derived(session?.doc);
   const info = $derived(session?.info);
-  // Editing the persona inside a chat edits this chat's own layer; closing applies it.
-  let editingPersona = $state(false);
+  // Editing the agent inside a session edits this session's own layer; closing applies it.
+  let editingAgent = $state(false);
   let schedulesOpen = $state(false);
   let routinesOpen = $state(false);
-  // Opened from Chat info, or from a process row in the conversation (on that process).
+  // Opened from Session info, or from a process row in the conversation (on that process).
   const processesOpen = $derived(!!session && processPanel.sessionId === session.id);
   function closeProcesses() {
     processPanel.sessionId = undefined;
     processPanel.processId = undefined;
   }
-  async function closePersona() {
-    editingPersona = false;
-    // The Personas page shares the editor; give it back its list, not this chat's layer.
-    client.personas.collection();
-    if (doc?.personaChanged && doc.status === "idle") await session?.reload();
+  async function closeAgent() {
+    editingAgent = false;
+    // The Agents page shares the editor; give it back its list, not this session's layer.
+    client.agents.collection();
+    if (doc?.agentChanged && doc.status === "idle") await session?.reload();
   }
   // While running, an extension may relabel, re-animate or hide the working indicator.
   const working = $derived(info?.status === "running" ? doc?.extensions.working : undefined);
@@ -62,7 +62,7 @@
           ? marked
           : (working?.message ?? marked),
   );
-  // An extension's window title names the browser tab while this chat is open.
+  // An extension's window title names the browser tab while this session is open.
   $effect(() => {
     const title = doc?.extensions.title;
     if (!title) return;
@@ -103,9 +103,9 @@
     <div class="min-w-0 flex-[1_1_16rem]">
       <div class="flex items-center gap-3 flex-wrap">
         <h1 class="text-2xl font-semibold tracking-tight text-foreground break-words">
-          {info ? sessionName(info) : "New chat"}
+          {info ? sessionName(info) : "New session"}
         </h1>
-        {#if status}<span role="status" class="chat-status" class:custom-indicator={!!working?.frames}
+        {#if status}<span role="status" class="session-status" class:custom-indicator={!!working?.frames}
             >{#if working?.frames}<WorkingFrames frames={working.frames} intervalMs={working.intervalMs} />{/if}{status}</span
           >{/if}
         {#if session}<ContributionPoint point="session.title" />{/if}
@@ -113,12 +113,12 @@
       {#if info}<p class="text-sm text-muted-foreground mt-1.5">
           {#if parent}Started by <button type="button" class="started-by" onclick={() => client.select(parent.id)}>{sessionName(parent)}</button
             >{" · "}{/if}{[
-            info.persona.layered
-              ? `${info.persona.name} (edited here)`
+            info.agent.layered
+              ? `${info.agent.name} (edited here)`
               : // Not said twice when the session goes by its app's name.
                 goesByApp(info)
                 ? undefined
-                : info.persona.name,
+                : info.agent.name,
             folderName(info.folder),
             modelName,
             sessionStarted(info),
@@ -126,7 +126,7 @@
             .filter(Boolean)
             .join(" · ")}
         </p>{:else}<p class="text-sm text-muted-foreground mt-1.5">
-          Ask anything in the bar above to start a chat.
+          Ask anything in the bar above to start a session.
         </p>{/if}
     </div>
     {#if session}<div class="ml-auto flex flex-wrap items-start justify-end gap-3">
@@ -146,7 +146,7 @@
             onclick={() => session.stop()}>Cancel</Button
           >{/if}
         <SessionDetails
-          oneditpersona={() => (editingPersona = true)}
+          oneditagent={() => (editingAgent = true)}
           onschedules={() => (schedulesOpen = true)}
           onroutines={() => (routinesOpen = true)}
           onprocesses={() => showProcess(session.id)}
@@ -158,37 +158,37 @@
 {#if session}
   {#if doc?.extensions.header}<StyledText class="extension-header" lines={doc.extensions.header} />{/if}
   <ContributionPoint point="session.header" />
-  {#if editingPersona && info}<InlinePanel
-      label="Persona for this chat"
-      title="Persona for this chat"
-      help="Changes apply to this chat only. Closing reloads the chat with them; your messages stay."
+  {#if editingAgent && info}<InlinePanel
+      label="Agent for this session"
+      title="Agent for this session"
+      help="Changes apply to this session only. Closing reloads the session with them; your messages stay."
       size="wide"
-      onclose={() => void closePersona()}
+      onclose={() => void closeAgent()}
     >
-      <PersonaEditor target={{ chat: session.id }} embedded />
+      <AgentEditor target={{ session: session.id }} embedded />
     </InlinePanel>{/if}
   {#if schedulesOpen && info}<InlinePanel
-      label="Schedules for this chat"
-      title="Schedules for this chat"
-      help="Each run sends its prompt to this chat as if you typed it, with this chat’s persona and tools, even while the browser is closed."
+      label="Schedules for this session"
+      title="Schedules for this session"
+      help="Each run sends its prompt to this session as if you typed it, with this session’s agent and tools, even while the browser is closed."
       size="wide"
       onclose={() => (schedulesOpen = false)}
     >
       <SchedulesPanel sessionId={session.id} />
     </InlinePanel>{/if}
   {#if routinesOpen && info}<InlinePanel
-      label="Routines of {info.persona.name}"
-      title="Routines of {info.persona.name}"
-      help="Each run is a new session of {info.persona.name}{info.persona.home ? ', listed under the app' : ''}."
+      label="Routines of {info.agent.name}"
+      title="Routines of {info.agent.name}"
+      help="Each run is a new session of {info.agent.name}{info.agent.home ? ', listed under the app' : ''}."
       size="wide"
       onclose={() => (routinesOpen = false)}
     >
-      <RoutinesPanel persona={info.persona.id} />
+      <RoutinesPanel agent={info.agent.id} />
     </InlinePanel>{/if}
   {#if processesOpen && info}<InlinePanel
-      label="Processes in this chat"
-      title="Processes in this chat"
-      help="Commands this chat started. They keep running while no one watches; PiSpark stopping ends them."
+      label="Processes in this session"
+      title="Processes in this session"
+      help="Commands this session started. They keep running while no one watches; PiSpark stopping ends them."
       size="wide"
       onclose={closeProcesses}
     >
@@ -196,41 +196,41 @@
     </InlinePanel>{/if}
   {#if doc?.holdAsked}<div role="status" class="conversation-notice flex flex-wrap items-center gap-3">
       <span class="min-w-0 flex-[1_1_20rem]"
-        ><strong>{doc.holdAsked.extension}</strong> (an extension of {info?.persona.name}) wants to keep this chat running when no one is
+        ><strong>{doc.holdAsked.extension}</strong> (an extension of {info?.agent.name}) wants to keep this session running when no one is
         watching: <em>{doc.holdAsked.reason}</em>.
         <span class="block text-[0.8125rem] text-muted-foreground"
           >Allowed, it stays loaded and starts again after PiSpark restarts. Pause all stops it.</span
         ></span
       >
-      <Button class={button} variant="primary" onclick={() => void client.hold(session.id, "allow-hold")}>Allow for {info?.persona.name}</Button>
+      <Button class={button} variant="primary" onclick={() => void client.hold(session.id, "allow-hold")}>Allow for {info?.agent.name}</Button>
       <Button class={button} onclick={() => void client.hold(session.id, "deny-hold")}>Not now</Button>
     </div>{/if}
-  {#if doc?.personaChanged && !editingPersona}<p role="status" class="conversation-notice flex flex-wrap items-center gap-3">
-      <span class="flex-1">The persona changed. Reload to apply it; your messages stay.</span>
+  {#if doc?.agentChanged && !editingAgent}<p role="status" class="conversation-notice flex flex-wrap items-center gap-3">
+      <span class="flex-1">The agent changed. Reload to apply it; your messages stay.</span>
       <Button
         class={button}
         unavailable={doc.status === "idle" ? undefined : "Wait for the reply to finish"}
-        onclick={() => session.reload()}>Reload chat</Button
+        onclick={() => session.reload()}>Reload session</Button
       >
     </p>{/if}
   {#if info && client.host.restarting}<p role="status" class="conversation-notice flex items-center gap-2" data-purpose="updating">
       <span class="updating-spin" aria-hidden="true"></span><span><strong>Updating PiSpark to v{client.host.restarting}…</strong> Back in a few seconds. Your draft is kept.</span>
     </p>
   {:else if info && connection === "Disconnected"}<p role="alert" class="conversation-notice">
-      Connection lost. Your chat may still be running. <Button class={button} onclick={() => client.reconnect()}>Reconnect</Button>
+      Connection lost. Your session may still be running. <Button class={button} onclick={() => client.reconnect()}>Reconnect</Button>
     </p>
   {:else if info && connection === "Unloaded"}<p role="status" class="conversation-notice">
-      This chat couldn’t be opened. <Button class={button} onclick={() => client.reconnect()}>Try again</Button>
+      This session couldn’t be opened. <Button class={button} onclick={() => client.reconnect()}>Try again</Button>
     </p>
   {:else if info && connection === "Reconnecting"}<p role="status" class="conversation-notice">Reconnecting…</p>{/if}
   {#if doc?.interrupted}<p role="status" class="conversation-notice">
-      This chat was interrupted. Your saved messages are still here.
+      This session was interrupted. Your saved messages are still here.
     </p>{/if}
   {#if doc?.error}<p role="alert" class="conversation-notice">
-      Something went wrong. Reopen this chat to try again.
+      Something went wrong. Reopen this session to try again.
     </p>{/if}
   {#if session.shownView && info?.waiting}<p role="status" class="conversation-notice flex flex-wrap items-center gap-3">
-      <span class="flex-1">This chat is waiting for your answer.</span>
+      <span class="flex-1">This session is waiting for your answer.</span>
       <Button class={button} onclick={() => session.showView()}>Show conversation</Button>
     </p>{/if}
 {/if}
@@ -256,7 +256,7 @@
       transform: rotate(360deg);
     }
   }
-  .chat-status {
+  .session-status {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
@@ -267,13 +267,13 @@
     font-size: 0.8125rem;
     font-weight: 500;
   }
-  .chat-status.custom-indicator::before {
+  .session-status.custom-indicator::before {
     display: none;
   }
   :global(.styled-text.extension-header) {
     color: var(--muted-foreground);
   }
-  .chat-status::before {
+  .session-status::before {
     content: "";
     width: 6px;
     height: 6px;

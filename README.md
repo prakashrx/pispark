@@ -32,6 +32,6 @@ PiSpark opens in your browser. Sign in under **Settings → Providers & models**
 ## Docs
 
 - [Installing, running and updating](docs/install.md): options, a second install, servers, uninstalling
-- [Agents](docs/personas.md) · [Extensions](docs/extensions.md)
+- [Agents](docs/agents.md) · [Extensions](docs/extensions.md)
 - [Development](docs/development.md): building from source, checks and tests · [Architecture](docs/architecture.md)
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [MIT license](LICENSE)

@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import { hostedTest as test } from "./isolated-host";
 
-// The "Extension views" persona loads an ordinary Pi extension that places its own Svelte components
+// The "Extension views" agent loads an ordinary Pi extension that places its own Svelte components
 // at the session's contribution points with Pi's event bus (apps/server/test/fixtures/view-extension).
 test("an extension's own Svelte components appear at the session's points, answer calls, follow the theme and keep their state", async ({
   page,
@@ -13,7 +13,7 @@ test("an extension's own Svelte components appear at the session's points, answe
     if (message.type() === "error") errors.push(message.text());
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Persona: Default" }).click();
+  await page.getByRole("button", { name: "Agent: Default" }).click();
   await page.getByRole("option", { name: "Extension views", exact: true }).click();
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await ask.fill('tool:shout:{"word":"hi"}');
@@ -39,13 +39,13 @@ test("an extension's own Svelte components appear at the session's points, answe
   await expect(counter.getByText("Now 1", { exact: true })).toBeVisible();
   await expect(counter.getByText("Count 1", { exact: true })).toBeVisible();
   await expect(counter.getByText("1 pressed here")).toBeVisible();
-  // The extension's own error reaches the component that called, not the chat.
+  // The extension's own error reaches the component that called, not the session.
   await counter.getByRole("button", { name: "Jam it" }).click();
   await expect(counter.getByText("The counter is jammed", { exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 
   // item.custom:note: a custom entry drawn by the extension's component from the entry's own data.
-  const reply = page.getByRole("textbox", { name: "Reply to chat" });
+  const reply = page.getByRole("textbox", { name: "Reply to session" });
   await expect(page.getByRole("button", { name: "Send message" })).not.toHaveAttribute("aria-disabled", "true");
   await reply.fill("/note saved");
   await reply.press("Enter");
@@ -57,7 +57,7 @@ test("an extension's own Svelte components appear at the session's points, answe
   await page.evaluate(() => (document.documentElement.dataset.theme = "midnight"));
   await expect.poll(color).not.toBe(light);
 
-  // Unloaded on the server (as an idle chat would be), the chat opens again by itself; the
+  // Unloaded on the server (as an idle session would be), the session opens again by itself; the
   // extension places its components again, with the count it saved in Pi's session.
   const { sessions } = await (await request.get("/api/sessions")).json();
   const id = sessions.at(-1).id;
@@ -79,12 +79,12 @@ test("an extension offers whole views of the session: the person switches, the c
     if (message.type() === "error") errors.push(message.text());
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Persona: Default" }).click();
+  await page.getByRole("button", { name: "Agent: Default" }).click();
   await page.getByRole("option", { name: "Extension views", exact: true }).click();
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await ask.fill("hello");
   await ask.press("Enter");
-  const reply = page.getByRole("textbox", { name: "Reply to chat" });
+  const reply = page.getByRole("textbox", { name: "Reply to session" });
   const ready = () => expect(page.getByRole("button", { name: "Send message" })).not.toHaveAttribute("aria-disabled", "true");
   await ready();
   // No view offered yet: no switch.
@@ -97,7 +97,7 @@ test("an extension offers whole views of the session: the person switches, the c
   await commands.focus();
   await page.keyboard.press("Enter");
   const menu = page.getByRole("menu", { name: "Commands" });
-  // (The persona's other fixture extension registers the first one.)
+  // (The agent's other fixture extension registers the first one.)
   await expect(menu.getByRole("menuitem")).toHaveText([
     "unsupported-reload",
     "page — Offer the fixture page; 'show' asks to show it",
@@ -143,7 +143,7 @@ test("an extension offers whole views of the session: the person switches, the c
   await page.keyboard.press("ArrowLeft");
   await expect(show.getByRole("radio", { name: "Conversation" })).toBeFocused();
   await expect(area).toHaveCount(0);
-  await expect(page.getByRole("main", { name: "Chat conversation" })).toBeVisible();
+  await expect(page.getByRole("main", { name: "Session conversation" })).toBeVisible();
   await page.reload();
   await expect(reply).toBeVisible();
   await expect(show.getByRole("radio", { name: "Conversation" })).toBeChecked();
@@ -181,7 +181,7 @@ test("an extension offers whole views of the session: the person switches, the c
   await expect(area).toHaveCount(0);
   await expect(show.locator("label")).toHaveText(["Conversation", "Second page"]);
   await expect(reply).toBeVisible();
-  await expect(page.getByRole("main", { name: "Chat conversation" })).toBeFocused();
+  await expect(page.getByRole("main", { name: "Session conversation" })).toBeFocused();
 
   expect(errors).toEqual([]);
 });

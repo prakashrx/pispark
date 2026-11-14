@@ -159,7 +159,7 @@ async function uninstall(args: string[]) {
     const data = home ?? join(process.env.USERPROFILE ?? process.env.HOME ?? "", ".pispark");
     console.log(`Removing your data in ${data}`);
     rmSync(data, { recursive: true, force: true });
-  } else console.log("Your data (chats, personas, settings) is kept.");
+  } else console.log("Your data (sessions, agents, settings) is kept.");
   if (windows) {
     // This program runs from the folder being removed: remove it once it has exited.
     const cmd = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe");
