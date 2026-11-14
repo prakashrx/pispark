@@ -32,7 +32,6 @@ jobs:
       - run: npm run test:browser -w @pispark/web
         env:
           PISPARK_TEST_PRODUCTION: '1'
-          PISPARK_DEBUG_PROCESSES: '1'
           PISPARK_TEST_RESULTS: ${{ runner.temp }}/pispark-browser-results
       - uses: actions/upload-artifact@v4
         if: failure()

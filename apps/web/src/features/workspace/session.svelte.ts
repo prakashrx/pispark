@@ -319,7 +319,8 @@ export class Session {
             try {
               await this.transport.run({ type: "open", sessionId: id });
             } catch (error) {
-              if (!(error instanceof Error && error.message.startsWith("owned"))) {
+              // "owned": a reply sent meanwhile already loaded it again.
+              if (!(error instanceof CommandFailed && error.code === "owned")) {
                 this.connection = "Unloaded";
                 return;
               }

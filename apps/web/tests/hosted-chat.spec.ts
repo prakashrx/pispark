@@ -76,10 +76,9 @@ test("blocked browser storage supports live replies and a chat unloaded by a pee
   ).not.toHaveAttribute("aria-disabled", "true");
   await expect(reply).toHaveValue("keep through reopen");
   await reply.press("Enter");
-  // The chat loads its Pi session again first, which takes seconds on a slow CI machine.
   await expect(
     page.getByText("local:keep through reopen", { exact: true }),
-  ).toBeVisible({ timeout: 15_000 });
+  ).toBeVisible();
 });
 
 test("a long reply is shown whole in the conversation, not clipped", async ({

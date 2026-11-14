@@ -156,7 +156,6 @@ export class Processes {
       stdio: [stdin ? "pipe" : "ignore", "pipe", "pipe"],
     });
     if (stdin) child.stdin?.end(command);
-    debug("start", { shell, args, transport: commandTransport ?? "args", pid: child.pid, ps: gitPs(shell) ?? null });
     const record: Stored = {
       id,
       sessionId,
@@ -409,11 +408,6 @@ export function gitPs(shell: string): string | undefined {
   return existsSync(ps) ? ps : undefined;
 }
 
-/** Temporary diagnostics for Windows CI: PISPARK_DEBUG_PROCESSES=1 prints how processes start and stop. */
-function debug(what: string, details: Record<string, unknown>) {
-  if (process.env.PISPARK_DEBUG_PROCESSES) console.error(`[processes] ${what} ${JSON.stringify(details)}`);
-}
-
 /**
  * Runs a program and gives back its standard output: empty if it cannot run, and what it printed so
  * far if it has not finished within `timeoutMs` (it is then ended). Stop must never wait on a helper
@@ -424,7 +418,6 @@ function output(command: string, args: string[], timeoutMs = 10_000): Promise<st
     const run = spawn(command, args, { windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
     let text = "";
     const timer = setTimeout(() => {
-      debug("helper timed out", { command, timeoutMs });
       run.kill();
       resolve(text);
     }, timeoutMs);
@@ -443,7 +436,6 @@ function output(command: string, args: string[], timeoutMs = 10_000): Promise<st
  */
 async function descendants(root: number, groupFile?: string): Promise<number[]> {
   const children = new Map<number, number[]>();
-  const began = Date.now();
   const table = await output(system32("WindowsPowerShell\\v1.0\\powershell.exe"), [
     "-NoProfile",
     "-NonInteractive",
@@ -464,14 +456,10 @@ async function descendants(root: number, groupFile?: string): Promise<number[]> 
     }
   };
   visit(root);
-  debug("process table", { ms: Date.now() - began, rows: children.size, found: found.size });
   const ps = gitPs(getShellConfig().shell);
   if (ps) {
     // PID PPID PGID WINPID ...: MSYS processes have a group; native ones show 0.
-    const psBegan = Date.now();
-    const listed = await output(ps, ["-W"]);
-    debug("ps -W", { ms: Date.now() - psBegan, bytes: listed.length });
-    const rows = listed
+    const rows = (await output(ps, ["-W"]))
       .split(/\r?\n/)
       .slice(1)
       .map((line) => line.trim().split(/\s+/).slice(0, 4).map(Number))
@@ -503,16 +491,13 @@ async function killTree(child: ChildProcess, groupFile?: string): Promise<void> 
   if (process.platform === "win32") {
     // Git Bash's launcher can exit and leave its children (bash, npm, node) without a parent, out of
     // reach of `taskkill /T`. So the whole tree is found first, then every process in it is ended.
-    debug("stopping", { pid });
     const pids = [pid, ...(await descendants(pid, groupFile))];
-    let taskkillCode: number | null | string = "not run";
     await new Promise<void>((done) => {
       const taskkill = spawn(system32("taskkill.exe"), ["/F", "/T", ...pids.flatMap((each) => ["/PID", String(each)])], { windowsHide: true, stdio: "ignore" });
-      taskkill.on("error", (error) => ((taskkillCode = error.message), child.kill(), done()));
-      taskkill.on("close", (code) => ((taskkillCode = code), done()));
+      taskkill.on("error", () => (child.kill(), done()));
+      taskkill.on("close", () => done());
     });
-    const outcome = await Promise.race([closed.then(() => "closed"), new Promise((done) => setTimeout(() => done("still open after 5 s"), 5000).unref())]);
-    debug("stop", { pid, pids, group: groupFile && existsSync(groupFile) ? readFileSync(groupFile, "utf8").trim() : null, taskkill: taskkillCode, outcome });
+    await Promise.race([closed, new Promise((done) => setTimeout(done, 5000).unref())]);
     return;
   }
   try {
