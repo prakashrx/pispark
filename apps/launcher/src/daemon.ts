@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { HostAction, LauncherStatus, RunningWork, ServerMessage, UpdateState } from "../../server/src/contract/host-protocol.ts";
 import { callControl, serveControl, type ControlRequest, type ControlStatus } from "./control.ts";
 import { autostartEnabled, openFolder, openWindow, underSystemd } from "./desktop.ts";
-import { Install, LAUNCHER_VERSION, Release, VERSION, windows } from "./install.ts";
+import { Install, LAUNCHER_VERSION, Release, VERSION, identity, windows } from "./install.ts";
 import { Supervisor, killTree } from "./supervisor.ts";
 import { Tray, type TrayChoice } from "./tray.ts";
 import { RELEASES_URL, check, fetchRelease, find, listReleases, type Available } from "./updates.ts";
@@ -35,7 +35,7 @@ export class Daemon {
   private busy = false;
   private readonly log: string;
   /** Read once: whether PiSpark starts at login (asking the system on every state change is wasteful). */
-  private readonly startsAtLogin = autostartEnabled();
+  private readonly startsAtLogin: boolean;
 
   constructor(
     private readonly install: Install,
@@ -43,6 +43,7 @@ export class Daemon {
     private readonly own: Release,
   ) {
     this.log = join(install.logs, "launcher.log");
+    this.startsAtLogin = autostartEnabled(install);
     const choices = install.choices();
     this.supervisor = new Supervisor({
       port: choices.port,
@@ -117,7 +118,7 @@ export class Daemon {
       { starting: "starting", running: "running", stopping: "stopping", stopped: "stopped", crashed: "stopped after repeated crashes" }[this.supervisor.state] ?? this.supervisor.state;
     const u = this.update;
     const label = u.phase === "ready" ? `Update to v${u.version} and restart` : u.phase === "waiting" ? `Update to v${u.version} now` : undefined;
-    this.tray.show(`PiSpark · ${state} · v${version}`, label);
+    this.tray.show(`${identity(this.install.choices().name).label} · ${state} · v${version}`, label);
   }
 
   // ---- Requests ----

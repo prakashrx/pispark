@@ -17,7 +17,8 @@ const apiPort = process.env.PISPARK_TEST_API_PORT ?? "4182";
 
 export default defineConfig({
   testDir: "./tests",
-  outputDir: join(testRoot, "results"),
+  // CI collects results from a known folder; the test data stays in its own temporary folder.
+  outputDir: process.env.PISPARK_TEST_RESULTS ?? join(testRoot, "results"),
   fullyParallel: false,
   workers: 1,
   use: {

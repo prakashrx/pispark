@@ -19,6 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/prakashrx/pispark/main/install/inst
 Options:
 - **Channel:** Stable (tagged releases, the default) or Latest (every change merged to main): `$env:PISPARK_CHANNEL = "latest"` before the Windows line, `| sh -s -- --channel latest` on Linux.
 - **Port:** 3000, or the next free port; set it with `PISPARK_PORT` or `--port`.
+- **A second install** (dev, test) beside the main one: `PISPARK_NAME=dev` or `--name dev`. It is "PiSpark (dev)" with its own program folder (`Programs\PiSpark-dev`, `~/.local/share/pispark-dev`), data folder (`~/.pispark-dev`), the next free port, login entry (`PiSpark-dev` Run entry, `pispark-dev.service`), Start menu entry and command (`pispark-dev`). It updates on its own channel, independently.
 - **Version:** a specific version, `PISPARK_VERSION=0.2.0` or `--version 0.2.0`. It installs that release (any channel) and keeps PiSpark there until you resume updates.
 - **Data folder:** `PISPARK_HOME`.
 - **Login start:** `--no-autostart` (`PISPARK_NO_AUTOSTART=1` on Windows) skips starting at login.

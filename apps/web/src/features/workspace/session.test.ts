@@ -52,6 +52,43 @@ test("a live stream the server ends on purpose is followed on at once, and the c
   }
 });
 
+test("a chat the server unloads is followed on when a reply sent meanwhile already loaded it again", async () => {
+  let streams = 0;
+  let hold!: () => void;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith("/api/sessions/s/items")) return new Response(JSON.stringify({ items: [], head: null, more: false }));
+      if (url === "/api/sessions/s/live") {
+        streams++;
+        // The first stream sends the chat, then says the server unloaded it; the next stays open.
+        if (streams === 1)
+          return stream(
+            `event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\nevent: unloaded\ndata: ${JSON.stringify({ type: "unloaded", sessionId: "s" })}\n\n`,
+          );
+        return new Promise<Response>((resolve) => (hold = () => resolve(stream(""))));
+      }
+      if (url === "/api/commands") {
+        const { commandId, type } = JSON.parse(String(init?.body));
+        expect(type).toBe("open");
+        return new Response(JSON.stringify({ commandId, state: "settled", sessionId: "s", outcome: "failed", error: "owned" }));
+      }
+      throw new Error(`unexpected ${url}`);
+    }),
+  );
+  const transport = new Transport();
+  const session = new Session("s", transport, { changed: () => {}, refresh: async () => {}, roomForDraft: () => true, notice: () => {} });
+  try {
+    await session.show();
+    await waitFor(() => expect(streams).toBe(2));
+    expect(session.connection).not.toBe("Unloaded");
+  } finally {
+    hold?.();
+    session.hide();
+    transport.close();
+  }
+});
+
 /**
  * A chat on screen whose live stream the test feeds: each `offer` is the session's views now.
  * `home` makes it the session of an app persona with that home view.

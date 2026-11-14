@@ -395,14 +395,36 @@ const quote = (text: string) => `'${text.replace(/'/g, `'\\''`)}'`;
 /** Whether the shell is Git Bash (MSYS), whose processes `ps -W` lists with their Windows ids. */
 const gitBash = (shell: string) => process.platform === "win32" && /[\\/]git[\\/]/i.test(shell);
 
-/** Runs a program and gives back its standard output (empty if it cannot run). */
-function output(command: string, args: string[]): Promise<string> {
+/**
+ * Git for Windows' `ps.exe` for a Git Bash path: `<git>\\bin\\bash.exe` (the launcher) or
+ * `<git>\\usr\\bin\\bash.exe` (MSYS's own, first on PATH inside Git Bash). Undefined for any other bash.
+ */
+export function gitPs(shell: string): string | undefined {
+  if (process.platform !== "win32") return;
+  const parts = shell.split(/[\\/]/);
+  const git = parts.findLastIndex((part) => part.toLowerCase() === "git");
+  if (git < 0) return;
+  const ps = join(parts.slice(0, git + 1).join("\\"), "usr", "bin", "ps.exe");
+  return existsSync(ps) ? ps : undefined;
+}
+
+/**
+ * Runs a program and gives back its standard output: empty if it cannot run, and what it printed so
+ * far if it has not finished within `timeoutMs` (it is then ended). Stop must never wait on a helper
+ * that stalls (Windows' process service can, on a fresh machine).
+ */
+function output(command: string, args: string[], timeoutMs = 10_000): Promise<string> {
   return new Promise((resolve) => {
     const run = spawn(command, args, { windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
     let text = "";
+    const timer = setTimeout(() => {
+      run.kill();
+      resolve(text);
+    }, timeoutMs);
+    timer.unref();
     run.stdout.on("data", (chunk: Buffer) => (text += chunk.toString("utf8")));
-    run.on("error", () => resolve(""));
-    run.on("close", () => resolve(text));
+    run.on("error", () => (clearTimeout(timer), resolve("")));
+    run.on("close", () => (clearTimeout(timer), resolve(text)));
   });
 }
 /**
@@ -434,9 +456,8 @@ async function descendants(root: number, groupFile?: string): Promise<number[]> 
     }
   };
   visit(root);
-  const { shell } = getShellConfig();
-  const ps = join(dirname(dirname(shell)), "usr", "bin", "ps.exe");
-  if (/[\\/]git[\\/]/i.test(shell) && existsSync(ps)) {
+  const ps = gitPs(getShellConfig().shell);
+  if (ps) {
     // PID PPID PGID WINPID ...: MSYS processes have a group; native ones show 0.
     const rows = (await output(ps, ["-W"]))
       .split(/\r?\n/)

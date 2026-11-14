@@ -4,7 +4,8 @@
 #   curl -fsSL https://raw.githubusercontent.com/prakashrx/pispark/main/install/install.sh | sh
 #   curl -fsSL https://raw.githubusercontent.com/prakashrx/pispark/main/install/install.sh | sh -s -- --channel latest --port 3000
 #
-# Options: --channel stable|latest, --version <v> (that version, kept there until you resume updates), --port <n>, --no-autostart, --no-open; or PISPARK_CHANNEL, PISPARK_PORT,
+# Options: --name <name> (a second install beside the main one: its own folder, data in ~/.pispark-<name>,
+# port, service pispark-<name> and command pispark-<name>), --channel stable|latest, --version <v> (that version, kept there until you resume updates), --port <n>, --no-autostart, --no-open; or PISPARK_CHANNEL, PISPARK_PORT,
 # PISPARK_HOME (data folder, default ~/.pispark) and PISPARK_INSTALL_DIR in the environment.
 #
 # What it does: downloads the newest release for this CPU from GitHub Releases, checks it against
@@ -16,15 +17,17 @@ set -eu
 
 channel="${PISPARK_CHANNEL:-stable}"
 wanted="${PISPARK_VERSION:-}"
+name="${PISPARK_NAME:-}"
 port="${PISPARK_PORT:-}"
 autostart="yes"
 open="yes"
-root="${PISPARK_INSTALL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/pispark}"
+root="${PISPARK_INSTALL_DIR:-}"
 releases="${PISPARK_RELEASES_URL:-https://api.github.com/repos/prakashrx/pispark/releases?per_page=100}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --channel) channel="$2"; shift 2 ;;
     --version) wanted="$2"; shift 2 ;;
+    --name) name="$2"; shift 2 ;;
     --port) port="$2"; shift 2 ;;
     --no-autostart) autostart="no"; shift ;;
     --no-open) open="no"; shift ;;
@@ -32,6 +35,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 case "$channel" in stable|latest) ;; *) echo "--channel must be stable or latest" >&2; exit 2 ;; esac
+if [ -n "$name" ] && ! printf '%s' "$name" | grep -Eq '^[a-z0-9][a-z0-9-]{0,19}$'; then echo "--name: lowercase letters, digits and dashes, up to 20 (e.g. dev)" >&2; exit 2; fi
+suffix=""; [ -n "$name" ] && suffix="-$name"
+[ -n "$root" ] || root="${XDG_DATA_HOME:-$HOME/.local/share}/pispark$suffix"
 
 say() { printf '%s\n' "$*"; }
 fail() { printf 'PiSpark install: %s\n' "$*" >&2; exit 1; }
@@ -50,7 +56,8 @@ if command -v sha256sum >/dev/null; then sum() { sha256sum "$1" | cut -d' ' -f1;
 elif command -v shasum >/dev/null; then sum() { shasum -a 256 "$1" | cut -d' ' -f1; }
 else fail "sha256sum is needed"; fi
 
-say "PiSpark installer"
+label="PiSpark"; [ -n "$name" ] && label="PiSpark ($name)"
+say "$label installer"
 wanted="${wanted#v}"
 if [ -n "$wanted" ]; then say "Finding PiSpark $wanted for linux-$arch..."; else say "Finding the newest $channel release for linux-$arch..."; fi
 # Releases are listed newest first. A stable version has no "-" (0.4.2); a build of main does (0.4.3-main.…).
@@ -70,17 +77,17 @@ if [ -f "$target/release.json" ]; then
 else
   temp=$(mktemp -d)
   trap 'rm -rf "$temp"' EXIT
-  name=$(basename "$url")
+  file=$(basename "$url")
   say "Downloading PiSpark $version..."
-  save "$url" "$temp/$name"
+  save "$url" "$temp/$file"
   get "$(dirname "$url")/SHA256SUMS" > "$temp/SHA256SUMS"
-  expected=$(grep " \*\{0,1\}$name\$" "$temp/SHA256SUMS" | cut -d' ' -f1)
-  [ -n "$expected" ] || fail "SHA256SUMS lists no $name"
-  [ "$(sum "$temp/$name")" = "$expected" ] || fail "the download does not match SHA256SUMS; nothing was installed"
+  expected=$(grep " \*\{0,1\}$file\$" "$temp/SHA256SUMS" | cut -d' ' -f1)
+  [ -n "$expected" ] || fail "SHA256SUMS lists no $file"
+  [ "$(sum "$temp/$file")" = "$expected" ] || fail "the download does not match SHA256SUMS; nothing was installed"
   say "Checked. Unpacking..."
   staging="$root/versions/.unpack-$version"
   rm -rf "$staging"; mkdir -p "$staging"
-  tar -xzf "$temp/$name" -C "$staging"
+  tar -xzf "$temp/$file" -C "$staging"
   mv "$staging"/* "$target"
   rm -rf "$staging"
 fi
@@ -92,9 +99,10 @@ set -- "$target/app/apps/launcher/dist/pispark.mjs" setup --channel "$channel"
 [ "$autostart" = "no" ] && set -- "$@" --no-autostart
 [ "$open" = "no" ] && set -- "$@" --no-open
 [ -n "$wanted" ] && set -- "$@" --keep
+[ -n "$name" ] && set -- "$@" --name "$name"
 "$target/node/bin/node" "$@"
 
-case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) say "Add ~/.local/bin to your PATH to use the pispark command." ;; esac
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) say "Add ~/.local/bin to your PATH to use the pispark$suffix command." ;; esac
 if [ "$autostart" = "yes" ] && command -v loginctl >/dev/null && [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null || echo no)" != "yes" ]; then
   say "On a server, to keep PiSpark running while you are logged out, run once:"
   say "  sudo loginctl enable-linger $(id -un)"

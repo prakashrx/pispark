@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { Install, Release, ensureWindowless, windows } from "../src/install.ts";
+import { Install, NAME, Release, ensureWindowless, identity, windows } from "../src/install.ts";
 import { expectedSum, find, pick } from "../src/updates.ts";
 
 const release = (tag: string, prerelease: boolean, names = ["linux-x64", "win-x64"]) => ({
@@ -129,4 +129,11 @@ test("a kept version persists, and asking for a failed version clears its failur
   install.markFailed("0.4.4");
   install.unmarkFailed("0.4.3");
   assert.deepEqual(install.failed(), ["0.4.4"]);
+});
+
+test("a named install is called apart from the main one everywhere it registers", () => {
+  assert.deepEqual(identity(), { label: "PiSpark", run: "PiSpark", unit: "pispark.service", command: "pispark" });
+  assert.deepEqual(identity("dev"), { label: "PiSpark (dev)", run: "PiSpark-dev", unit: "pispark-dev.service", command: "pispark-dev" });
+  for (const good of ["dev", "test-2", "a"]) assert.ok(NAME.test(good), good);
+  for (const bad of ["", "Dev", "-dev", "dev/x", "a".repeat(21), "dev test"]) assert.ok(!NAME.test(bad), bad);
 });

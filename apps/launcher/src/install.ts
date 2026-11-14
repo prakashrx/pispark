@@ -7,6 +7,18 @@ import { RELEASE_CHANNELS, compareVersions, type ReleaseChannel } from "../../se
 export const LAUNCHER_VERSION = 1;
 export const windows = process.platform === "win32";
 export const VERSION = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
+/** An install's name: lowercase letters, digits and dashes. */
+export const NAME = /^[a-z0-9][a-z0-9-]{0,19}$/;
+
+/** How an install is called on the machine: the main one "PiSpark", a named one "PiSpark (dev)". */
+export function identity(name?: string) {
+  return {
+    label: name ? `PiSpark (${name})` : "PiSpark",
+    run: name ? `PiSpark-${name}` : "PiSpark",
+    unit: name ? `pispark-${name}.service` : "pispark.service",
+    command: name ? `pispark-${name}` : "pispark",
+  };
+}
 
 /** `release.json`: what a release folder is. */
 export interface ReleaseInfo {
@@ -76,6 +88,8 @@ export interface Choices {
   autoUpdate: boolean;
   /** A data folder other than `~/.pispark`. */
   home?: string;
+  /** A named install (`dev`, `test`) beside the main one: its own login entry, service and command. */
+  name?: string;
   /** Kept at this version: no update checks until resumed. */
   kept?: string;
   /** Where releases are listed, if not this repository's GitHub Releases (a mirror, or a test feed). */
@@ -150,6 +164,7 @@ export class Install {
         autoUpdate: saved.autoUpdate === true,
         ...(typeof saved.home === "string" && saved.home ? { home: saved.home } : {}),
         ...(typeof saved.kept === "string" && VERSION.test(saved.kept) ? { kept: saved.kept } : {}),
+        ...(typeof saved.name === "string" && NAME.test(saved.name) ? { name: saved.name } : {}),
         ...(typeof saved.releases === "string" && /^https?:\/\//.test(saved.releases) ? { releases: saved.releases } : {}),
       };
     } catch {
