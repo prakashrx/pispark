@@ -10,6 +10,7 @@ import { AgentClient } from "../agent/agent-client.svelte";
 import { ScheduleClient } from "../schedules/schedule-client.svelte";
 import { ProcessClient, RoutineClient } from "../background/background-client.svelte";
 import { HostClient } from "../about/host-client.svelte";
+import { RemoteClient } from "../remote/remote-client.svelte";
 const context = Symbol("session-client");
 
 /** How many sessions stay in memory as they were last shown, so opening one again shows it at once. */
@@ -58,6 +59,7 @@ export class SessionClient {
   readonly processes = new ProcessClient(this.transport);
   /** This PiSpark and its updates; after an update restart, the window reconnects by itself. */
   readonly host = new HostClient(this.transport, () => this.reconnect());
+  readonly remote = new RemoteClient(this.transport);
   /** Sessions that have been opened, least recently shown first. */
   private readonly opened = new Map<string, Session>();
   private disposed = false;

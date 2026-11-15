@@ -10,6 +10,7 @@ import { ProviderSettings } from "./core/runtime/provider-settings.js";
 import { ProviderHttp } from "./http/provider-http.js";
 import { HostHttp } from "./http/host-http.js";
 import { HostLink } from "./core/host-link.js";
+import { RemoteAccess } from "./core/remote/remote-access.js";
 
 const host = process.env.HOST ?? "127.0.0.1";
 if (!["127.0.0.1", "::1"].includes(host))
@@ -48,6 +49,7 @@ const sessions = new SessionHttp(
   new ProviderHttp(providers),
   logger,
   new HostHttp(link, paths.root, () => runtime.runningWork()),
+  new RemoteAccess(paths.remote),
 );
 const server = createAppServer({ webRoot, sessions, logger });
 server.maxConnections = 64;

@@ -8,6 +8,7 @@
   import Sources from "./features/sources/Sources.svelte";
   import SchedulesPage from "./features/schedules/SchedulesPage.svelte";
   import AboutPage from "./features/about/AboutPage.svelte";
+  import RemoteAccessPage from "./features/remote/RemoteAccessPage.svelte";
   import { useSessions } from "./features/workspace/session-client.svelte";
   let { page }: { page: Page } = $props();
   const sessions = useSessions();
@@ -31,6 +32,8 @@
     <SchedulesPage />
   {:else if page === "about"}
     <AboutPage />
+  {:else if page === "remote"}
+    <RemoteAccessPage />
   {:else}
     <Sources />
   {/if}

@@ -53,6 +53,8 @@ export class Transport {
       await reader.cancel();
     }
     const result = JSON.parse(text + decoder.decode());
+    // A device removed while open: start again, at the pairing screen.
+    if (response.status === 401 && result.error === "unpaired") location.reload();
     if (!response.ok) throw new Error(result.error ?? "Request failed");
     return result as T;
   }

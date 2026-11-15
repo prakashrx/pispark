@@ -21,7 +21,8 @@ export class HostHttp {
     return {
       managed: this.link.managed,
       version,
-      address: `http://${request.headers.host}`,
+      // A loopback Host is plain HTTP; the remote address (Tailscale Serve) is HTTPS.
+      address: `${/^(127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(request.headers.host ?? "") ? "http" : "https"}://${request.headers.host}`,
       data: this.data,
       ...(launcher ? { launcher: rest as HostStatus["launcher"] } : {}),
       running: this.running(),

@@ -45,7 +45,13 @@ The installer:
 ssh -N -L 3300:127.0.0.1:3000 you@your-server
 ```
 
-Don't open its port to the internet. A reverse proxy or Tailscale Serve doesn't work yet: it passes on its own host name, which PiSpark refuses. Reaching PiSpark by name (a tailnet, a phone) is planned.
+Don't open its port to the internet. A reverse proxy doesn't work: it passes on its own host name, which PiSpark refuses.
+
+## On your phone or another computer
+
+Install [Tailscale](https://tailscale.com/download) on the computer running PiSpark and on your phone, and sign both in to the same account. Then in PiSpark, open Settings → Remote access and press **Turn on**: PiSpark asks Tailscale to serve it at `https://<computer>.<tailnet>.ts.net` (with the install's port, such as `:3100`, when it isn't on port 3000). The first time, Tailscale may say Serve isn't switched on for your tailnet; the page links to the Tailscale admin page that switches it on.
+
+Press **Pair a device** and scan the QR code with the phone (or open the address on it and type the 6-digit code), name the device and press Pair. In the phone's browser menu, choose Add to Home screen to use PiSpark like an app. Remove a device on the same page; [security](../SECURITY.md) has the details.
 
 ## The program folder
 
