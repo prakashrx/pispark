@@ -301,6 +301,16 @@ export class AgentStore {
     return { revision: digest(content) };
   }
 
+  /** Turns a `type:name` switch on or off in an agent's own definition. */
+  setSwitch(agent: string, name: string, on: boolean): void {
+    const { definition, revision } = this.read({ agent });
+    const without = (list?: string[]) => (list ?? []).filter((value) => value !== name);
+    const next: AgentDefinition = { ...definition, on: [...without(definition.on), ...(on ? [name] : [])], off: [...without(definition.off), ...(on ? [] : [name])] };
+    if (!next.on!.length) delete next.on;
+    if (!next.off!.length) delete next.off;
+    this.save({ agent }, revision, next);
+  }
+
   remove(id: string): void {
     if (!validAgentId(id)) fail("invalid-input");
     if (id === DEFAULT_AGENT) fail("built-in");
