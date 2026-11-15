@@ -17,7 +17,7 @@ test("an extension's notice, status, widget and question appear around the sessi
   await expect(page.getByLabel("Extension status")).toHaveText("ready");
   await expect(page.getByText("widget line", { exact: true })).toBeVisible();
   const reply = page.getByRole("textbox", { name: "Reply to session" });
-  await expect(reply).toHaveValue("drafted by fixture");
+  await expect(reply).toHaveText("drafted by fixture");
   await expect(page.getByText("local:ui-show", { exact: true })).toBeVisible();
 
   // The run waits on the question; it takes focus, arrows move, Enter answers, focus returns.

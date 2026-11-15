@@ -4,6 +4,7 @@ import type { ModelChoice } from "../../../../server/src/contract/provider-proto
 import type { CommandUncertaintyKind } from "./session-presentation";
 import { forgetViewChoice, Session } from "./session.svelte";
 import { CommandFailed, CommandUncertainty, Transport } from "./transport";
+import { Attachments } from "./attachments.svelte";
 import { ProviderClient } from "../settings/provider-client.svelte";
 import { AgentClient } from "../agent/agent-client.svelte";
 import { ScheduleClient } from "../schedules/schedule-client.svelte";
@@ -217,6 +218,8 @@ export class SessionClient {
     else void this.mount();
   }
   /** Starts a new session with a first message, in `folder` or, without one, in its project agent's. */
+  /** Files added to Ask's draft. They wait in the browser: the session they belong to starts on Send. */
+  readonly askAttachments = new Attachments();
   async ask(
     text: string,
     folder: string | undefined,
@@ -224,6 +227,11 @@ export class SessionClient {
     agent?: string,
   ): Promise<boolean> {
     if (this.busy || !text.trim()) return false;
+    const placed = this.askAttachments.placed(text);
+    if (placed.length && this.askAttachments.blocked && !this.askAttachments.blocked.startsWith("Waiting")) {
+      this.error = this.askAttachments.blocked;
+      return false;
+    }
     this.asking = true;
     this.error = "";
     this.errorKind = undefined;
@@ -243,8 +251,18 @@ export class SessionClient {
         .then((catalog) => (this.catalog = catalog))
         .catch(() => {});
       await this.select(id);
-      const receipt = await this.transport.submit({ type: "start", sessionId: id, text });
+      // Ask's files go to the new session now, then the first message names them.
+      if (placed.length && !(await this.askAttachments.uploadAll(placed, id)))
+        throw new Error("An attachment could not be uploaded. Remove it, or try again.");
+      const outgoing = placed.length ? this.askAttachments.outgoing(text) : { text, attachments: [] };
+      const receipt = await this.transport.submit({
+        type: "start",
+        sessionId: id,
+        text: outgoing.text,
+        ...(outgoing.attachments.length ? { attachments: outgoing.attachments } : {}),
+      });
       if (receipt.error) throw new CommandFailed(receipt.error);
+      this.askAttachments.sent(placed);
       const session = this.session(id);
       void this.transport.settled(receipt).catch((error) => {
         if (!this.disposed) session.fail(error);

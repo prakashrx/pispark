@@ -34,6 +34,12 @@ async function navigate(page: string) {
   await fireEvent(window, new Event("hashchange"));
 }
 
+/** Types into a composer the way a person would: its text changes and it hears an input event. */
+async function type(field: HTMLElement, text: string) {
+  field.textContent = text;
+  await fireEvent.input(field);
+}
+
 test("renders truthful unconfigured state and never submits a draft without configuration", async () => {
   render(App);
   expect(screen.getByRole("heading", { name: "New session" })).toBeTruthy();
@@ -48,9 +54,13 @@ test("renders truthful unconfigured state and never submits a draft without conf
   const ask = screen.getByRole("textbox", {
     name: "Ask anything",
   });
-  await fireEvent.input(ask, { target: { value: "Keep this draft local" } });
+  // Once the providers have loaded, Ask says why it cannot start: no model is configured.
+  await vi.waitFor(() =>
+    expect(screen.getByRole("button", { name: "Start session" }).getAttribute("title")).toBe("Choose a model in Providers & models."),
+  );
+  await type(ask, "Keep this draft local");
   await fireEvent.submit(screen.getByRole("form", { name: "New session" }));
-  expect((ask as HTMLInputElement).value).toBe("Keep this draft local");
+  expect(ask.textContent).toBe("Keep this draft local");
   // With no session open there is nothing to reply to, so Ask is the only input.
   expect(screen.queryByRole("textbox", { name: /Reply to session/ })).toBeNull();
   expect(
@@ -181,25 +191,14 @@ test("keeps the mounted Ask and independent reply drafts across every route", as
   );
   render(App);
   const ask = screen.getByRole("textbox", { name: /Ask anything/ });
-  await fireEvent.input(ask, { target: { value: "Global unsent question" } });
-  await fireEvent.input(
-    await screen.findByRole("textbox", { name: /Reply to session/ }),
-    {
-      target: { value: "Session-only follow-up" },
-    },
-  );
+  await type(ask, "Global unsent question");
+  await type(await screen.findByRole("textbox", { name: /Reply to session/ }), "Session-only follow-up");
   for (const route of ["settings", "agent", "sources", "workspace"]) {
     await navigate(route);
     expect(screen.getByRole("textbox", { name: /Ask anything/ })).toBe(ask);
-    expect((ask as HTMLInputElement).value).toBe("Global unsent question");
+    expect(ask.textContent).toBe("Global unsent question");
     expect(screen.getAllByRole("form", { name: "New session" })).toHaveLength(1);
     expect(document.activeElement).toBe(screen.getByRole("main"));
   }
-  expect(
-    (
-      screen.getByRole("textbox", {
-        name: /Reply to session/,
-      }) as HTMLInputElement
-    ).value,
-  ).toBe("Session-only follow-up");
+  expect(screen.getByRole("textbox", { name: /Reply to session/ }).textContent).toBe("Session-only follow-up");
 });

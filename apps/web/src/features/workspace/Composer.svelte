@@ -2,7 +2,8 @@
   import ContributionPoint from "./ContributionPoint.svelte";
   import FolderChoice from "./FolderChoice.svelte";
   import Button from "../../lib/ui/Button.svelte";
-  import Input from "../../lib/ui/Input.svelte";
+  import RichInput from "../../lib/ui/RichInput.svelte";
+  import { Attachments } from "./attachments.svelte";
   import Selector from "../../lib/ui/Selector.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   import type { Session } from "./session.svelte";
@@ -21,6 +22,11 @@
     quiet?: boolean;
   } = $props();
   let draftRevision = 0;
+  // Ask's draft has no session yet, so its files wait in the browser; a session's draft uploads at once.
+  const attachments = $derived(mode === "ask" ? sessions.askAttachments : session?.attachments);
+  const text = $derived(mode === "ask" ? draft : (session?.draft ?? ""));
+  let input: RichInput | undefined = $state();
+  let picker: HTMLInputElement | undefined = $state();
   let folder = $state("");
   let model = $state("");
   // A project agent works in its own folder; Ask's choice waits for the next other agent.
@@ -77,6 +83,8 @@
   const unavailable = $derived(
     sessions.busy
       ? "Please wait…"
+      : attachments?.blocked && (mode === "reply" || !attachments.blocked.startsWith("Waiting"))
+        ? attachments.blocked
       : mode === "ask"
         ? !bound && !folder
           ? "Choose a working folder."
@@ -118,7 +126,7 @@
 </script>
 
 <form
-  class="composer w-full flex items-center gap-2 transition-all"
+  class="composer w-full flex items-end gap-2 transition-all"
   class:composer-reply={mode === "reply"}
   class:composer-quiet={quiet && !draft}
   aria-label={mode === "ask" ? "New session" : "Reply to session"}
@@ -131,22 +139,24 @@
     class={"composer-input flex items-center flex-1 min-w-0 gap-2" +
       (mode === "ask" ? " pl-2" : " pl-2")}
   >
-    <Input
-      label={mode === "ask" ? "Ask anything" : "Reply to session"}
-      maxlength={65536}
-      value={mode === "ask"
-        ? draft
-        : (session?.draft ?? "")}
-      oninput={(event) => {
-        const text = event.currentTarget.value;
-        if (mode === "ask") {
-          draftRevision++;
-          draft = text;
-        } else session?.setDraft(text);
-      }}
-      appearance="composer"
-      placeholder={mode === "reply" ? "Message…" : quiet ? "Start a new session…" : "Ask anything…"}
-    />
+    {#if attachments}<RichInput
+        bind:this={input}
+        class="composer-text flex-1 min-w-0"
+        label={mode === "ask" ? "Ask anything" : "Reply to session"}
+        value={attachments.pieces(text)}
+        tokens={attachments.tokens}
+        onchange={(pieces) => {
+          const next = Attachments.draft(pieces);
+          if (mode === "ask") {
+            draftRevision++;
+            draft = next;
+          } else session?.setDraft(next);
+        }}
+        onfiles={(files) => attachments.add(files, mode === "reply" ? session?.id : undefined)}
+        onremove={(id) => attachments.remove(id)}
+        onsubmit={() => void send()}
+        placeholder={mode === "reply" ? "Message…" : quiet ? "Start a new session…" : "Ask anything…"}
+      />{/if}
   </div>
   <div
     class={mode === "ask"
@@ -192,6 +202,23 @@
       </Selector>
     {/if}
     {#if mode === "reply"}<ContributionPoint point="session.input.actions" />{/if}
+    <input
+      bind:this={picker}
+      type="file"
+      multiple
+      hidden
+      onchange={() => {
+        input?.insertFiles([...(picker?.files ?? [])]);
+        if (picker) picker.value = "";
+      }}
+    />
+    <Button
+      variant="ghost"
+      aria-label="Attach files"
+      title="Attach files"
+      class="attach-btn flex-shrink-0"
+      onclick={() => picker?.click()}><Icon name="paperclip" class="w-[18px] h-[18px]" /></Button
+    >
     <Button
       aria-label={mode === "reply" ? "Send message" : "Start session"}
       type="submit"
@@ -222,7 +249,7 @@
     border-color: transparent;
     box-shadow: none;
   }
-  :global(.composer.composer-quiet:not(:focus-within) .composer-pickers .ui-button:not(.send-btn)) {
+  :global(.composer.composer-quiet:not(:focus-within) .composer-pickers .ui-button:not(.send-btn):not(.attach-btn)) {
     background: transparent;
   }
   :global(.composer.composer-quiet:not(:focus-within) .ui-button.send-btn) {
@@ -231,6 +258,28 @@
   :global(.composer.composer-reply) {
     min-height: 3.5rem;
     padding: 0.5rem 0.5rem 0.5rem 1rem;
+  }
+  /* The text grows with its lines; its first line sits level with the buttons. */
+  :global(.composer .composer-text) {
+    font-size: 0.9375rem;
+    line-height: 1.5rem;
+    padding: 0.25rem 0;
+    color: var(--foreground);
+  }
+  :global(.composer.composer-reply .composer-text) {
+    font-size: 1rem;
+    padding: 0.4375rem 0;
+  }
+  :global(.composer .attach-btn) {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border-radius: 50%;
+    color: var(--muted-foreground);
+  }
+  :global(.composer.composer-reply .attach-btn) {
+    width: 2.375rem;
+    height: 2.375rem;
   }
   :global(.composer .ui-input[data-appearance="composer"]),
   :global(.composer .ui-input[data-appearance="composer"]:focus) {
@@ -247,7 +296,7 @@
     opacity: 1;
   }
   /* Context pickers read as quiet pills until hovered. */
-  :global(.composer .composer-pickers .ui-button:not(.send-btn)) {
+  :global(.composer .composer-pickers .ui-button:not(.send-btn):not(.attach-btn)) {
     gap: 0.375rem;
     height: 2rem;
     padding: 0 0.75rem;
@@ -259,11 +308,11 @@
     font-weight: 500;
     white-space: nowrap;
   }
-  :global(.composer .composer-pickers .ui-button:not(.send-btn):hover:not([aria-disabled="true"])) {
+  :global(.composer .composer-pickers .ui-button:not(.send-btn):not(.attach-btn):hover:not([aria-disabled="true"])) {
     background: color-mix(in srgb, var(--foreground) 10%, var(--chip));
     color: var(--foreground);
   }
-  :global(.composer .composer-pickers .ui-button:not(.send-btn)[aria-expanded="true"]) {
+  :global(.composer .composer-pickers .ui-button:not(.send-btn):not(.attach-btn)[aria-expanded="true"]) {
     background: var(--interactive-muted);
     color: var(--interactive-text);
   }

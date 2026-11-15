@@ -222,7 +222,11 @@ export type Command = { commandId: string } & (
   | { type: "open" | "reload" | "cancel" | "stop" | "archive" | "restore" | "delete"; sessionId: string }
   /** The person answers an extension's hold request, or lets go of a hold. */
   | { type: "allow-hold" | "deny-hold" | "release-hold"; sessionId: string }
-  | { type: "start" | "steer" | "follow-up"; sessionId: string; text: string }
+  /**
+   * `attachments`: names of files uploaded to the session (`POST /api/sessions/:id/attachments`). Each is named
+   * where the text places `<file name="<name>"></file>` (or at the end); images also go to the model as content.
+   */
+  | { type: "start" | "steer" | "follow-up"; sessionId: string; text: string; attachments?: string[] }
   /** Answer an extension's question; null dismisses it. */
   | {
       type: "answer";

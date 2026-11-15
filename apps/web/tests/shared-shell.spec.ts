@@ -147,7 +147,7 @@ test("one global Ask retains draft and all selectors through routes, history and
   await expect(
     page.getByRole("textbox", { name: /Reply to session/ }),
   ).toBeVisible();
-  await expect(ask).toHaveValue("");
+  await expect(ask).toHaveText("");
   await ask.fill("Persistent global question");
   await page
     .getByRole("textbox", { name: /Reply to session/ })
@@ -160,7 +160,7 @@ test("one global Ask retains draft and all selectors through routes, history and
     .click();
   await page.keyboard.press("Escape");
   async function retained() {
-    await expect(ask).toHaveValue("Persistent global question");
+    await expect(ask).toHaveText("Persistent global question");
     expect(
       await mountedAsk!.evaluate(
         (el) => el === document.querySelector('[aria-label="Ask anything"]'),
@@ -201,7 +201,7 @@ test("one global Ask retains draft and all selectors through routes, history and
     await retained();
   }
   const reply = page.getByRole("textbox", { name: /Reply to session/ });
-  await expect(reply).toHaveValue("Independent session follow-up");
+  await expect(reply).toHaveText("Independent session follow-up");
   await reply.fill("Changed reply only");
   await retained();
   await navigate(page, "settings");
@@ -219,7 +219,7 @@ test("narrow shell preserves Ask across routes and keyboard sidebar toggles", as
   await ask.fill("Mobile global draft");
   for (const route of routes) {
     if (route !== "workspace") await navigate(page, route);
-    await expect(ask).toHaveValue("Mobile global draft");
+    await expect(ask).toHaveText("Mobile global draft");
     await page.getByRole("button", { name: "Collapse sidebar" }).focus();
     await page.keyboard.press("Control+b");
     await expect(

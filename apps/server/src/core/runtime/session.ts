@@ -13,6 +13,7 @@ import type { Setup } from "../agents/resolve.js";
 import type { SessionAgent } from "../../contract/agent-protocol.js";
 import { sessionTitle } from "../../contract/session-title.js";
 import { toolSessionTitle } from "./session-title.js";
+import { attachedImages, namingFiles } from "./attachments.js";
 import { validItemName } from "../agents/format.js";
 import { PROCESS_CHANNEL, validProcessMessage, type ProcessRequest } from "./process-tool.js";
 import { createSessionServices, resolveFolder } from "./configuration.js";
@@ -727,7 +728,7 @@ export class Session {
   /** An empty, never-started session is named after its first message until the agent names it. */
   private firstTitle(metadata: SessionMetadata, text: string): void {
     if (!metadata.title && !this.host.storage.hasHistory(metadata.id) && !this.pi!.messages.length)
-      metadata.title = sessionTitle(text) || "New session";
+      metadata.title = sessionTitle(namingFiles(text)) || "New session";
   }
 
   // ---- Runs and the queue ---------------------------------------------------------------------
@@ -872,7 +873,9 @@ export class Session {
       try {
         // The agent's prompts work as /commands, as in terminal Pi. A cancel that arrives while Pi
         // prepares the run is caught where the provider would be called (beforeProviderDispatch).
-        await session.prompt(text, { expandPromptTemplates: true, source: "rpc" });
+        // Images a person attached go as content too; every attachment is also named in the text.
+        const images = await attachedImages(this.host.storage.directory(this.id), text);
+        await session.prompt(text, { expandPromptTemplates: true, source: "rpc", ...(images.length ? { images } : {}) });
         await session.waitForIdle();
       } catch (error) {
         this.error = runtimeError(error, "execution").code;
@@ -954,9 +957,11 @@ export class Session {
     if (!run || run.settled || run.admissionClosed || session.isIdle) throw new RuntimeError("busy");
     const valid = () => this.run === run && !run.settled && !run.cancelled && this.status === "running" && !session.isIdle;
     const input = inputAdmission.run({ valid }, async () => {
+      const found = await attachedImages(this.host.storage.directory(this.id), text);
+      const images = found.length ? found : undefined;
       const outcome = await (kind === "steer"
-        ? session.steer(text, undefined, { source: "rpc" })
-        : session.followUp(text, undefined, { source: "rpc" }));
+        ? session.steer(text, images, { source: "rpc" })
+        : session.followUp(text, images, { source: "rpc" }));
       if (!valid()) throw new RuntimeError("busy");
       return outcome;
     });

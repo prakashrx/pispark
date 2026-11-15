@@ -15,6 +15,7 @@ import { contributionsFor } from "./extension-views";
 import { LiveSession } from "./live-session.svelte";
 import { liveEvents } from "./live-stream";
 import { CommandFailed, CommandUncertainty, type Transport } from "./transport";
+import { Attachments } from "./attachments.svelte";
 
 /** What a session needs from the app that holds it. */
 export interface SessionHost {
@@ -69,6 +70,8 @@ export class Session {
   /** A message is being handed to the server. */
   sending = $state(false);
 
+  /** Files added to the reply draft, uploaded as they are added. */
+  readonly attachments = new Attachments();
   setDraft(text: string) {
     if (text && !this.draft && !this.host.roomForDraft())
       return this.host.notice("Draft limit: clear an existing draft before starting another.");
@@ -83,12 +86,27 @@ export class Session {
     const message = text ?? this.draft;
     const revision = this.draftRevision;
     if (this.sending || !message.trim() || this.doc?.status !== "idle") return false;
+    // The draft's attachments go with it, each named where it sits; a given text carries none.
+    const placed = text === undefined ? this.attachments.placed(message) : [];
+    if (placed.length && this.attachments.blocked) {
+      this.error = this.attachments.blocked;
+      return false;
+    }
+    const outgoing = placed.length ? this.attachments.outgoing(message) : { text: message, attachments: [] };
     this.sending = true;
     this.clearError();
     try {
-      const receipt = await this.transport.submit({ type: "start", sessionId: this.id, text: message });
+      const receipt = await this.transport.submit({
+        type: "start",
+        sessionId: this.id,
+        text: outgoing.text,
+        ...(outgoing.attachments.length ? { attachments: outgoing.attachments } : {}),
+      });
       if (receipt.error) throw new CommandFailed(receipt.error);
-      if (text === undefined && this.draftRevision === revision) this.draft = "";
+      if (text === undefined && this.draftRevision === revision) {
+        this.draft = "";
+        this.attachments.sent(placed);
+      }
       this.watch(receipt);
       return true;
     } catch (error) {

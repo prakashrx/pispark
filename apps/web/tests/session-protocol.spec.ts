@@ -46,16 +46,16 @@ test("real SDK via shared Ask/reply: streaming, native tools, cancellation, inde
   await reply.fill("Draft A");
   await ask.fill("hold beta");
   await ask.press("Enter");
-  await expect(ask).toHaveValue("");
+  await expect(ask).toHaveText("");
   const b = await page.evaluate(() => localStorage.getItem("pispark-session"));
   expect(b).not.toBe(a);
-  await expect(reply).toHaveValue("");
+  await expect(reply).toHaveText("");
   await reply.fill("Draft B");
   await page
     .getByRole("link", { name: /^hold alpha/ })
     .last()
     .click();
-  await expect(reply).toHaveValue("Draft A");
+  await expect(reply).toHaveText("Draft A");
   await context.setOffline(true);
   await expect(
     page.getByRole("img", { name: /Backend: Reconnecting/ }),
@@ -86,7 +86,7 @@ test("real SDK via shared Ask/reply: streaming, native tools, cancellation, inde
     .getByRole("link", { name: /^hold beta/ })
     .last()
     .click();
-  await expect(reply).toHaveValue("Draft B");
+  await expect(reply).toHaveText("Draft B");
   await page.getByRole("button", { name: "Stop response" }).click();
   await expect(
     page.getByRole("button", { name: "Send message", exact: true }),
@@ -183,7 +183,7 @@ for (const mode of ["ask", "reply"] as const) {
     await expect(
       page.getByText("local:submitted", { exact: true }),
     ).toBeVisible();
-    await expect(input).toHaveValue("submitted");
+    await expect(input).toHaveText("submitted");
   });
 }
 
@@ -323,7 +323,7 @@ for (const fail of [false, true]) {
       .last()
       .click();
     release();
-    await expect(reply).toHaveValue("B unsent");
+    await expect(reply).toHaveText("B unsent");
     await expect(
       page.getByRole("button", { name: "Start session", exact: true }),
     ).not.toHaveAttribute("aria-disabled", "true");
@@ -334,7 +334,7 @@ for (const fail of [false, true]) {
       .getByRole("link", { name: /^switch A/ })
       .last()
       .click();
-    await expect(reply).toHaveValue("A newer unsent");
+    await expect(reply).toHaveText("A newer unsent");
     if (fail)
       await expect(
         page.getByText(
@@ -409,7 +409,7 @@ for (const fail of [false, true]) {
       await expect(
         page.getByText("local:start delay", { exact: true }),
       ).toBeVisible();
-    await expect(ask).toHaveValue("new draft during start");
+    await expect(ask).toHaveText("new draft during start");
   });
 }
 
@@ -459,7 +459,7 @@ test("configuration/connectivity failures remain explicitly global, not selected
   await expect(
     page.getByRole("button", { name: "Start session", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");
-  await expect(ask).toHaveValue("Retained offline draft");
+  await expect(ask).toHaveText("Retained offline draft");
   await expect(page.getByRole("alert")).toHaveCount(0);
   expect(catalogRequests).toBe(2);
   expect(starts).toEqual([]);
@@ -544,7 +544,7 @@ for (const mode of ["ask", "reply"] as const) {
       const alert = page.getByRole("alert").filter({ has: warning });
       await expect(alert.locator("details")).not.toHaveAttribute("open", "");
       await expect(alert).not.toContainText("Reopen this session to try again.");
-      await expect(input).toHaveValue(retained);
+      await expect(input).toHaveText(retained);
       await expect
         .poll(async () => {
           const history = await (
@@ -591,7 +591,7 @@ test("successful truncated session list is visible status without a draft, clear
   ).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
-  await expect(ask).toHaveValue("");
+  await expect(ask).toHaveText("");
   for (const width of [390, 1920]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
     await page.screenshot({
@@ -616,7 +616,7 @@ test("successful truncated session list is visible status without a draft, clear
     timeout: 15_000,
   });
   await expect(warning).toBeVisible();
-  await expect(ask).toHaveValue("Keep this draft");
+  await expect(ask).toHaveText("Keep this draft");
 });
 
 test("create polling loss with known receipt session stays global, keeps displayed old session and draft, and never opens or starts the new session", async ({
@@ -669,7 +669,7 @@ test("create polling loss with known receipt session stays global, keeps display
   await expect(warning).toBeVisible();
   const alert = page.getByRole("alert").filter({ has: warning });
   await expect(alert.locator("details")).not.toHaveAttribute("open", "");
-  await expect(ask).toHaveValue("Unsent initial question");
+  await expect(ask).toHaveText("Unsent initial question");
   await expect(
     page.getByRole("heading", { name: seed, exact: true }),
   ).toBeVisible();

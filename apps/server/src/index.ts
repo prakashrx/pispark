@@ -51,7 +51,9 @@ const sessions = new SessionHttp(
 );
 const server = createAppServer({ webRoot, sessions, logger });
 server.maxConnections = 64;
-server.requestTimeout = 10_000;
+// A whole request may take up to 5 minutes (an attachment of up to 100 MB over a slow tunnel); headers must
+// arrive within 10 s, and JSON bodies within 5 s (`body`).
+server.requestTimeout = 300_000;
 server.headersTimeout = 10_000;
 server.on("error", () => {
   logger.event(

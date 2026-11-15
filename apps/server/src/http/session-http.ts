@@ -22,7 +22,8 @@ import { validAgentId } from "../core/agents/format.js";
 import { homedir } from "node:os";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { extname } from "node:path";
+import { basename, extname } from "node:path";
+import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_MESSAGE, validAttachmentName } from "../core/runtime/attachments.js";
 import { pipeline } from "node:stream/promises";
 import { ASSET_TYPES, viewAsset, viewBundle } from "../core/extensions/view-compiler.js";
 import { CallError } from "../core/extensions/views.js";
@@ -88,7 +89,7 @@ function validate(value: unknown): Command {
       : ["open", "reload", "cancel", "stop", "archive", "restore", "delete", "allow-hold", "deny-hold", "release-hold"].includes(String(c.type))
         ? ["sessionId"]
         : ["start", "steer", "follow-up"].includes(String(c.type))
-          ? ["sessionId", "text"]
+          ? ["sessionId", "text", ...(c.attachments === undefined ? [] : ["attachments"])]
           : undefined;
   if (
     !keys ||
@@ -100,7 +101,15 @@ function validate(value: unknown): Command {
     throw new RuntimeError("invalid-input");
   if (c.agent !== undefined && !validAgentId(c.agent))
     throw new RuntimeError("invalid-input");
-  for (const key of keys.filter((key) => key !== "model" && key !== "agent"))
+  if (
+    c.attachments !== undefined &&
+    (!Array.isArray(c.attachments) ||
+      c.attachments.length > ATTACHMENTS_PER_MESSAGE ||
+      !c.attachments.every(validAttachmentName) ||
+      new Set(c.attachments).size !== c.attachments.length)
+  )
+    throw new RuntimeError("invalid-input");
+  for (const key of keys.filter((key) => key !== "model" && key !== "agent" && key !== "attachments"))
     if (typeof c[key] !== "string" || !(c[key] as string).trim())
       throw new RuntimeError("invalid-input");
   if ("sessionId" in c && !uuid.test(String(c.sessionId)))
@@ -292,7 +301,7 @@ export class SessionHttp {
           await this.runtime.ensure(command.sessionId);
           let run;
           try {
-            run = this.runtime.start(command.sessionId, command.text);
+            run = this.runtime.start(command.sessionId, command.text, command.attachments);
           } catch (error) {
             // Admission is synchronous. Return a definite rejection before clients clear drafts.
             receipt.state = "settled";
@@ -309,6 +318,7 @@ export class SessionHttp {
             command.sessionId,
             command.text,
             command.type,
+            command.attachments,
           );
           break;
         case "cancel":
@@ -526,6 +536,23 @@ export class SessionHttp {
           await this.file(files[1]!, url.searchParams, response);
           return;
         }
+        const attachments = /^\/api\/sessions\/([\w-]+)\/attachments$/.exec(path);
+        if (request.method === "POST" && attachments && uuid.test(attachments[1]!) && !url.search) {
+          try {
+            sendJson(response, 201, await this.attach(attachments[1]!, request));
+          } catch (error) {
+            // A refused upload is not read further; the connection closes with the answer.
+            response.setHeader("Connection", "close");
+            const code = failure(error);
+            sendJson(response, code === "not-found" ? 404 : code === "limit" ? 413 : 400, { error: code });
+          }
+          return;
+        }
+        const attachment = /^\/api\/sessions\/([\w-]+)\/attachments\/([^/]+)$/.exec(path);
+        if (request.method === "GET" && attachment && uuid.test(attachment[1]!) && !url.search) {
+          await this.attachment(attachment[1]!, attachment[2]!, response);
+          return;
+        }
         const calls = /^\/api\/sessions\/([\w-]+)\/calls$/.exec(path);
         if (request.method === "POST" && calls && uuid.test(calls[1]!) && !url.search) {
           await this.call(calls[1]!, validCall(await body(request)), response);
@@ -598,6 +625,45 @@ export class SessionHttp {
    * An extension component's `host.file(path)`: a file in the folder its own placement named, as
    * it is now. Served as inert data.
    */
+  /**
+   * A file a person attaches: the raw bytes as the body, the name in `X-File-Name` (URI-encoded). Stored
+   * in the session's `files/` folder under a free name, which is returned.
+   */
+  private async attach(id: string, request: IncomingMessage) {
+    let name: string;
+    try {
+      name = decodeURIComponent(String(request.headers["x-file-name"] ?? ""));
+    } catch {
+      throw new RuntimeError("invalid-input");
+    }
+    if (request.headers["content-encoding"] || !validAttachmentName(name)) throw new RuntimeError("invalid-input");
+    const length = Number(request.headers["content-length"] ?? NaN);
+    if (Number.isFinite(length) && length > ATTACHMENT_MAX_BYTES) throw new RuntimeError("limit");
+    const stored = await this.runtime.attach(id, name, request);
+    return { ...stored, type: FILE_TYPES[extname(stored.name).toLowerCase()] ?? "application/octet-stream" };
+  }
+  /** An attachment, served as inert data: nothing in it may run or load, whatever it contains. */
+  private async attachment(id: string, encoded: string, response: ServerResponse) {
+    let file: string;
+    let size: number;
+    try {
+      file = this.runtime.attachment(id, decodeURIComponent(encoded));
+      size = (await stat(file)).size;
+    } catch (error) {
+      if (error instanceof RuntimeError && error.code !== "not-found" && error.code !== "invalid-input") throw error;
+      sendJson(response, 404, { error: "not-found" });
+      return;
+    }
+    response.writeHead(200, {
+      "Content-Type": FILE_TYPES[extname(file).toLowerCase()] ?? "application/octet-stream",
+      "Content-Length": size,
+      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(basename(file))}`,
+      "Cache-Control": "no-store",
+      ...INERT,
+    });
+    if (!size) return void response.end();
+    await pipeline(createReadStream(file, { end: size - 1 }), response).catch(() => response.destroy());
+  }
   private async file(id: string, query: URLSearchParams, response: ServerResponse) {
     const { point, key, path } = Object.fromEntries(query);
     if (
