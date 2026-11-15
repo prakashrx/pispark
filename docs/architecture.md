@@ -21,7 +21,7 @@ In development, Vite serves the web on port 5173 and passes `/api` to the server
 | Zone | What it is | May import |
 | --- | --- | --- |
 | `contract/` | The types and pure functions a client may use: the session, agent, provider and host protocols, the live document's operations, session title rules, the Svelte modules shared with extension components | nothing else |
-| `core/` | The hosting layer: `runtime/` (sessions, run slots, storage, providers, schedules, processes), `agents/`, `extensions/`, the data folder, the launcher link and the logger. No HTTP, no browser, nothing about how a client draws a session | `contract` |
+| `core/` | The hosting layer: `runtime/` (sessions, run slots, storage, providers, schedules, processes, child sessions, holds; one small file each), `agents/`, `extensions/`, the data folder, the launcher link and the logger. No HTTP, no browser, nothing about how a client draws a session | `contract` |
 | `http/` | The local server for the workspace: routes, static files, the host's configuration and the names of the places the workspace draws for extensions | `core`, `contract` |
 
 `index.ts` wires them. `apps/web` and `apps/launcher` import the server only through `contract/`.

@@ -4,18 +4,14 @@ import { mkdirSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import type { Provider } from "@earendil-works/pi-ai";
 import type { HostSettings, ItemsPage, LiveDoc, PartPage, SessionDoc } from "../../contract/protocol.js";
-import type { ModelChoice } from "../../contract/provider-protocol.js";
 import type { SessionAgent, AgentSummary, AgentTarget } from "../../contract/agent-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { homePaths } from "../home.js";
 import { AgentStore } from "../agents/store.js";
-import { bindingOf, listAgents, resolveSetup, unattendedOf, type Setup } from "../agents/resolve.js";
+import { bindingOf, listAgents, resolveSetup, type Setup } from "../agents/resolve.js";
 import { DEFAULT_AGENT, validAgentId } from "../agents/format.js";
 import type { Json } from "../../contract/stream-ops.js";
-import { Session, extensionName, validateText, type SessionHost, type RunHandle, type RunResult, type SessionSummary } from "./session.js";
-import { toolSessionTitle } from "./session-title.js";
-import type { SessionRequest } from "./session-tool.js";
-import type { ReportMode, StatusDetails, WokenDetails } from "../../contract/wake-protocol.js";
+import { Session, validateText, type SessionHost, type RunHandle, type SessionSummary } from "./session.js";
 import type { RuntimeConfiguration } from "./configuration.js";
 import { deadline, RuntimeError, runtimeError } from "./errors.js";
 import { readSettings, validSettings, writeSettings } from "./host-settings.js";
@@ -24,29 +20,23 @@ import type { SessionChange } from "./observation.js";
 import type { ProviderSettings } from "./provider-settings.js";
 import { validChoice } from "./provider-storage.js";
 import { RunSlots } from "./run-slots.js";
-import { SessionStorage, validateId } from "./storage.js";
+import { SessionStorage, validateId, type SessionMetadata } from "./storage.js";
 import { attachmentPath, placeAttachments, saveAttachment } from "./attachments.js";
 import { Schedules } from "./schedules.js";
 import { ToolDiscovery } from "./tool-discovery.js";
-import { Wakes, type Wake } from "./wakes.js";
-import type { Routine, RoutineList, RoutineRun, ScheduleInput, ScheduleList } from "../../contract/schedule-protocol.js";
+import { Wakes } from "./wakes.js";
+import type { Routine, RoutineList, ScheduleInput, ScheduleList } from "../../contract/schedule-protocol.js";
 import { switchName } from "../../contract/agent-protocol.js";
 import { Routines } from "./routines.js";
-import { Processes, type ProcessEnd } from "./processes.js";
-import type { ProcessRequest } from "./process-tool.js";
+import { Processes } from "./processes.js";
 import type { ProcessInfo, ProcessList, ProcessOutput } from "../../contract/process-protocol.js";
 import type { RunningWork } from "../../contract/host-protocol.js";
+import { targetOf, type NewSession, type Origin, type SessionAccess } from "./session-access.js";
+import { Children } from "./children.js";
+import { Holds } from "./holds.js";
+import { Runs } from "./runs.js";
+import { SessionProcesses } from "./session-processes.js";
 
-type Stored = ReturnType<Processes["get"]>;
-
-/** A child's result data as the parent's agent reads it, if it fits in `room` characters. */
-function dataText(data: unknown, room: number): string {
-  if (data === undefined) return "";
-  for (const text of [JSON.stringify(data, null, 2), JSON.stringify(data)])
-    if (text.length + 16 <= room) return `\n\nIts data:\n${text}`;
-  return "\n\n(It also set data, too large to show here; this session's extensions received it.)";
-}
-import type { SessionMetadata } from "./storage.js";
 
 /**
  * The sessions this host holds, independent of clients: which are loaded, how many may run at once,
@@ -88,6 +78,14 @@ export class SessionRuntime {
   private unattendedPaused: boolean;
   private ticker?: ReturnType<typeof setInterval>;
   private checking?: Promise<void>;
+  /** Sessions started by other sessions. */
+  private readonly children: Children;
+  /** Extensions keeping their sessions loaded. */
+  private readonly holds: Holds;
+  /** Runs of schedules and routines, each in a new session. */
+  private readonly runs: Runs;
+  /** Background processes as sessions and clients see them. */
+  private readonly sessionProcesses: SessionProcesses;
 
   constructor(
     private readonly configuration: RuntimeConfiguration,
@@ -114,6 +112,25 @@ export class SessionRuntime {
       this.layered.clear();
       this.checkSetups();
     });
+    const access: SessionAccess = {
+      storage: this.storage,
+      agents: this.agents,
+      logger,
+      accepting: () => this.accepting,
+      admit: () => this.admit(),
+      now: () => configuration.now?.() ?? Date.now(),
+      live: (id) => this.live.get(id),
+      get: (id) => this.get(id),
+      ensure: (id) => this.ensure(id),
+      stop: (id) => this.stop(id),
+      cancel: (id) => this.cancel(id),
+      archive: (id) => this.archive(id),
+      create: (request, origin) => this.createSession(request, origin),
+      deliver: (id, wake) => this.wakes.deliver(id, wake),
+    };
+    this.children = new Children(access);
+    this.holds = new Holds(access, () => this.unattendedPaused);
+    this.runs = new Runs(access);
     this.sweeper = setInterval(() => this.sweep(), Math.min(60_000, Math.max(1000, this.idleUnload / 4)));
     this.sweeper.unref();
     this.host = {
@@ -134,11 +151,11 @@ export class SessionRuntime {
         this.layered.delete(session.id);
         if (!session.published) this.storage.discardUnpublished(session.id);
       },
-      ended: (session, result) => this.childEnded(session, result),
-      hold: (session, request) => this.holdRequest(session, request),
+      ended: (session, result) => this.children.ended(session, result),
+      hold: (session, request) => this.holds.request(session, request),
       toolsSeen: (fingerprint, paths, tools) => this.tools.remember(fingerprint, paths, tools),
-      processes: { request: (sessionId, request, signal) => this.processRequest(sessionId, request, signal) },
-      sessions: { request: (parentId, request) => this.sessionRequest(parentId, request) },
+      processes: { request: (sessionId, request, signal) => this.sessionProcesses.request(sessionId, request, signal) },
+      sessions: { request: (parentId, request) => this.children.request(parentId, request) },
       // A waiting wake goes as soon as its session is free; the minute check catches anything missed.
       freed: () => {
         if (this.accepting) void this.wakes.drain();
@@ -181,24 +198,21 @@ export class SessionRuntime {
       },
       { now: configuration.now, logger, settled: (sessionId, sourceId) => this.schedules.settled(sessionId, sourceId) },
     );
-    this.schedules = new Schedules({ ...sessions, spawn: (owner, run) => this.spawnRun(owner, run) }, this.wakes, { now: configuration.now, logger });
+    this.schedules = new Schedules({ ...sessions, spawn: (owner, run) => this.runs.schedule(owner, run) }, this.wakes, { now: configuration.now, logger });
     this.routines = new Routines(
       {
-        agents: () => this.routineAgents(),
-        runs: (key) => this.runsOf(key),
-        spawn: async (agent, run) => {
-          const doc = await this.createSession({ agent }, { title: run.title, schedule: run.schedule });
-          await this.pruneRuns(run.schedule.id, doc.id);
-          return doc.id;
-        },
+        agents: () => this.runs.routineAgents(),
+        runs: (key) => this.runs.of(key),
+        spawn: (agent, run) => this.runs.routine(agent, run),
       },
       this.wakes,
       { now: configuration.now, logger },
     );
     this.processes = new Processes(
-      { ids: () => this.storage.ids(), directory: (id) => this.storage.directory(id), tell: (sessionId, end) => this.processEnded(sessionId, end) },
+      { ids: () => this.storage.ids(), directory: (id) => this.storage.directory(id), tell: (sessionId, end) => this.sessionProcesses.ended(sessionId, end) },
       { logger },
     );
+    this.sessionProcesses = new SessionProcesses(access, this.processes, (id) => this.children.of(id));
     this.wakes.start();
     this.schedules.start();
     this.processes.load();
@@ -226,7 +240,7 @@ export class SessionRuntime {
     this.slots.setLimit(settings.maxRunning);
     this.unattendedPaused = settings.unattendedPaused;
     for (const session of this.live.values()) session.changed();
-    void this.keepHeld();
+    void this.holds.keep();
     return this.settings();
   }
   /** The sessions in use; archived ones are left out. */
@@ -294,9 +308,8 @@ export class SessionRuntime {
       ...(this.processes?.runningIn(metadata.id) ? { processes: this.processes.runningIn(metadata.id) } : {}),
     };
   }
-  /** The session's own layer once it has one, else the agent it started with. */
   private target(metadata: SessionMetadata): AgentTarget {
-    return this.agents.exists({ session: metadata.id }) ? { session: metadata.id } : { agent: metadata.agent };
+    return targetOf(this.agents, metadata);
   }
   /** After any agent edit, flag open sessions whose resolved setup no longer matches. */
   private checkSetups(): void {
@@ -345,12 +358,12 @@ export class SessionRuntime {
     if (!this.accepting) return;
     const now = Date.now();
     for (const [id, session] of this.live)
-      if (session.unloadable && !this.holding(session.metadata) && now - session.lastUsed >= this.idleUnload) void this.stop(id).catch(() => {});
+      if (session.unloadable && !this.holds.holding(session.metadata) && now - session.lastUsed >= this.idleUnload) void this.stop(id).catch(() => {});
   }
   /** Above the backstop, idle sessions unload first, least recently used first. Nobody is refused. */
   private async makeRoom(): Promise<void> {
     while (this.live.size >= this.maxLive) {
-      const idle = [...this.live.values()].filter((session) => session.unloadable && !this.holding(session.metadata)).sort((a, b) => a.lastUsed - b.lastUsed);
+      const idle = [...this.live.values()].filter((session) => session.unloadable && !this.holds.holding(session.metadata)).sort((a, b) => a.lastUsed - b.lastUsed);
       if (!idle.length) return;
       await this.stop(idle[0]!.id).catch(() => {});
     }
@@ -364,16 +377,13 @@ export class SessionRuntime {
    * A new session in the folder given, or in its agent's own place: a project agent's folder,
    * or an app agent's folder under the data root.
    */
-  async create(request: { folder?: string; model?: ModelChoice; agent?: string }): Promise<SessionDoc> {
+  async create(request: NewSession): Promise<SessionDoc> {
     if (!request || Object.keys(request).some((key) => key !== "folder" && key !== "model" && key !== "agent"))
       throw new RuntimeError("invalid-input");
     return this.createSession(request);
   }
   /** `create`, after its input is checked; a child session also names its parent. */
-  private async createSession(
-    request: { folder?: string; model?: ModelChoice; agent?: string },
-    child: Pick<SessionMetadata, "parent" | "report" | "title" | "schedule"> = {},
-  ): Promise<SessionDoc> {
+  private async createSession(request: NewSession, child: Origin = {}): Promise<SessionDoc> {
     this.admit();
     // Only above the backstop is there anything to wait for; below it, admission stays immediate.
     if (this.live.size >= this.maxLive) {
@@ -474,7 +484,7 @@ export class SessionRuntime {
   async archive(id: string): Promise<void> {
     validateId(id);
     // A parent takes its children along; nothing is put away while any of them works.
-    const ids = [...this.childrenOf(id).filter((child) => !child.archived).map((child) => child.id), id];
+    const ids = [...this.children.of(id).filter((child) => !child.archived).map((child) => child.id), id];
     if (ids.some((each) => this.live.get(each) && !this.live.get(each)!.settled)) throw new RuntimeError("busy");
     for (const each of ids) {
       if (this.live.has(each)) await this.stop(each);
@@ -488,14 +498,10 @@ export class SessionRuntime {
   /** Brings a session back, with its children. */
   restore(id: string): void {
     validateId(id);
-    for (const each of [id, ...this.childrenOf(id).map((child) => child.id)]) {
+    for (const each of [id, ...this.children.of(id).map((child) => child.id)]) {
       const { archived, ...metadata } = this.storage.read(each);
       if (archived) this.storage.write(metadata);
     }
-  }
-  /** The sessions this one started. */
-  private childrenOf(id: string): SessionMetadata[] {
-    return this.storage.list().filter((metadata) => metadata.parent === id);
   }
   /**
    * Deletes an archived session for good, with everything in its folder. Its working folder, and
@@ -504,7 +510,7 @@ export class SessionRuntime {
   delete(id: string): void {
     validateId(id);
     const metadata = this.storage.read(id);
-    const children = this.childrenOf(id);
+    const children = this.children.of(id);
     if (!metadata.archived || [id, ...children.map((child) => child.id)].some((each) => this.live.has(each))) throw new RuntimeError("busy");
     for (const each of [...children.map((child) => child.id), id]) {
       this.storage.remove(each);
@@ -531,313 +537,23 @@ export class SessionRuntime {
     return this.tools.tools(setup);
   }
 
-  // ---- Child sessions -------------------------------------------------------------------------
-
-  private now(): number {
-    return this.configuration.now?.() ?? Date.now();
-  }
-  private titleOf(metadata: SessionMetadata): string {
-    return metadata.title ?? "a session";
-  }
-  /** The session tool's requests (the agent's, or an extension's in that session): its own children only. */
-  private async sessionRequest(parentId: string, request: SessionRequest): Promise<{ ok: boolean; text: string }> {
-    const parent = this.storage.read(parentId);
-    if (request.action === "report") return this.raise(parent, request.text);
-    if (request.action === "start") return this.startChild(parent, request);
-    if (request.action === "list") {
-      const children = this.childrenOf(parentId);
-      if (!children.length) return { ok: true, text: "This session has not started any sessions." };
-      return { ok: true, text: children.map((child) => `${child.id}: ${this.titleOf(child)} (${this.childState(child)})`).join("\n") };
-    }
-    const child = this.childrenOf(parentId).find((each) => each.id === request.id);
-    if (!child) return { ok: false, text: "This session did not start a session with that id (list shows them)." };
-    if (request.action === "read") {
-      if (child.archived) return { ok: false, text: "That session is archived." };
-      await this.ensure(child.id);
-      return { ok: true, text: this.get(child.id).lastReply() ?? "It has not answered yet." };
-    }
-    if (request.action === "stop") {
-      const session = this.live.get(child.id);
-      if (!session || session.settled) return { ok: true, text: "It is not working." };
-      await this.cancel(child.id);
-      return { ok: true, text: "Stopped." };
-    }
-    if (child.archived) return { ok: false, text: "That session is archived." };
-    this.admit();
-    await this.ensure(child.id);
-    validateText(request.text);
-    try {
-      void this.get(child.id).start(request.text, this.from(parent)).completion.catch(() => {});
-    } catch (error) {
-      if (runtimeError(error, "execution").code === "busy") return { ok: false, text: "It is still working; its answer will come back here." };
-      throw error;
-    }
-    return { ok: true, text: "Sent." };
-  }
-  /** What a parent's message to its child says about where it came from. */
-  private from(parent: SessionMetadata): WokenDetails {
-    return { source: { kind: "session", id: parent.id, label: this.titleOf(parent) }, due: new Date(this.now()).toISOString() };
-  }
-  private childState(child: SessionMetadata): string {
-    if (child.archived) return "archived";
-    const session = this.live.get(child.id);
-    if (session?.asking) return "waiting for the person";
-    if (session && !session.settled) return "working";
-    if (session?.status === "error" || child.interrupted) return "failed";
-    return "finished";
-  }
-  /**
-   * A session started by another one: in the parent's folder (or its agent's own), with the
-   * parent's agent and model unless another agent is named, and the parent's message first.
-   * One level only: a child cannot start sessions.
-   */
-  private async startChild(parent: SessionMetadata, request: Extract<SessionRequest, { action: "start" }>) {
-    if (parent.parent) return { ok: false, text: "A session started by another session cannot start sessions." };
-    const agent = request.agent ?? parent.agent;
-    if (!validAgentId(agent) || !this.agents.exists({ agent })) return { ok: false, text: `There is no agent "${agent}".` };
-    let ownFolder: boolean;
-    try {
-      ownFolder = !!bindingOf(this.agents, { agent }).folder;
-    } catch {
-      return { ok: false, text: `The agent "${agent}" cannot be used now.` };
-    }
-    validateText(request.prompt);
-    let title: string | undefined;
-    try {
-      title = request.title ? toolSessionTitle(request.title) : undefined;
-    } catch {
-      /* Named from its first message instead. */
-    }
-    const report = request.report ?? "result";
-    const doc = await this.createSession(
-      { ...(ownFolder ? {} : { folder: parent.cwd }), agent, ...(agent === parent.agent && parent.model ? { model: parent.model } : {}) },
-      { parent: parent.id, ...(report !== "result" ? { report } : {}), ...(title ? { title } : {}) },
-    );
-    const session = this.get(doc.id);
-    void session.start(request.prompt, this.from(parent)).completion.catch(() => {});
-    const how = {
-      result: "its answer arrives here as a message when it finishes.",
-      status: "a line here says when it ends, and it raises anything that needs you.",
-      none: "it does not report back (read shows its answer).",
-    }[report];
-    return { ok: true, text: `Started "${this.titleOf(session.metadata)}" (id ${doc.id}). It works on its own; ${how}` };
-  }
-  /** The parent of a child, while it can be told something: listed and itself not a child. */
-  private parentOf(child: SessionMetadata): SessionMetadata | undefined {
-    if (!child.parent) return undefined;
-    try {
-      const parent = this.storage.read(child.parent);
-      return parent.parent === undefined ? parent : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-  /** A child's run ended: its parent is told as the child's mode says. */
-  private childEnded(session: Session, result: RunResult): void {
-    const mode = session.metadata.report ?? "result";
-    const parent = this.parentOf(session.metadata);
-    if (!parent || mode === "none" || !this.accepting) return;
-    const title = this.titleOf(session.metadata);
-    const how = result.outcome === "completed" ? "finished" : result.outcome === "cancelled" ? "stopped" : "failed";
-    const answer = result.outcome === "completed" ? session.lastReply() : undefined;
-    const body = answer ? (answer.length > 8192 ? `${answer.slice(0, 8192)}…\n(cut; read shows all of it)` : answer) : `It ${how} without an answer.`;
-    const data = session.resultData;
-    const report = { session: session.id, title, how, mode, text: body, ...(data !== undefined ? { data } : {}) };
-    if (mode === "status") return void this.statusLine(parent, report).catch((error: unknown) => {
-      this.logger.event("wake.failure", { sessionId: parent.id, outcome: "failed", code: runtimeError(error, "execution").code });
-    });
-    void this.wakes.deliver(parent.id, {
-      source: { kind: "session", id: session.id, label: `${title} · ${how}` },
-      text: `The session "${title}" you started ${how}:\n\n${body}${dataText(data, 56 * 1024 - body.length)}`,
-      due: new Date(this.now()).toISOString(),
-      policy: "queue",
-      report,
-    });
-  }
-  /**
-   * Status mode: a line in the parent's conversation, without a turn. Its extensions see the end
-   * first and may take it (no line) or turn it into a message that wakes the agent.
-   */
-  private async statusLine(parent: SessionMetadata, report: NonNullable<Wake["report"]>): Promise<void> {
-    if (parent.archived) return;
-    await this.ensure(parent.id);
-    const session = this.get(parent.id);
-    const answer = session.offerChildEnded(report);
-    if (answer?.action === "skip") return;
-    if (answer?.action === "send")
-      return this.wakes.deliver(parent.id, {
-        source: { kind: "session", id: report.session, label: `${report.title} · ${report.how}` },
-        text: answer.text,
-        due: new Date(this.now()).toISOString(),
-        policy: "queue",
-      });
-    session.addStatus(`The session "${report.title}" you started ${report.how}.`, { session: report.session, title: report.title, how: report.how });
-  }
-  /** A child in status mode raises something: its text wakes its parent, whose extensions see it first. */
-  private raise(child: SessionMetadata, text: string): { ok: boolean; text: string } {
-    const parent = this.parentOf(child);
-    if (!parent || child.report !== "status") return { ok: false, text: "Only a session started by another one, in status mode, can raise things with it." };
-    const title = this.titleOf(child);
-    void this.wakes.deliver(parent.id, {
-      source: { kind: "session", id: child.id, label: `${title} · raised` },
-      text: `The session "${title}" you started raises this:\n\n${text}`,
-      due: new Date(this.now()).toISOString(),
-      policy: "queue",
-      report: { session: child.id, title, how: "raised", mode: "status", text },
-    });
-    return { ok: true, text: "Raised with the session that started this one." };
-  }
-
-  // ---- Runs in a new session ------------------------------------------------------------------
-
-  /** Runs of one schedule or routine kept in use; older ones are archived as new ones start. */
-  private static readonly RUNS_KEPT = 10;
-  /**
-   * A schedule's run in its own session: a child of the owner, with the owner's agent, folder and
-   * model, named for the run. The clock sends it the prompt.
-   */
-  private async spawnRun(owner: string, run: { title: string; report: ReportMode; schedule: { id: string; due: string } }): Promise<string> {
-    const parent = this.storage.read(owner);
-    if (parent.parent || parent.archived) throw new RuntimeError("busy");
-    let ownFolder = false;
-    try {
-      ownFolder = !!bindingOf(this.agents, { agent: parent.agent }).folder;
-    } catch {
-      throw new RuntimeError("agent");
-    }
-    const doc = await this.createSession(
-      { ...(ownFolder ? {} : { folder: parent.cwd }), agent: parent.agent, ...(parent.model ? { model: parent.model } : {}) },
-      { parent: owner, title: run.title, schedule: run.schedule, ...(run.report !== "result" ? { report: run.report } : {}) },
-    );
-    await this.pruneRuns(run.schedule.id, doc.id);
-    return doc.id;
-  }
-  /**
-   * Keeps the newest runs of a schedule or routine in use: older ones that have settled and wait for
-   * nobody are archived (and can be restored).
-   */
-  private async pruneRuns(schedule: string, keep: string): Promise<void> {
-    const older = this.runsOf(schedule)
-      .filter((run) => !run.archived && run.session !== keep)
-      .slice(SessionRuntime.RUNS_KEPT - 1);
-    for (const { session } of older) {
-      const live = this.live.get(session);
-      if (live && (!live.settled || live.asking)) continue;
-      await this.archive(session).catch(() => {});
-    }
-  }
 
   // ---- Processes ------------------------------------------------------------------------------
 
-  /** The sessions whose processes a session may see: its own and its children's. */
-  private processSessions(sessionId: string): string[] {
-    return [sessionId, ...this.childrenOf(sessionId).map((child) => child.id)];
-  }
-  /** The process tool's requests (the agent's, or an extension's in that session). */
-  private async processRequest(sessionId: string, request: ProcessRequest, signal?: AbortSignal): Promise<{ ok: boolean; text: string }> {
-    const metadata = this.storage.read(sessionId);
-    const describe = (p: ProcessInfo) =>
-      `${p.id}: ${p.title ? `${p.title} (${p.command})` : p.command} — ${
-        p.state === "running" ? `running since ${p.startedAt}` : `${p.ended ? p.ended.replace("-", " ") : p.state}${p.exitCode !== undefined ? ` (exit ${p.exitCode})` : ""}`
-      }${p.sessionId !== sessionId ? ` [started by ${this.titleOf(this.storage.read(p.sessionId))}]` : ""}`;
-    const waited = async (process: Stored, wait: { waitFor?: string; timeoutSeconds?: number }, since: number) => {
-      if (wait.waitFor === undefined) return "";
-      let pattern: RegExp;
-      try {
-        pattern = new RegExp(wait.waitFor, "i");
-      } catch {
-        throw new RuntimeError("invalid-input");
-      }
-      const result = await this.processes.wait(process, pattern, since, wait.timeoutSeconds! * 1000, signal);
-      // What follows the line it waited for (a server's URL after "ready") usually comes at once:
-      // a moment more of output, until it goes quiet for a quarter second, at most half a second.
-      if (result === "matched")
-        for (const end = Date.now() + 500; Date.now() < end; ) {
-          const before = process.written;
-          await new Promise((done) => setTimeout(done, 250));
-          if (process.written === before) break;
-        }
-      return { matched: `The output shows /${wait.waitFor}/.`, ended: "It ended before the output showed that.", timeout: `Not seen within ${wait.timeoutSeconds} s.` }[result] + "\n";
-    };
-    const output = (process: Stored) => {
-      const out = this.processes.unread(process, sessionId);
-      return `${out.cut ? "(older output was cut)\n" : ""}${out.text.trim() ? out.text : "(no new output)"}`;
-    };
-    switch (request.action) {
-      case "start": {
-        const folder = request.folder ? (isAbsolute(request.folder) ? request.folder : join(metadata.cwd, request.folder)) : metadata.cwd;
-        const started = this.processes.start(sessionId, {
-          command: request.command,
-          folder,
-          ...(request.title ? { title: request.title } : {}),
-          report: request.report ?? "result",
-          ...(request.stopAfterSeconds ? { stopAfterSeconds: request.stopAfterSeconds } : {}),
-        });
-        this.live.get(sessionId)?.changed();
-        const process = this.processes.get(started.id, [sessionId]);
-        // Its first output, or what it was asked to wait for.
-        const note = request.waitFor !== undefined ? await waited(process, request, 0) : (await this.processes.wait(process, undefined, 0, 1000, signal), "");
-        return { ok: true, text: `Started ${describe(this.processes.get(started.id, [sessionId]))} in ${folder}.\n${note}${output(process)}` };
-      }
-      case "list": {
-        const all = this.processSessions(sessionId).flatMap((id) => this.processes.list(id));
-        return { ok: true, text: all.length ? all.map(describe).join("\n") : "No processes." };
-      }
-      case "output": {
-        const process = this.processes.get(request.id, this.processSessions(sessionId));
-        const note = await waited(process, request, process.cursors[sessionId] ?? process.written);
-        return { ok: true, text: `${describe(process)}\n${note}${output(process)}` };
-      }
-      case "watch":
-      case "unwatch": {
-        const process = this.processes.get(request.id, this.processSessions(sessionId));
-        this.processes.watch(process, request.pattern, request.action === "unwatch" ? "remove" : (request.report ?? "result"));
-        return { ok: true, text: request.action === "watch" ? `Watching for /${request.pattern}/; at most one wake a minute.` : "No longer watching that." };
-      }
-      case "stop": {
-        const process = this.processes.get(request.id, this.processSessions(sessionId));
-        if (process.state !== "running") return { ok: true, text: "It is not running." };
-        this.processes.stop(process.id, "agent");
-        await this.processes.wait(process, /(?!)/, process.written, 5000);
-        if (this.processes.get(process.id, [process.sessionId]).state === "running") return { ok: true, text: "Stopping; it has not ended yet (list shows when it has)." };
-        return { ok: true, text: "Stopped." };
-      }
-    }
-  }
-  /** A process ended (or a watch matched): its session is told as the mode says. */
-  private processEnded(sessionId: string, end: ProcessEnd): void {
-    this.live.get(sessionId)?.changed();
-    if (end.mode === "none" || !this.accepting) return;
-    let metadata: SessionMetadata;
-    try {
-      metadata = this.storage.read(sessionId);
-    } catch {
-      return;
-    }
-    if (metadata.archived) return;
-    const title = end.process.title ?? end.process.command;
-    const short = title.length > 80 ? `${title.slice(0, 79)}…` : title;
-    if (end.mode === "status") {
-      void this.statusIn(sessionId, `The process "${short}" ${end.how}.`, { process: end.process.id, title: short, how: end.how }).catch(() => {});
-      return;
-    }
-    void this.wakes.deliver(sessionId, {
-      source: { kind: "process", id: end.process.id, label: `${short} · ${end.how}`.slice(0, 200) },
-      text: `The process "${short}" ${end.how}${end.watch ? `:\n${end.watch}` : "."}\n\nLast output:\n${end.tail.trim() || "(none)"}`,
-      due: new Date(this.now()).toISOString(),
-      policy: "queue",
-    });
-  }
-  /** A status line in a session's conversation, loading it if needed. */
-  private async statusIn(sessionId: string, text: string, details: StatusDetails): Promise<void> {
-    await this.ensure(sessionId);
-    this.get(sessionId).addStatus(text, details);
-  }
   /** A session's processes, for clients. */
   listProcesses(sessionId: string): ProcessInfo[] {
-    validateId(sessionId);
-    this.storage.read(sessionId);
-    return this.processes.list(sessionId);
+    return this.sessionProcesses.list(sessionId);
+  }
+  /** Every process still running, with its session's title. */
+  runningProcesses(): ProcessList {
+    return this.sessionProcesses.running();
+  }
+  processOutput(sessionId: string, id: string, since: number): ProcessOutput {
+    return this.sessionProcesses.output(sessionId, id, since);
+  }
+  /** The person stops a process; its session is told. */
+  stopProcess(sessionId: string, id: string): void {
+    this.sessionProcesses.stop(sessionId, id);
   }
   /** The data folder this runtime reads and writes. */
   get dataFolder(): string {
@@ -851,179 +567,28 @@ export class SessionRuntime {
     const processes = this.runningProcesses().processes.map((p) => ({ session: p.sessionId, title: p.session.title ?? "New session", name: p.title || p.command }));
     return { replies, processes };
   }
-  /** Every process still running, with its session's title. */
-  runningProcesses(): ProcessList {
-    return {
-      processes: this.processes.running().map((p) => {
-        let title: string | undefined;
-        try {
-          title = this.storage.read(p.sessionId).title;
-        } catch {
-          /* Its session is gone. */
-        }
-        return { ...p, session: title ? { title } : {} };
-      }),
-    };
-  }
-  processOutput(sessionId: string, id: string, since: number): ProcessOutput {
-    validateId(sessionId);
-    if (!Number.isSafeInteger(since) || since < 0) throw new RuntimeError("invalid-input");
-    return this.processes.read(this.processes.get(id, [sessionId]), since);
-  }
-  /** The person stops a process; its session is told. */
-  stopProcess(sessionId: string, id: string): void {
-    validateId(sessionId);
-    this.processes.stop(this.processes.get(id, [sessionId]).id, "person");
-  }
 
   // ---- Hold -----------------------------------------------------------------------------------
 
-  /** Whether a session is kept loaded now: held, and not while unattended work is paused. */
-  private holding(metadata: SessionMetadata): boolean {
-    return !!metadata.held && !this.unattendedPaused;
-  }
-  /** The extension names a session's agent loads. */
-  private extensionsOf(metadata: SessionMetadata): string[] {
-    try {
-      return resolveSetup(this.agents, this.target(metadata)).extensionPaths.map(extensionName);
-    } catch {
-      return [];
-    }
-  }
-  /** Whether the session's agent allows the extension to hold (`hold:<extension>`). */
-  private holdAllowed(metadata: SessionMetadata, extension: string): boolean {
-    try {
-      return unattendedOf(this.agents, this.target(metadata)).holds.includes(extension);
-    } catch {
-      return false;
-    }
-  }
-  /**
-   * An extension asks to keep its session loaded (or lets go). Allowed by the agent, it is held at
-   * once; otherwise the person is asked in the session (`holdAsked`) and the extension told so.
-   */
-  private holdRequest(session: Session, request: { extension: string; hold: boolean; reason: string }) {
-    const metadata = session.metadata;
-    if (!request.hold) {
-      if (session.holdAsked?.extension === request.extension) session.holdAsked = undefined;
-      if (metadata.held?.extension === request.extension) {
-        delete metadata.held;
-        this.storage.write(metadata);
-      }
-      session.changed();
-      return { state: "released" as const, text: "Released: the session unloads when it is idle." };
-    }
-    if (!this.extensionsOf(metadata).includes(request.extension))
-      return { state: "refused" as const, text: `This session has no extension called "${request.extension}".` };
-    if (metadata.held && metadata.held.extension !== request.extension)
-      return { state: "refused" as const, text: `"${metadata.held.extension}" already keeps this session loaded.` };
-    if (!this.holdAllowed(metadata, request.extension)) {
-      session.holdAsked = { extension: request.extension, reason: request.reason };
-      session.changed();
-      return { state: "asked" as const, text: "The person is asked to allow it; until then the session unloads when idle." };
-    }
-    session.holdAsked = undefined;
-    metadata.held = { extension: request.extension, reason: request.reason };
-    this.storage.write(metadata);
-    session.changed();
-    return { state: "held" as const, text: "Held: the session stays loaded while no one watches, and is loaded again after a restart." };
-  }
-  /**
-   * The person answers a hold request: allowing it switches `hold:<extension>` on in the agent
-   * (so its other sessions may hold too) and holds this session; "Not now" forgets the request.
-   */
+  /** The person answers a hold request: allowing it switches `hold:<extension>` on in the agent. */
   answerHold(id: string, allow: unknown): void {
-    if (typeof allow !== "boolean") throw new RuntimeError("invalid-input");
-    const session = this.get(id);
-    const asked = session.holdAsked;
-    if (!asked) throw new RuntimeError("not-found");
-    session.holdAsked = undefined;
-    if (allow) {
-      this.setSwitch(session.metadata.agent, switchName("hold", asked.extension), true);
-      session.metadata.held = { ...asked };
-      this.storage.write(session.metadata);
-    }
-    session.changed();
+    this.holds.answer(id, allow);
   }
   /** The person lets go of a hold: the session unloads when idle. The agent still allows it. */
   releaseHold(id: string): void {
-    validateId(id);
-    const session = this.live.get(id);
-    const metadata = session?.metadata ?? this.storage.read(id);
-    if (!metadata.held) return;
-    delete metadata.held;
-    this.storage.write(metadata);
-    session?.changed();
-  }
-  /**
-   * Held sessions as they should be: loaded (after a restart, or when Pause all ends), unloaded while
-   * paused, and let go once their agent no longer allows it.
-   */
-  private async keepHeld(): Promise<void> {
-    for (const metadata of this.storage.list()) {
-      if (!metadata.held || metadata.archived || !this.accepting) continue;
-      const session = this.live.get(metadata.id);
-      if (!this.holdAllowed(metadata, metadata.held.extension)) {
-        const { held: _held, ...kept } = session?.metadata ?? metadata;
-        if (session) delete session.metadata.held;
-        this.storage.write(session?.metadata ?? kept);
-        session?.changed();
-        continue;
-      }
-      try {
-        if (this.unattendedPaused) {
-          if (session?.settled && session.observers.size === 0) await this.stop(metadata.id);
-        } else if (!session) await this.ensure(metadata.id);
-      } catch (error) {
-        this.logger.event("wake.failure", { sessionId: metadata.id, outcome: "failed", code: runtimeError(error, "execution").code });
-      }
-    }
-  }
-  /** Turns a `type:name` switch on or off in an agent's own definition. */
-  private setSwitch(agent: string, name: string, on: boolean): void {
-    const { definition, revision } = this.agents.read({ agent });
-    const without = (list?: string[]) => (list ?? []).filter((value) => value !== name);
-    const next: typeof definition = { ...definition, on: [...without(definition.on), ...(on ? [name] : [])], off: [...without(definition.off), ...(on ? [] : [name])] };
-    if (!next.on!.length) delete next.on;
-    if (!next.off!.length) delete next.off;
-    this.agents.save({ agent }, revision, next);
+    this.holds.release(id);
   }
 
   // ---- Routines -------------------------------------------------------------------------------
 
-  /** Every agent that offers routines, with which are switched on. One that cannot be read offers none. */
-  private routineAgents() {
-    return listAgents(this.agents).flatMap((agent) => {
-      if (!agent.valid) return [];
-      try {
-        const { routines } = unattendedOf(this.agents, { agent: agent.id });
-        return routines.length ? [{ id: agent.id, name: agent.name, ...(agent.home ? { home: agent.home } : {}), routines }] : [];
-      } catch {
-        return [];
-      }
-    });
-  }
-  /** The sessions a schedule's or routine's runs made, newest first. */
-  private runsOf(key: string): RoutineRun[] {
-    return this.storage
-      .list()
-      .filter((metadata) => metadata.schedule?.id === key)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .map((metadata) => ({
-        session: metadata.id,
-        due: metadata.schedule!.due,
-        ...(metadata.title ? { title: metadata.title } : {}),
-        ...(metadata.archived ? { archived: true as const } : {}),
-      }));
-  }
   listRoutines(): RoutineList {
     return { paused: this.unattendedPaused, routines: this.routines.list() };
   }
   /** Switches a routine on or off: an ordinary switch (`routine:<id>`) in the agent's own definition. */
   setRoutine(agent: string, id: string, on: unknown): Routine {
     if (!validAgentId(agent) || typeof id !== "string" || typeof on !== "boolean") throw new RuntimeError("invalid-input");
-    if (!this.routineAgents().find((p) => p.id === agent)?.routines.some((r) => r.id === id)) throw new RuntimeError("not-found");
-    this.setSwitch(agent, switchName("routine", id), on);
+    if (!this.runs.routineAgents().find((p) => p.id === agent)?.routines.some((r) => r.id === id)) throw new RuntimeError("not-found");
+    this.agents.setSwitch(agent, switchName("routine", id), on);
     if (on) this.routines.switchedOn(agent, id);
     return this.routines.list().find((r) => r.agent.id === agent && r.id === id)!;
   }
@@ -1076,7 +641,7 @@ export class SessionRuntime {
     return (this.checking ??= (async () => {
       await this.schedules.check();
       await this.routines.check();
-      await this.keepHeld();
+      await this.holds.keep();
       await this.wakes.drain();
     })().finally(() => (this.checking = undefined)));
   }
