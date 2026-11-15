@@ -5,6 +5,7 @@ export const settingsLinks: { label: string; icon: IconName; page?: Page }[] = [
   { label: "Providers & models", icon: "providers", page: "providers" },
   { label: "Agents", icon: "people", page: "agent" },
   { label: "Background", icon: "clock", page: "schedules" },
+  { label: "Remote access", icon: "globe", page: "remote" },
   { label: "Sources", icon: "settingsFolder", page: "sources" },
   { label: "Channels", icon: "channels" },
   { label: "Keybindings & Shortcuts", icon: "shortcuts" },

@@ -27,6 +27,8 @@ import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_MESSAGE, validAttachmentName } fr
 import { pipeline } from "node:stream/promises";
 import { ASSET_TYPES, viewAsset, viewBundle } from "../core/extensions/view-compiler.js";
 import { CallError } from "../core/extensions/views.js";
+import type { RemoteAccess } from "../core/remote/remote-access.js";
+import { RemoteHttp, type Admission } from "./remote-http.js";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -192,46 +194,64 @@ export class SessionHttp {
     string,
     { receipt: Receipt; input: string; expires: number; lifecycle?: string; start?: boolean }
   >();
-  private streams = new Set<ServerResponse>();
+  /** Open live streams, and the paired device each one is for (none: this computer). */
+  private streams = new Map<ServerResponse, string | undefined>();
   private requests = 0;
   private closed = false;
   private readonly agents: AgentHttp;
   private readonly host: HostHttp;
+  private readonly remote?: RemoteHttp;
   constructor(
     readonly runtime: SessionRuntime,
     private readonly developmentOrigin?: string,
     private readonly providers?: ProviderHttp,
     private readonly logger: SafeLogger = silentLogger,
     host?: HostHttp,
+    remote?: RemoteAccess,
   ) {
     // Every server answers /api/host; one the launcher did not start is simply not managed.
     this.host = host ?? new HostHttp(new HostLink(() => runtime.runningWork(), () => {}), runtime.dataFolder, () => runtime.runningWork());
     this.agents = new AgentHttp(runtime.agents, (target) => runtime.discoverTools(target));
+    this.remote = remote && new RemoteHttp(remote, (device) => this.endRemote(device));
   }
-  private secure(request: IncomingMessage) {
-    const local = request.socket.localAddress;
-    if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(local ?? ""))
-      return false;
+  /**
+   * Only requests on a loopback socket, for this server's loopback Host, or for the remote address
+   * while remote access is on (Tailscale Serve proxies it to loopback). Same-origin only.
+   */
+  private admit(request: IncomingMessage): Admission | undefined {
+    const socket = request.socket.localAddress;
+    if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(socket ?? ""))
+      return;
     const port = request.socket.localPort;
     const hosts = [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`];
     const host = request.headers.host;
-    if (!host || !hosts.includes(host)) return false;
+    const local = !!host && hosts.includes(host);
+    if (!host || (!local && host !== this.remote?.host)) return;
+    // Proxies (Tailscale Serve among them) mark what they forward. A forwarded request is never this
+    // computer, even if a proxy rewrote its Host to a loopback one.
+    if (local && (request.headers["x-forwarded-for"] || request.headers["tailscale-user-login"])) return;
     const origin = request.headers.origin;
     if (
       origin &&
-      origin !== `http://${host}` &&
-      origin !== this.developmentOrigin
+      origin !== (local ? `http://${host}` : `https://${host}`) &&
+      !(local && origin === this.developmentOrigin)
     )
-      return false;
-    if (request.headers["sec-fetch-site"] === "cross-site") return false;
+      return;
+    if (request.headers["sec-fetch-site"] === "cross-site") return;
     // Non-browser clients may omit Origin. Browser mutations must carry it.
     if (
       request.method === "POST" &&
       request.headers["sec-fetch-site"] &&
       !origin
     )
-      return false;
-    return true;
+      return;
+    if (local) return { local: true };
+    const device = this.remote!.device(request);
+    return { local: false, ...(device ? { device } : {}) };
+  }
+  /** Ends the live streams of one paired device, or of every remote device. */
+  private endRemote(device?: string) {
+    for (const [stream, owner] of this.streams) if (owner && (device === undefined || owner === device)) stream.end();
   }
   private prune() {
     for (const [id, entry] of this.receipts)
@@ -372,7 +392,8 @@ export class SessionHttp {
     request: IncomingMessage,
     response: ServerResponse,
   ): Promise<void> {
-    if (!this.secure(request)) {
+    const who = this.admit(request);
+    if (!who) {
       this.logger.event("http.reject", {
         outcome: "rejected",
         code: "forbidden",
@@ -388,6 +409,16 @@ export class SessionHttp {
     try {
       const url = new URL(request.url!, "http://localhost");
       const path = url.pathname;
+      const remotePath = path === "/api/remote" || path.startsWith("/api/remote/");
+      // A device at the remote address that hasn't paired may only ask what it is, and pair.
+      if (!who.local && !who.device && !(remotePath && ["/api/remote/me", "/api/remote/pair"].includes(path))) {
+        sendJson(response, 401, { error: "unpaired" });
+        return;
+      }
+      if (remotePath && this.remote && !url.search) {
+        await this.remote.handle(request, response, path, who);
+        return;
+      }
       if (path === "/api/agents" || path.startsWith("/api/agents/")) {
         await this.agents.handle(request, response);
         return;
@@ -571,7 +602,7 @@ export class SessionHttp {
         const [, id, kind, itemId, part] = match;
         if (kind === "live" && !url.search && !itemId) {
           if (this.streams.size >= 16) throw new RuntimeError("limit");
-          await this.observe(id!, response);
+          await this.observe(id!, response, who.local ? undefined : who.device?.id);
         } else if (kind === "items" && itemId) {
           await this.part(id!, itemId, Number(part), url.searchParams, response);
         } else if (kind === "items" && !itemId) {
@@ -713,7 +744,7 @@ export class SessionHttp {
     }
     sendJson(response, 200, this.runtime.text(id, itemId, part, Number(offset)));
   }
-  private async observe(id: string, response: ServerResponse) {
+  private async observe(id: string, response: ServerResponse, device?: string) {
     let observation;
     try {
       observation = this.runtime.observeLive(id);
@@ -727,7 +758,7 @@ data: ${JSON.stringify({ type: "unloaded", sessionId: id } satisfies LiveEvent)}
 `);
       return;
     }
-    this.streams.add(response);
+    this.streams.set(response, device);
     const close = () => observation.events.close();
     response.once("close", close);
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -783,7 +814,7 @@ data: ${JSON.stringify(event)}
   }
   async shutdown() {
     this.closed = true;
-    for (const stream of this.streams) stream.end();
+    for (const stream of this.streams.keys()) stream.end();
     // Both owners begin cleanup even if the other throws or never settles.
     const results = await Promise.allSettled([
       Promise.resolve().then(() => this.providers?.shutdown()),

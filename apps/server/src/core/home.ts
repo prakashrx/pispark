@@ -22,6 +22,8 @@ export interface HomePaths {
   logs: string;
   /** PiSpark's own settings file. */
   settings: string;
+  /** Remote access: the address PiSpark accepts and the paired devices. */
+  remote: string;
 }
 
 export function homePaths(root: string): HomePaths {
@@ -34,6 +36,7 @@ export function homePaths(root: string): HomePaths {
     providers: join(base, "providers"),
     logs: join(base, "logs"),
     settings: join(base, "settings.json"),
+    remote: join(base, "remote.json"),
   };
 }
 

@@ -4,6 +4,7 @@ export const routes = {
   providers: { title: "Providers & models" },
   agent: { title: "Agents" },
   schedules: { title: "Schedules" },
+  remote: { title: "Remote access" },
   sources: { title: "Sources" },
   about: { title: "About" },
 } as const;

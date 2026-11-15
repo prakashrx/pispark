@@ -504,6 +504,50 @@ export const icons = {
       },
     },
   ],
+  globe: [
+    {
+      tag: "path",
+      attrs: {
+        d: "M12 21a9 9 0 100-18m0 18a9 9 0 110-18m0 18c2.5 0 4-4 4-9s-1.5-9-4-9m0 18c-2.5 0-4-4-4-9s1.5-9 4-9M3.5 9h17M3.5 15h17",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "stroke-width": "1.75",
+      },
+    },
+  ],
+  phone: [
+    {
+      tag: "path",
+      attrs: {
+        d: "M8 3h8a1 1 0 011 1v16a1 1 0 01-1 1H8a1 1 0 01-1-1V4a1 1 0 011-1zm3 15h2",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "stroke-width": "1.75",
+      },
+    },
+  ],
+  laptop: [
+    {
+      tag: "path",
+      attrs: {
+        d: "M4 6a1 1 0 011-1h14a1 1 0 011 1v9H4V6zm-2 12h20",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "stroke-width": "1.75",
+      },
+    },
+  ],
+  power: [
+    {
+      tag: "path",
+      attrs: {
+        d: "M12 3v8m6.4-4.4a8 8 0 11-12.8 0",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "stroke-width": "1.75",
+      },
+    },
+  ],
   copy: [
     {
       tag: "path",
