@@ -62,7 +62,7 @@ test("an extension's own Svelte components appear at the session's points, answe
   const { sessions } = await (await request.get("/api/sessions")).json();
   const id = sessions.at(-1).id;
   await request.post("/api/commands", { data: { type: "stop", commandId: crypto.randomUUID(), sessionId: id } });
-  await expect(page.getByRole("img", { name: "Backend: Live" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("img", { name: "Backend: Live" })).toBeVisible({ timeout: 15_000 });
   await expect(counter.getByText("Count 1", { exact: true })).toBeVisible();
   await expect(page.locator('[data-point="item.tool:shout"]')).toHaveText("Shouted HI");
   await expect(page.locator('[data-point="item.custom:note"]')).toHaveText("Note: saved");

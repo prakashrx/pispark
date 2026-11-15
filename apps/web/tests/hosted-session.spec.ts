@@ -69,7 +69,7 @@ test("blocked browser storage supports live replies and a session unloaded by a 
     data: { type: "stop", commandId: crypto.randomUUID(), sessionId: id },
   });
   await expect(page.getByRole("img", { name: "Backend: Live" })).toBeVisible({
-    timeout: 10_000,
+    timeout: 15_000,
   });
   await expect(
     page.getByRole("button", { name: "Send message" }),

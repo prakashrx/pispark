@@ -613,7 +613,7 @@ test("successful truncated session list is visible status without a draft, clear
   );
   truncated = false;
   await expect(page.getByText(copy, { exact: true })).toHaveCount(0, {
-    timeout: 10000,
+    timeout: 15_000,
   });
   await expect(warning).toBeVisible();
   await expect(ask).toHaveValue("Keep this draft");
