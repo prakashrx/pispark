@@ -49,7 +49,7 @@ The server binds only to loopback and checks every request's Host and Origin ([s
 | Route | What |
 | --- | --- |
 | `GET /api/health` | `200 {"status":"ok","service":"pispark"}`; other methods `405` |
-| `/api/catalog`, `/api/sessions/*`, `/api/commands`, `/api/receipts/*`, `/api/settings`, `/api/schedules/*`, `/api/routines/*`, `/api/processes`, `/api/views/*`, `/api/host` | The [session protocol](session-protocol.md) |
+| `/api/catalog`, `/api/sessions/*` (including attachments), `/api/commands`, `/api/receipts/*`, `/api/settings`, `/api/schedules/*`, `/api/routines/*`, `/api/processes`, `/api/views/*`, `/api/host` | The [session protocol](session-protocol.md) |
 | `/api/providers/*` | Providers & models: catalog, default, refresh, sign-in and sign-out ([protocol](session-protocol.md#providers--models-native-store-and-browser-bridge)) |
 | `/api/agents/*` | [Agent management](agents.md#http) |
 | Any other `/api` path | JSON `404`, never the web page |
@@ -61,7 +61,7 @@ Static paths are decoded once, refuse dot segments, hidden files, nulls and back
 
 `App.svelte` owns hash navigation; `routes.ts` names the screens: Sessions (`#/workspace`), General settings, Providers & models, Agents, Background (`#/schedules`), Sources and About. One `lib/layout/AppShell.svelte` is the frame every screen shares: the sidebar and the global Ask. There is no router dependency and no global state framework; browser storage holds only the selected session and the appearance choice.
 
-- **`lib/ui`**: generic typed controls (`Selector`, `Toggle`, `Menu`, `Popover`, `InlinePanel`, …). They own appearance and keyboard behavior, never requests. Panels open in the page, not as modal dialogs.
+- **`lib/ui`**: generic typed controls (`Selector`, `Toggle`, `Menu`, `Popover`, `InlinePanel`, `RichInput`, …). `RichInput` is text with tokens shown as chips in their place; Ask and replies use it for attachments (`features/workspace/attachments.svelte.ts`). They own appearance and keyboard behavior, never requests. Panels open in the page, not as modal dialogs.
 - **`lib/theme`**: each theme is a neutral color ramp, a sidebar surface and an accent; every other color derives from those, and Tailwind's gray utilities map onto the same ramp. Fonts are system fonts; the icon font is bundled. Nothing loads from a CDN.
 - **`features/workspace`**: the sessions. Each open session is a `Session` (`session.svelte.ts`: its state, its items as they stream, its draft, send, stop and answer), the counterpart of the server's `Session`. `SessionClient` is the app around them (the session list, which session is open, Ask), and `Transport` holds requests, commands and receipts. `SessionArea` shows the view the person chose: the conversation, or a view an extension offers; every view and extension component is given the `Session` and nothing else about sessions. `SessionHeader` and `SessionSidebar` are PiSpark's own and show around any view.
 - **`features/agent`, `settings`, `schedules`, `background`, `sources`, `about`**: the other screens and panels. Sources says that connections aren't available yet.

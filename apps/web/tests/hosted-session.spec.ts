@@ -74,7 +74,7 @@ test("blocked browser storage supports live replies and a session unloaded by a 
   await expect(
     page.getByRole("button", { name: "Send message" }),
   ).not.toHaveAttribute("aria-disabled", "true");
-  await expect(reply).toHaveValue("keep through reopen");
+  await expect(reply).toHaveText("keep through reopen");
   await reply.press("Enter");
   await expect(
     page.getByText("local:keep through reopen", { exact: true }),

@@ -1,13 +1,15 @@
 <script lang="ts">
   import Icon from "../../lib/ui/Icon.svelte";
   import { reportBody, type Turn } from "./session-turns";
-  import { useSessions } from "./session-client.svelte";
+  import { useSession, useSessions } from "./session-client.svelte";
+  import { namedFiles } from "./attachments.svelte";
   /**
    * Your message, or (`woken`) one something else sent, labelled as such. One another session sent
    * (`from`: its report, or a parent's message to its child) is not yours, so it is not your bubble.
    */
   let { text, woken, from }: { text: string; woken?: string; from?: Turn["from"] } = $props();
   const client = useSessions();
+  const session = useSession();
   // The label is "‹title› · finished": the title is what links to the session.
   const cut = $derived(from ? from.label.indexOf(" · ") : -1);
   const title = $derived(from ? (cut >= 0 ? from.label.slice(0, cut) : from.label) : "");
@@ -28,7 +30,16 @@
   <div class="flex flex-col items-end gap-1.5" data-purpose="user-turn">
     {#if woken}<p class="woken"><Icon name="clock" class="h-3.5 w-3.5" /><span>{woken}</span></p>{/if}
     <div class="user-bubble">
-      {text}
+      {#each namedFiles(text, session?.id) as piece}{#if typeof piece === "string"}{piece}{:else if piece.image && piece.url}<a
+            class="named-image"
+            href={piece.url}
+            target="_blank"
+            rel="noopener"
+            title={piece.name}><img src={piece.url} alt={piece.name} loading="lazy" /></a
+          >{:else if piece.url}<a class="named-file" href={piece.url} target="_blank" rel="noopener" title={piece.name}
+            ><Icon name="file" class="h-3.5 w-3.5" /><span>{piece.name}</span></a
+          >{:else}<span class="named-file" title={piece.name}><Icon name="file" class="h-3.5 w-3.5" /><span>{piece.name}</span></span
+          >{/if}{/each}
     </div>
   </div>
 {/if}
@@ -48,6 +59,52 @@
   }
   .user-bubble {
     background: var(--bubble);
+  }
+  /* A file the message named, in its place: a chip, or a thumbnail for an image. */
+  .named-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    max-width: 15rem;
+    margin: 0 0.125rem;
+    padding: 0.05rem 0.4rem;
+    vertical-align: middle;
+    border: 1px solid var(--border);
+    border-radius: 0.4375rem;
+    background: var(--surface-raised);
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--foreground);
+    text-decoration: none;
+  }
+  .named-file span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  a.named-file:hover {
+    border-color: color-mix(in srgb, var(--interactive) 45%, var(--border));
+  }
+  .named-image {
+    display: inline-block;
+    margin: 0.125rem;
+    padding: 0.125rem;
+    vertical-align: middle;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--surface-raised);
+  }
+  .named-image img {
+    display: block;
+    height: 3.25rem;
+    max-width: 6rem;
+    border-radius: 0.375rem;
+    object-fit: cover;
+  }
+  .named-image:hover,
+  .named-image:focus-visible {
+    border-color: var(--interactive);
   }
   .report {
     max-width: min(36rem, 90%);

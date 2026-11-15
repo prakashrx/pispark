@@ -114,7 +114,7 @@ test("the shared Agents page is reachable from Settings and keeps Ask mounted", 
   await ask.fill("kept draft");
   await page.getByRole("link", { name: "Manage agents" }).last().click();
   await expect(page.getByRole("heading", { name: "Agents", level: 1 })).toBeVisible();
-  await expect(ask).toHaveValue("kept draft");
+  await expect(ask).toHaveText("kept draft");
 });
 
 fresh("a project agent: the editor sets its working folder, Ask shows it locked, and the session starts there", async ({ page }) => {

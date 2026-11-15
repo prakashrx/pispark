@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Readable } from "node:stream";
 import { mkdirSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import type { Provider } from "@earendil-works/pi-ai";
@@ -24,6 +25,7 @@ import type { ProviderSettings } from "./provider-settings.js";
 import { validChoice } from "./provider-storage.js";
 import { RunSlots } from "./run-slots.js";
 import { SessionStorage, validateId } from "./storage.js";
+import { attachmentPath, placeAttachments, saveAttachment } from "./attachments.js";
 import { Schedules } from "./schedules.js";
 import { ToolDiscovery } from "./tool-discovery.js";
 import { Wakes, type Wake } from "./wakes.js";
@@ -1131,16 +1133,40 @@ export class SessionRuntime {
     this.get(id).answer(dialogId, answer);
   }
   /** Send a prompt: it runs now if a run slot is free, else it waits for one. */
-  start(id: string, text: string): RunHandle {
+  start(id: string, text: string, attachments: readonly string[] = []): RunHandle {
     validateText(text);
     if (!this.accepting) throw new RuntimeError("closed");
-    return this.get(id).start(text);
+    return this.get(id).start(this.withAttachments(id, text, attachments));
   }
   /** Steer or follow up a running session. */
-  async queue(id: string, text: string, kind: "steer" | "follow-up"): Promise<"queued" | "handled"> {
+  async queue(id: string, text: string, kind: "steer" | "follow-up", attachments: readonly string[] = []): Promise<"queued" | "handled"> {
     validateText(text);
     if (kind !== "steer" && kind !== "follow-up") throw new RuntimeError("invalid-input");
-    return this.get(id).queue(text, kind);
+    return this.get(id).queue(this.withAttachments(id, text, attachments), kind);
+  }
+
+  // ---- Attachments ----------------------------------------------------------------------------
+
+  /** Stores a file a person attaches to a message in the session's `files/` folder; returns its stored name. */
+  async attach(id: string, name: string, body: Readable): Promise<{ name: string; size: number }> {
+    validateId(id);
+    const metadata = this.storage.read(id);
+    if (metadata.archived) throw new RuntimeError("busy");
+    return saveAttachment(this.storage.directory(id), name, body);
+  }
+  /** The path of an attachment of this session, to be served as inert data. */
+  attachment(id: string, name: string): string {
+    validateId(id);
+    this.storage.read(id);
+    const path = attachmentPath(this.storage.directory(id), name);
+    if (!path) throw new RuntimeError("not-found");
+    return path;
+  }
+  private withAttachments(id: string, text: string, attachments: readonly string[]): string {
+    if (!attachments.length) return text;
+    const placed = placeAttachments(this.storage.directory(id), text, attachments);
+    validateText(placed);
+    return placed;
   }
   cancel(id: string): Promise<void> {
     return this.get(id).cancel();

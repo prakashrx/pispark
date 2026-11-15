@@ -125,7 +125,7 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   await deterministic.check();
   await expect(deterministic).toBeChecked();
   await summary(page).click();
-  await expect(ask).toHaveValue("Keep shared Ask draft");
+  await expect(ask).toHaveText("Keep shared Ask draft");
   await expect(
     page.getByRole("button", { name: /Model: Default:/ }),
   ).toContainText("Deterministic");
