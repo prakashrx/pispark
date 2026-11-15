@@ -1,5 +1,5 @@
 import { describeSchedule, nextRun, parseCron, shortDate } from "../../contract/cron.js";
-import type { RoutineDefinition } from "../../contract/persona-protocol.js";
+import type { RoutineDefinition } from "../../contract/agent-protocol.js";
 import type { Routine, RoutineRun } from "../../contract/schedule-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { RuntimeError, runtimeError } from "./errors.js";
@@ -8,20 +8,20 @@ import type { Wakes } from "./wakes.js";
 
 /** What the routines' clock needs from the runtime. */
 export interface RoutineHost {
-  /** Every persona that offers routines, each with whether it is switched on. */
-  personas(): { id: string; name: string; home?: string; routines: (RoutineDefinition & { on: boolean })[] }[];
+  /** Every agent that offers routines, each with whether it is switched on. */
+  agents(): { id: string; name: string; home?: string; routines: (RoutineDefinition & { on: boolean })[] }[];
   /** The sessions a routine's runs made (`schedule.id` is the routine's key), newest first. */
   runs(key: string): RoutineRun[];
-  /** A run: a new session of the persona, named for the run. Returns its id. */
-  spawn(persona: string, run: { title: string; schedule: { id: string; due: string } }): Promise<string>;
+  /** A run: a new session of the agent, named for the run. Returns its id. */
+  spawn(agent: string, run: { title: string; schedule: { id: string; due: string } }): Promise<string>;
 }
 
 /** A routine's key, as its runs' sessions and wakes know it. */
-export const routineKey = (persona: string, id: string) => `${persona}/${id}`;
+export const routineKey = (agent: string, id: string) => `${agent}/${id}`;
 
 /**
- * The clock of the routines personas offer (VISION: unattended work is off unless a person turns it
- * on for a persona). Each run is a new session of the persona, sent the routine's prompt as a wake.
+ * The clock of the routines agents offer (VISION: unattended work is off unless a person turns it
+ * on for an agent). Each run is a new session of the agent, sent the routine's prompt as a wake.
  * Nothing is stored here: when a routine last ran is read from its newest run's session; one that
  * never ran, or was just switched on, counts from then, without catching up. Paused, runs are missed.
  */
@@ -48,14 +48,14 @@ export class Routines {
   }
 
   list(): Routine[] {
-    return this.host.personas().flatMap((persona) =>
-      persona.routines.map((routine) => {
-        const key = routineKey(persona.id, routine.id);
+    return this.host.agents().flatMap((agent) =>
+      agent.routines.map((routine) => {
+        const key = routineKey(agent.id, routine.id);
         const next = routine.on && !this.wakes.paused() ? nextRun(parseCron(routine.cron)!, new Date(Math.max(this.now(), new Date(this.since(key)).getTime()))) : undefined;
         const { on, ...definition } = routine;
         return {
           ...definition,
-          persona: { id: persona.id, name: persona.name, ...(persona.home ? { home: persona.home } : {}) },
+          agent: { id: agent.id, name: agent.name, ...(agent.home ? { home: agent.home } : {}) },
           on,
           ...(next ? { next: next.toISOString() } : {}),
           runs: this.host.runs(key).slice(0, 10),
@@ -65,25 +65,25 @@ export class Routines {
   }
   /**
    * Switched on now (from the Routines panel): it counts from now. A switch made elsewhere, such as
-   * in the persona editor, is seen at the next check and counts from then.
+   * in the agent editor, is seen at the next check and counts from then.
    */
-  switchedOn(persona: string, id: string): void {
-    this.lastDue.set(routineKey(persona, id), new Date(this.now()).toISOString());
+  switchedOn(agent: string, id: string): void {
+    this.lastDue.set(routineKey(agent, id), new Date(this.now()).toISOString());
   }
   /** Run now, with the person watching, switched on or not. */
-  async runNow(persona: string, id: string): Promise<void> {
-    const routine = this.host.personas().find((p) => p.id === persona)?.routines.find((r) => r.id === id);
+  async runNow(agent: string, id: string): Promise<void> {
+    const routine = this.host.agents().find((p) => p.id === agent)?.routines.find((r) => r.id === id);
     if (!routine) throw new RuntimeError("not-found");
-    await this.run(persona, routine, new Date(this.now()).toISOString(), true);
+    await this.run(agent, routine, new Date(this.now()).toISOString(), true);
   }
 
   /** Looks at every routine that is switched on, starting what is due. */
   async check(): Promise<void> {
     const now = this.now();
     const on = new Set<string>();
-    for (const persona of this.host.personas())
-      for (const routine of persona.routines.filter((r) => r.on)) {
-        const key = routineKey(persona.id, routine.id);
+    for (const agent of this.host.agents())
+      for (const routine of agent.routines.filter((r) => r.on)) {
+        const key = routineKey(agent.id, routine.id);
         on.add(key);
         if (!this.lastDue.has(key)) this.lastDue.set(key, this.since(key));
         const due = latestDue(routine.cron, this.lastDue.get(key)!, now);
@@ -91,9 +91,9 @@ export class Routines {
         this.lastDue.set(key, due);
         if (now - new Date(due).getTime() > CATCH_UP_MS || this.wakes.paused()) continue;
         try {
-          await this.run(persona.id, routine, due, false);
+          await this.run(agent.id, routine, due, false);
         } catch (error) {
-          this.logger.event("schedule.failure", { personaId: persona.id, outcome: "failed", code: runtimeError(error, "execution").code });
+          this.logger.event("schedule.failure", { agentId: agent.id, outcome: "failed", code: runtimeError(error, "execution").code });
         }
       }
     // Switched off: switched on again later, it counts from then.
@@ -110,11 +110,11 @@ export class Routines {
     if (this.checked) return new Date(this.now()).toISOString();
     return this.host.runs(key)[0]?.due ?? new Date(this.startedAt).toISOString();
   }
-  private async run(persona: string, routine: RoutineDefinition, due: string, manual: boolean): Promise<void> {
-    const key = routineKey(persona, routine.id);
+  private async run(agent: string, routine: RoutineDefinition, due: string, manual: boolean): Promise<void> {
+    const key = routineKey(agent, routine.id);
     const now = new Date(this.now());
     const day = shortDate(new Date(due), now).split(",")[0];
-    const session = await this.host.spawn(persona, { title: `${routine.name} · ${day}`, schedule: { id: key, due } });
+    const session = await this.host.spawn(agent, { title: `${routine.name} · ${day}`, schedule: { id: key, due } });
     await this.wakes.deliver(session, {
       source: { kind: "schedule", id: key, label: `${routine.name} · ${describeSchedule({ cron: routine.cron }, now)}` },
       text: routine.prompt,

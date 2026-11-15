@@ -10,32 +10,32 @@
   import Icon from "../../lib/ui/Icon.svelte";
   import ItemList from "./ItemList.svelte";
   import FolderChoice from "../workspace/FolderChoice.svelte";
-  import { sameTarget } from "./persona-client.svelte";
-  import { personaError, toolGroups } from "./persona-presentation";
+  import { sameTarget } from "./agent-client.svelte";
+  import { agentError, toolGroups } from "./agent-presentation";
   import { useSessions } from "../workspace/session-client.svelte";
   import type {
-    PersonaDefinition,
-    PersonaTarget,
+    AgentDefinition,
+    AgentTarget,
     ThinkingLevel,
-  } from "../../../../server/src/contract/persona-protocol";
+  } from "../../../../server/src/contract/agent-protocol";
   let {
     target,
     embedded = false,
   }: {
-    target: PersonaTarget;
-    /** Inside a chat panel: no page header, no delete. */
+    target: AgentTarget;
+    /** Inside a session panel: no page header, no delete. */
     embedded?: boolean;
   } = $props();
   const sessions = useSessions();
-  const client = sessions.personas;
+  const client = sessions.agents;
   $effect(() => {
     if (!sameTarget(target, client.target) || client.mode !== "editor")
       void client.open(target);
   });
   const view = $derived(sameTarget(target, client.view?.target) ? client.view : undefined);
-  const viewing = $derived("persona" in target ? target.persona : "chat");
+  const viewing = $derived("agent" in target ? target.agent : "session");
   const isDefault = $derived(viewing === "default");
-  const isChat = $derived(viewing === "chat");
+  const isSession = $derived(viewing === "session");
   const definition = $derived(view?.definition);
   const base = $derived(definition?.base ?? []);
   const nameOf = (id: string) =>
@@ -54,9 +54,9 @@
     }
   });
   function removeParent(id: string) {
-    if (isChat && base.length === 1) return;
+    if (isSession && base.length === 1) return;
     void client.updateDefinition((d) => {
-      const next: PersonaDefinition = { ...d, base: (d.base ?? []).filter((p) => p !== id) };
+      const next: AgentDefinition = { ...d, base: (d.base ?? []).filter((p) => p !== id) };
       if (!next.base?.length) delete next.base;
       return next;
     });
@@ -119,12 +119,12 @@
   function setSetting(key: "model" | "thinking", value: string) {
     if ((definition?.settings?.[key] ?? "") === value) return;
     void client.updateDefinition((d) => {
-      const settings: NonNullable<PersonaDefinition["settings"]> = {
+      const settings: NonNullable<AgentDefinition["settings"]> = {
         ...d.settings,
         [key]: value || undefined,
       };
       if (!settings[key]) delete settings[key];
-      const next: PersonaDefinition = { ...d, settings };
+      const next: AgentDefinition = { ...d, settings };
       if (!Object.keys(settings).length) delete next.settings;
       return next;
     });
@@ -136,7 +136,7 @@
   function setHome() {
     const key = home.trim();
     void client.updateDefinition((d) => {
-      const next: PersonaDefinition = { ...d, home: key };
+      const next: AgentDefinition = { ...d, home: key };
       if (!key) delete next.home;
       return next;
     });
@@ -144,7 +144,7 @@
   function setFolder(folder: string) {
     if (folder === (definition?.folder ?? "")) return;
     void client.updateDefinition((d) => {
-      const next: PersonaDefinition = { ...d, folder };
+      const next: AgentDefinition = { ...d, folder };
       if (!folder) delete next.folder;
       return next;
     });
@@ -153,7 +153,7 @@
 
 <div class="space-y-6">
   {#if !embedded}
-    <header class="space-y-2 border-b border-[var(--border)] pb-6 persona-heading">
+    <header class="space-y-2 border-b border-[var(--border)] pb-6 agent-heading">
       {#if editingName}
         <form
           class="space-y-3 max-w-xl"
@@ -185,7 +185,7 @@
         </div>
         {#if definition?.description}<p class="text-sm text-muted-foreground break-words">{definition.description}</p>{/if}
         {#if isDefault}<p class="text-sm text-muted-foreground">
-            Every persona starts from Default. What you add here reaches every chat unless a persona turns it off.
+            Every agent starts from Default. What you add here reaches every session unless an agent turns it off.
           </p>{/if}
       {/if}
     </header>
@@ -195,14 +195,14 @@
   </p>
   {#if client.editorError}<p role="alert" class="inline-note" data-tone="danger">{client.editorError}</p>{/if}
   {#if view?.error}<p role="alert" class="inline-note" data-tone="danger">
-      {personaError(view.error, view.detail)} Fix “Builds on” below.
+      {agentError(view.error, view.detail)} Fix “Builds on” below.
     </p>{/if}
   {#if !view && !client.editorError}<p role="status" class="text-sm text-muted-foreground">Loading…</p>{/if}
   {#if view}
     {#if !isDefault}
       <Section
         title="Builds on"
-        description={isChat ? "This chat starts from its persona." : "Default always comes first. Later ones win."}
+        description={isSession ? "This session starts from its agent." : "Default always comes first. Later ones win."}
         layout="split"
         class="border-b border-[var(--border)] pb-6"
       >
@@ -211,7 +211,7 @@
           {#each base as id}
             <span class="chip">
               {nameOf(id)}
-              {#if !(isChat && base.length === 1)}<button
+              {#if !(isSession && base.length === 1)}<button
                   type="button"
                   class="chip-remove"
                   aria-label={`Stop building on ${nameOf(id)}`}
@@ -221,7 +221,7 @@
             </span>
           {/each}
           {#if parentOptions.length}<Selector
-              label="Add a persona to build on"
+              label="Add an agent to build on"
               options={parentOptions}
               bind:value={addParent}
               action
@@ -253,13 +253,13 @@
       {client}
       {viewing}
       type="extensions"
-      description="Pi extensions loaded into the chat."
-      help="Put extension files in the persona’s extensions folder on the server; they appear here."
+      description="Pi extensions loaded into the session."
+      help="Put extension files in the agent’s extensions folder on the server; they appear here."
     />
     {#if view.items.some((item) => item.type === "mcp")}
-      <ItemList {client} {viewing} type="mcp" description="MCP servers from persona.json." />
+      <ItemList {client} {viewing} type="mcp" description="MCP servers from agent.json." />
     {/if}
-    <Section title="Tools" description="What the agent may do, from PiSpark and from this persona’s extensions." layout="split" class="border-b border-[var(--border)] pb-6">
+    <Section title="Tools" description="What the agent may do, from PiSpark and from this agent’s extensions." layout="split" class="border-b border-[var(--border)] pb-6">
       {#each toolGroups(view.tools) as group (group.title)}
         <h4 class="tool-group">{group.title}</h4>
         <ul class="tool-grid" aria-label={`${group.title} tools`}>
@@ -286,7 +286,7 @@
           Some extensions could not be loaded, so their tools are not listed.
         </p>{/if}
     </Section>
-    <Section title="Model" description="A preferred model and thinking level for new chats." layout="split" class="border-b border-[var(--border)] pb-6">
+    <Section title="Model" description="A preferred model and thinking level for new sessions." layout="split" class="border-b border-[var(--border)] pb-6">
       <div class="grid gap-3 sm:grid-cols-2">
         <Selector
           label="Preferred model"
@@ -306,10 +306,10 @@
           Inherited: {view.settings.model}
         </p>{/if}
     </Section>
-    {#if !isDefault && !isChat}
+    {#if !isDefault && !isSession}
       <Section
         title="Working folder"
-        description="Chats with this persona always work in this folder and read its AGENTS.md."
+        description="Sessions with this agent always work in this folder and read its AGENTS.md."
         layout="split"
         class="border-b border-[var(--border)] pb-6"
       >
@@ -323,7 +323,7 @@
           </p>{/if}
       </Section>
     {/if}
-    {#if !isDefault && !isChat}
+    {#if !isDefault && !isSession}
       <Section
         title="App"
         description="An app is opened from the sidebar and shows one of its extensions’ views first."
@@ -346,21 +346,21 @@
         {#if view.home && !definition?.home}<p class="text-xs text-muted-foreground mt-2">Inherited: {view.home}</p>{/if}
       </Section>
     {/if}
-    <Section title="Advanced" description="How this persona is stored." layout="split">
+    <Section title="Advanced" description="How this agent is stored." layout="split">
       <div class="space-y-3">
         <p class="text-sm text-muted-foreground break-all">
-          {isChat ? "Stored with this chat." : `personas/${viewing}/persona.json`} · Layers: {view.layers.map((l) => l.name).join(" → ")}
+          {isSession ? "Stored with this session." : `agents/${viewing}/agent.json`} · Layers: {view.layers.map((l) => l.name).join(" → ")}
         </p>
-        <Disclosure title="persona.json">
+        <Disclosure title="agent.json">
           <pre class="text-xs overflow-auto max-h-80 mt-2">{JSON.stringify(view.definition, null, 2)}</pre>
         </Disclosure>
-        {#if !embedded && !isDefault && !isChat}<Button
+        {#if !embedded && !isDefault && !isSession}<Button
             variant="destructive"
             size="compact"
             onclick={() => {
-              if (confirm(`Delete persona “${definition?.name ?? viewing}”? Chats that used it keep their messages.`))
+              if (confirm(`Delete agent “${definition?.name ?? viewing}”? Sessions that used it keep their messages.`))
                 void client.remove(viewing);
-            }}>Delete persona</Button
+            }}>Delete agent</Button
           >{/if}
       </div>
     </Section>

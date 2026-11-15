@@ -10,7 +10,7 @@
   import Input from "../../lib/ui/Input.svelte";
   import { useSessions } from "../workspace/session-client.svelte";
   const client = useSessions();
-  // How many chats may work at once; saved on the server when a valid number is entered.
+  // How many sessions may work at once; saved on the server when a valid number is entered.
   let running = $state("");
   let runningError = $state("");
   $effect(() => {
@@ -61,7 +61,7 @@
           onchange={(interfaceFont) => appearance.set({ interfaceFont })}
         />
       </FieldRow>
-      <FieldRow label="Message font" description="Chat replies and your messages.">
+      <FieldRow label="Message font" description="Replies and your messages.">
         <Segmented
           label="Message font"
           options={fontOptions}
@@ -87,9 +87,9 @@
     </div>
   </Section>
 
-  <Section title="Workspace" description="Chats can work in any folder on this computer.">
+  <Section title="Workspace" description="Sessions can work in any folder on this computer.">
     <div class="settings-card mt-4">
-      <FieldRow label="Recent folders" description="Choose a folder when you start a chat.">
+      <FieldRow label="Recent folders" description="Choose a folder when you start a session.">
         <div class="text-sm text-right space-y-1">
           {#if client.catalogLoading}<p role="status" class="text-muted-foreground">
               Loading…
@@ -99,17 +99,17 @@
             </p>
           {:else}{#each client.catalog.recentFolders as folder}<p class="inline-flex items-center gap-1.5 rounded-full bg-[var(--muted)] px-3 py-1 font-medium" title={folder}>
                 <Icon name="folder" class="w-3.5 h-3.5" />{folder}
-              </p>{:else}<p class="text-muted-foreground">None yet. New chats start in your home folder.</p>{/each}{/if}
+              </p>{:else}<p class="text-muted-foreground">None yet. New sessions start in your home folder.</p>{/each}{/if}
         </div>
       </FieldRow>
-      <FieldRow label="Chats working at once" description="More messages wait their turn and start when a chat finishes.">
+      <FieldRow label="Sessions working at once" description="More messages wait their turn and start when a session finishes.">
         <div class="flex flex-col items-end gap-1">
           <Input
             type="number"
             min="1"
             max="32"
             step="1"
-            label="Chats working at once"
+            label="Sessions working at once"
             density="compact"
             class="running-input"
             invalid={!!runningError}
@@ -120,18 +120,18 @@
           {#if runningError}<p role="alert" class="text-xs text-[var(--danger-foreground)]">{runningError}</p>{/if}
         </div>
       </FieldRow>
-      <FieldRow label="Default persona" description="Skills, tools and instructions every chat starts with.">
+      <FieldRow label="Default agent" description="Skills, tools and instructions every session starts with.">
         <a
           class="settings-link"
-          href="#/persona"
-          onclick={() => void client.personas.open({ persona: "default" })}>Edit Default</a
+          href="#/agent"
+          onclick={() => void client.agents.open({ agent: "default" })}>Edit Default</a
         >
       </FieldRow>
-      <FieldRow label="Personas" description="Reusable setups built on Default.">
+      <FieldRow label="Agents" description="Reusable setups built on Default.">
         <a
           class="settings-link"
-          href="#/persona"
-          onclick={() => client.personas.collection()}>Manage personas</a
+          href="#/agent"
+          onclick={() => client.agents.collection()}>Manage agents</a
         >
       </FieldRow>
       <FieldRow label="Providers &amp; models" description="Connect an account and choose a model.">

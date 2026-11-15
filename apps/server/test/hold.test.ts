@@ -25,7 +25,7 @@ const answers = () => ((globalThis as { __holdAnswers?: string[] }).__holdAnswer
 async function fixture() {
   const h = await testHome("pispark-hold-");
   h.provider.automatic = true;
-  await h.persona("bot", { name: "Bot" }, { "extensions/holder.mjs": HOLDER });
+  await h.agent("bot", { name: "Bot" }, { "extensions/holder.mjs": HOLDER });
   const runtimes: SessionRuntime[] = [];
   const make = () => {
     const runtime = new SessionRuntime({ ...h.configuration, wakeTickMs: 0, idleUnloadMs: 100 });
@@ -46,19 +46,19 @@ async function fixture() {
   };
 }
 
-test("an extension asks to hold its session; the person allows it for the persona; it stays loaded", async () => {
+test("an extension asks to hold its session; the person allows it for the agent; it stays loaded", async () => {
   const f = await fixture();
   answers().length = 0;
   try {
-    const bot = await f.runtime.create({ folder: f.folder, persona: "bot" });
+    const bot = await f.runtime.create({ folder: f.folder, agent: "bot" });
     // Not allowed yet: the person is asked, and the extension told.
     assert.deepEqual(answers(), ["asked"]);
     assert.deepEqual(f.runtime.session(bot.id).holdAsked, { extension: "holder", reason: "listening for test messages" });
     assert.equal(f.runtime.list().find((s) => s.id === bot.id)?.held, undefined);
 
     f.runtime.answerHold(bot.id, true);
-    const persona = JSON.parse(await readFile(join(f.home, "personas", "bot", "persona.json"), "utf8"));
-    assert.deepEqual(persona.on, ["hold:holder"]);
+    const agent = JSON.parse(await readFile(join(f.home, "agents", "bot", "agent.json"), "utf8"));
+    assert.deepEqual(agent.on, ["hold:holder"]);
     assert.deepEqual(f.runtime.list().find((s) => s.id === bot.id)?.held, { extension: "holder", reason: "listening for test messages" });
     assert.equal(f.runtime.session(bot.id).holdAsked, undefined);
 
@@ -67,8 +67,8 @@ test("an extension asks to hold its session; the person allows it for the person
     await eventually(() => f.status(f.runtime, plain.id) === "unloaded", 5000);
     assert.equal(f.status(f.runtime, bot.id), "idle");
 
-    // Allowed for the persona: its next session holds at once.
-    const second = await f.runtime.create({ folder: f.folder, persona: "bot" });
+    // Allowed for the agent: its next session holds at once.
+    const second = await f.runtime.create({ folder: f.folder, agent: "bot" });
     assert.equal(answers().at(-1), "held");
     f.runtime.releaseHold(second.id);
     await eventually(() => f.status(f.runtime, second.id) === "unloaded", 5000);
@@ -98,12 +98,12 @@ test("Not now forgets the hold request and switches nothing on", async () => {
   const f = await fixture();
   answers().length = 0;
   try {
-    const bot = await f.runtime.create({ folder: f.folder, persona: "bot" });
+    const bot = await f.runtime.create({ folder: f.folder, agent: "bot" });
     f.runtime.answerHold(bot.id, false);
     assert.equal(f.runtime.session(bot.id).holdAsked, undefined);
     assert.equal(f.runtime.list().find((s) => s.id === bot.id)?.held, undefined);
-    const persona = JSON.parse(await readFile(join(f.home, "personas", "bot", "persona.json"), "utf8"));
-    assert.equal(persona.on, undefined);
+    const agent = JSON.parse(await readFile(join(f.home, "agents", "bot", "agent.json"), "utf8"));
+    assert.equal(agent.on, undefined);
   } finally {
     await f.cleanup();
   }

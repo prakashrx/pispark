@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-The root dev command starts both workspaces and stops the other when either exits. Alternatively run `npm run dev -w @pispark/server` and `npm run dev -w @pispark/web` in separate terminals. Open the Vite URL, not the backend URL, for hot reload. The backend restarts when a file under `apps/server/src` is edited (`apps/server/dev.mjs`); a file that is only read, as Pi reads the built-in extension for each chat, does not count.
+The root dev command starts both workspaces and stops the other when either exits. Alternatively run `npm run dev -w @pispark/server` and `npm run dev -w @pispark/web` in separate terminals. Open the Vite URL, not the backend URL, for hot reload. The backend restarts when a file under `apps/server/src` is edited (`apps/server/dev.mjs`); a file that is only read, as Pi reads the built-in extension for each session, does not count.
 
 ## Commands
 
@@ -26,7 +26,7 @@ The root dev command starts both workspaces and stops the other when either exit
 | `npm run smoke` | `make smoke` | Check built entry, API, HTML, JS/CSS and favicon over HTTP |
 | `npm start` | `make start` | Serve the production build |
 
-Make is optional. All npm scripts work in Windows PowerShell/cmd as well as Unix shells. CI runs install, check, test, build, HTTP smoke and the production Chromium suite on Ubuntu and Windows using Node22.23.4. The pinned SDK requires Node22.19.0+, but PiSpark startup also requires patched bundled undici on every supported major. SDK-compatible patches are not necessarily supported hosts.
+Make is optional. All npm scripts work in Windows PowerShell/cmd as well as Unix shells. CI runs install, check, test, build, HTTP smoke and the production Chromium suite on Ubuntu and Windows using Node 22.23.4. The pinned SDK requires Node 22.19.0+, but PiSpark startup also requires patched bundled undici on every supported major. SDK-compatible patches are not necessarily supported hosts.
 
 ## Configuration
 
@@ -46,19 +46,19 @@ Remove-Item Env:PORT
 
 Vite defaults to `http://127.0.0.1:3000`; `PISPARK_API_TARGET` overrides its proxy target. Both dev ports fail clearly if occupied. The backend serves health/catalog before the frontend is built and prints instructions when the build is absent.
 
-See [setup and protocol](session-protocol.md) for `PISPARK_HOME`, exact development origins, loopback-only binding and the hard Node-bundled transport security gate. There is no configuration file: the data folder is created on first start with a Default persona. Set `PISPARK_HOME=~/.pispark-dev` in the ignored `.env` to keep development data separate. Terminal Pi files are never loaded. Host process environment/cloud auth semantics are intentionally native.
+See [setup and protocol](session-protocol.md) for `PISPARK_HOME`, exact development origins, loopback-only binding and the hard Node-bundled transport security gate. There is no configuration file: the data folder is created on first start with a Default agent. Set `PISPARK_HOME=~/.pispark-dev` in the ignored `.env` to keep development data separate. Terminal Pi files are never loaded. Host process environment/cloud auth semantics are intentionally native.
 
-## Tests and boundaries
+## Tests
 
-- `apps/server/test/session-runtime.test.ts`: real Pi SDK 1.5.0 sessions with a deterministic local provider, native extension lifecycle, concurrency/cancel/queue policy, explicit resource/auth isolation, child-process interruption and native history recovery, bounded observers and storage/cleanup failures. No external model calls or terminal Pi setup required.
-- `apps/server/test/session-http.test.ts`: real SDK over HTTP/SSE, command receipts/expiry, reconnect, cancellation, bounded histories/token streams/slow writes, security/admission and patched-transport version branches.
-- `apps/server/test/provider-settings.test.ts` and `provider-http.test.ts`: native file-backed persistence/login/logout/OAuth refresh across runtimes, defaults and independent sessions, empty prompts, callback/cancel races, sync failures, shutdown drain, safe configuration/cache failure admission and child-only environment resolution. Temporary deterministic fixtures; no operator credentials/paid calls.
-- `apps/server/test/personas.test.ts`, `persona-sessions.test.ts`, `persona-http.test.ts` and `logger.test.ts`: the strict format, slug IDs, revision-checked saves and item files, the resolution rule (Default first, diamond parents once, on/off switches, same-name replacement, settings), cycles and missing parents, chat layers, fingerprints, real sessions receiving instructions/skills/commands/extensions/tool switches, change flags and reload, model precedence and bounded safe logging.
-- `apps/server/test/pispark-integration.test.ts`: actual native title-tool calls, every-session loading, restrictive tool policy, session scope, durable observer updates/reopen, cancellation/stale ownership, collision/storage failures and log privacy; deterministic local execution only.
-- `apps/server/test/server.test.ts`: health, method rules, API 404, static types/HEAD, missing build, raw and encoded traversal, hidden files, invalid encodings, and symlink/junction escape protection. Tests bind ephemeral loopback ports and clean up fixtures.
-- `apps/web/src/App.test.ts`, `routes.test.ts`, and `lib/ui/Selector.test.ts`: truthful unconfigured state, local deferred edits, persistent/independent composers, route handling, sidebar and selector keyboard/focus behavior. These are jsdom tests, **not** browser layout or assistive-technology certification.
-- `apps/web/tests/`: real-browser checks for all four routes, equal shared-shell geometry, draft/selection persistence, history, keyboard focus, mobile/tablet reflow, the folder/persona/model pickers, the persona editor (sources, switches, customizing, Default from Settings), the persona-changed reload flow and in-chat persona editing, native model radio groups/inline panel focus, local fonts, and no external requests.
-- `scripts/smoke.mjs`: spawns the compiled server on an ephemeral port and checks real production HTTP responses. Run after building; it stops its own child process.
+Every test runs real Pi sessions against a deterministic local provider: no paid calls, credentials or terminal Pi setup.
+
+| Where | What |
+| --- | --- |
+| `apps/server/test/` | The server, one file per area: sessions and their lifecycle, the HTTP protocol, providers, agents, extensions and their views, schedules, routines, child sessions, background processes, the launcher link, static files and the import boundaries between `contract/`, `core/` and `http/` |
+| `apps/web/src/**/*.test.ts` | The web in jsdom: routes, the session client, controls and their keyboard behavior |
+| `apps/web/tests/` | Real-browser checks of every screen: layout at narrow and wide widths, keyboard focus, sessions, agents, extensions, schedules and background work (below) |
+| `apps/launcher/test/` | The installed launcher: release choice, checksums, install folders, version switches |
+| `scripts/smoke.mjs` | The built server on a free port, over real HTTP |
 
 ### Optional browser checks
 
@@ -70,9 +70,9 @@ npm run build
 npm run test:browser -w @pispark/web
 ```
 
-On Linux, `npx playwright install --with-deps chromium` also installs browser system dependencies (may require administrator privileges). The default uses Playwright Chromium, not a machine-specific executable. To use an already installed supported browser, set `PISPARK_BROWSER_CHANNEL=msedge` or `chrome` in your shell. Tests start their own Vite on loopback port4180 plus a test-only real SDK host on4182; no existing server is reused. `PISPARK_TEST_URL` overrides that address/port; choose an unused port (for example `http://127.0.0.1:4190`) when an older preview is running, to avoid testing stale transforms. `PISPARK_TEST_API_PORT` overrides the development API port. Runtime HOME/USERPROFILE and test results default to a private temporary directory, not the checkout. Set `PISPARK_TEST_STATE_ROOT` to an external evidence root for durable results, and `PISPARK_EVIDENCE_DIR` to optionally redirect shared-shell screenshots. Do not put operational evidence/auth/history in the repository.
+On Linux, `npx playwright install --with-deps chromium` also installs browser system dependencies (may require administrator privileges). The default uses Playwright Chromium, not a machine-specific executable. To use an already installed supported browser, set `PISPARK_BROWSER_CHANNEL=msedge` or `chrome` in your shell. Tests start their own Vite on loopback port 4180 plus a test-only real SDK host on 4182; no existing server is reused. `PISPARK_TEST_URL` overrides that address/port; choose an unused port (for example `http://127.0.0.1:4190`) when an older preview is running, to avoid testing stale transforms. `PISPARK_TEST_API_PORT` overrides the development API port. Runtime HOME/USERPROFILE and test results default to a private temporary directory, not the checkout. Set `PISPARK_TEST_STATE_ROOT` to an external evidence root for durable results, and `PISPARK_EVIDENCE_DIR` to optionally redirect shared-shell screenshots. Do not put operational evidence/auth/history in the repository.
 
-To exercise production assets and the actual HTTP/session host, build first and set `PISPARK_TEST_PRODUCTION=1`. This starts/stops the test-only executable on4181 with the real SDK and deterministic provider; it is not the normal unconfigured production entry point and does not enable a fake provider there. Production `index.js` is separately covered by smoke:
+To exercise production assets and the actual HTTP/session host, build first and set `PISPARK_TEST_PRODUCTION=1`. This starts/stops the test-only executable on 4181 with the real SDK and deterministic provider; it is not the normal unconfigured production entry point and does not enable a fake provider there. Production `index.js` is separately covered by smoke:
 
 ```sh
 npm run build
@@ -86,15 +86,15 @@ npm run test:browser -w @pispark/web
 Remove-Item Env:PISPARK_TEST_PRODUCTION
 ```
 
-CI installs Chromium and runs the production browser suite after the core checks and HTTP smoke. For a manual UI pass, test narrow layouts, Tab/Shift+Tab focus, Enter/Space activation, Escape dismissal/focus return, the skip link, sidebar toggle, independent Ask/reply drafts, real persona collection/create/editor and file-save/compose/validate/save/conflict states, session streaming/cancel/reconnect, concise Chat info and actual native title changes. Sources remains truthfully unavailable. The status dot reports client connectivity, not model-provider health, and adds "Offline" or "Connecting…" text when not connected. Drafts intentionally disappear on reload.
+CI installs Chromium and runs the production browser suite after the core checks and HTTP smoke. For a manual UI pass, test narrow layouts, Tab/Shift+Tab focus, Enter/Space activation, Escape dismissal/focus return, the skip link, sidebar toggle, independent Ask/reply drafts, real agent collection/create/editor and file-save/compose/validate/save/conflict states, session streaming/cancel/reconnect, concise Session info and actual native title changes. Sources remains truthfully unavailable. The status dot reports client connectivity, not model-provider health, and adds "Offline" or "Connecting…" text when not connected. Drafts intentionally disappear on reload.
 
 ## Dependency findings
 
 The pinned Pi SDK 1.5.0 brings `undici@8.12.3`, which already includes the fixes the earlier root override supplied; no override is needed. Both SDK and OpenAI optional-peer paths deduplicate to 8.12.3. This does **not** certify Node's separately bundled fetch/WebSocket implementation or external provider behavior.
 
-Remaining production audit findings are **moderate**: `minimatch@10.2.6` and its Pi SDK parent (GHSA-g3hv-75wg-m249). The affected preprocessing requires attacker-controlled patterns with `optimizationLevel >= 2`; the host admits exact resources/models, not client glob patterns, and inspected SDK core call sites do not request that optimization level. Patched11.0.1 is a major-version change, not applied without compatibility review. This is a documented constrained-path mitigation, not blanket risk acceptance for extensions or future endpoints. Review before external-provider/remote enablement or publication.
+Remaining production audit findings are **moderate**: `minimatch@10.2.6` and its Pi SDK parent (GHSA-g3hv-75wg-m249). The affected preprocessing requires attacker-controlled patterns with `optimizationLevel >= 2`; the host admits exact resources/models, not client glob patterns, and inspected SDK core call sites do not request that optimization level. Patched 11.0.1 is a major-version change, not applied without compatibility review. This is a documented constrained-path mitigation, not blanket risk acceptance for extensions or future endpoints. Review before external-provider/remote enablement or publication.
 
-Three **low** development-tool findings remain through `deepmerge` and the Svelte Vite plugin/inspector (GHSA-gcqx-w48m-w2h4). These tools merge trusted local build configuration, not public API input. Current full audit: 3low/2moderate/0high; production-only: 2moderate. Keep the toolchain local, recheck advisories on changes, and do not use `npm audit fix --force` blindly.
+Three **low** development-tool findings remain through `deepmerge` and the Svelte Vite plugin/inspector (GHSA-gcqx-w48m-w2h4). These tools merge trusted local build configuration, not public API input. Current full audit: 3 low/2 moderate/0 high; production-only: 2 moderate. Keep the toolchain local, recheck advisories on changes, and do not use `npm audit fix --force` blindly.
 
 jsdom's transitive `whatwg-encoding` package also emits a deprecation warning. It is used only for tests. Full audit output and engine compatibility should be rechecked on dependency changes; warnings are not evidence of failed typechecks.
 

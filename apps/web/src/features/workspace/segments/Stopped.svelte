@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Segment } from "../chat-turns";
+  import type { Segment } from "../session-turns";
 
   let { segment }: { segment: Extract<Segment, { kind: "stopped" }> } = $props();
 </script>

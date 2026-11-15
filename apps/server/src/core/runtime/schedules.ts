@@ -5,7 +5,7 @@ import { describeSchedule, nextRun, parseCron, shortDate } from "../../contract/
 import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
 import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
-import { writeAtomic } from "../personas/store.js";
+import { writeAtomic } from "../agents/store.js";
 import { RuntimeError, runtimeError } from "./errors.js";
 import type { Wake, Wakes } from "./wakes.js";
 
@@ -14,13 +14,13 @@ export interface ClockHost {
   /** Every session there is, whether it is archived, and whether another session started it. */
   sessions(): { id: string; archived: boolean; child?: boolean }[];
   /**
-   * A run that goes to a new session: starts a session under `owner` (its persona, folder and
+   * A run that goes to a new session: starts a session under `owner` (its agent, folder and
    * model) and returns its id. The clock then sends the prompt to it as a wake.
    */
   spawn?(owner: string, run: { title: string; report: ReportMode; schedule: { id: string; due: string } }): Promise<string>;
   /** The session folders there are, read without loading anything (at start). */
   ids(): string[];
-  /** The session's folder, where its `schedules.json` lives beside `chat.json`. */
+  /** The session's folder, where its `schedules.json` lives beside `session.json`. */
   directory(sessionId: string): string;
 }
 

@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { chatTitle } from "../../contract/chat-title.js";
-import { TITLE_TOOL } from "../runtime/chat-title.js";
+import { sessionTitle } from "../../contract/session-title.js";
+import { TITLE_TOOL } from "../runtime/session-title.js";
 import { SCHEDULE_CHANNEL, SCHEDULE_TOOL, type ScheduleMessage, type ScheduleRequest } from "../runtime/schedule-tool.js";
 import { REPORT_TOOL, SESSION_CHANNEL, SESSION_TOOL, type SessionMessage, type SessionRequest } from "../runtime/session-tool.js";
 import { PROCESS_CHANNEL, PROCESS_TOOL, type ProcessMessage, type ProcessRequest } from "../runtime/process-tool.js";
@@ -16,27 +16,27 @@ function localNow(now = new Date()): string {
 
 /**
  * Ordinary native Pi extension, instantiated separately for every hosted session. Its title tool
- * names the session with Pi's own `setSessionName`; the session's name is the chat title. Its
+ * names the session with Pi's own `setSessionName`; the session's name is the session title. Its
  * schedule tool asks PiSpark (which asks the person first) to wake this session later. Its session
  * tool asks PiSpark to start and follow child sessions, whose answers come back as messages.
  */
 export default function pispark(pi: ExtensionAPI): void {
   pi.registerTool({
     name: TITLE_TOOL,
-    label: "Set chat title",
+    label: "Set session title",
     description:
-      "Give this chat a short, meaningful title when its purpose is clear. Update it only when the topic meaningfully changes.",
+      "Give this session a short, meaningful title when its purpose is clear. Update it only when the topic meaningfully changes.",
     parameters: Type.Object(
       { title: Type.String({ maxLength: 4096 }) },
       { additionalProperties: false },
     ),
     async execute(_id, parameters, signal) {
       if (signal?.aborted) throw new Error("Cancelled");
-      const title = typeof parameters.title === "string" && parameters.title.length <= 4096 ? chatTitle(parameters.title) : "";
+      const title = typeof parameters.title === "string" && parameters.title.length <= 4096 ? sessionTitle(parameters.title) : "";
       if (!title) throw new Error("The title must contain printable text");
       pi.setSessionName(title);
       return {
-        content: [{ type: "text", text: "Chat title updated." }],
+        content: [{ type: "text", text: "Session title updated." }],
         details: undefined,
       };
     },
@@ -45,7 +45,7 @@ export default function pispark(pi: ExtensionAPI): void {
     name: SCHEDULE_TOOL,
     label: "Schedule",
     description:
-      "Schedule a prompt to be sent to this same chat later, as if the person typed it: once (in_minutes or at) or repeating (cron, five fields, the server's local time). PiSpark asks the person before adding it. Also lists or removes this chat's schedules.",
+      "Schedule a prompt to be sent to this same session later, as if the person typed it: once (in_minutes or at) or repeating (cron, five fields, the server's local time). PiSpark asks the person before adding it. Also lists or removes this session's schedules.",
     parameters: Type.Object(
       {
         action: Type.Union([Type.Literal("add"), Type.Literal("list"), Type.Literal("remove")]),
@@ -56,13 +56,13 @@ export default function pispark(pi: ExtensionAPI): void {
         id: Type.Optional(Type.String({ maxLength: 64, description: "The schedule to remove." })),
         run: Type.Optional(
           Type.Union([Type.Literal("here"), Type.Literal("new")], {
-            description: "add: 'here' sends each run to this chat (default); 'new' starts each run as a new session under this chat.",
+            description: "add: 'here' sends each run to this session (default); 'new' starts each run as a new session under this session.",
           }),
         ),
         report: Type.Optional(
           Type.Union([Type.Literal("result"), Type.Literal("status"), Type.Literal("none")], {
             description:
-              "add, with run 'new': how each run tells this chat it ended. 'status' (default): a line here, and the run can raise what needs attention; 'result': its answer wakes this chat; 'none': nothing.",
+              "add, with run 'new': how each run tells this session it ended. 'status' (default): a line here, and the run can raise what needs attention; 'result': its answer wakes this session; 'none': nothing.",
           }),
         ),
       },
@@ -110,13 +110,13 @@ export default function pispark(pi: ExtensionAPI): void {
     name: SESSION_TOOL,
     label: "Start other sessions",
     description:
-      "Hand work to another PiSpark session that runs on its own while this one carries on: start one with a first message (and optionally a persona, a title and how it reports), list this session's sessions, send one another message, stop one, or read its last answer. By default a session you started sends its answer here as a new message when it finishes. Sessions started by another session cannot start sessions.",
+      "Hand work to another PiSpark session that runs on its own while this one carries on: start one with a first message (and optionally an agent, a title and how it reports), list this session's sessions, send one another message, stop one, or read its last answer. By default a session you started sends its answer here as a new message when it finishes. Sessions started by another session cannot start sessions.",
     parameters: Type.Object(
       {
         action: Type.Union([Type.Literal("start"), Type.Literal("list"), Type.Literal("send"), Type.Literal("stop"), Type.Literal("read")]),
         prompt: Type.Optional(Type.String({ maxLength: 65536, description: "start: the new session's first message, complete on its own." })),
         title: Type.Optional(Type.String({ maxLength: 200, description: "start: a short title for the new session." })),
-        persona: Type.Optional(Type.String({ maxLength: 64, description: "start: a persona id; this session's persona when left out." })),
+        agent: Type.Optional(Type.String({ maxLength: 64, description: "start: an agent id; this session's agent when left out." })),
         report: Type.Optional(
           Type.Union([Type.Literal("result"), Type.Literal("status"), Type.Literal("none")], {
             description:
@@ -138,7 +138,7 @@ export default function pispark(pi: ExtensionAPI): void {
         request = {
           action,
           prompt: parameters.prompt,
-          ...(parameters.persona ? { persona: parameters.persona } : {}),
+          ...(parameters.agent ? { agent: parameters.agent } : {}),
           ...(parameters.title ? { title: parameters.title } : {}),
           ...(parameters.report ? { report: parameters.report } : {}),
         };
@@ -239,10 +239,10 @@ export default function pispark(pi: ExtensionAPI): void {
     const active = pi.getActiveTools();
     const guidance = [
       active.includes(TITLE_TOOL)
-        ? "PiSpark hosts this chat. Use pispark_set_title to give it a short, meaningful title when its purpose is clear; update only when the topic meaningfully changes."
+        ? "PiSpark hosts this session. Use pispark_set_title to give it a short, meaningful title when its purpose is clear; update only when the topic meaningfully changes."
         : "",
       active.includes(SCHEDULE_TOOL)
-        ? `When the person asks to do something later or repeatedly in this chat, use pispark_schedule; PiSpark asks them to confirm. The server's local time now is ${localNow()}.`
+        ? `When the person asks to do something later or repeatedly in this session, use pispark_schedule; PiSpark asks them to confirm. The server's local time now is ${localNow()}.`
         : "",
       active.includes(SESSION_TOOL)
         ? "For work that can run on its own (research, a long job, one of several parallel parts), you may start other sessions with pispark_session and carry on. Each session's answer arrives later as a message here; when others are still running, acknowledge it in one line."

@@ -21,7 +21,7 @@ test("data root: created on first start, one server per folder, stale locks repl
   const root = await mkdtemp(join(tmpdir(), "pispark-home-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const paths = prepareHome(join(root, "data"));
-  for (const dir of [paths.chats, paths.personas, paths.providers])
+  for (const dir of [paths.sessions, paths.agents, paths.providers])
     assert.ok(existsSync(dir));
   const release = lockHome(paths);
   assert.throws(() => lockHome(paths), /Another PiSpark server/);
@@ -35,7 +35,7 @@ test("data root: created on first start, one server per folder, stale locks repl
   again();
 });
 
-test("startup: transport gate, first-start Default persona, public bind refusal", async (t) => {
+test("startup: transport gate, first-start Default agent, public bind refusal", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pispark-start-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const index = fileURLToPath(new URL("../src/index.ts", import.meta.url));

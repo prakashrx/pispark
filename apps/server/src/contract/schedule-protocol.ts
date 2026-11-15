@@ -1,4 +1,4 @@
-import type { ChatPersona, RoutineDefinition } from "./persona-protocol.js";
+import type { SessionAgent, RoutineDefinition } from "./agent-protocol.js";
 import type { ReportMode, WakeRecord } from "./wake-protocol.js";
 
 /**
@@ -35,7 +35,7 @@ export interface Schedule extends ScheduleWhen {
 }
 /** A schedule with what a list needs of its session. */
 export interface ScheduleSummary extends Schedule {
-  session: { title?: string; persona: ChatPersona };
+  session: { title?: string; agent: SessionAgent };
 }
 /** `GET /api/schedules`: every schedule, and whether all are paused. */
 export interface ScheduleList {
@@ -59,7 +59,7 @@ export interface RoutineRun {
   archived?: true;
 }
 export interface Routine extends RoutineDefinition {
-  persona: { id: string; name: string; home?: string };
+  agent: { id: string; name: string; home?: string };
   on: boolean;
   next?: string;
   /** Its newest runs that are still sessions, newest first. */

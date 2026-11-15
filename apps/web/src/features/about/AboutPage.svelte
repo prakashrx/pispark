@@ -79,7 +79,7 @@
             <span class="flex-1"
               >{#if update.phase === "waiting"}<strong>v{update.version} installs when nothing is running.</strong>
                 It checks again every 30 seconds.{:else}<strong>v{update.version} is ready.</strong> Downloaded and checked. PiSpark restarts in a few
-                seconds; your chats stay.{/if}</span
+                seconds; your sessions stay.{/if}</span
             >
             <span class="flex gap-2">
               {#if update.phase === "ready" && update.notes}<a class="link" href={update.notes} target="_blank" rel="noreferrer">What’s new</a>{/if}

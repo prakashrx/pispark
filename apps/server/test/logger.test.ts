@@ -21,11 +21,11 @@ test("logger projects only allowlisted fields and preserves independent async co
     [first, second].map((requestId) =>
       correlated({ requestId }, async () => {
         await Promise.resolve();
-        logger.event("persona.save", {
+        logger.event("agent.save", {
           outcome: "failed",
           code: "storage",
           durationMs: 1.8,
-          personaId: "SECRET\nforged",
+          agentId: "SECRET\nforged",
           counts: { skills: Infinity },
           ...({ prompt: "PRIVATE", cause: { token: "TOKEN" } } as {}),
         });
@@ -78,7 +78,7 @@ test("file rotation retains only active plus three bounded files", async (t) => 
   t.after(() => rm(directory, { recursive: true, force: true }));
   const logger = new SafeLogger({ directory, maxFileBytes: 256 });
   for (let i = 0; i < 20; i++)
-    logger.event("persona.save", { counts: { skills: i } });
+    logger.event("agent.save", { counts: { skills: i } });
   await logger.close();
   const files = await readdir(directory);
   assert.equal(files.length, 4);
@@ -86,7 +86,7 @@ test("file rotation retains only active plus three bounded files", async (t) => 
     const text = await readFile(join(directory, file), "utf8");
     assert(Buffer.byteLength(text) <= 256);
     for (const line of text.trim().split("\n"))
-      assert.equal(JSON.parse(line).event, "persona.save");
+      assert.equal(JSON.parse(line).event, "agent.save");
   }
 });
 
@@ -104,7 +104,7 @@ for (const code of ["EACCES", "ENOSPC"] as const) {
         fallbackArguments.push(args);
       },
     });
-    logger.event("persona.save", { outcome: "failed", code: "storage" });
+    logger.event("agent.save", { outcome: "failed", code: "storage" });
     await Promise.resolve();
     logger.event("session.failure", { outcome: "failed", code: "storage" });
     await logger.close();

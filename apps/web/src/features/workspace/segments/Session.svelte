@@ -2,7 +2,7 @@
   import Icon from "../../../lib/ui/Icon.svelte";
   import { useSessions } from "../session-client.svelte";
   import { sessionName, sessionStatus } from "../session-presentation";
-  import type { Segment } from "../chat-turns";
+  import type { Segment } from "../session-turns";
   // A session this one started: its name and live state, and a way to open it.
   let { segment }: { segment: Extract<Segment, { kind: "session" }> } = $props();
   const client = useSessions();

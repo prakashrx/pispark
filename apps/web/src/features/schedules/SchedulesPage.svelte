@@ -48,7 +48,7 @@
   }
   const titleOf = (id: string, fallback?: string) => {
     const listed = client.sessions.find((session) => session.id === id);
-    return listed ? sessionName(listed) : (fallback ?? "A chat");
+    return listed ? sessionName(listed) : (fallback ?? "A session");
   };
 </script>
 
@@ -72,7 +72,7 @@
     </div>
   </Section>
   {#if error}<p role="alert" class="mt-4 text-sm text-[var(--danger-foreground)]">{error}</p>{/if}
-  <Section title="Schedules" description="Add one from a chat’s info (Chat info → Schedules), or ask the agent in a chat.">
+  <Section title="Schedules" description="Add one from a session’s info (Session info → Schedules), or ask the agent in a session.">
     {#if schedules.schedules.length}
       <ul class="mt-4 space-y-3" aria-label="All schedules">
         {#each schedules.schedules as schedule (schedule.id)}<ScheduleCard {schedule} withSession />{/each}
@@ -81,9 +81,9 @@
     {:else}<p role="status" class="mt-4 text-sm text-muted-foreground">Loading…</p>{/if}
   </Section>
   {#if client.routines.routines.length}
-    <Section title="App routines" description="Routines your personas offer. Each is off until you switch it on; each run is a new session of the persona.">
+    <Section title="App routines" description="Routines your agents offer. Each is off until you switch it on; each run is a new session of the agent.">
       <ul class="mt-4 space-y-3" aria-label="All routines">
-        {#each client.routines.routines as routine (routine.persona.id + routine.id)}
+        {#each client.routines.routines as routine (routine.agent.id + routine.id)}
           <li class="card">
             <div class="flex flex-wrap items-start gap-3">
               <div class="pt-0.5">
@@ -98,7 +98,7 @@
                 <p class="mt-0.5 text-xs text-muted-foreground">
                   {describeSchedule({ cron: routine.cron })} · {!routine.on ? "Off" : schedules.paused ? "Paused" : routine.next ? `Next ${shortDate(new Date(routine.next))}` : "On"}
                 </p>
-                <p class="mt-1.5 text-[0.8125rem] text-muted-foreground">{routine.persona.name}</p>
+                <p class="mt-1.5 text-[0.8125rem] text-muted-foreground">{routine.agent.name}</p>
               </div>
               <div class="ml-auto flex shrink-0 gap-1">
                 <Button size="compact" onclick={() => void act(() => client.routines.run(routine).then(() => client.refresh()))}>Run now</Button>
@@ -109,7 +109,7 @@
       </ul>
     </Section>
   {/if}
-  <Section title="Kept running" description="Sessions an extension keeps loaded so it can listen or work while no one watches. Allowed per persona.">
+  <Section title="Kept running" description="Sessions an extension keeps loaded so it can listen or work while no one watches. Allowed per agent.">
     {#if held.length}
       <ul class="mt-4 space-y-3" aria-label="Sessions kept running">
         {#each held as session (session.id)}
@@ -119,7 +119,7 @@
               <p class="text-sm font-medium">{session.held!.extension}: {session.held!.reason}</p>
               <p class="mt-1.5 text-[0.8125rem]">
                 <button type="button" class="link" onclick={() => open(session.id)}>{sessionName(session)}</button>
-                <span class="text-muted-foreground">· {session.persona.name}</span>
+                <span class="text-muted-foreground">· {session.agent.name}</span>
               </p>
             </div>
             <Button size="compact" onclick={() => void client.hold(session.id, "release-hold")}>Release</Button>

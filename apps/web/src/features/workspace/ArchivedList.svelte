@@ -6,7 +6,7 @@
   import { useSessions } from "./session-client.svelte";
   import { goesByApp, sessionName, sessionStarted } from "./session-presentation";
   /**
-   * The sessions a person archived, folded at the end of the chat list. Each can be restored, or
+   * The sessions a person archived, folded at the end of the session list. Each can be restored, or
    * deleted for good after saying so.
    */
   const client = useSessions();
@@ -75,13 +75,13 @@
       />
     </button>
     {#if open}
-      <ul {id} bind:this={list} class="space-y-px" aria-label="Archived chats">
+      <ul {id} bind:this={list} class="space-y-px" aria-label="Archived sessions">
         {#each client.archived ?? [] as session (session.id)}
           {@const name = sessionName(session)}
           <li class="archived-row" data-session={session.id}>
             <span class="block truncate">{name}</span>
             <span class="block truncate text-xs text-subtle"
-              >{goesByApp(session) ? "" : `${session.persona.name} · `}{sessionStarted(session)}</span
+              >{goesByApp(session) ? "" : `${session.agent.name} · `}{sessionStarted(session)}</span
             >
             <div class="row-actions">
               <button type="button" aria-label={`Restore ${name}`} title="Restore" onclick={() => act(session.id, "restore")}

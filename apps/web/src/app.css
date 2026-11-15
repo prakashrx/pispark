@@ -148,7 +148,7 @@ button[aria-disabled="true"] {
   }
   .form-row,
   .source-row,
-  .persona-heading {
+  .agent-heading {
     flex-wrap: wrap;
     gap: 0.75rem;
   }
@@ -172,7 +172,7 @@ button[aria-disabled="true"] {
   }
 }
 @layer components {
-  /* Sidebar navigation rows shared by chats and settings. */
+  /* Sidebar navigation rows shared by sessions and settings. */
   .nav-item {
     display: flex;
     align-items: center;

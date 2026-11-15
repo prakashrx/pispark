@@ -60,57 +60,57 @@ The primary interaction is a clean, familiar conversational workspace.
 A user can start a session by providing a prompt and selecting:
 
 - **Working directory:** The starting location and filesystem context for the agent.
-- **Persona:** A configured collection of agent capabilities.
-- **Style:** An optional variation provided by the selected persona.
+- **Agent:** A configured collection of capabilities.
+- **Style:** An optional variation provided by the selected agent.
 - **Model:** The model used for the session.
 
-The persona determines the instructions, skills, extensions, commands, and other resources available to the agent.
+The agent determines the instructions, skills, extensions, commands, and other resources available in the session.
 
 Users should not need to understand Pi's internal architecture to use PiSpark.
 
 Advanced configuration should be discoverable without making the everyday experience complicated.
 
-Conversation is the default way in, not the only one. A persona may be an app: something a user opens rather than chats with, presenting its own experience (see §4).
+Conversation is the default way in, not the only one. An agent may be an app: something a user opens rather than talks to, presenting its own experience (see §4).
 
-## 4. Personas and Capability Composition
+## 4. Agents and Capability Composition
 
-A persona is more than a system prompt or conversational personality.
+An agent is more than a system prompt or a conversational tone.
 
-It represents a reusable configuration of agent capabilities.
+It represents a reusable configuration of capabilities.
 
-A persona may bring together instructions, skills, extensions, commands, model preferences, and resource access.
+An agent may bring together instructions, skills, extensions, commands, model preferences, and resource access.
 
-Users should be able to create, customize, and reuse personas.
+Users should be able to create, customize, and reuse agents.
 
-Personas should be composed from existing Pi capabilities wherever possible, rather than introducing new equivalents.
+Agents should be composed from existing Pi capabilities wherever possible, rather than introducing new equivalents.
 
-Different personas may support different workflows, interaction styles, and tools while sharing the same underlying Pi runtime.
+Different agents may support different workflows, interaction styles, and tools while sharing the same underlying Pi runtime.
 
-What a persona is used for comes from what it has, not from separate kinds:
+What an agent is used for comes from what it has, not from separate kinds:
 
-- **Role persona:** capabilities only. The user brings the working directory when they ask.
-- **Project persona:** a persona bound to a place, such as a project folder. It always works there.
-- **App persona:** a persona with a home surface. It is opened rather than chatted with, and may also have a place.
+- **Role agent:** capabilities only. The user brings the working directory when they ask.
+- **Project agent:** an agent bound to a place, such as a project folder. It always works there.
+- **App agent:** an agent with a home surface. It is opened rather than talked to, and may also have a place.
 
-These are combinations of one persona model, composable through persona layering, not three types.
+These are combinations of one agent model, composable through agent layering, not three types.
 
 A capability is not an app. An extension may offer its experience wherever it applies, such as in any session whose folder holds the records it understands, without being launched as an app.
 
 ### Apps
 
-An app is a persona with a home surface. It becomes active when someone opens it or when something triggers it, and it may keep working in the background.
+An app is an agent with a home surface. It becomes active when someone opens it or when something triggers it, and it may keep working in the background.
 
-An app's backend is its ordinary Pi extensions, its frontend is their Svelte components, its workers are Pi sessions, and its state lives in its place: a project folder or its own data folder. There is no separate app entity, manifest, runtime, or store; Sources distributes personas.
+An app's backend is its ordinary Pi extensions, its frontend is their Svelte components, its workers are Pi sessions, and its state lives in its place: a project folder or its own data folder. There is no separate app entity, manifest, runtime, or store; Sources distributes agents.
 
 An app may manage its own sessions: start them, follow them, and decide what they do. That orchestration belongs to the app. PiSpark provides the session lifecycle it needs and keeps every session inspectable.
 
 ## 5. Sources and Resource Discovery
 
-PiSpark provides a way to discover and manage resources available to personas.
+PiSpark provides a way to discover and manage resources available to agents.
 
 Sources may include Pi-compatible marketplaces, Git repositories, local resources, and other supported collections.
 
-Users should be able to browse available skills, extensions, commands, and related resources, then choose which capabilities belong to a persona.
+Users should be able to browse available skills, extensions, commands, and related resources, then choose which capabilities belong to an agent.
 
 PiSpark manages the user experience of discovering, selecting, and configuring these resources.
 
@@ -122,9 +122,9 @@ The goal is to make Pi's extensibility accessible through a friendly web interfa
 
 Sessions are owned by the backend runtime.
 
-A session is a unit of agent work, not a chat. It may have many human turns or none, be driven from a page or a schedule, and have child sessions. Any session can be viewed as a conversation; the conversation is one surface over a session, shown when a user wants it, not what the session is.
+A session is a unit of agent work, not just a conversation. It may have many human turns or none, be driven from a page or a schedule, and have child sessions. Any session can be viewed as a conversation; the conversation is one surface over a session, shown when a user wants it, not what the session is.
 
-Work is woken by triggers: a user opening or asking, a schedule, an event, or another session. Nothing runs unless something asks. A session that is not needed is not kept loaded; a trigger loads it, the work runs, and it can be unloaded again. Unattended work is off unless a user turns it on for a persona, and every unattended run remains an inspectable session.
+Work is woken by triggers: a user opening or asking, a schedule, an event, or another session. Nothing runs unless something asks. A session that is not needed is not kept loaded; a trigger loads it, the work runs, and it can be unloaded again. Unattended work is off unless a user turns it on for an agent, and every unattended run remains an inspectable session.
 
 They must not depend on an active browser tab to exist.
 
@@ -164,7 +164,7 @@ Some components may remain visible throughout a session. Others may appear dynam
 
 Placement is a responsibility of PiSpark. Content and behaviour belong to the extension.
 
-An extension offers its components; it does not force a layout. When several offers want the same place, PiSpark shows them side by side and lets the user choose. Visibility follows the user first, then the persona, then the extension. An extension may ask for attention, but PiSpark does not decide an extension's experience for it, and an extension does not take over the workspace.
+An extension offers its components; it does not force a layout. When several offers want the same place, PiSpark shows them side by side and lets the user choose. Visibility follows the user first, then the agent, then the extension. An extension may ask for attention, but PiSpark does not decide an extension's experience for it, and an extension does not take over the workspace.
 
 ### Extension communication
 
@@ -207,7 +207,7 @@ The backend should follow a small number of clear ownership boundaries.
 
 **Session hosting:** Owns session identity, lifecycle, continuity, and concurrent operation independently of connected clients.
 
-**Resource composition:** Resolves the configuration and Pi resources associated with personas and sessions.
+**Resource composition:** Resolves the configuration and Pi resources associated with agents and sessions.
 
 **Client communication:** Connects the backend runtime to the web interface and potentially other future clients.
 

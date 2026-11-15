@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from "../../../lib/ui/Icon.svelte";
   import { useSessions } from "../session-client.svelte";
-  import type { Segment } from "../chat-turns";
+  import type { Segment } from "../session-turns";
   // Something this session started ended, said in one line without a turn (status mode).
   let { segment }: { segment: Extract<Segment, { kind: "status" }> } = $props();
   const client = useSessions();

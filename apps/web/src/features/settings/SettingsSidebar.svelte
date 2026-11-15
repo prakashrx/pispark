@@ -18,8 +18,8 @@
     settingsLinks.filter((link) =>
       (
         link.label +
-        (link.page === "persona"
-          ? sessions.personas.items.map((p) => p.name).join(" ")
+        (link.page === "agent"
+          ? sessions.agents.items.map((p) => p.name).join(" ")
           : "")
       )
         .toLowerCase()
@@ -34,7 +34,7 @@
       ><Icon
         name="back"
         class="w-4 h-4 transition-transform group-hover:-translate-x-0.5"
-      /><span>Back to chats</span></a
+      /><span>Back to sessions</span></a
     >
     <h2 class="px-3 pt-4 pb-2 text-xs font-medium text-subtle">Settings</h2>
     <div class="px-1 pb-2">
@@ -52,32 +52,32 @@
             aria-current={page === link.page ? "page" : undefined}
             class="nav-item"
             onclick={() => {
-              if (link.page === "persona") sessions.personas.collection();
+              if (link.page === "agent") sessions.agents.collection();
             }}
           >
             <Icon name={link.icon} class="w-[18px] h-[18px] text-muted-foreground" />
             <span class="flex-1">{link.label}</span>
-            {#if link.page === "persona" && sessions.personas.items.length}<span
-                class="text-xs text-subtle">{sessions.personas.items.length}</span
+            {#if link.page === "agent" && sessions.agents.items.length}<span
+                class="text-xs text-subtle">{sessions.agents.items.length}</span
               >{:else if link.page === "schedules" && backgroundCount}<span
                 class="text-xs text-subtle">{backgroundCount}</span
               >{:else if link.page === "about" && sessions.host.ready}<span class="text-xs text-[var(--interactive-text)]">Update</span>{/if}
           </a>
-          {#if link.page === "persona" && page === "persona" && sessions.personas.items.length}
+          {#if link.page === "agent" && page === "agent" && sessions.agents.items.length}
             <div class="ml-[1.375rem] pl-3 my-1 border-l border-[var(--sidebar-border)] space-y-px">
               <a
-                href="#/persona"
+                href="#/agent"
                 class="nav-item !min-h-0 !py-1.5 text-[0.8125rem]"
-                onclick={() => sessions.personas.collection()}>Manage personas</a
+                onclick={() => sessions.agents.collection()}>Manage agents</a
               >
-              {#each sessions.personas.items.slice(0, 16) as persona}<a
-                  href="#/persona"
+              {#each sessions.agents.items.slice(0, 16) as agent}<a
+                  href="#/agent"
                   class="nav-item !min-h-0 !py-1.5 text-[0.8125rem] text-muted-foreground"
-                  onclick={() => void sessions.personas.open({ persona: persona.id })}
-                  title={`personas/${persona.id}`}
+                  onclick={() => void sessions.agents.open({ agent: agent.id })}
+                  title={`agents/${agent.id}`}
                   ><span class="truncate flex-1"
-                    >{persona.name}</span
-                  >{#if !persona.valid}<span class="needs-attention" title="Needs attention"
+                    >{agent.name}</span
+                  >{#if !agent.valid}<span class="needs-attention" title="Needs attention"
                       ><Icon name="alert" class="h-4 w-4" /><span class="sr-only">Needs attention</span></span
                     >{/if}</a
                 >{/each}

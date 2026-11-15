@@ -4,11 +4,11 @@
   import { useSessions } from "../workspace/session-client.svelte";
   import ScheduleCard from "./ScheduleCard.svelte";
   import ScheduleForm from "./ScheduleForm.svelte";
-  /** One chat's schedules, inside its Schedules panel: each with its last runs, and Add schedule. */
+  /** One session's schedules, inside its Schedules panel: each with its last runs, and Add schedule. */
   let { sessionId }: { sessionId: string } = $props();
   const client = useSessions();
   const schedules = $derived(client.schedules.of(sessionId));
-  // A chat another session started keeps its runs in itself.
+  // A session another session started keeps its runs in itself.
   const child = $derived(!!client.sessions.find((session) => session.id === sessionId)?.parent);
   let adding = $state(false);
   let list = $state<HTMLElement>();

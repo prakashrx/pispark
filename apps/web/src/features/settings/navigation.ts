@@ -3,7 +3,7 @@ import type { Page } from "../../routes";
 export const settingsLinks: { label: string; icon: IconName; page?: Page }[] = [
   { label: "General", icon: "general", page: "settings" },
   { label: "Providers & models", icon: "providers", page: "providers" },
-  { label: "Personas", icon: "people", page: "persona" },
+  { label: "Agents", icon: "people", page: "agent" },
   { label: "Background", icon: "clock", page: "schedules" },
   { label: "Sources", icon: "settingsFolder", page: "sources" },
   { label: "Channels", icon: "channels" },

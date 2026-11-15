@@ -16,20 +16,20 @@ import { LiveSession } from "./live-session.svelte";
 import { liveEvents } from "./live-stream";
 import { CommandFailed, CommandUncertainty, type Transport } from "./transport";
 
-/** What a chat needs from the app that holds it. */
+/** What a session needs from the app that holds it. */
 export interface SessionHost {
-  /** The chat reported new state: the chat list keeps its row in step. */
+  /** The session reported new state: the session list keeps its row in step. */
   changed(session: SessionDoc): void;
-  /** Read the chat list again. */
+  /** Read the session list again. */
   refresh(): Promise<void>;
-  /** Whether one more chat may hold an unsent draft. */
+  /** Whether one more session may hold an unsent draft. */
   roomForDraft(): boolean;
-  /** Something to say that is not about this chat alone. */
+  /** Something to say that is not about this session alone. */
   notice(message: string): void;
 }
 
 /**
- * One chat in the browser: the web's counterpart of the server's `Chat`. It holds what the chat
+ * One session in the browser: the web's counterpart of the server's `Session`. It holds what the session
  * is doing now (its state, its items as they stream, what running tools report), follows it live
  * while it is on screen, and has the actions a person can take.
  *
@@ -37,11 +37,11 @@ export interface SessionHost {
  * the views extensions offer. The members up to `showView` are what a view may rely on.
  */
 export class Session {
-  /** Everything about the chat except its history: status, title, model, queue, what extensions show. */
+  /** Everything about the session except its history: status, title, model, queue, what extensions show. */
   get doc(): SessionDoc | undefined {
     return this.live.doc?.session;
   }
-  /** The chat as the list knows it, until its own state has arrived. */
+  /** The session as the list knows it, until its own state has arrived. */
   get info(): SessionInfo | undefined {
     return this.doc ?? this.row;
   }
@@ -57,14 +57,14 @@ export class Session {
   get progress(): Record<string, ToolProgress> {
     return this.live.doc?.progress ?? {};
   }
-  /** "Live" while the chat is followed; otherwise why not ("Reconnecting", "Disconnected", …). */
+  /** "Live" while the session is followed; otherwise why not ("Reconnecting", "Disconnected", …). */
   connection = $state("Connected");
-  /** The chat has nothing to show yet. */
+  /** The session has nothing to show yet. */
   opening = $state(true);
-  /** What went wrong with the last thing asked of this chat, in words. */
+  /** What went wrong with the last thing asked of this session, in words. */
   error = $state("");
   errorKind = $state<CommandUncertaintyKind>();
-  /** The unsent reply. Kept while other chats are shown. */
+  /** The unsent reply. Kept while other sessions are shown. */
   draft = $state("");
   /** A message is being handed to the server. */
   sending = $state(false);
@@ -76,7 +76,7 @@ export class Session {
     this.draftRevision++;
   }
   /**
-   * Sends a message to an idle chat: the given text, or the draft (cleared once it is accepted,
+   * Sends a message to an idle session: the given text, or the draft (cleared once it is accepted,
    * unless it changed meanwhile). Whether the server accepted it; a failure is in `error`.
    */
   async send(text?: string): Promise<boolean> {
@@ -121,7 +121,7 @@ export class Session {
   readPart(ref: { id: string; part: number }, offset: number) {
     return this.transport.json<PartPage>(`/api/sessions/${this.id}/items/${ref.id}/parts/${ref.part}?offset=${offset}`);
   }
-  /** Restarts the chat's Pi session so persona changes apply. The transcript is kept. */
+  /** Restarts the session's Pi session so agent changes apply. The transcript is kept. */
   async reload() {
     this.clearError();
     this.source?.abort();
@@ -134,7 +134,7 @@ export class Session {
     }
     if (this.shown && !this.transport.closed) this.observe();
   }
-  /** Follows the chat again after the connection was lost. Never sends a message again. */
+  /** Follows the session again after the connection was lost. Never sends a message again. */
   async reconnect() {
     try {
       await this.host.refresh();
@@ -173,10 +173,10 @@ export class Session {
   }
   /**
    * The key of the view that shows; none while the conversation does. It is the person's choice
-   * for this session and, until they make one, the home view of an app persona.
+   * for this session and, until they make one, the home view of an app agent.
    */
   get shownView(): string | undefined {
-    const key = this.chosenView ?? this.info?.persona?.home;
+    const key = this.chosenView ?? this.info?.agent?.home;
     return key && this.views.some((view) => view.key === key) ? key : undefined;
   }
   /**
@@ -192,18 +192,18 @@ export class Session {
     }
   }
 
-  // ---- For the app that holds the chat --------------------------------------------------------
+  // ---- For the app that holds the session --------------------------------------------------------
 
-  /** The chat's row in the chat list. */
+  /** The session's row in the session list. */
   row = $state<SessionInfo>();
-  /** The chat's history and live document, as the server's operations keep them. */
+  /** The session's history and live document, as the server's operations keep them. */
   readonly live: LiveSession;
   /** The view the person chose: "" is the conversation, unset is no choice yet. */
   private chosenView = $state<string>();
   /** How often each view had asked to be shown when last looked; unset until the session shows. */
   private asked?: Map<string, number>;
   private draftRevision = 0;
-  /** The last draft an extension set that this chat applied, so each fills the reply box once. */
+  /** The last draft an extension set that this session applied, so each fills the reply box once. */
   private extensionDraft?: string;
   private source?: AbortController;
   private shown = false;
@@ -222,13 +222,13 @@ export class Session {
     }
   }
 
-  /** The chat is on screen: load it on the server if it is not, then follow it live. */
+  /** The session is on screen: load it on the server if it is not, then follow it live. */
   async show() {
     const showing = ++this.showing;
     this.shown = true;
     this.asked = undefined;
     this.source?.abort();
-    // Only a chat with nothing to show yet is opening; one seen before shows as it was.
+    // Only a session with nothing to show yet is opening; one seen before shows as it was.
     this.opening = !this.live.doc;
     if (this.connection === "Unloaded") this.connection = "Connected";
     try {
@@ -243,7 +243,7 @@ export class Session {
       }
     }
   }
-  /** The chat left the screen: stop following it. What it showed is kept for the next time. */
+  /** The session left the screen: stop following it. What it showed is kept for the next time. */
   hide() {
     this.shown = false;
     this.showing++;
@@ -282,7 +282,7 @@ export class Session {
     void (async () => {
       while (!source.signal.aborted && !this.transport.closed) {
         try {
-          // History is read once; a reconnect only catches up on what the chat gained since.
+          // History is read once; a reconnect only catches up on what the session gained since.
           if (!this.live.loaded) await this.live.load(id);
           const response = await fetch(`/api/sessions/${id}/live`, {
             signal: AbortSignal.any([source.signal, AbortSignal.timeout(70_000)]),
@@ -315,7 +315,7 @@ export class Session {
           }
           if (end === "unloaded") {
             if (source !== this.source || source.signal.aborted) return;
-            // The server unloaded the chat while it was idle: load it again and carry on.
+            // The server unloaded the session while it was idle: load it again and carry on.
             try {
               await this.transport.run({ type: "open", sessionId: id });
             } catch (error) {
@@ -337,12 +337,12 @@ export class Session {
       }
     })();
   }
-  /** An extension called Pi's `setEditorText`: put its text in this chat's reply box. */
+  /** An extension called Pi's `setEditorText`: put its text in this session's reply box. */
   private applyExtensionDraft(session: SessionDoc, initial: boolean) {
     const draft = session.extensions?.draft;
     if (!draft || this.extensionDraft === draft.id) return;
     this.extensionDraft = draft.id;
-    // When a chat is opened, only a fresh draft counts (a new chat's first run may set one);
+    // When a session is opened, only a fresh draft counts (a new session's first run may set one);
     // an older one was meant for an earlier view, and a typed reply always wins.
     if (initial && (Date.now() - draft.at > 30_000 || this.draft)) return;
     this.draft = draft.text;

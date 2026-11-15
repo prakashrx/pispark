@@ -23,7 +23,7 @@ interface Widget {
 }
 type Notice = ExtensionView["notices"][number];
 
-/** What a question's answer is called in the line the chat keeps: the choice, yes or no, or that it was answered. */
+/** What a question's answer is called in the line the session keeps: the choice, yes or no, or that it was answered. */
 function receipt(dialog: ExtensionDialog, answer: string | boolean | null): string {
   if (answer === null) return "skipped";
   if (dialog.kind === "confirm") return answer === true ? "yes" : "no";
@@ -80,7 +80,7 @@ function gitBranch(cwd: string): string | null {
 }
 
 /**
- * One chat's answer to Pi's `ctx.ui`: what Pi's own non-terminal mode supports, kept as
+ * One session's answer to Pi's `ctx.ui`: what Pi's own non-terminal mode supports, kept as
  * session state the browser shows. Terminal-only calls are quiet no-ops, as in Pi's RPC mode.
  */
 export class ExtensionUI {
@@ -106,20 +106,20 @@ export class ExtensionUI {
       changed: () => void;
       /** Messages so far, so notices stay where they happened. */
       position: () => number;
-      /** The chat's working folder, for the footer's git branch. */
+      /** The session's working folder, for the footer's git branch. */
       cwd: string;
       /** A question opened: the run waits for a person. */
       paused?: () => void;
       /** A question was answered or gave up: `go` lets the extension continue, once the run may. */
       resume?: (go: () => void) => void;
-      /** Keeps a notice in the chat's history; false while the chat is still opening. */
+      /** Keeps a notice in the session's history; false while the session is still opening. */
       save?: (notice: { kind: Notice["kind"]; lines: StyledLine[]; at: number }) => boolean;
     },
   ) {}
 
   private readonly notify = coalesce(() => this.host.changed(), 100);
   /**
-   * What `view()` last returned. The chat's document is read on every streaming update, so widgets,
+   * What `view()` last returned. The session's document is read on every streaming update, so widgets,
    * header and footer are rendered (and the git branch read) only after something changed.
    */
   private lastView?: Omit<ExtensionView, "views">;
@@ -200,8 +200,8 @@ export class ExtensionUI {
   }
 
   /**
-   * A notice in the chat. Once the chat is open it is saved in the session's history, so it stays
-   * where it happened across reopening; notices raised while the chat opens are shown only then.
+   * A notice in the session. Once the session is open it is saved in the session's history, so it stays
+   * where it happened across reopening; notices raised while the session opens are shown only then.
    */
   private notice(message: string, kind: Notice["kind"]) {
     const lines = styledLines(String(message).slice(0, MAX_TEXT));
@@ -211,7 +211,7 @@ export class ExtensionUI {
     this.changed();
   }
 
-  /** Pi's extension UI for this chat's session. */
+  /** Pi's extension UI for this session. */
   readonly context: ExtensionUIContext = {
     select: (title, options, opts) =>
       this.ask(
@@ -282,7 +282,7 @@ export class ExtensionUI {
         factory && (() => factory(webTui(this.changed), webTheme, this.footerData)),
       ),
     setEditorText: (text) => {
-      // Unique across session instances, so a reopened chat never reuses an applied id.
+      // Unique across session instances, so a reopened session never reuses an applied id.
       this.draft = { id: randomUUID(), text: String(text).slice(0, MAX_TEXT), at: Date.now() };
       this.changed();
     },
@@ -302,17 +302,17 @@ export class ExtensionUI {
     setToolsExpanded: () => {},
   };
 
-  /** Something about an extension PiSpark could not use, shown in the chat. */
+  /** Something about an extension PiSpark could not use, shown in the session. */
   failed(message: string) {
     this.notice(message.slice(0, 1000), "error");
   }
 
-  /** A failing extension handler, shown instead of failing the chat. */
+  /** A failing extension handler, shown instead of failing the session. */
   extensionFailed(name: string, event: string, message: string) {
     this.notice(`The ${name} extension failed in ${event}: ${message.slice(0, 500)}`, "error");
   }
 
-  /** Whether a question is open, so the chat can say it waits for someone. */
+  /** Whether a question is open, so the session can say it waits for someone. */
   get asking(): boolean {
     return this.dialogs.size > 0;
   }
@@ -331,7 +331,7 @@ export class ExtensionUI {
     )
       throw new RuntimeError("invalid-input");
     pending.settle(answer ?? undefined);
-    // The chat keeps a line of what was asked and answered, as terminal scrollback would. What a
+    // The session keeps a line of what was asked and answered, as terminal scrollback would. What a
     // person typed is not echoed: it may be a name, a path or something private.
     this.notice(`${plain(dialog.title, 120).split(String.fromCharCode(10))[0]} → ${receipt(dialog, answer)}`, "info");
     this.changed();

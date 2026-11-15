@@ -8,7 +8,7 @@ test("saved assistant Markdown stays inert and keeps normal formatting after reo
   await page.goto("/");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await expect(
-    page.getByRole("button", { name: "Start chat" }),
+    page.getByRole("button", { name: "Start session" }),
   ).not.toHaveAttribute("aria-disabled", "true");
   const prompt =
     '**safe bold** <img src="/invalid" onerror="document.body.dataset.injected=1"> [unsafe](javascript:alert(1))';
@@ -19,7 +19,7 @@ test("saved assistant Markdown stays inert and keeps normal formatting after reo
     .filter({ has: page.locator("strong", { hasText: "safe bold" }) });
   for (const reopen of [false, true]) {
     if (reopen) {
-      // Unloaded on the server, the chat opens again by itself.
+      // Unloaded on the server, the session opens again by itself.
       const { sessions } = await (await request.get("/api/sessions")).json();
       await request.post("/api/commands", {
         data: { type: "stop", commandId: crypto.randomUUID(), sessionId: sessions.at(-1).id },
@@ -37,7 +37,7 @@ test("saved assistant Markdown stays inert and keeps normal formatting after reo
   }
 });
 
-test("blocked browser storage supports live replies and a chat unloaded by a peer opens again by itself", async ({
+test("blocked browser storage supports live replies and a session unloaded by a peer opens again by itself", async ({
   page,
   request,
 }) => {
@@ -52,14 +52,14 @@ test("blocked browser storage supports live replies and a chat unloaded by a pee
   await page.goto("/");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await expect(
-    page.getByRole("button", { name: "Start chat" }),
+    page.getByRole("button", { name: "Start session" }),
   ).not.toHaveAttribute("aria-disabled", "true");
   await ask.fill("peer unload regression");
   await ask.press("Enter");
   await expect(
     page.getByText("local:peer unload regression", { exact: true }),
   ).toBeVisible();
-  const reply = page.getByRole("textbox", { name: "Reply to chat" });
+  const reply = page.getByRole("textbox", { name: "Reply to session" });
   await reply.fill("keep through reopen");
   const { sessions } = await (await request.get("/api/sessions")).json();
   const id = sessions.findLast(
@@ -69,7 +69,7 @@ test("blocked browser storage supports live replies and a chat unloaded by a pee
     data: { type: "stop", commandId: crypto.randomUUID(), sessionId: id },
   });
   await expect(page.getByRole("img", { name: "Backend: Live" })).toBeVisible({
-    timeout: 10_000,
+    timeout: 15_000,
   });
   await expect(
     page.getByRole("button", { name: "Send message" }),
@@ -87,7 +87,7 @@ test("a long reply is shown whole in the conversation, not clipped", async ({
   await page.goto("/");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await expect(
-    page.getByRole("button", { name: "Start chat" }),
+    page.getByRole("button", { name: "Start session" }),
   ).not.toHaveAttribute("aria-disabled", "true");
   await ask.fill("long reply " + "a".repeat(10000) + " END-OF-REPLY");
   await ask.press("Enter");

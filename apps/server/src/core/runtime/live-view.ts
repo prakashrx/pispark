@@ -2,7 +2,7 @@ import type { Item, LiveDoc, LiveEvent, LiveOp } from "../../contract/protocol.j
 import { diffOps } from "../../contract/stream-ops.js";
 import type { Json } from "../../contract/stream-ops.js";
 
-/** What a live view reads from a running chat. */
+/** What a live view reads from a running session. */
 export interface LiveSource {
   doc(): LiveDoc;
   head(): string | null;
@@ -14,7 +14,7 @@ export interface LiveSource {
 const COMMIT_LIMIT = 256 * 1024;
 
 /**
- * One connection's view of a chat: the document it last saw. Each tick turns what changed into
+ * One connection's view of a session: the document it last saw. Each tick turns what changed into
  * operations, so a growing answer costs what it grew by, not its whole length again.
  */
 export class LiveView {
@@ -31,7 +31,7 @@ export class LiveView {
   snapshot(): LiveEvent {
     return { type: "snapshot", sessionId: this.sessionId, head: this.head, doc: this.doc };
   }
-  /** The next batch of operations, or nothing when the chat did not change. */
+  /** The next batch of operations, or nothing when the session did not change. */
   next(): LiveEvent | undefined {
     const ops: LiveOp[] = [];
     const head = this.source.head();

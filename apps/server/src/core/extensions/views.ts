@@ -81,10 +81,10 @@ function calls(value: unknown): Record<string, Call> {
 }
 
 /**
- * One chat's extension components. An extension shows one with an event on Pi's bus, giving it
+ * One session's extension components. An extension shows one with an event on Pi's bus, giving it
  * props, the functions it may call and, if it wants, a folder of files it may read; terminal Pi,
  * with no listener, ignores the event. A component must be a `.svelte` file inside the folder of
- * an extension the chat loads, and it can only reach what its own placement gave it.
+ * an extension the session loads, and it can only reach what its own placement gave it.
  */
 export class ExtensionViews {
   private readonly placed = new Map<string, Placed>();
@@ -98,7 +98,7 @@ export class ExtensionViews {
     extensionFolders: string[],
     private readonly host: {
       changed: () => void;
-      /** A contribution that could not be used, in words for the chat. */
+      /** A contribution that could not be used, in words for the session. */
       failed: (message: string) => void;
       /** How long a call may take. */
       callTimeoutMs?: number;
@@ -116,7 +116,7 @@ export class ExtensionViews {
     });
   }
 
-  /** Listens on the chat's bus; called before extensions load, so none of their events are missed. */
+  /** Listens on the session's bus; called before extensions load, so none of their events are missed. */
   bind(bus: EventBus): () => void {
     return bus.on(VIEW_EVENT, (data) => {
       try {
@@ -150,7 +150,7 @@ export class ExtensionViews {
       return rel && !rel.startsWith("..") && !isAbsolute(rel);
     };
     const root = this.roots.find(inside);
-    if (!root) throw new Error(`${path} is not inside an extension this chat loads`);
+    if (!root) throw new Error(`${path} is not inside an extension this session loads`);
     return { file: real, root };
   }
   /** The folder a placement lets its component read files from. */
@@ -206,7 +206,7 @@ export class ExtensionViews {
     this.placed.set(id, entry);
     this.host.changed();
     if (entry.url) return;
-    // Each file compiles once per session; a reopened chat compiles it again, so edits show.
+    // Each file compiles once per session; a reopened session compiles it again, so edits show.
     let compiling = this.compiled.get(file);
     if (!compiling) this.compiled.set(file, (compiling = compileView(file, root)));
     compiling.then(
@@ -237,7 +237,7 @@ export class ExtensionViews {
 
   /**
    * A component's `host.call(name, data)`: runs that function of its own placement and gives back
-   * its result. Bounded, cancelled when the chat closes, and timed out.
+   * its result. Bounded, cancelled when the session closes, and timed out.
    */
   async call(point: string, key: string, name: string, data: Json | undefined): Promise<Json | undefined> {
     const fn = this.placed.get(`${point}\u0000${key}`)?.calls[name];

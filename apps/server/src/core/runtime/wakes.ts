@@ -11,9 +11,9 @@ import {
 } from "../../contract/wake-protocol.js";
 import { validResultData } from "./session-tool.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
-import { writeAtomic } from "../personas/store.js";
+import { writeAtomic } from "../agents/store.js";
 import { RuntimeError, runtimeError } from "./errors.js";
-import type { RunResult } from "./chat.js";
+import type { RunResult } from "./session.js";
 
 /** One ask from a source: the message to send, when it was due, and how it waits. */
 export interface Wake {
@@ -40,7 +40,7 @@ export interface WakeHost {
   sessions(): { id: string; archived: boolean }[];
   /** The session folders there are, read without loading anything (at start). */
   ids(): string[];
-  /** The session's folder, where its `wakes.json` lives beside `chat.json`. */
+  /** The session's folder, where its `wakes.json` lives beside `session.json`. */
   directory(sessionId: string): string;
   /** Whether a message could be sent now: the session is not loaded, or loaded with nothing going on. */
   free(sessionId: string): boolean;

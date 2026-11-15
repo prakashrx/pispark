@@ -1,7 +1,7 @@
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
 import { folderButton, otherFolder, otherFolderLabel } from "./ask";
 import { hostedTest } from "./isolated-host";
-import { addInstruction, createPersona, openPersona } from "./persona-journey";
+import { addInstruction, createAgent, openAgent } from "./agent-journey";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -46,9 +46,9 @@ hostedTest("four source pages render locally without errors or external requests
       external.push(request.url());
   });
   for (const [route, heading] of [
-    ["workspace", "New chat"],
+    ["workspace", "New session"],
     ["settings", "General"],
-    ["persona", "Personas"],
+    ["agent", "Agents"],
     ["sources", "Sources"],
   ]) {
     await page.goto(`/#/${route}`);
@@ -81,9 +81,9 @@ hostedTest("keyboard selectors, independent draft composers and sidebar navigati
   await page
     .getByRole("textbox", { name: "Ask anything" })
     .fill("An unsent question");
-  // No chat is open yet, so there is no reply composer to type into.
+  // No session is open yet, so there is no reply composer to type into.
   await expect(
-    page.getByRole("textbox", { name: /Reply to chat/ }),
+    page.getByRole("textbox", { name: /Reply to session/ }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Style", exact: true }),
@@ -100,13 +100,13 @@ hostedTest("keyboard selectors, independent draft composers and sidebar navigati
   ).toBeFocused();
   await page
     .getByRole("button", {
-      name: "Persona: Default",
+      name: "Agent: Default",
     })
     .click();
   await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", {
-      name: "Persona: Default",
+      name: "Agent: Default",
     }),
   ).toBeFocused();
   await page.getByRole("textbox", { name: /Ask anything/ }).focus();
@@ -121,26 +121,26 @@ hostedTest("keyboard selectors, independent draft composers and sidebar navigati
     page.getByRole("heading", { name: "General", level: 1 }),
   ).toBeVisible();
   await page
-    .getByRole("link", { name: "Manage personas", exact: true })
+    .getByRole("link", { name: "Manage agents", exact: true })
     .last()
     .click();
-  await expect(page.getByRole("heading", { name: "Personas" })).toBeVisible();
-  await createPersona(page, "Keyboard writer");
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+  await createAgent(page, "Keyboard writer");
   await addInstruction(page, "Local instructions");
   await page.getByRole("link", { name: "Sources", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
-  // Back returns to where you were: the persona's editor.
+  // Back returns to where you were: the agent's editor.
   await page.goBack();
   await expect(
     page.getByRole("heading", { name: "Keyboard writer", level: 1 }),
   ).toBeVisible();
-  await openPersona(page, "Keyboard writer");
+  await openAgent(page, "Keyboard writer");
   await expect(
     page.getByRole("heading", { name: "Keyboard writer" }),
   ).toBeVisible();
 });
 
-test("Sources is truthfully unavailable and only navigates to real Personas without connection requests", async ({
+test("Sources is truthfully unavailable and only navigates to real Agents without connection requests", async ({
   page,
   baseURL,
 }) => {
@@ -158,7 +158,7 @@ test("Sources is truthfully unavailable and only navigates to real Personas with
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Source connections aren’t available yet. You can use local personas and skills in Personas.",
+      "Source connections aren’t available yet. You can use local agents and skills in Agents.",
     ),
   ).toBeVisible();
   await expect(
@@ -169,10 +169,10 @@ test("Sources is truthfully unavailable and only navigates to real Personas with
   ).toHaveCount(0);
   await page
     .getByRole("main")
-    .getByRole("link", { name: "Manage personas", exact: true })
+    .getByRole("link", { name: "Manage agents", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Personas", exact: true }),
+    page.getByRole("heading", { name: "Agents", exact: true }),
   ).toBeVisible();
   expect(external).toEqual([]);
 });
@@ -181,7 +181,7 @@ test("narrow pages reflow without clipping and popup/modal remain keyboard usabl
   page,
 }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const route of ["workspace", "settings", "persona", "sources"]) {
+  for (const route of ["workspace", "settings", "agent", "sources"]) {
     await page.goto(`/#/${route}`);
     await page.evaluate(() => document.fonts.ready);
     expect(

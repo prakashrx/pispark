@@ -2,7 +2,7 @@
   import { tick } from "svelte";
   import type { PartPage } from "../../../../server/src/contract/protocol";
   import Button from "../../lib/ui/Button.svelte";
-  import type { PartRef } from "./chat-turns";
+  import type { PartRef } from "./session-turns";
   import { useSession } from "./session-client.svelte";
   let { reference }: { reference: PartRef } = $props();
   const session = useSession();
@@ -20,7 +20,7 @@
       await tick();
       text?.focus();
     } catch {
-      error = "Couldn’t read this message. Reopen the chat and try again.";
+      error = "Couldn’t read this message. Reopen the session and try again.";
     } finally {
       busy = false;
     }

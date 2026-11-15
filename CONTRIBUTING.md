@@ -1,15 +1,15 @@
 # Contributing
 
-PiSpark connects its shared web shell to backend-owned Pi sessions through a bounded local HTTP/SSE protocol. Persona/source management and extension-owned browser rendering remain deferred, not working runtime features. Small, readable changes with clear boundaries are welcome.
+Small, readable changes with clear boundaries are welcome.
 
-**Read [VISION.md](VISION.md) before contributing. It is the authoritative product direction, not a list of shipped capabilities.** Follow [AGENTS.md](AGENTS.md) for working rules. Pi runs the agent; PiSpark hosts the experience; extensions make it their own.
+**Read [VISION.md](VISION.md) first.** It is the product direction, not a list of what is built. [AGENTS.md](AGENTS.md) has the working rules. Pi runs the agent; PiSpark hosts the experience; extensions make it their own.
 
-1. For product or architectural changes, discuss the scope in a [GitHub issue](https://github.com/prakashrx/pispark/issues) first. Explain alignment with the relevant vision sections, what Pi already provides, what PiSpark must own, and any unresolved decisions. Obtain agreement before substantial implementation.
-2. Install a supported Node version (`^22.19.0 || ^24.0.0 || >=26.0.0`) and npm 10+, then run `npm ci` and `npm run dev`. Startup is unconfigured by default. Read [operator configuration and protocol](docs/session-protocol.md) before enabling execution: configuration modules and admitted extensions are trusted host code, session endpoints enforce loopback Host/Origin checks, and external providers require a patched Node-bundled undici (no waiver). Do not use terminal credentials implicitly or run paid calls as tests.
-3. Keep runtime logic in `apps/server`, web UI in `apps/web`, and durable explanations in `docs/`. Prefer a small concrete component over a speculative abstraction.
-4. Add tests for changed behavior; keep demo interactions explicitly labeled. Do not imply unimplemented agent features work.
-5. Before opening a PR, run `npm run check`, `npm test`, `npm run build`, and `npm run smoke`. For UI changes, also run the real-browser development and production-asset suites described in [development](docs/development.md). Tests use real Pi sessions with a deterministic local provider, not paid services. Update docs when commands or boundaries change.
+1. **Discuss first** for product or architecture changes: open a [GitHub issue](https://github.com/prakashrx/pispark/issues) that says which part of the vision it serves, what Pi already provides and what PiSpark needs to own. Agree on it before building.
+2. **Set up:** Node 22 (22.23.4+), 24 or 26+ and npm 10+, then `npm ci` and `npm run dev` ([development](docs/development.md)). Nothing else is needed: no configuration file, no terminal Pi, no credentials. Use a separate data folder for development (`PISPARK_HOME`), and never run paid model calls as tests.
+3. **Keep the shape:** the server in `apps/server` (its three zones, see [architecture](docs/architecture.md)), the web in `apps/web`, the launcher in `apps/launcher`, explanations in `docs/`. Prefer a small concrete component to a speculative abstraction.
+4. **Test what changed.** Tests use real Pi sessions with a deterministic local provider. Don't present unbuilt features as working.
+5. **Before a PR:** `npm run check`, `npm test`, `npm run build` and `npm run smoke`. For UI changes, also the browser suite in [development](docs/development.md), at narrow and wide widths and with the keyboard. Update the docs when behavior, commands or boundaries change.
 
-Commit the root lockfile when dependencies change. Do not commit credentials, environment files, private work records, runtime metadata, or personal screenshots. Avoid machine-specific paths in public documentation.
+Commit the root lockfile when dependencies change. Never commit credentials, environment files, private work records, runtime data or private screenshots, and keep machine-specific paths out of public docs.
 
-See [development](docs/development.md) for platform notes. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), not in a public issue.
+Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.

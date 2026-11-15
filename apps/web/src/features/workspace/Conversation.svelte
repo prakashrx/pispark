@@ -3,18 +3,18 @@
   import { tick } from "svelte";
   import SessionHeader from "./SessionHeader.svelte";
   import ResponseTurn from "./ResponseTurn.svelte";
-  import { buildTurns } from "./chat-turns";
+  import { buildTurns } from "./session-turns";
   import UserTurn from "./UserTurn.svelte";
   import { placedPoints } from "./extension-views";
   import { useSession } from "./session-client.svelte";
 
-  /** PiSpark's own conversation: the chat's items as turns, in one continuous scroll. */
+  /** PiSpark's own conversation: the session's items as turns, in one continuous scroll. */
   const session = useSession();
   const doc = $derived(session.doc);
   const placed = $derived(placedPoints(doc?.extensions));
   const queued = $derived((doc?.queue.steering ?? 0) + (doc?.queue.followUp ?? 0));
   const running = $derived(["running", "cancelling"].includes(doc?.status ?? ""));
-  // The chat as turns of ordered segments; extension notices land where they happened.
+  // The session as turns of ordered segments; extension notices land where they happened.
   const turns = $derived(
     doc
       ? buildTurns(session.items, {
@@ -91,7 +91,7 @@
 
 <main
   id="workspace"
-  aria-label="Chat conversation"
+  aria-label="Session conversation"
   class="conversation flex-1 overflow-y-auto px-6 pt-8 pb-6 flex flex-col items-center"
   bind:this={scroller}
   {onscroll}
@@ -118,7 +118,7 @@
         {#if doc.status === "queued" && doc.queuedText}<div class="queued-turn">
             <UserTurn text={doc.queuedText} />
             <p role="status" class="queued-note">
-              {doc.restored ? "Queued from before PiSpark restarted." : "Queued."} Starts when another chat finishes.
+              {doc.restored ? "Queued from before PiSpark restarted." : "Queued."} Starts when another session finishes.
             </p>
           </div>{/if}
       </div>

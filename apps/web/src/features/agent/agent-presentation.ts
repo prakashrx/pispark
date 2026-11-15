@@ -3,16 +3,16 @@ import type {
   LayerRef,
   ResolvedItem,
   ResolvedTool,
-} from "../../../../server/src/contract/persona-protocol";
+} from "../../../../server/src/contract/agent-protocol";
 
 const messages: Record<string, string> = {
   "invalid-input": "That request wasn’t valid.",
   "invalid-path": "That file name isn’t allowed.",
-  "invalid-definition": "That persona setting isn’t valid.",
+  "invalid-definition": "That agent setting isn’t valid.",
   "revision-conflict": "This changed somewhere else. The latest version is shown; try again.",
-  "missing-parent": "A persona this one builds on is missing",
-  cycle: "Personas can’t build on each other in a loop",
-  "in-use": "Another persona builds on this one",
+  "missing-parent": "An agent this one builds on is missing",
+  cycle: "Agents can’t build on each other in a loop",
+  "in-use": "Another agent builds on this one",
   "built-in": "Default can’t be deleted.",
   "not-found": "Not found.",
   limit: "That’s too large.",
@@ -20,8 +20,8 @@ const messages: Record<string, string> = {
   storage: "Couldn’t read or save on the server.",
 };
 
-/** Plain-language persona errors; details are persona IDs, never file contents. */
-export function personaError(code: string, detail?: string): string {
+/** Plain-language agent errors; details are agent IDs, never file contents. */
+export function agentError(code: string, detail?: string): string {
   const message = messages[code] ?? "Something went wrong.";
   return detail && ["missing-parent", "cycle", "in-use"].includes(code)
     ? `${message}: ${detail}.`
@@ -39,7 +39,7 @@ export const ITEM_LABELS: Record<ItemType, { title: string; one: string }> = {
 /** Where an item comes from, relative to the layer being edited. */
 export function originLabel(origin: LayerRef, viewing: string): string {
   if (origin.id === viewing) return "Added here";
-  if (origin.id === "chat") return "From this chat";
+  if (origin.id === "session") return "From this session";
   return `From ${origin.name}`;
 }
 

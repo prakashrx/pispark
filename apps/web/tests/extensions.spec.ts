@@ -1,13 +1,13 @@
 import { expect } from "@playwright/test";
 import { hostedTest as test } from "./isolated-host";
 
-// The test host's Default persona loads an ordinary Pi extension that uses Pi's ctx.ui.
-test("an extension's notice, status, widget and question appear around the chat and answer by keyboard", async ({
+// The test host's Default agent loads an ordinary Pi extension that uses Pi's ctx.ui.
+test("an extension's notice, status, widget and question appear around the session and answer by keyboard", async ({
   page,
 }) => {
   await page.goto("/");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
-  await expect(page.getByRole("button", { name: "Start chat" })).not.toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByRole("button", { name: "Start session" })).not.toHaveAttribute("aria-disabled", "true");
   await ask.fill("ui-show");
   await ask.press("Enter");
 
@@ -16,7 +16,7 @@ test("an extension's notice, status, widget and question appear around the chat 
   await expect(notice).toContainText("Warning");
   await expect(page.getByLabel("Extension status")).toHaveText("ready");
   await expect(page.getByText("widget line", { exact: true })).toBeVisible();
-  const reply = page.getByRole("textbox", { name: "Reply to chat" });
+  const reply = page.getByRole("textbox", { name: "Reply to session" });
   await expect(reply).toHaveValue("drafted by fixture");
   await expect(page.getByText("local:ui-show", { exact: true })).toBeVisible();
 
@@ -31,7 +31,7 @@ test("an extension's notice, status, widget and question appear around the chat 
   await expect(question).toHaveCount(0);
   await expect(reply).toBeFocused();
   await expect(page.getByText("local:ui-select", { exact: true })).toBeVisible();
-  // The chat keeps a line of what was asked and chosen.
+  // The session keeps a line of what was asked and chosen.
   await expect(page.getByText("Pick one → two", { exact: true })).toBeVisible();
 
   // A confirmation starts on the question itself, not on an answer; Y and N answer, Escape skips.
@@ -53,7 +53,7 @@ test("an extension's notice, status, widget and question appear around the chat 
   await expect(page.getByText("Proceed? → skipped", { exact: true })).toBeVisible();
   await expect(page.getByText("local:ui-confirm", { exact: true })).toHaveCount(2);
 
-  // One header and footer, the browser tab title, and Pi's session name as the chat title.
+  // One header and footer, the browser tab title, and Pi's session name as the session title.
   await reply.fill("ui-chrome");
   await reply.press("Enter");
   await expect(page.getByRole("heading", { level: 1, name: "Named by extension" })).toBeVisible();

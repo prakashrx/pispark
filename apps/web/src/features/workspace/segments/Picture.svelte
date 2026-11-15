@@ -1,6 +1,6 @@
 <script lang="ts">
   import ArtifactImage from "../ArtifactImage.svelte";
-  import type { Segment } from "../chat-turns";
+  import type { Segment } from "../session-turns";
 
   /** A picture a tool returned, or an SVG a tool wrote. */
   let { segment, sessionId }: { segment: Extract<Segment, { kind: "image" | "svg" }>; sessionId: string } = $props();

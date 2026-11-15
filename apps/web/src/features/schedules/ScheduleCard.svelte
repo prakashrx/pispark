@@ -11,7 +11,7 @@
   import { nextText, runFailed, runText } from "./schedule-presentation";
   /**
    * One schedule: when, what, on or off, Run now, change and delete, and what its runs did. On the
-   * Schedules page it names its chat (`withSession`) and shows only its last run.
+   * Schedules page it names its session (`withSession`) and shows only its last run.
    */
   let { schedule, withSession = false }: { schedule: ScheduleSummary; withSession?: boolean } = $props();
   const client = useSessions();
@@ -23,9 +23,9 @@
   let card = $state<HTMLElement>();
   const when = $derived(describeSchedule(schedule));
   const runs = $derived(withSession ? schedule.runs.slice(0, 1) : schedule.runs);
-  const chat = $derived.by(() => {
+  const session = $derived.by(() => {
     const listed = client.sessions.find((session) => session.id === schedule.sessionId);
-    return listed ? sessionName(listed) : (schedule.session.title ?? schedule.session.persona.name);
+    return listed ? sessionName(listed) : (schedule.session.title ?? schedule.session.agent.name);
   });
 
   async function act(work: () => Promise<unknown>) {
@@ -63,14 +63,14 @@
     event.preventDefault();
     void cancel();
   };
-  function openChat() {
+  function openOwner() {
     openSession(schedule.sessionId);
   }
   function openSession(id: string) {
     void client.select(id);
     window.location.hash = "/workspace";
   }
-  const REPORTS = { result: "its result comes back to the chat", status: "tells the chat a status line", none: "tells the chat nothing" } as const;
+  const REPORTS = { result: "its result comes back to the session", status: "tells the session a status line", none: "tells the session nothing" } as const;
 </script>
 
 <li class="schedule-card" bind:this={card}>
@@ -101,15 +101,15 @@
         </p>
         <p class="text-sm mt-2 whitespace-pre-wrap break-words">{schedule.prompt}</p>
         {#if withSession}<p class="text-[0.8125rem] mt-1.5">
-            <button type="button" class="link" onclick={openChat}>{chat}</button>
-            <span class="text-muted-foreground">· {schedule.session.persona.name}</span>
+            <button type="button" class="link" onclick={openOwner}>{session}</button>
+            <span class="text-muted-foreground">· {schedule.session.agent.name}</span>
           </p>{/if}
       </div>
       <div class="ml-auto flex shrink-0 flex-wrap justify-end gap-1">
         <Button
           size="compact"
           loading={running}
-          unavailable={schedule.held ? "Restore the chat first" : undefined}
+          unavailable={schedule.held ? "Restore the session first" : undefined}
           onclick={() => void runNow()}>Run now</Button
         >
         <Button size="compact" variant="ghost" data-edit onclick={() => (editing = true)}>Edit</Button>
@@ -118,7 +118,7 @@
     </div>
     {#if confirming}
       <div class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Delete this schedule">
-        <p class="text-sm flex-1">Delete this schedule? Its runs stay in the chat.</p>
+        <p class="text-sm flex-1">Delete this schedule? Its runs stay in the session.</p>
         <Button size="compact" variant="destructive" onkeydown={escape} onclick={() => void act(() => schedules.remove(schedule.id))}>Delete</Button>
         <Button size="compact" data-cancel onkeydown={escape} onclick={() => void cancel()}>Cancel</Button>
       </div>

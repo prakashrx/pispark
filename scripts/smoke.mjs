@@ -47,10 +47,10 @@ try {
   assert(catalog.providers.length > 0);
   assert.equal(catalog.defaultModel, null);
   assert(catalog.providers.every(provider => !provider.stored));
-  // First start creates the data folder with a Default persona that has Pi's built-in tools.
-  const personas = await (await fetch(`${base}/api/personas`)).json();
-  assert.deepEqual(personas.personas.map((p) => p.id), ["default"]);
-  const saved = JSON.parse(await readFile(join(root, "personas", "default", "persona.json"), "utf8"));
+  // First start creates the data folder with a Default agent that has Pi's built-in tools.
+  const agents = await (await fetch(`${base}/api/agents`)).json();
+  assert.deepEqual(agents.agents.map((p) => p.id), ["default"]);
+  const saved = JSON.parse(await readFile(join(root, "agents", "default", "agent.json"), "utf8"));
   assert(saved.on.includes("tool:bash"));
   const page = await fetch(`${base}/`);
   assert.equal(page.status, 200);
@@ -74,7 +74,7 @@ try {
     assert((await response.arrayBuffer()).byteLength > 0, asset);
   }
   console.log(
-    `Production HTTP smoke passed: health, first-start Default persona, private native provider catalog, API 404, HTML, ${assets.length} built assets, favicon.`,
+    `Production HTTP smoke passed: health, first-start Default agent, private native provider catalog, API 404, HTML, ${assets.length} built assets, favicon.`,
   );
 } finally {
   clearTimeout(deadline);

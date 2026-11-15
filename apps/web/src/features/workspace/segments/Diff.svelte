@@ -1,6 +1,6 @@
 <script lang="ts">
   import DiffView from "../DiffView.svelte";
-  import type { Segment } from "../chat-turns";
+  import type { Segment } from "../session-turns";
 
   let { segment }: { segment: Extract<Segment, { kind: "diff" }> } = $props();
 </script>

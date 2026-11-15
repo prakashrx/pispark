@@ -39,7 +39,13 @@ The installer:
 | `pispark` command | `<program>\bin` (added to your PATH) | `~/.local/bin/pispark` |
 | Your data | `~\.pispark` | `~/.pispark` |
 
-**On a server (VPS):** to keep PiSpark running while you are logged out, run `sudo loginctl enable-linger $USER` once. PiSpark listens only on `127.0.0.1`. To reach it from your other devices, use a private network such as Tailscale (`tailscale serve 3000`); don't open the port to the internet.
+**On a server (VPS):** to keep PiSpark running while you are logged out, run `sudo loginctl enable-linger $USER` once. PiSpark has no login of its own, so it listens only on `127.0.0.1` and answers only requests addressed to `127.0.0.1` or `localhost`. Reach it from your computer with an SSH tunnel, then open <http://127.0.0.1:3300>:
+
+```sh
+ssh -N -L 3300:127.0.0.1:3000 you@your-server
+```
+
+Don't open its port to the internet. A reverse proxy or Tailscale Serve doesn't work yet: it passes on its own host name, which PiSpark refuses. Reaching PiSpark by name (a tailnet, a phone) is planned.
 
 ## The program folder
 
@@ -79,7 +85,7 @@ Going back works within the same data layout. A version older than your data fol
 
 The launcher checks your channel once a day, and whenever you press **Check now** in Settings → About.
 1. **Download:** it downloads a newer release in the background, checks it against `SHA256SUMS` and unpacks it. Nothing running is touched.
-2. **Ready:** Settings → About, the chats sidebar and the tray show **Update ready**.
+2. **Ready:** Settings → About, the sessions sidebar and the tray show **Update ready**.
 3. **Something running:** if a reply or a background process is running, About says what, and offers **Update when idle** or **Update now**. Background processes end with the server; their agents are told.
 4. **Restart:** the launcher stops the server gracefully and starts the new version's server. If it answers within 30 seconds, `current` points at it. If not, the previous version starts again, and the new one is marked failed and never offered again.
 5. **Your windows:** open windows show "Updating PiSpark…" and reconnect by themselves.
@@ -88,7 +94,7 @@ When a release changes the launcher itself (`LAUNCHER_VERSION` in `apps/launcher
 - **Windows:** the old launcher starts the new one and waits for it to report a healthy server before it exits. If the new one doesn't, the old launcher ends it and carries on.
 - **Linux, under systemd:** the old launcher records the try in `update/`, points `current` at the new version and exits. systemd then runs `pispark-start`, which starts the new launcher. If the new launcher doesn't confirm itself within about 45 seconds, `pispark-start` puts the previous version back on the next start. Setup writes `pispark-start`; updates never change it.
 
-**The data folder's layout** is recorded in `home.json` (`HOME_FORMAT` in `apps/server/src/core/home.ts`). A PiSpark that finds a newer layout than it knows, for example after going back to an older version, refuses to start rather than misread it.
+**The data folder's layout** is recorded in `home.json` (`HOME_FORMAT` in `apps/server/src/core/home.ts`). A PiSpark that finds a newer layout than it knows, for example after going back to an older version, refuses to start rather than misread it. An older layout is upgraded at start. Layout 2 (version 0.2) gave agents and sessions their own folders (`agents/<id>/agent.json`, `sessions/<id>/session.json`); a version before it can't open a folder upgraded to it, so going back from 0.2 to 0.1 isn't possible.
 
 **What is checked:** downloads come only from this repository's GitHub Releases over HTTPS and must match the release's `SHA256SUMS`. That catches damaged downloads, but not a compromised GitHub account; releases are not signed yet.
 

@@ -16,17 +16,17 @@ fresh("a process the agent starts: a row in the reply, live output in the panel,
   const row = page.locator('[data-purpose="process-row"]');
   await expect(row).toContainText("dev server");
   await expect(row).toContainText("Running");
-  await expect(page.getByRole("navigation", { name: "Chats" }).getByText("1 process running")).toBeAttached();
+  await expect(page.getByRole("navigation", { name: "Sessions" }).getByText("1 process running")).toBeAttached();
 
   // Show output opens the panel on it; output keeps coming while it runs.
   const show = row.getByRole("button", { name: /^Show output/ });
   await show.click();
-  const panel = page.getByRole("region", { name: "Processes in this chat" });
+  const panel = page.getByRole("region", { name: "Processes in this session" });
   const output = panel.getByLabel("Output of dev server");
   await expect(output).toContainText("ready on 5199");
   await expect(output).toContainText("tick");
 
-  // Stop ends it; in status mode the chat gets a line, not a turn. On Windows, finding the process
+  // Stop ends it; in status mode the session gets a line, not a turn. On Windows, finding the process
   // tree starts PowerShell, which can take seconds on a cold machine.
   await panel.getByRole("button", { name: "Stop dev server" }).click();
   await expect(panel).toContainText("Stopped", { timeout: 20_000 });

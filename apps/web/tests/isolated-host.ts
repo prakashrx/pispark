@@ -53,6 +53,7 @@ export async function isolatedHost(info: TestInfo) {
       stream?.on("data", (data) => {
         void appendFile(info.outputPath("fixture-child.log"), data);
       });
+    // A cold Windows CI machine can take more than the default 5 s to start the test server.
     await expect
       .poll(async () => {
         if (child?.exitCode !== null)
@@ -62,7 +63,7 @@ export async function isolatedHost(info: TestInfo) {
         } catch {
           return 0;
         }
-      })
+      }, { timeout: 30_000 })
       .toBe(200);
   }
   async function stop() {

@@ -2,20 +2,20 @@ import {
   switchName,
   type ItemFile,
   type ItemType,
-  type PersonaDefinition,
-  type PersonaSummary,
-  type PersonaTarget,
-  type PersonaView,
+  type AgentDefinition,
+  type AgentSummary,
+  type AgentTarget,
+  type AgentView,
   type ResolvedItem,
-} from "../../../../server/src/contract/persona-protocol";
-import { personaError } from "./persona-presentation";
+} from "../../../../server/src/contract/agent-protocol";
+import { agentError } from "./agent-presentation";
 
-export async function personaRequest<T>(
+export async function agentRequest<T>(
   operation: string,
   input?: unknown,
 ): Promise<T> {
   const response = await fetch(
-    `/api/personas${operation ? `/${operation}` : ""}`,
+    `/api/agents${operation ? `/${operation}` : ""}`,
     input === undefined
       ? { signal: AbortSignal.timeout(12_000) }
       : {
@@ -29,28 +29,28 @@ export async function personaRequest<T>(
   if (text.length > 512 * 1024) throw new Error("Response limit");
   const result = JSON.parse(text || "{}");
   if (!response.ok)
-    throw new Error(personaError(result.error ?? "storage", result.detail));
+    throw new Error(agentError(result.error ?? "storage", result.detail));
   return result as T;
 }
 
-export const sameTarget = (a?: PersonaTarget, b?: PersonaTarget) =>
+export const sameTarget = (a?: AgentTarget, b?: AgentTarget) =>
   !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
-const layerId = (target: PersonaTarget) =>
-  "persona" in target ? target.persona : "chat";
+const layerId = (target: AgentTarget) =>
+  "agent" in target ? target.agent : "session";
 
 /**
- * Persona list, the Ask selection and the open editor. Every change is saved as it is made;
+ * Agent list, the Ask selection and the open editor. Every change is saved as it is made;
  * the server resolves the layers and returns the new view.
  */
-export class PersonaClient {
-  items = $state<PersonaSummary[]>([]);
+export class AgentClient {
+  items = $state<AgentSummary[]>([]);
   loading = $state(false);
   error = $state("");
-  /** Persona chosen in Ask; Default when empty. */
+  /** Agent chosen in Ask; Default when empty. */
   selected = $state("default");
   mode = $state<"collection" | "editor">("collection");
-  target = $state<PersonaTarget>();
-  view = $state<PersonaView>();
+  target = $state<AgentTarget>();
+  view = $state<AgentView>();
   busy = $state(false);
   editorError = $state("");
   status = $state("");
@@ -63,8 +63,8 @@ export class PersonaClient {
     this.loading = true;
     try {
       this.items = (
-        await personaRequest<{ personas: PersonaSummary[] }>("")
-      ).personas;
+        await agentRequest<{ agents: AgentSummary[] }>("")
+      ).agents;
       this.error = "";
       if (
         this.selected &&
@@ -84,7 +84,7 @@ export class PersonaClient {
   enterRoute() {
     void this.refresh();
   }
-  async open(target: PersonaTarget) {
+  async open(target: AgentTarget) {
     this.target = target;
     this.mode = "editor";
     this.editorError = "";
@@ -94,7 +94,7 @@ export class PersonaClient {
   async load(target = this.target) {
     if (!target) return;
     try {
-      const view = await personaRequest<PersonaView>("read", { target });
+      const view = await agentRequest<AgentView>("read", { target });
       if (sameTarget(target, this.target)) this.view = view;
       return view;
     } catch (error) {
@@ -122,8 +122,8 @@ export class PersonaClient {
       this.busy = false;
     }
   }
-  private save(definition: PersonaDefinition) {
-    return personaRequest<{ revision: string }>("save", {
+  private save(definition: AgentDefinition) {
+    return agentRequest<{ revision: string }>("save", {
       target: this.target,
       expectedRevision: this.view?.revision ?? "",
       definition,
@@ -135,7 +135,7 @@ export class PersonaClient {
     this.editorError = "";
     try {
       id = (
-        await personaRequest<{ id: string }>("create", {
+        await agentRequest<{ id: string }>("create", {
           name,
           ...(description.trim() ? { description: description.trim() } : {}),
           ...(base.length ? { base } : {}),
@@ -148,13 +148,13 @@ export class PersonaClient {
       this.busy = false;
     }
     await this.refresh();
-    await this.open({ persona: id });
+    await this.open({ agent: id });
     return id;
   }
-  updateDefinition(update: (definition: PersonaDefinition) => PersonaDefinition) {
+  updateDefinition(update: (definition: AgentDefinition) => AgentDefinition) {
     const view = this.view;
     if (!view) return Promise.resolve(false);
-    return this.change(() => this.save(update($state.snapshot(view.definition) as PersonaDefinition)));
+    return this.change(() => this.save(update($state.snapshot(view.definition) as AgentDefinition)));
   }
   /**
    * Switch an item or tool on or off in this layer. The least change is tried first
@@ -162,8 +162,8 @@ export class PersonaClient {
    */
   async toggle(type: ItemType | "tool", name: string, on: boolean) {
     const key = switchName(type, name);
-    const strip = (d: PersonaDefinition) => {
-      const next: PersonaDefinition = {
+    const strip = (d: AgentDefinition) => {
+      const next: AgentDefinition = {
         ...d,
         on: (d.on ?? []).filter((s) => s !== key),
         off: (d.off ?? []).filter((s) => s !== key),
@@ -185,12 +185,12 @@ export class PersonaClient {
     }));
   }
   readFile(path: string, target = this.target) {
-    return personaRequest<ItemFile>("file/read", { target, path });
+    return agentRequest<ItemFile>("file/read", { target, path });
   }
   /** Create or replace an item file in this layer. */
   writeFile(path: string, text: string, revision: string | null) {
     return this.change(() =>
-      personaRequest<ItemFile>("file/write", {
+      agentRequest<ItemFile>("file/write", {
         target: this.target,
         path,
         expectedRevision: revision,
@@ -201,7 +201,7 @@ export class PersonaClient {
   async deleteFile(path: string) {
     return this.change(async () => {
       const current = await this.readFile(path);
-      await personaRequest("file/delete", {
+      await agentRequest("file/delete", {
         target: this.target,
         path,
         expectedRevision: current.revision,
@@ -211,15 +211,15 @@ export class PersonaClient {
   /** Copy an inherited item into this layer, where it replaces the original by name. */
   async customize(item: ResolvedItem) {
     if (!item.path || !this.view) return false;
-    const origin: PersonaTarget =
-      item.origin.id === "chat" && this.target && "chat" in this.target
+    const origin: AgentTarget =
+      item.origin.id === "session" && this.target && "session" in this.target
         ? this.target
-        : { persona: item.origin.id };
+        : { agent: item.origin.id };
     const source = await this.readFile(item.path, origin);
     return this.writeFile(item.path, source.text, null);
   }
   async remove(id: string) {
-    const ok = await this.change(() => personaRequest("delete", { id }), "Deleted");
+    const ok = await this.change(() => agentRequest("delete", { id }), "Deleted");
     if (ok) {
       this.mode = "collection";
       this.view = undefined;

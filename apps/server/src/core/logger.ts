@@ -8,7 +8,7 @@ const events = [
   "host.stop",
   "http.reject",
   "http.failure",
-  "persona.save",
+  "agent.save",
   "session.create",
   "session.recover",
   "session.start",
@@ -35,7 +35,7 @@ const codes = [
   "credentials",
   "resources",
   "folder",
-  "persona",
+  "agent",
   "revision-conflict",
   "missing-parent",
   "cycle",
@@ -56,7 +56,7 @@ interface Correlation {
   requestId?: string;
   operationId?: string;
   sessionId?: string;
-  personaId?: string;
+  agentId?: string;
 }
 interface Fields extends Correlation {
   durationMs?: number;
@@ -121,12 +121,12 @@ export class SafeLogger {
     for (const key of ["requestId", "operationId", "sessionId"] as const)
       if (typeof context[key] === "string" && uuid.test(context[key]))
         record[key] = context[key];
-    // Persona IDs are short slugs ("dev") chosen at creation.
+    // Agent IDs are short slugs ("dev") chosen at creation.
     if (
-      typeof context.personaId === "string" &&
-      /^[a-z0-9][a-z0-9-]{0,47}$/.test(context.personaId)
+      typeof context.agentId === "string" &&
+      /^[a-z0-9][a-z0-9-]{0,47}$/.test(context.agentId)
     )
-      record.personaId = context.personaId;
+      record.agentId = context.agentId;
     if (Number.isFinite(fields.durationMs) && fields.durationMs! >= 0)
       record.durationMs = Math.min(Math.round(fields.durationMs!), 86_400_000);
     if (

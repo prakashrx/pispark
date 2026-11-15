@@ -1,6 +1,6 @@
 import type { Component } from "svelte";
 import type { ExtensionContribution, ExtensionView } from "../../../../server/src/contract/protocol";
-import type { Segment } from "./chat-turns";
+import type { Segment } from "./session-turns";
 
 /**
  * Components extensions contribute to a session's points with Pi's event bus. The server compiles them
@@ -25,7 +25,7 @@ export function loadView(url: string): Promise<ExtensionComponent> {
         if (typeof module.default !== "function") throw new Error("The view has no component");
         return module.default as ExtensionComponent;
       });
-    // A failed import is tried again the next time the chat shows it.
+    // A failed import is tried again the next time the session shows it.
     loading.catch(() => modules.delete(url));
     modules.set(url, loading);
   }

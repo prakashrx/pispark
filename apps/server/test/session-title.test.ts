@@ -3,21 +3,21 @@ import { test } from "node:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { chatTitle, validChatTitle } from "../src/contract/chat-title.js";
+import { sessionTitle, validSessionTitle } from "../src/contract/session-title.js";
 import {
-  ChatStorage,
-  type ChatMetadata,
+  SessionStorage,
+  type SessionMetadata,
 } from "../src/core/runtime/storage.js";
 
-test("chat titles take only the first nonempty line, normalize controls and bound Unicode code points", () => {
+test("session titles take only the first nonempty line, normalize controls and bound Unicode code points", () => {
   assert.equal(
-    chatTitle("\n \t\n Fix\t the\u202E issue\u200B now\nprivate second line"),
+    sessionTitle("\n \t\n Fix\t the\u202E issue\u200B now\nprivate second line"),
     "Fix the issue now",
   );
-  assert.equal(chatTitle("😀".repeat(80)), "😀".repeat(80));
-  assert.equal(chatTitle("😀".repeat(81)), "😀".repeat(79) + "…");
+  assert.equal(sessionTitle("😀".repeat(80)), "😀".repeat(80));
+  assert.equal(sessionTitle("😀".repeat(81)), "😀".repeat(79) + "…");
   assert.equal(
-    chatTitle("<script>alert(1)</script>"),
+    sessionTitle("<script>alert(1)</script>"),
     "<script>alert(1)</script>",
   );
   for (const value of [
@@ -29,20 +29,20 @@ test("chat titles take only the first nonempty line, normalize controls and boun
     "x\u202Ey",
     "a".repeat(81),
   ])
-    assert.equal(validChatTitle(value), false);
-  assert.equal(validChatTitle("A useful title"), true);
+    assert.equal(validSessionTitle(value), false);
+  assert.equal(validSessionTitle("A useful title"), true);
 });
 
-test("chat.json accepts an optional title and rejects malformed titles without reading the transcript", async () => {
+test("session.json accepts an optional title and rejects malformed titles without reading the transcript", async () => {
   const root = await mkdtemp(join(tmpdir(), "pispark-titles-"));
   try {
-    const storage = new ChatStorage(root);
+    const storage = new SessionStorage(root);
     const id = "10000000-0000-4000-8000-000000000001";
-    const metadata: ChatMetadata = {
+    const metadata: SessionMetadata = {
       version: 2,
       id,
       cwd: root,
-      persona: "default",
+      agent: "default",
       createdAt: "2026-01-01T12:00:00Z",
       active: false,
       interrupted: false,
@@ -62,14 +62,14 @@ test("chat.json accepts an optional title and rejects malformed titles without r
       "two\nlines",
     ]) {
       await writeFile(
-        join(root, id, "chat.json"),
+        join(root, id, "session.json"),
         JSON.stringify({ ...stored, title }),
       );
       assert.throws(() => storage.read(id), { code: "storage" });
     }
     await writeFile(
-      join(root, id, "chat.json"),
-      JSON.stringify({ ...stored, persona: "../escape" }),
+      join(root, id, "session.json"),
+      JSON.stringify({ ...stored, agent: "../escape" }),
     );
     assert.throws(() => storage.read(id), { code: "storage" });
   } finally {

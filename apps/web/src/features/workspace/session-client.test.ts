@@ -7,7 +7,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   localStorage.clear();
 });
-test("no-chat reconnect recovers catalog without duplicate timers/listeners or resending a prompt", async () => {
+test("no-session reconnect recovers catalog without duplicate timers/listeners or resending a prompt", async () => {
   let catalogs = 0;
   let release!: (value: Response) => void;
   const calls = vi.fn(async (url: string) => {
@@ -25,8 +25,8 @@ test("no-chat reconnect recovers catalog without duplicate timers/listeners or r
       JSON.stringify(
         url === "/api/providers"
           ? { providers: [], defaultModel: null, networkBlocked: false }
-          : url === "/api/personas"
-            ? { personas: [] }
+          : url === "/api/agents"
+            ? { agents: [] }
             : { sessions: [], truncated: false },
       ),
     );
@@ -83,7 +83,7 @@ test("successful truncated lists have a separate notice and later nontruncated r
   client.error = "unrelated operation";
   await client.refresh();
   expect(client.listNotice).toBe(
-    "Showing your latest 256 chats. Older chats are still saved.",
+    "Showing your latest 256 sessions. Older sessions are still saved.",
   );
   expect(client.error).toBe("unrelated operation");
   truncated = false;
@@ -93,7 +93,7 @@ test("successful truncated lists have a separate notice and later nontruncated r
   client.dispose();
 });
 
-test("typed acceptance uncertainty retains reply draft and stays with originating chat, never replays", async () => {
+test("typed acceptance uncertainty retains reply draft and stays with originating session, never replays", async () => {
   let commands = 0;
   vi.stubGlobal(
     "fetch",
@@ -133,7 +133,7 @@ test("accepted receipt polling loss is settlement uncertainty, not acceptance fa
   await origin.stop();
   expect(origin.errorKind).toBe("settlement-unknown");
   expect(origin.error).toBe(
-    "receipt connection lost (chat origin)",
+    "receipt connection lost (session origin)",
   );
   expect(
     calls.mock.calls.filter(([url]) => url === "/api/commands"),
@@ -141,7 +141,7 @@ test("accepted receipt polling loss is settlement uncertainty, not acceptance fa
   client.dispose();
 });
 
-test("unknown initial create acceptance and settlement are explicit without an identified chat", async () => {
+test("unknown initial create acceptance and settlement are explicit without an identified session", async () => {
   for (const accepted of [false, true]) {
     let commands = 0;
     vi.stubGlobal(
@@ -171,16 +171,16 @@ test("unknown initial create acceptance and settlement are explicit without an i
   }
 });
 
-test("the Apps section follows a persona that became an app elsewhere: the persona list is read again", async () => {
-  const persona = { id: "desk", name: "Desk", base: [], builtIn: false, valid: true };
-  let personaReads = 0;
+test("the Apps section follows an agent that became an app elsewhere: the agent list is read again", async () => {
+  const agent = { id: "desk", name: "Desk", base: [], builtIn: false, valid: true };
+  let agentReads = 0;
   let home: string | undefined;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
-      if (url === "/api/personas") {
-        personaReads++;
-        return new Response(JSON.stringify({ personas: [{ ...persona, ...(home ? { home } : {}) }] }));
+      if (url === "/api/agents") {
+        agentReads++;
+        return new Response(JSON.stringify({ agents: [{ ...agent, ...(home ? { home } : {}) }] }));
       }
       const session = {
         id: "11111111-1111-4111-8111-111111111111",
@@ -188,7 +188,7 @@ test("the Apps section follows a persona that became an app elsewhere: the perso
         folder: "/work",
         status: "unloaded",
         interrupted: false,
-        persona: { id: "desk", name: "Desk", layered: false, ...(home ? { home } : {}) },
+        agent: { id: "desk", name: "Desk", layered: false, ...(home ? { home } : {}) },
       };
       return new Response(
         JSON.stringify(
@@ -206,16 +206,16 @@ test("the Apps section follows a persona that became an app elsewhere: the perso
   const client = new SessionClient();
   try {
     await client.mount();
-    await waitFor(() => expect(client.personas.items).toHaveLength(1));
+    await waitFor(() => expect(client.agents.items).toHaveLength(1));
     // Nothing changed: the list is not read again.
-    const before = personaReads;
+    const before = agentReads;
     await client.refresh();
-    expect(personaReads).toBe(before);
-    // The persona became an app in an editor or another tab: its sessions say so, and the list follows.
+    expect(agentReads).toBe(before);
+    // The agent became an app in an editor or another tab: its sessions say so, and the list follows.
     home = "desk";
     await client.refresh();
-    await waitFor(() => expect(client.personas.items[0]?.home).toBe("desk"));
-    expect(personaReads).toBe(before + 1);
+    await waitFor(() => expect(client.agents.items[0]?.home).toBe("desk"));
+    expect(agentReads).toBe(before + 1);
   } finally {
     client.dispose();
   }

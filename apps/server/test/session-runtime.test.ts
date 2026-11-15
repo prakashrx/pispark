@@ -23,7 +23,7 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { assertPiBoundary } from "../src/core/runtime/pi-boundary.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { addControlledExtension, testHome } from "./fixtures/home.js";
-import { chatItems, chatNotices, chatText, inFlight } from "./fixtures/chat.js";
+import { sessionItems, sessionNotices, sessionText, inFlight } from "./fixtures/session.js";
 
 const hasCode = (code: string) => (error: unknown) =>
   error instanceof RuntimeError && error.code === code;
@@ -41,13 +41,13 @@ const ambient = (root: string) => ({
 async function fixture(logger?: SafeLogger) {
   const h = await testHome("pispark-runtime-");
   const folders: Record<"a" | "b", string> = { a: "", b: "" };
-  // Default grants nothing here; personas "a" and "b" each add read, an instruction and the controlled extension.
-  await h.persona("default", { name: "Default" });
+  // Default grants nothing here; agents "a" and "b" each add read, an instruction and the controlled extension.
+  await h.agent("default", { name: "Default" });
   for (const key of ["a", "b"] as const) {
     folders[key] = realpathSync.native(
       await h.folder(key, { ...ambient(h.root), "value.txt": `workspace-${key}` }),
     );
-    await h.persona(
+    await h.agent(
       key,
       { name: key.toUpperCase(), on: ["tool:read"] },
       {
@@ -59,23 +59,23 @@ async function fixture(logger?: SafeLogger) {
   }
   const configuration = h.configuration;
   const runtime = new SessionRuntime(configuration, undefined, logger);
-  const chatsDir = join(h.home, "chats");
+  const sessionsDir = join(h.home, "sessions");
   const transcript = async (id: string) =>
     join(
-      chatsDir,
+      sessionsDir,
       id,
-      (await readdir(join(chatsDir, id))).find((n) => n.endsWith(".jsonl"))!,
+      (await readdir(join(sessionsDir, id))).find((n) => n.endsWith(".jsonl"))!,
     );
-  /** Write an extension file into persona `persona`. */
-  const extension = async (persona: string, name: string, source: string) => {
-    const dir = join(h.home, "personas", persona, "extensions");
+  /** Write an extension file into agent `agent`. */
+  const extension = async (agent: string, name: string, source: string) => {
+    const dir = join(h.home, "agents", agent, "extensions");
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, name), source);
   };
   return {
     root: h.root,
     home: h.home,
-    chatsDir,
+    sessionsDir,
     folders,
     provider: h.provider,
     configuration,
@@ -84,7 +84,7 @@ async function fixture(logger?: SafeLogger) {
     transcript,
     extension,
     create: (key: "a" | "b", target = runtime) =>
-      target.create({ folder: folders[key], persona: key }),
+      target.create({ folder: folders[key], agent: key }),
     cleanup: async () => {
       await runtime.shutdown();
       await h.remove();
@@ -151,11 +151,11 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
     // A slow observer keeps one latest invalidation, not every event.
     assert.equal((await observerB.events.next()).value?.sessionId, b.id);
     assert.match(
-      chatText(f.runtime, b.id),
+      sessionText(f.runtime, b.id),
       /workspace-b/,
     );
     assert.doesNotMatch(
-      chatText(f.runtime, a.id),
+      sessionText(f.runtime, a.id),
       /workspace-b|must-not-run|also-not-run/,
     );
     const requests = f.provider.requests.map((request) =>
@@ -202,7 +202,7 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
     const reopened = await f.runtime.open(b.id);
     assert.equal(reopened.id, b.id);
     assert.equal(reopened.interrupted, false);
-    assert.match(chatText(f.runtime, b.id), /workspace-b/);
+    assert.match(sessionText(f.runtime, b.id), /workspace-b/);
     assert.equal(
       f.provider.requests.length,
       3,
@@ -225,11 +225,11 @@ test("SessionRuntime: empty metadata, one live owner, a backstop that never refu
   try {
     const a = await f.create("a", limited);
     assert.equal(limited.list().length, 1);
-    assert.equal(chatItems(limited, a.id).length, 0);
+    assert.equal(sessionItems(limited, a.id).length, 0);
     // The backstop never refuses: with a on screen, b is loaded beside it.
     const watching = limited.observeLive(a.id);
     const beside = await f.create("b", limited);
-    assert.equal(limited.list().filter((chat) => chat.status !== "unloaded").length, 2);
+    assert.equal(limited.list().filter((session) => session.status !== "unloaded").length, 2);
     await limited.stop(beside.id);
     watching.events.close();
     await assert.rejects(limited.open(a.id), hasCode("owned"));
@@ -251,7 +251,7 @@ test("SessionRuntime: empty metadata, one live owner, a backstop that never refu
     const empty = await f.create("b", limited);
     await limited.stop(empty.id);
     await second.open(empty.id);
-    assert.equal(chatItems(second, empty.id).length, 0);
+    assert.equal(sessionItems(second, empty.id).length, 0);
   } finally {
     await limited.shutdown();
     await second.shutdown();
@@ -271,8 +271,8 @@ test("SessionRuntime: errors are safe, missing model/auth/resources rejected, in
       hasCode("invalid-input"),
     );
     await assert.rejects(
-      f.runtime.create({ folder: f.folders.a, persona: "nobody" }),
-      hasCode("persona"),
+      f.runtime.create({ folder: f.folders.a, agent: "nobody" }),
+      hasCode("agent"),
     );
     await assert.rejects(
       f.runtime.open("/absolute/native.jsonl"),
@@ -339,9 +339,9 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
       const run = f.runtime.start(a.id, text);
       await eventually(() => f.runtime.session(a.id).extensions.dialogs.length === 1);
       const dialog = f.runtime.session(a.id).extensions.dialogs[0]!;
-      // The chat says it waits for someone, in the list as well.
+      // The session says it waits for someone, in the list as well.
       assert.equal(f.runtime.session(a.id).waiting, true);
-      assert.equal(f.runtime.list().find((chat) => chat.id === a.id)?.waiting, true);
+      assert.equal(f.runtime.list().find((session) => session.id === a.id)?.waiting, true);
       f.runtime.answer(a.id, dialog.id, answer);
       assert.equal((await run.completion).outcome, "completed");
       assert.equal(f.runtime.session(a.id).extensions.dialogs.length, 0);
@@ -366,7 +366,7 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
     assert.equal((await f.runtime.start(a.id, "ui-timeout").completion).outcome, "completed");
     assert.equal((await f.runtime.start(a.id, "ui-custom").completion).outcome, "completed");
     assert.deepEqual(await answers(), [true, "two", "Ada", null, null, false, null]);
-    // Notices, status, widgets and drafts are session state; a failing handler is a notice, not a failed chat.
+    // Notices, status, widgets and drafts are session state; a failing handler is a notice, not a failed session.
     assert.equal((await f.runtime.start(a.id, "ui-show").completion).outcome, "completed");
     assert.equal((await f.runtime.start(a.id, "ui-fail").completion).outcome, "completed");
     const view = f.runtime.session(a.id).extensions;
@@ -382,10 +382,10 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
       ["warning", "Heads up"],
       ["error", "The controlled extension failed in before_agent_start: fixture failure"],
     ];
-    assert.deepEqual(chatNotices(f.runtime, a.id).map((n) => [n.kind, n.lines[0]![0]!.text]), expectedNotices);
-    assert.deepEqual(view.notices, [], "notices of an open chat are kept in its history");
+    assert.deepEqual(sessionNotices(f.runtime, a.id).map((n) => [n.kind, n.lines[0]![0]!.text]), expectedNotices);
+    assert.deepEqual(view.notices, [], "notices of an open session are kept in its history");
     assert.equal(f.runtime.session(a.id).error, undefined);
-    // Working indicator, thinking label, window title, one header and footer; Pi's session name is the chat title.
+    // Working indicator, thinking label, window title, one header and footer; Pi's session name is the session title.
     assert.equal((await f.runtime.start(a.id, "ui-chrome").completion).outcome, "completed");
     const chrome = f.runtime.session(a.id);
     assert.deepEqual(chrome.extensions.working, {
@@ -403,9 +403,9 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
     assert.equal(quiet.working?.hidden, true);
     assert.equal(quiet.header, undefined);
     await f.runtime.stop(a.id);
-    // Reopened, the chat still has its notices where they happened.
+    // Reopened, the session still has its notices where they happened.
     await f.runtime.open(a.id);
-    assert.deepEqual(chatNotices(f.runtime, a.id).map((n) => [n.kind, n.lines[0]![0]!.text]), expectedNotices);
+    assert.deepEqual(sessionNotices(f.runtime, a.id).map((n) => [n.kind, n.lines[0]![0]!.text]), expectedNotices);
     await f.runtime.stop(a.id);
     f.provider.automatic = false;
     await stopAbortsBeforeShutdown(f);
@@ -439,14 +439,14 @@ test("SessionRuntime: interrupted marker retains native history without replay, 
     const a = await f.create("a");
     await f.runtime.start(a.id, "saved").completion;
     await f.runtime.stop(a.id);
-    const metadataPath = join(f.chatsDir, a.id, "chat.json");
+    const metadataPath = join(f.sessionsDir, a.id, "session.json");
     const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
     metadata.active = true;
     await writeFile(metadataPath, JSON.stringify(metadata));
     const requestCount = f.provider.requests.length;
     const reopened = await f.runtime.open(a.id);
     assert.equal(reopened.interrupted, true);
-    assert.match(chatText(f.runtime, a.id), /saved/);
+    assert.match(sessionText(f.runtime, a.id), /saved/);
     assert.equal(f.provider.requests.length, requestCount);
     await f.runtime.stop(a.id);
     const native = await f.transcript(a.id);
@@ -529,7 +529,7 @@ test("SessionRuntime: killed process recovers finalized native tool history, no 
     const restored = await f.runtime.open(ready.id);
     assert.equal(restored.interrupted, true);
     assert.equal(restored.status, "idle");
-    assert.match(chatText(f.runtime, ready.id), /workspace-a/);
+    assert.match(sessionText(f.runtime, ready.id), /workspace-a/);
     assert.equal(inFlight(f.runtime, ready.id).length, 0);
     assert.equal(f.provider.requests.length, 0);
     assert.equal(await readFile(effects, "utf8"), "effect\n");
@@ -608,7 +608,7 @@ test("SessionRuntime: storage write failures are not reported as success", async
   const f = await fixture();
   try {
     const a = await f.create("a");
-    const metadata = join(f.chatsDir, a.id, "chat.json");
+    const metadata = join(f.sessionsDir, a.id, "session.json");
     const original = await readFile(metadata, "utf8");
     await rm(metadata);
     await mkdir(metadata);
@@ -706,7 +706,7 @@ test("SessionRuntime: shutdown drains pending initialization; missing tool files
       "completed",
     );
     assert.ok(
-      chatItems(f.runtime, a.id).some((message) => message.role === "toolResult" && message.isError,
+      sessionItems(f.runtime, a.id).some((message) => message.role === "toolResult" && message.isError,
         ),
     );
   } finally {
@@ -730,14 +730,14 @@ test("SessionRuntime: timed-out setup stays owned even if shutdown is requested 
       hasCode("timeout"),
     );
     assert.deepEqual(blocked.list(), []);
-    const [id] = await readdir(f.chatsDir);
+    const [id] = await readdir(f.sessionsDir);
     assert(id);
     await assert.rejects(blocked.open(id), hasCode("owned"));
     await assert.rejects(blocked.shutdown(), hasCode("timeout"));
     release();
     await blocked.shutdown();
     assert.deepEqual(blocked.list(), []);
-    assert.deepEqual(await readdir(f.chatsDir), []);
+    assert.deepEqual(await readdir(f.sessionsDir), []);
   } finally {
     release();
     await blocked.shutdown();
@@ -777,7 +777,7 @@ for (const action of ["cancel", "stop", "shutdown"] as const) {
       assert.equal(f.provider.requests.length, 0);
       if (action === "cancel") {
         assert.equal(
-          chatItems(f.runtime, a.id).some((m) => m.role === "toolResult"),
+          sessionItems(f.runtime, a.id).some((m) => m.role === "toolResult"),
           false,
         );
         assert.equal(f.runtime.session(a.id).status, "idle");
@@ -876,7 +876,7 @@ for (const action of ["cancel", "stop", "shutdown"] as const) {
       assert.equal(f.provider.requests.length, 0);
       if (action === "cancel")
         assert.equal(
-          chatItems(f.runtime, a.id).some((m) => m.role === "toolResult"),
+          sessionItems(f.runtime, a.id).some((m) => m.role === "toolResult"),
           false,
         );
     } finally {
@@ -1135,43 +1135,43 @@ test("SessionRuntime: first accepted title survives cancellation, queueing and r
   });
   const f = await fixture(logger);
   try {
-    const chat = await f.create("a");
-    assert.equal(chat.title, undefined);
-    assert.equal(chat.hasHistory, false);
-    assert.throws(() => f.runtime.start(chat.id, ""), hasCode("invalid-input"));
-    assert.equal(f.runtime.session(chat.id).title, undefined);
+    const session = await f.create("a");
+    assert.equal(session.title, undefined);
+    assert.equal(session.hasHistory, false);
+    assert.throws(() => f.runtime.start(session.id, ""), hasCode("invalid-input"));
+    assert.equal(f.runtime.session(session.id).title, undefined);
     const first = f.runtime.start(
-      chat.id,
+      session.id,
       ["PRIVATE-TITLE first\tinput", "not the title"].join("\n"),
     );
     await eventually(() => f.provider.active === 1);
-    assert.equal(f.runtime.session(chat.id).title, "PRIVATE-TITLE first input");
+    assert.equal(f.runtime.session(session.id).title, "PRIVATE-TITLE first input");
     assert.equal(f.runtime.list()[0]!.title, "PRIVATE-TITLE first input");
-    await f.runtime.queue(chat.id, "PRIVATE-QUEUED", "follow-up");
-    await f.runtime.cancel(chat.id);
+    await f.runtime.queue(session.id, "PRIVATE-QUEUED", "follow-up");
+    await f.runtime.cancel(session.id);
     assert.equal((await first.completion).outcome, "cancelled");
-    const second = f.runtime.start(chat.id, "PRIVATE-SECOND");
+    const second = f.runtime.start(session.id, "PRIVATE-SECOND");
     await eventually(() => f.provider.active === 1);
-    await f.runtime.cancel(chat.id);
+    await f.runtime.cancel(session.id);
     await second.completion;
-    await f.runtime.stop(chat.id);
+    await f.runtime.stop(session.id);
     assert.equal(f.runtime.list()[0]!.title, "PRIVATE-TITLE first input");
     assert.equal(
-      (await f.runtime.open(chat.id)).title,
+      (await f.runtime.open(session.id)).title,
       "PRIVATE-TITLE first input",
     );
-    await f.runtime.stop(chat.id);
-    const path = join(f.chatsDir, chat.id, "chat.json");
+    await f.runtime.stop(session.id);
+    const path = join(f.sessionsDir, session.id, "session.json");
     const metadata = JSON.parse(await readFile(path, "utf8"));
     delete metadata.title;
     await writeFile(path, JSON.stringify(metadata));
-    assert.equal((await f.runtime.open(chat.id)).title, undefined);
-    const legacy = f.runtime.start(chat.id, "PRIVATE-LEGACY");
+    assert.equal((await f.runtime.open(session.id)).title, undefined);
+    const legacy = f.runtime.start(session.id, "PRIVATE-LEGACY");
     await eventually(() => f.provider.active === 1);
-    await f.runtime.cancel(chat.id);
+    await f.runtime.cancel(session.id);
     await legacy.completion;
     assert.equal(
-      f.runtime.session(chat.id).title,
+      f.runtime.session(session.id).title,
       undefined,
       "never backfill legacy history",
     );
@@ -1188,24 +1188,24 @@ test("SessionRuntime: first accepted title survives cancellation, queueing and r
 test("SessionRuntime: accepted invisible-only input keeps its fallback title after pre-dispatch cancel and later input", async () => {
   const f = await fixture();
   try {
-    const chat = await f.create("a");
-    const first = f.runtime.start(chat.id, "\u202E\u200B");
-    await f.runtime.cancel(chat.id);
+    const session = await f.create("a");
+    const first = f.runtime.start(session.id, "\u202E\u200B");
+    await f.runtime.cancel(session.id);
     assert.equal((await first.completion).outcome, "cancelled");
     assert.equal(f.provider.requests.length, 0);
     // Native cancellation can persist the user and aborted response; it is not rollback.
     assert.equal(
-      chatItems(f.runtime, chat.id).some((m) => m.role === "toolResult"),
+      sessionItems(f.runtime, session.id).some((m) => m.role === "toolResult"),
       false,
     );
-    assert.equal(f.runtime.session(chat.id).title, "New chat");
-    const second = f.runtime.start(chat.id, "Visible input must not rename");
+    assert.equal(f.runtime.session(session.id).title, "New session");
+    const second = f.runtime.start(session.id, "Visible input must not rename");
     await eventually(() => f.provider.active === 1);
-    await f.runtime.cancel(chat.id);
+    await f.runtime.cancel(session.id);
     await second.completion;
-    assert.equal(f.runtime.session(chat.id).title, "New chat");
-    await f.runtime.stop(chat.id);
-    assert.equal((await f.runtime.open(chat.id)).title, "New chat");
+    assert.equal(f.runtime.session(session.id).title, "New session");
+    await f.runtime.stop(session.id);
+    assert.equal((await f.runtime.open(session.id)).title, "New session");
   } finally {
     await f.cleanup();
   }

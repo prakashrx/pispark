@@ -11,7 +11,7 @@
     title: string;
     description: string;
     children: Snippet;
-    variant?: "persona" | "settings";
+    variant?: "agent" | "settings";
     layout?: "stacked" | "split";
     class?: string;
   } = $props();

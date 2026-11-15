@@ -1,7 +1,7 @@
 <script lang="ts">
   import MessageReader from "../MessageReader.svelte";
   import StreamingMarkdown from "../StreamingMarkdown.svelte";
-  import type { Segment } from "../chat-turns";
+  import type { Segment } from "../session-turns";
 
   let { segment }: { segment: Extract<Segment, { kind: "text" }> } = $props();
   // Text cut at its limit ends where the cut was, not mid-word as if it were whole.

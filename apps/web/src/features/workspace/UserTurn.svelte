@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from "../../lib/ui/Icon.svelte";
-  import { reportBody, type Turn } from "./chat-turns";
+  import { reportBody, type Turn } from "./session-turns";
   import { useSessions } from "./session-client.svelte";
   /**
    * Your message, or (`woken`) one something else sent, labelled as such. One another session sent

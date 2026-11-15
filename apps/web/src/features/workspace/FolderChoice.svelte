@@ -6,7 +6,7 @@
   import { useSessions } from "./session-client.svelte";
   import { folderName } from "./session-presentation";
   // The choice of a working folder: any existing folder on the backend host, from the recent
-  // ones, home, or a path typed in. Ask and the persona editor share it.
+  // ones, home, or a path typed in. Ask and the agent editor share it.
   let {
     value = $bindable(""),
     display = "compact",

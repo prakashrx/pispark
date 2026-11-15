@@ -112,7 +112,7 @@
           {#if confirming}
             <p class="text-sm" role="alert">
               Remove the saved {provider.name} sign-in? This doesn’t revoke
-              provider access or change host configuration. Existing chats keep
+              provider access or change host configuration. Existing sessions keep
               their model; future requests may need credentials again.
             </p>
             <div class="flex gap-2 shrink-0">

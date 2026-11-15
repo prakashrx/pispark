@@ -4,10 +4,10 @@
   import SessionTree from "./SessionTree.svelte";
   import { useSessions } from "./session-client.svelte";
   import { foremostStatus, sessionStarted, sessionStatus } from "./session-presentation";
-  import { validChatTitle } from "../../../../server/src/contract/chat-title";
-  import type { PersonaSummary } from "../../../../server/src/contract/persona-protocol";
-  // An app persona in the sidebar: its name opens it, and its sessions are listed under it.
-  let { app }: { app: PersonaSummary } = $props();
+  import { validSessionTitle } from "../../../../server/src/contract/session-title";
+  import type { AgentSummary } from "../../../../server/src/contract/agent-protocol";
+  // An app agent in the sidebar: its name opens it, and its sessions are listed under it.
+  let { app }: { app: AgentSummary } = $props();
   const client = useSessions();
   const id = $props.id();
   const sessions = $derived(client.appSessions(app.id));
@@ -41,7 +41,7 @@
 {#if open}
   <div {id} class="space-y-px">
     {#each sessions as session (session.id)}
-      {@const titled = validChatTitle(session.title)}
+      {@const titled = validSessionTitle(session.title)}
       {@const name = titled ? session.title! : `Started ${sessionStarted(session)}`}
       <SessionTree {session} {name} class="app-session">
         <span class="min-w-0 flex-1 truncate" class:text-muted-foreground={!titled}>{name}</span>

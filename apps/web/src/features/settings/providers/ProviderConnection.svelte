@@ -131,7 +131,7 @@
     <summary class="cursor-pointer">Sign-in privacy &amp; limitations</summary>
     <p class="mt-2 leading-relaxed">
       Only this panel can observe or answer its prompts. Collapsing it cancels
-      the sign-in, not your chats. Connection loss cancels after 30 seconds;
+      the sign-in, not your sessions. Connection loss cancels after 30 seconds;
       all flows expire after 10 minutes. Some native methods require a
       host-local callback or browser. Disconnecting removes stored
       credentials, not the provider grant or host configuration.

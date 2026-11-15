@@ -13,7 +13,7 @@ const page = (items: Item[], head: string | null, more = false): ItemsPage => ({
 const snapshot = (head: string | null, tail: Item[] = []): LiveEvent => ({ type: "snapshot", sessionId: "s", head, doc: { session, tail, progress: {} } });
 const ops = (seq: number, ...list: Extract<LiveEvent, { type: "ops" }>["ops"]): LiveEvent => ({ type: "ops", sessionId: "s", seq, ops: list });
 
-function chat(pages: Record<string, ItemsPage>) {
+function follow(pages: Record<string, ItemsPage>) {
   const get = vi.fn(async (path: string) => {
     const hit = pages[path.replace("/api/sessions/s/items", "")];
     if (!hit) throw new Error("unexpected " + path);
@@ -23,7 +23,7 @@ function chat(pages: Record<string, ItemsPage>) {
 }
 
 test("history loads by cursor; the snapshot only adds what the client lacks", async () => {
-  const { live, get } = chat({
+  const { live, get } = follow({
     "?limit=40": page([item("a", "one"), item("b", "two")], "b", true),
     "?after=b&limit=100": page([item("c", "three")], "c"),
     "?before=a&limit=40": page([item("z", "zero")], "z"),
@@ -32,7 +32,7 @@ test("history loads by cursor; the snapshot only adds what the client lacks", as
   expect(live.more).toBe(true);
   await live.apply("s", snapshot("b"));
   expect(get).toHaveBeenCalledTimes(1);
-  // A reconnect after the chat moved on fetches the gap, not the whole chat.
+  // A reconnect after the session moved on fetches the gap, not the whole session.
   await live.apply("s", snapshot("c"));
   expect(live.history.map((i) => i.id)).toEqual(["a", "b", "c"]);
   await live.loadEarlier("s");
@@ -40,7 +40,7 @@ test("history loads by cursor; the snapshot only adds what the client lacks", as
 });
 
 test("operations grow the tail in place and a commit moves finished items into history", async () => {
-  const { live } = chat({ "?limit=40": page([item("a", "hi", "user")], "a") });
+  const { live } = follow({ "?limit=40": page([item("a", "hi", "user")], "a") });
   await live.load("s");
   await live.apply("s", snapshot("a", [{ ...item("", "wor"), id: undefined, key: "t1" }]));
   expect(live.items.map((i) => (i.parts[0] as { text: string }).text)).toEqual(["hi", "wor"]);
@@ -57,7 +57,7 @@ test("operations grow the tail in place and a commit moves finished items into h
 });
 
 test("a gap in order or in history asks for the stream to be opened again", async () => {
-  const { live } = chat({ "?limit=40": page([item("a", "hi")], "a") });
+  const { live } = follow({ "?limit=40": page([item("a", "hi")], "a") });
   await live.load("s");
   await live.apply("s", snapshot("a"));
   expect(await live.apply("s", ops(2, { op: "set", path: ["session", "status"], value: "idle" }))).toBe(false);
@@ -66,7 +66,7 @@ test("a gap in order or in history asks for the stream to be opened again", asyn
 });
 
 test("a commit announced without its items is read as history", async () => {
-  const { live } = chat({
+  const { live } = follow({
     "?limit=40": page([item("a", "hi")], "a"),
     "?after=a&limit=100": page([item("b", "big")], "b"),
   });

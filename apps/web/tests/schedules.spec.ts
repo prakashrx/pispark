@@ -12,14 +12,14 @@ async function ask(page: Page, text: string) {
   await expect(page.getByRole("button", { name: "Send message" })).not.toHaveAttribute("aria-disabled", "true");
 }
 
-fresh("a chat's schedules: add from Chat info, run now, switch off, see them in Settings, delete", async ({ page }) => {
+fresh("a session's schedules: add from Session info, run now, switch off, see them in Settings, delete", async ({ page }) => {
   await page.goto("/");
   await ask(page, "daily digest");
 
-  // Chat info offers schedules; the panel opens over the conversation.
-  await page.getByRole("button", { name: "Chat info" }).click();
-  await page.getByLabel("Chat info", { exact: true }).getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page.getByText("Schedules for this chat")).toBeVisible();
+  // Session info offers schedules; the panel opens over the conversation.
+  await page.getByRole("button", { name: "Session info" }).click();
+  await page.getByLabel("Session info", { exact: true }).getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText("Schedules for this session")).toBeVisible();
   await expect(page.getByText(/No schedules yet/)).toBeVisible();
 
   // The form says what it will do; an empty prompt is refused in words; Cancel returns focus.
@@ -38,9 +38,9 @@ fresh("a chat's schedules: add from Chat info, run now, switch off, see them in 
   await expect(card.getByText("Every weekday at 9:30 am")).toBeVisible();
   await expect(card.getByText(/^Next /)).toBeVisible();
   await expect(page.getByRole("button", { name: "Add schedule" })).toBeFocused();
-  // A switched-on schedule marks its chat in the sidebar.
-  const chats = page.getByRole("navigation", { name: "Chats" });
-  await expect(chats.getByText("Scheduled: Every weekday at 9:30 am")).toHaveCount(1);
+  // A switched-on schedule marks its session in the sidebar.
+  const sessions = page.getByRole("navigation", { name: "Sessions" });
+  await expect(sessions.getByText("Scheduled: Every weekday at 9:30 am")).toHaveCount(1);
 
   // Run now sends the prompt at once; the run is recorded and the turn says it was scheduled.
   await card.getByRole("button", { name: "Run now" }).click();
@@ -51,9 +51,9 @@ fresh("a chat's schedules: add from Chat info, run now, switch off, see them in 
   // Switched off: no next run, no clock in the sidebar.
   await card.getByRole("switch", { name: "Run Every weekday at 9:30 am" }).click();
   await expect(card.getByText("Off", { exact: true })).toBeVisible();
-  await expect(chats.getByText(/^Scheduled:/)).toHaveCount(0);
+  await expect(sessions.getByText(/^Scheduled:/)).toHaveCount(0);
 
-  // Settings → Background lists it with its chat; Pause all is saved.
+  // Settings → Background lists it with its session; Pause all is saved.
   await page.goto("/#/schedules");
   await expect(page.getByRole("heading", { level: 1, name: "Background" })).toBeVisible();
   const all = page.getByRole("list", { name: "All schedules" }).getByRole("listitem");
