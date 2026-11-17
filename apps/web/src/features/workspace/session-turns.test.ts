@@ -272,3 +272,18 @@ test("the process tool: words, and the process a start made as a row", () => {
   expect(summarizeCalls([started])).toBe("Started 1 process");
   expect(artifactsOf(started)).toEqual([{ kind: "process", key: "process.p1", processId: id, title: "dev server" }]);
 });
+
+test("a turn knows when it started and when its last response ended", () => {
+  const items: Item[] = [
+    { key: "u1", role: "user", at: 1_000, parts: [{ type: "text", text: "go" }] },
+    { key: "a1", role: "assistant", at: 1_200, durationMs: 800, parts: [{ type: "toolCall", id: "c1", name: "read", args: {} }] },
+    { key: "r1", role: "toolResult", at: 2_500, callId: "c1", toolName: "read", parts: [{ type: "text", text: "ok" }] },
+    { key: "a2", role: "assistant", at: 2_600, durationMs: 100_000, parts: [{ type: "text", text: "done" }] },
+    // A note added minutes later is not part of the agent's work.
+    { key: "c1", role: "custom", at: 900_000, customType: "note", parts: [{ type: "text", text: "dev server was stopped" }] },
+    { key: "u2", role: "user", parts: [{ type: "text", text: "no times" }] },
+  ];
+  const [first, second] = buildTurns(items, { running: false });
+  expect([first!.startedAt, first!.endedAt]).toEqual([1_000, 102_600]);
+  expect([second!.startedAt, second!.endedAt]).toEqual([undefined, undefined]);
+});

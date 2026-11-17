@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, type Snippet } from "svelte";
+  import AnchoredPanel from "./AnchoredPanel.svelte";
   import Button from "./Button.svelte";
   let {
     label,
@@ -7,6 +8,7 @@
     trigger,
     disabled = false,
     role,
+    title,
     onkeydown,
   }: {
     label: string;
@@ -14,6 +16,8 @@
     trigger?: Snippet;
     disabled?: boolean;
     role?: "menu";
+    /** The heading of a menu shown as a sheet (phones); its label by default. */
+    title?: string;
     onkeydown?: (event: KeyboardEvent) => void;
   } = $props();
   let open = $state(false);
@@ -80,14 +84,7 @@
   >
     {#if trigger}{@render trigger()}{:else}{label}{/if}
   </Button>
-  {#if open}<div
-      {id}
-      data-popover
-      {role}
-      aria-label={label}
-      style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-popover)"
-      class="absolute right-0 top-full z-50 mt-1 w-max max-w-[min(20rem,85vw)] p-1"
-    >
+  {#if open}<AnchoredPanel {id} data-popover {role} title={role === "menu" ? (title ?? label) : undefined} aria-label={label} onclose={() => close(false)}>
       {@render children(() => close())}
-    </div>{/if}
+    </AnchoredPanel>{/if}
 </div>

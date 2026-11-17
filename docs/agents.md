@@ -35,7 +35,7 @@
 
 ## Default and layering
 
-`agents/default/` is created on first start with Pi's built-in tools (`read, bash, edit, write, grep, find, ls`). It is always the first layer of every agent, is never listed in `base`, has no parents and can't be deleted. Edit it from **Settings → General → Edit Default**; changes reach every agent unless an agent switches them off.
+`agents/default/` is created on first start with Pi's built-in tools (`read, bash, edit, write, grep, find, ls`). It is always the first layer of every agent, is never listed in `base`, has no parents and can't be deleted. Edit it from **Agents → Default**; changes reach every agent unless an agent switches them off.
 
 One rule resolves any number of parents:
 
@@ -75,21 +75,21 @@ There is no app object, manifest or store: an app is an agent with a home view.
 
 A session records only which agent it uses; nothing is copied. When its Pi session starts, the session stores a fingerprint of the resolved setup. After any agent change, open sessions whose resolved setup differs show **"The agent changed. Reload to apply it"**; **Reload session** restarts the Pi session from the same transcript. Changes never apply in the middle of a run. The fingerprint covers every file of a skill folder and of an extension folder (`extensions/<name>/`: its code, helpers and Svelte components); a single-file extension is that file. Edits made outside PiSpark, in an editor, count too: the server watches the agents folder. A reload compiles changed components again.
 
-**Editing inside a session** (Session info → Edit for this session) writes the session's own layer in `sessions/<id>/agent/`, with the same folder shape and the session's agent as its base. The agent itself is unchanged. Closing the panel reloads the session.
+**Editing inside a session** (Details ⋯ → Edit agent for this session) writes the session's own layer in `sessions/<id>/agent/`, with the same folder shape and the session's agent as its base. The agent itself is unchanged. Closing the panel reloads the session.
 
-Model choice for a new session: Ask's model, else the agent's preferred model (when signed in), else the default.
+Model choice for a new session: the one chosen under the New session composer, else the agent's preferred model (when signed in), else the default.
 
 ## Editor
 
 Agents lists every agent, Default first. The editor shows, for one layer:
 
 - **Builds on:** Default (always) and the parents, in order; add or remove parents.
-- **Instructions, Skills, Commands, Extensions:** every resolved item with where it comes from ("Added here", "From Writer"), whether a layer switched it, and an on/off switch. Items in this layer can be edited or removed; inherited ones can be viewed and **customized here** (copied into this layer). New instructions, skills and commands start from a template.
-- **Routines:** `routines: [{id, name, cron, prompt}]` in `agent.json` offers runs on a schedule, each a new session of the agent; inherited like the folder. Each is off until switched on with `routine:<id>` (Settings → Background, or the app's Routines). `hold:<extension>` allows that extension to keep the agent's sessions loaded while no one watches ([hold](session-runtime.md#hold)). Both are ordinary `on`/`off` switches and are off unless switched on.
+- **Instructions, Skills, Prompts, Extensions:** every resolved item with where it comes from ("Added here", "From Writer"), whether a layer switched it, and an on/off switch. Items in this layer can be edited or removed; inherited ones can be viewed and **customized here** (copied into this layer). New instructions, skills and prompts start from a template; a prompt runs by typing `/name`.
+- **Routines:** `routines: [{id, name, cron, prompt}]` in `agent.json` offers runs on a schedule, each a new session of the agent; inherited like the folder. Each is off until switched on with `routine:<id>` (on Background, or in Details of one of its sessions). `hold:<extension>` allows that extension to keep the agent's sessions loaded while no one watches ([hold](session-runtime.md#hold)). Both are ordinary `on`/`off` switches and are off unless switched on.
 - **Tools:** every tool the agent has, found by loading its extensions without starting a session (Pi allows it; cached by the setup's fingerprint), with on/off switches and which layer set them. Grouped: **PiSpark** first (Pi's built-in tools and those of PiSpark's own built-in extension), then each extension, then switches naming tools nothing provides now. MCP tools appear once PiSpark connects MCP servers (not yet).
 - **Model:** a preferred model and thinking level.
 - **App:** the key of the home view of an app agent, or "Inherited" with the parent's. The editor cannot list views: they exist only while a session runs. Not shown for Default or a session's own layer.
-- **Working folder:** the folder of a project agent, chosen as in Ask (recent folders, home, or a path), or "Inherited" with the parent's folder. Not shown for Default or a session's own layer.
+- **Working folder:** the folder of a project agent, chosen as for a new session (recent folders, home, or a path), or "Inherited" with the parent's folder. Not shown for Default or a session's own layer.
 - **Advanced:** where the agent is stored, the layer order and the raw `agent.json`; delete (not Default, not an agent another one builds on).
 
 Every change saves immediately. Saves are revision-checked against the file's hash: if the file changed elsewhere, the save is refused and the latest version is shown.

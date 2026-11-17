@@ -1,6 +1,6 @@
 <script lang="ts">
   /** Pick one of a list. Long lists get a filter; the first nine answer to their number. */
-  let { options, onanswer }: { options: string[]; onanswer: (value: string) => void } = $props();
+  let { options, onanswer, autofocus = true }: { options: string[]; onanswer: (value: string) => void; autofocus?: boolean } = $props();
 
   const FILTER_FROM = 8;
   let query = $state("");
@@ -50,7 +50,7 @@
   <div class="options" bind:this={list}>
     {#each shown as option, index (option)}
       {@const [label, detail] = split(option)}
-      <button type="button" class="option" data-option data-autofocus={options.length < FILTER_FROM && index === 0 ? "" : undefined} onclick={() => onanswer(option)}>
+      <button type="button" class="option" data-option data-autofocus={autofocus && options.length < FILTER_FROM && index === 0 ? "" : undefined} onclick={() => onanswer(option)}>
         <span class="number" aria-hidden="true">{index < 9 ? index + 1 : ""}</span>
         <span class="text"><span>{label}</span>{#if detail}<span class="detail">{detail}</span>{/if}</span>
       </button>
@@ -84,18 +84,18 @@
   .options {
     display: flex;
     flex-direction: column;
-    gap: 0.125rem;
-    max-height: 15rem;
+    gap: 0.25rem;
+    max-height: 12rem;
     overflow-y: auto;
   }
   .option {
     display: flex;
     align-items: flex-start;
-    gap: 0.625rem;
-    padding: 0.4rem 0.625rem;
-    border: 1px solid transparent;
-    border-radius: var(--radius);
-    background: transparent;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--card, var(--background));
     color: var(--foreground);
     font: inherit;
     text-align: left;
@@ -113,7 +113,7 @@
     flex: none;
     width: 1.25rem;
     font-size: 0.75rem;
-    line-height: 1.6rem;
+    line-height: 1.25rem;
     text-align: center;
     color: var(--subtle-foreground);
     font-variant-numeric: tabular-nums;

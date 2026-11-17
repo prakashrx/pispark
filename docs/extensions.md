@@ -14,22 +14,22 @@ Pi's terminal components are just `render(width)` → lines, so PiSpark calls an
 
 | Pi API | In PiSpark |
 | --- | --- |
-| `ctx.ui.select`, `confirm`, `input`, `editor` | A question card above the reply box, with one frame for every kind: it takes focus (a confirmation starts on the question, not on an answer; a list starts on its filter or first option), Escape or Skip skips, focus returns afterwards, a timeout shows a countdown, and a hint line names the keys. Confirmations answer to Y and N; lists scroll inside the card, filter from eight options up, answer to 1–9 and show `label — detail` as two lines; text is submitted with Enter, an editor with Ctrl+Enter. Honours Pi's `timeout` and `signal`. Cancelling or stopping the session dismisses open questions. Questions wait while no browser is watching; while one is open, the session says "Waiting for you" in its header and the session list. An answered or skipped question leaves a line in the session ("Proceed? → no"); what a person typed is not echoed. |
+| `ctx.ui.select`, `confirm`, `input`, `editor` | A question card above the reply box, with one frame for every kind: it takes focus (a confirmation starts on the question, not on an answer; a list starts on its filter or first option), Escape or Skip skips, focus returns afterwards, a timeout shows a countdown, and a hint line names the keys. Confirmations answer to Y and N; lists scroll inside the card, filter from eight options up, answer to 1–9 and show `label — detail` as two lines; text is submitted with Enter, an editor with Ctrl+Enter. Honours Pi's `timeout` and `signal`. Cancelling or stopping the session dismisses open questions. Questions wait while no browser is watching; while one is open, the session says "Needs you" in its top bar and the session list. An answered or skipped question leaves a line in the session ("Proceed? → no"); what a person typed is not echoed. |
 | `ctx.ui.notify` | A line in the conversation where it happened; warnings and errors are labelled and tinted. Once the session is open, notices (and the line for each answered question and failing handler) are kept in the session's Pi session as `pispark:notice` custom entries, so they are still there after reopening or a restart and follow branches. Notices raised while a session opens are shown only for that session. |
-| `ctx.ui.setStatus` | A quiet status line under the reply box. |
-| `ctx.ui.setWidget` (lines or a component) | Above or below the reply box, as `placement` says. |
+| `ctx.ui.setStatus` | Not shown: terminal-style text stays out of PiSpark. The status line under the reply box holds components (`session.status`). |
+| `ctx.ui.setWidget` (lines or a component) | Not shown (terminal-style). Contribute a `session.input.above` or `session.input.below` component instead. |
 | `ctx.ui.setEditorText`, `pasteToEditor` | Fills the reply box. |
-| `ctx.ui.setWorkingMessage`, `setWorkingIndicator`, `setWorkingVisible` | The "Working…" pill while the session runs: the extension's message, its animation frames (none hides the dot; reduced motion shows the first frame), or no pill. |
+| `ctx.ui.setWorkingMessage`, `setWorkingIndicator`, `setWorkingVisible` | The session's state beside its name in the top bar while it runs: the extension's message, its animation frames (none hides the mark; reduced motion shows the first frame), or nothing. |
 | `ctx.ui.setHiddenThinkingLabel` | The label on collapsed thinking. |
 | `ctx.ui.setTitle` | The browser tab title while the session is open (Pi's terminal window title). |
-| `pi.setSessionName` | The session title (Pi's session name), in the sidebar and header. |
-| `ctx.ui.setHeader` | One extension header at the top of the conversation, under PiSpark's session header. Last call wins; `undefined` removes it. |
-| `ctx.ui.setFooter` | Replaces the status line under the reply box, as it replaces terminal Pi's footer. Footers get Pi's footer data: extension statuses, the git branch of the session's folder and the provider count. Last call wins; `undefined` restores the status line. |
+| `pi.setSessionName` | The session title (Pi's session name), in the sidebar and the top bar. |
+| `ctx.ui.setHeader` | Not shown (terminal-style). Contribute a `session.header` component instead. |
+| `ctx.ui.setFooter` | Not shown (terminal-style). Contribute a `session.status` component instead. |
 | `ctx.ui.theme` | PiSpark's role theme (above). |
 | Tool `renderCall` / `renderResult`, `registerToolRenderer` | Shown inside the tool's card, collapsed view (`expanded: false`). Pi's built-in tools keep PiSpark's own cards. |
 | `registerMessageRenderer` | Custom messages render in the conversation; `display: false` messages stay hidden. |
 | `registerEntryRenderer` | Custom entries render among the messages, placed where they were appended. |
-| `registerCommand` | An action of the session: listed in the **Commands** menu in the session header as `name — description`, and typed as `/name` in the reply box. Choosing one from the menu sends `/name` exactly as typing it does, so it is available when a reply is. The menu shows only when an extension registered a command; prompt templates and skills are not listed. |
+| `registerCommand` | An action of the session: listed under **Commands…** in the session's **⋯** menu in the top bar (`/name` and its description, filtered as you type), and typed as `/name` in the reply box. Choosing one from the menu sends `/name` exactly as typing it does, so it is available when a reply is. Prompt templates and skills are not listed. |
 | Handler errors | A notice; the session keeps working, as in Pi. |
 
 ## Svelte components: an extension's own web views
@@ -66,11 +66,11 @@ export default function (pi) {
 | --- | --- | --- | --- |
 | `item.tool:<name>` | Each call of that tool (the component is the whole call: PiSpark draws no activity line, opened row, diff or pictures for it) | the call: args, status, progress, result with Pi's `details` | `renderResult`, `registerToolRenderer` |
 | `item.custom:<customType>` | Custom messages and entries of that type (entries are sent with their data) | the message or entry, its data as `details` | `registerMessageRenderer`, `registerEntryRenderer` |
-| `session.title` | Small things beside the session title (chips) | — | — |
-| `session.header` | Under the session header, in every view | — | `setHeader` |
-| `session.status` | Under the reply box, replacing the status line | — | `setFooter` |
+| `session.title` | Small things beside the session's name in the top bar (chips) on wide screens; in Details' Session panel otherwise | — | — |
+| `session.header` | Under the session's notices, in every view | — | `setHeader` |
+| `session.status` | In the status line under the reply box, after the model | — | `setFooter` |
 | `session.view` | A whole view of the session, offered beside the conversation (see [views](#views-of-a-session)) | — | — |
-| `session.input.above`, `session.input.below` | Above and below the reply box | — | `setWidget` above or below the editor |
+| `session.input.above`, `session.input.below` | Above the reply box (in the shelf, after questions) and below it | — | `setWidget` above or below the editor |
 | `session.input.actions` | Small actions beside Send (toggles, buttons) | — | — |
 
 Commands an extension registers with Pi are the session's actions (`registerCommand`, in the table above); they need no event.
@@ -124,11 +124,11 @@ An offer does not take the session over. The person chooses what shows:
 | Rule | Behaviour |
 | --- | --- |
 | Offer | `key` and `title` are required: the key is a short name, the title is plain text of 1 to 40 characters. Emitting again with the same key updates the offer in place; leaving out `component` removes it. A session has at most 6 offers. A refused offer is a notice. |
-| Switch | When at least one view is offered, the session header has a **Show** switch: **Conversation** first, then the offers in the order first made. |
+| Switch | When at least one view is offered, the top bar has a **Show** switch (on phones, under the title): **Conversation** first, then the offers in the order first made. |
 | Default | A session opens on the conversation. A session of an [app agent](agents.md#app-agents) opens on the agent's home view instead, once it is offered. |
 | Remembered | The view a person chose, the conversation included, is kept for that session in the browser. If it is not offered yet when the session opens, it shows once it is. |
 | Attention | An offer with `attention: true` asks to be shown, for example when a person runs the extension's command. If the person is looking at the session, the view shows, once per request; they can switch back. Requests made while nobody was looking are not replayed. |
-| While a view shows | It has the area under the session header, at full width, and scrolls when it is taller; the conversation and the reply box step aside. If an extension's question is open, the header says the session is waiting and offers the conversation. |
+| While a view shows | It has the area under the top bar, at full width, and scrolls when it is taller; the conversation and the reply box step aside. If an extension's question is open, the header says the session is waiting and offers the conversation. |
 | Removal | When the view that shows is removed, the conversation shows again. |
 
 `title` and `attention` belong to views only; other points refuse them.

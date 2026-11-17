@@ -49,4 +49,11 @@
       gap: 0.75rem;
     }
   }
+  /* In a narrow container (a side panel), the label goes above its content too. */
+  @container (max-width: 40rem) {
+    section[data-layout="split"] {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.75rem;
+    }
+  }
 </style>

@@ -16,7 +16,8 @@ export interface ToolCall {
   name: string;
   args: Json;
   /** The call is still being written, is running, finished, failed, or never got a result. */
-  status: "running" | "done" | "error" | "unfinished";
+  /** `blocked`: an extension stopped it before it ran (Pi's `tool_call` block, a person's No). */
+  status: "running" | "done" | "error" | "blocked" | "unfinished";
   result?: Item;
   /** Its arguments were cut to fit; what `args` holds is their start. */
   clipped?: true;
@@ -61,11 +62,19 @@ export interface Turn {
   segments: Segment[];
   /** The agent is still working on this turn. */
   running: boolean;
+  /** When your message was recorded (epoch ms), and when the last of the response ended. */
+  startedAt?: number;
+  endedAt?: number;
 }
 
 const textOf = (part: ItemPart) => (part.type === "text" || part.type === "thinking" ? part.text : "");
 /** The text of an item's text parts, joined. */
 export const itemText = (item: Item) => item.parts.map(textOf).join("\n");
+/**
+ * Whether a failed tool result is a call an extension blocked before it ran: Pi words it with the
+ * extension's reason ("Blocked by user") or "Tool execution was blocked".
+ */
+const wasBlocked = (result: Item) => /^\s*(blocked\b|tool execution was blocked)/i.test(itemText(result));
 /** The first part of a finalized item that arrived clipped. */
 export function clippedPart(item: Item): PartRef | undefined {
   const part = item.parts.findIndex((p) => (p.type === "text" || p.type === "thinking") && p.size !== undefined);
@@ -140,7 +149,15 @@ export function buildTurns(
   for (const item of items) {
     if (item.pos !== undefined) flush(item.pos);
     if (item.role === "user") {
-      turns.push({ key: item.key, user: item, ...(woken ? { woken } : {}), ...(from ? { from } : {}), segments: [], running: false });
+      turns.push({
+        key: item.key,
+        user: item,
+        ...(woken ? { woken } : {}),
+        ...(from ? { from } : {}),
+        ...(item.at ? { startedAt: item.at } : {}),
+        segments: [],
+        running: false,
+      });
       woken = undefined;
       from = undefined;
       continue;
@@ -152,6 +169,12 @@ export function buildTurns(
     }
     const turn = current();
     const live = options.running && item === lastItem;
+    // A response ends when Pi measured it ending, a tool's result when it was recorded. Lines added
+    // later (an extension's note that a process stopped) are not the agent's work.
+    if (item.at && (item.role === "assistant" || item.role === "toolResult")) {
+      const ended = item.at + (item.role === "assistant" ? (item.durationMs ?? 0) : 0);
+      if (!turn.endedAt || ended > turn.endedAt) turn.endedAt = ended;
+    }
     if (item.role === "assistant") {
       item.parts.forEach((part, index) => {
         const key = `${item.key}.${index}`;
@@ -167,7 +190,7 @@ export function buildTurns(
             name: part.name,
             args: part.args,
             result,
-            status: result ? (result.isError ? "error" : "done") : options.running ? "running" : "unfinished",
+            status: result ? (result.isError ? (wasBlocked(result) ? "blocked" : "error") : "done") : options.running ? "running" : "unfinished",
             ...(part.clipped ? { clipped: true as const } : {}),
             ...(!result && options.progress?.[part.id] ? { progress: options.progress[part.id] } : {}),
           };

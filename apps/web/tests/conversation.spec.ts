@@ -40,8 +40,9 @@ test("older messages read in as you scroll up and the view stays where it was", 
   const { sessionId } = await command({ type: "create", folder: home });
   for (let n = 1; n <= 22; n++) await command({ type: "start", sessionId, text: `turn ${n}` });
 
-  await page.goto("/");
-  const main = page.getByRole("main", { name: "Session conversation" });
+  await page.goto(`/#/s/${sessionId}`);
+  // Main is the screen's only scroll.
+  const main = page.getByRole("main");
   // The newest end of the session, scrolled to the bottom, without the oldest turns.
   await expect(page.getByText("local:turn 22", { exact: true })).toBeVisible();
   await expect(page.getByText("local:turn 1", { exact: true })).toHaveCount(0);
@@ -78,8 +79,9 @@ test("following the end survives late growth, and stops only when you scroll up"
   const { home } = await (await request.get("/api/catalog")).json();
   const { sessionId } = await command({ type: "create", folder: home });
   for (let n = 1; n <= 8; n++) await command({ type: "start", sessionId, text: `turn ${n}` });
-  await page.goto("/");
-  const main = page.getByRole("main", { name: "Session conversation" });
+  await page.goto(`/#/s/${sessionId}`);
+  // Main is the screen's only scroll.
+  const main = page.getByRole("main");
   await expect(page.getByText("local:turn 8", { exact: true })).toBeVisible();
   const fromBottom = () => main.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
   const grow = () =>

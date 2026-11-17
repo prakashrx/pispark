@@ -6,6 +6,7 @@
   import type { ExtensionDialog } from "../../../../server/src/contract/protocol";
   import PromptFrame from "./PromptFrame.svelte";
   import SelectPrompt from "./SelectPrompt.svelte";
+  import { questionTone } from "./question-tone";
 
   /**
    * A question an extension asked through Pi's `ctx.ui`; the run waits for the answer. The frame
@@ -18,6 +19,7 @@
     onanswer,
   }: { dialog: ExtensionDialog; onanswer: (value: string | boolean | null) => void } = $props();
 
+  const tone = $derived(questionTone(dialog.title, dialog.kind === "confirm" ? dialog.message : undefined));
   // Each question mounts once (keyed by id); its editor starts from the prefill.
   let text = $state(untrack(() => (dialog.kind === "editor" ? (dialog.prefill ?? "") : "")));
   const hints = {
@@ -46,15 +48,22 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div onkeydown={shortcut} role="presentation">
-  <PromptFrame title={dialog.title} expiresAt={dialog.expiresAt} hint={hints[dialog.kind]} onskip={() => onanswer(null)}>
+  <PromptFrame
+    title={dialog.title}
+    expiresAt={dialog.expiresAt}
+    hint={hints[dialog.kind]}
+    {tone}
+    onskip={() => onanswer(null)}
+  >
     {#if dialog.kind === "confirm"}
       {#if dialog.message}<p class="message">{dialog.message}</p>{/if}
       <div class="actions">
-        <Button onclick={() => onanswer(true)}>Yes</Button>
-        <Button onclick={() => onanswer(false)}>No</Button>
+        <Button size="compact" onclick={() => onanswer(true)}>Yes</Button>
+        <Button size="compact" onclick={() => onanswer(false)}>No</Button>
       </div>
     {:else if dialog.kind === "select"}
-      <SelectPrompt options={dialog.options} {onanswer} />
+      <!-- A dangerous question waits for a deliberate choice: no option has focus to start with. -->
+      <SelectPrompt options={dialog.options} {onanswer} autofocus={tone !== "danger"} />
     {:else}
       <form class="form" onsubmit={submit}>
         {#if dialog.kind === "input"}
@@ -72,9 +81,11 @@
   .message {
     margin: 0;
     color: var(--muted-foreground);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
     white-space: pre-line;
     overflow-wrap: anywhere;
-    max-height: 12rem;
+    max-height: 6rem;
     overflow-y: auto;
   }
   .actions {
@@ -84,6 +95,6 @@
   .form {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
   }
 </style>

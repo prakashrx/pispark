@@ -56,6 +56,10 @@ export class ProviderClient {
     networkBlocked: false,
   });
   loading = $state(false);
+  /** Nothing to start a session with yet: no default and no available model (a truthful first run). */
+  get noModel(): boolean {
+    return !this.loading && !this.catalog.defaultModel && !this.catalog.providers.some((p) => p.models.some((m) => m.available));
+  }
   error = $state("");
   busy = $state(false);
   private generation = 0;

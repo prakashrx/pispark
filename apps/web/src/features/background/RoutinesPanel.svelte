@@ -51,7 +51,7 @@
                   {#each routine.runs.slice(0, 3) as run, index (run.session)}{index ? " · " : ""}{#if client.sessions.some((s) => s.id === run.session)}<button
                         type="button"
                         class="link"
-                        onclick={() => client.select(run.session)}>{shortDate(new Date(run.due)).split(",")[0]}</button
+                        onclick={() => client.open(run.session)}>{shortDate(new Date(run.due)).split(",")[0]}</button
                       >{:else}{shortDate(new Date(run.due)).split(",")[0]}{run.archived ? " (archived)" : ""}{/if}{/each}
                 </p>{/if}
             </div>

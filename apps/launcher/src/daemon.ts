@@ -180,7 +180,7 @@ export class Daemon {
       case "update": {
         // Something running: the window's About page says what, and offers to wait.
         const running = await this.running();
-        if (running.replies.length || running.processes.length) openWindow(`${this.supervisor.address}/#/about`);
+        if (running.replies.length || running.processes.length) openWindow(`${this.supervisor.address}/#/settings/about`);
         else await this.act({ action: "apply", when: "now" });
         break;
       }

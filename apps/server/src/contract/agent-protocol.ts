@@ -1,4 +1,6 @@
 /** Agent contract shared by the server and web client. See docs/agents.md. */
+/** The agent every PiSpark has, used when none is chosen. */
+export const DEFAULT_AGENT = "default";
 export type ItemType = "instructions" | "skills" | "prompts" | "extensions" | "mcp";
 export type ThinkingLevel =
   | "off"

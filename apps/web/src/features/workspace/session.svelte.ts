@@ -139,13 +139,16 @@ export class Session {
   readPart(ref: { id: string; part: number }, offset: number) {
     return this.transport.json<PartPage>(`/api/sessions/${this.id}/items/${ref.id}/parts/${ref.part}?offset=${offset}`);
   }
-  /** Restarts the session's Pi session so agent changes apply. The transcript is kept. */
-  async reload() {
+  /**
+   * Restarts the session's Pi session so agent changes apply; with a model, it runs that one from now
+   * on (a read-only session whose model is gone goes on this way). The transcript is kept.
+   */
+  async reload(model?: { provider: string; id: string }) {
     this.clearError();
     this.source?.abort();
     this.connection = "Connecting";
     try {
-      await this.transport.run({ type: "reload", sessionId: this.id });
+      await this.transport.run({ type: "reload", sessionId: this.id, ...(model ? { model } : {}) });
       await this.host.refresh();
     } catch (error) {
       this.fail(error);

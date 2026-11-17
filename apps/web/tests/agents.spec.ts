@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { folderButton } from "./ask";
+import { folderButton, newSession } from "./ask";
 import { hostedTest } from "./isolated-host";
 import { addInstruction, createAgent, openAgent } from "./agent-journey";
 
@@ -10,7 +10,7 @@ import { addInstruction, createAgent, openAgent } from "./agent-journey";
 const fresh = hostedTest;
 
 async function agents(page: Page) {
-  await page.goto("/#/agent");
+  await page.goto("/#/agents");
   await expect(page.getByRole("heading", { name: "Agents", level: 1 })).toBeVisible();
 }
 const row = (page: Page, name: string) =>
@@ -18,7 +18,7 @@ const row = (page: Page, name: string) =>
 
 fresh("the editor shows each item's source; switches persist across reloads, including by keyboard", async ({ page }) => {
   await agents(page);
-  await expect(page.getByRole("button", { name: /^Default/ })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("link", { name: /^Default/ })).toBeVisible();
   await openAgent(page, "Review");
   await expect(row(page, "review")).toContainText("Added here");
   await expect(row(page, "review")).toContainText("Read the deterministic test checklist");
@@ -44,7 +44,7 @@ fresh("a new agent builds on another: inherited items say where they come from a
   await expect(row(page, "review")).toContainText("From Review");
   await page.getByRole("switch", { name: "Use skill review" }).click();
   await expect(row(page, "review")).toContainText("Turned off here");
-  await row(page, "checklist").getByRole("button", { name: "View" }).click();
+  await row(page, "checklist").getByRole("button", { name: "checklist" }).click();
   await expect(page.getByRole("textbox", { name: "checklist text" })).toHaveAttribute("readonly", "");
   await page.getByRole("button", { name: "Customize here" }).click();
   await expect(row(page, "checklist")).toContainText("Added here");
@@ -58,9 +58,8 @@ fresh("a new agent builds on another: inherited items say where they come from a
 });
 
 fresh("Default is edited from Settings and reaches every agent", async ({ page }) => {
-  await page.goto("/#/settings");
-  await page.getByRole("link", { name: "Edit Default" }).click();
-  await expect(page.getByRole("heading", { name: "Default", level: 1 })).toBeVisible();
+  await agents(page);
+  await openAgent(page, "Default");
   await expect(page.getByRole("button", { name: "Delete agent" })).toHaveCount(0);
   await addInstruction(page, "Everyone sees this.", "everyone");
   await openAgent(page, "Review");
@@ -94,26 +93,28 @@ fresh("editing the agent inside a session changes only that session", async ({ p
   await ask.fill("hello there");
   await ask.press("Enter");
   await expect(page.getByRole("button", { name: "Send message" })).not.toHaveAttribute("aria-disabled", "true");
-  await page.getByRole("button", { name: "Session info" }).click();
-  await page.getByRole("button", { name: "Edit for this session" }).click();
-  const panel = page.getByRole("region", { name: "Agent for this session" });
+  await page.getByRole("button", { name: "Details actions" }).click();
+  await page.getByRole("menuitem", { name: "Edit agent for this session" }).click();
+  const panel = page.getByRole("complementary", { name: "Agent for this session" });
   await expect(panel).toBeVisible();
   await panel.getByRole("switch", { name: "Allow read" }).click();
   await expect(panel.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
-  await expect(page.getByText(/Default \(edited here\)/)).toBeVisible();
+  // Escape went back to Details, which say the agent is edited for this session.
+  await expect(page.getByRole("complementary", { name: "Details" }).getByText("· edited for this session")).toBeVisible();
   await agents(page);
   await openAgent(page, "Default");
   await expect(page.getByRole("switch", { name: "Allow read" })).toBeChecked();
 });
 
-test("the shared Agents page is reachable from Settings and keeps Ask mounted", async ({ page }) => {
-  await page.goto("/#/settings");
+test("Agents is reachable from the sidebar, and a new session's draft waits meanwhile", async ({ page }) => {
+  await page.goto("/#/new");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await ask.fill("kept draft");
-  await page.getByRole("link", { name: "Manage agents" }).last().click();
+  await page.getByRole("complementary", { name: "Sidebar" }).getByRole("link", { name: "Agents", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Agents", level: 1 })).toBeVisible();
+  await page.getByRole("link", { name: "New session", exact: true }).first().click();
   await expect(ask).toHaveText("kept draft");
 });
 
@@ -122,10 +123,10 @@ fresh("a project agent: the editor sets its working folder, Ask shows it locked,
   try {
     await agents(page);
     await openAgent(page, "Review");
-    // Ask is on this page too, so the editor's own choice is found through its section.
-    const section = page.locator("section").filter({ has: page.getByRole("heading", { name: "Working folder", exact: true }) });
+    // The editor's own choice is in its Defaults card.
+    const section = page.getByRole("region", { name: "Defaults" });
     const choice = section.getByRole("button", { name: /^Working folder:/ });
-    const none = "Working folder: None: Ask chooses the folder";
+    const none = "Working folder: Chosen per session";
     await expect(choice).toHaveAccessibleName(none);
     // By keyboard, a folder that is not there: refused in words, and nothing changes.
     await choice.focus();
@@ -141,9 +142,9 @@ fresh("a project agent: the editor sets its working folder, Ask shows it locked,
     await expect(choice).toHaveAccessibleName(`Working folder: ${project}`);
     await expect(choice).toBeFocused();
     // An agent that builds on it works there too, and says where the folder comes from.
-    await page.getByRole("button", { name: "All agents" }).click();
+    await page.getByRole("link", { name: "All agents" }).click();
     await createAgent(page, "Project reviewer", "Review");
-    await expect(section).toContainText(`Inherited: ${project}`);
+    await expect(section).toContainText(`Inherited folder: ${project}`);
     await expect(choice).toHaveAccessibleName("Working folder: Inherited folder");
 
     await page.goto("/");
@@ -162,10 +163,9 @@ fresh("a project agent: the editor sets its working folder, Ask shows it locked,
     await ask.fill("in the project");
     await ask.press("Enter");
     await expect(page.getByText("in the project").first()).toBeVisible();
-    await page.getByRole("button", { name: "Session info" }).click();
-    await expect(page.getByText(project, { exact: true })).toBeVisible();
-    await page.keyboard.press("Escape");
-    // With another agent, the folder is Ask's to choose again.
+    await expect(page.getByRole("complementary", { name: "Details" }).getByText(project, { exact: true })).toBeVisible();
+    // With another agent, the folder is a new session's to choose again.
+    await newSession(page);
     await page.getByRole("button", { name: "Agent: Review" }).click();
     await page.getByRole("option", { name: "Default", exact: true }).click();
     await expect(folderButton(page)).not.toHaveAttribute("aria-disabled", "true");

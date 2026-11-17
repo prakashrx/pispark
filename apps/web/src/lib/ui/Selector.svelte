@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, type Snippet } from "svelte";
+  import AnchoredPanel from "./AnchoredPanel.svelte";
   import Button from "./Button.svelte";
   import Input from "./Input.svelte";
   import Icon from "./Icon.svelte";
@@ -55,7 +56,6 @@
     "aria-describedby"?: string;
   } = $props();
   let open = $state(false);
-  let alignLeft = $state(false);
   let query = $state("");
   let active = $state(0);
   let root = $state<HTMLDivElement>();
@@ -96,12 +96,8 @@
       0,
       options.findIndex((option) => option.value === value),
     );
-    alignLeft = false;
     open = true;
     await tick();
-    const popup = root?.querySelector<HTMLElement>("[data-selector-popup]");
-    // Open toward the side with room: action triggers usually sit at the start of a row.
-    alignLeft = action || (popup?.getBoundingClientRect().left ?? 0) < 8;
     search = root?.querySelector("input") ?? null;
     if (search) search.focus();
     else root?.querySelector<HTMLElement>('[role="listbox"]')?.focus();
@@ -213,6 +209,7 @@
       id={fieldId}
       class={`ui-selector ${className}`}
       data-display={display}
+      data-action={action || undefined}
       disabled={disabled || loading}
       unavailable={readonly ? "Read-only" : undefined}
       aria-busy={loading || undefined}
@@ -235,11 +232,7 @@
         ><Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60 shrink-0" />{/if}
     </Button>
     {#if open}
-      <div
-        data-selector-popup
-        class={"selector-popup absolute top-full z-50 mt-2 min-w-56 max-w-[85vw] rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-1.5 text-sm text-foreground " +
-          (alignLeft ? "left-0" : "right-0")}
-      >
+      <AnchoredPanel data-selector-popup class="min-w-56 text-sm" title={label} onclose={() => close()}>
         {#if searchable && options.length}
           <Input
             label={`Search ${label}`}
@@ -278,7 +271,7 @@
               aria-selected={value === option.value}
               tabindex="-1"
               disabled={option.disabled}
-              class="block w-full rounded-lg px-2.5 py-2 text-left hover:bg-[var(--muted)] aria-selected:font-medium aria-selected:text-[var(--interactive-text)] disabled:opacity-50"
+              class="block w-full rounded-lg px-2.5 py-2 text-left [overflow-wrap:anywhere] hover:bg-[var(--muted)] aria-selected:font-medium aria-selected:text-[var(--interactive-text)] disabled:opacity-50"
               class:bg-[var(--muted)]={index === active}
               onclick={() => choose(option)}>{option.label}</button
             >
@@ -295,7 +288,7 @@
         {#if footer}<div class="border-t border-[var(--border)] mt-1.5 p-2.5">
             {@render footer(() => close(true))}
           </div>{/if}
-      </div>
+      </AnchoredPanel>
     {/if}
   </div>
 {/if}
@@ -318,8 +311,17 @@
     font-size: 0.875rem;
     color: var(--foreground);
   }
-  :global(.selector-popup) {
-    box-shadow: var(--shadow-popover);
+  /* A value in a row (design language: "Model  GPT-5.6 ⌄"): read as a value, not a button, until pointed at. */
+  :global(.ui-selector[data-display="compact"]:not([data-action])) {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    padding-inline: 0.5rem;
+    /* A place that shows values more quietly (the composer's choices) sets these. */
+    font-weight: var(--selector-weight, 600);
+  }
+  :global(.ui-selector[data-display="compact"]:not([data-action]):hover:not(:disabled)) {
+    background: var(--selector-hover, var(--accent));
   }
   :global(.ui-selector[aria-invalid="true"]) {
     border-color: var(--danger);

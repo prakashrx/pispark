@@ -32,9 +32,9 @@ Start with real agent execution and session interaction, then resource compositi
 
 ## Quiet, consistent, extensible UI
 
-- **Quiet by default. Powerful when you reach for it.** Preserve the accepted four-screen frontend and shared shell unless a visual change is approved. Keep unapproved prototypes separate; do not expand or redesign the product silently.
-- Keep one shared application shell and persistent global Ask across routes. Use common controls, tokens, geometry, and state ownership—not page-specific copies or cosmetic variants. Ask and reply share a foundation but retain distinct context/drafts.
-- Ask context consists of working directory, agent, optional agent-defined style, and model. Folder paths belong to the backend host, not implicitly the browser machine.
+- **Quiet by default. Powerful when you reach for it.** Preserve the approved screens and shared shell unless a visual change is approved. Keep unapproved prototypes separate; do not expand or redesign the product silently.
+- Keep one shared application shell across routes, with one message box on screen: the New session composer or a session's reply. Use common controls, tokens, geometry, and state ownership—not page-specific copies or cosmetic variants. The two composers share a foundation but retain distinct context/drafts.
+- A new session's context consists of working directory, agent, optional agent-defined style, and model. Folder paths belong to the backend host, not implicitly the browser machine.
 - Prefer small typed Svelte components, semantic elements, and local state unless sharing is required. Generic primitives stay independent of domain/API concerns; feature components supply them.
 - Cover keyboard navigation, labels, focus, dismissal/focus return, empty/error/loading states, and narrow/wide layouts. Status must not depend on color alone.
 - Shared first-party UI foundations must not restrict extension-owned Svelte experiences to a fixed widget catalog.

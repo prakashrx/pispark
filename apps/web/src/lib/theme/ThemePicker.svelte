@@ -56,10 +56,8 @@
           </span>
         {/each}
       </span>
-      <span class="meta">
-        <span class="name">{choice.name}<span class="mode">{choice.mode}</span></span>
-        <span id={`${name}-${choice.id}`} class="description">{choice.description}</span>
-      </span>
+      <span class="name">{choice.name}</span>
+      <span id={`${name}-${choice.id}`} class="sr-only">{choice.mode}: {choice.description}</span>
     </label>
   {/each}
 </div>
@@ -67,23 +65,22 @@
 <style>
   .theme-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
-    gap: 0.875rem;
+    grid-template-columns: repeat(auto-fill, minmax(5.25rem, 1fr));
+    gap: 0.5rem;
   }
   .theme-card {
     position: relative;
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--border);
+    gap: 0.375rem;
+    padding: 0.25rem;
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
-    background: var(--card);
-    overflow: hidden;
     cursor: pointer;
     transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
   }
   .theme-card:hover {
-    border-color: var(--input);
-    transform: translateY(-1px);
+    background: var(--accent);
   }
   .theme-card input {
     position: absolute;
@@ -93,8 +90,7 @@
     cursor: pointer;
   }
   .theme-card:has(input:checked) {
-    border-color: var(--interactive);
-    box-shadow: 0 0 0 1px var(--interactive);
+    border-color: var(--foreground);
   }
   .theme-card:has(input:focus-visible) {
     outline: 2px solid var(--ring);
@@ -102,8 +98,10 @@
   }
   .preview {
     display: flex;
-    height: 5.25rem;
-    border-bottom: 1px solid var(--border);
+    height: 3.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
   }
   .pane {
     flex: 1;
@@ -112,10 +110,10 @@
   }
   .mini-sidebar {
     width: 28%;
-    padding: 0.5rem 0.35rem;
+    padding: 0.35rem 0.25rem;
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: 0.2rem;
   }
   .mini-sidebar span {
     height: 0.25rem;
@@ -123,10 +121,10 @@
   }
   .mini-body {
     flex: 1;
-    padding: 0.5rem;
+    padding: 0.35rem;
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: 0.2rem;
   }
   .mini-bubble {
     align-self: flex-end;
@@ -144,7 +142,7 @@
   }
   .mini-composer {
     margin-top: auto;
-    height: 0.8rem;
+    height: 0.6rem;
     border: 1px solid;
     border-radius: 9999px;
     display: flex;
@@ -155,32 +153,9 @@
     width: 0.55rem;
     border-radius: 50%;
   }
-  .meta {
-    padding: 0.625rem 0.75rem 0.75rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
   .name {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    font-size: 0.875rem;
-    font-weight: 600;
+    font-size: var(--text-xs);
+    text-align: center;
     color: var(--foreground);
-  }
-  .mode {
-    font-size: 0.6875rem;
-    font-weight: 500;
-    color: var(--subtle-foreground);
-  }
-  .theme-card:has(input:checked) .mode {
-    color: var(--interactive-text);
-  }
-  .description {
-    font-size: 0.75rem;
-    line-height: 1.4;
-    color: var(--muted-foreground);
   }
 </style>

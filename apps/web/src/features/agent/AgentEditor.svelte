@@ -1,7 +1,14 @@
 <script lang="ts">
+  /**
+   * An agent's editor (set 1): its name and what it is, what it builds on, then cards: its
+   * instructions, skills, prompts and extensions, its tools, its defaults (model, thinking, folder,
+   * app home view), and Advanced (where it is stored, its agent.json, Delete).
+   */
   import { untrack } from "svelte";
-  import Section from "../../lib/ui/Section.svelte";
-  import Toggle from "../../lib/ui/Toggle.svelte";
+  import Card from "../../lib/ui/Card.svelte";
+  import ConfirmDialog from "../../lib/ui/ConfirmDialog.svelte";
+  import CardRow from "../../lib/ui/CardRow.svelte";
+  import IdentityMark from "../../lib/ui/IdentityMark.svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Input from "../../lib/ui/Input.svelte";
   import Textarea from "../../lib/ui/Textarea.svelte";
@@ -38,6 +45,9 @@
   const isSession = $derived(viewing === "session");
   const definition = $derived(view?.definition);
   const base = $derived(definition?.base ?? []);
+  // What it is, as the Agents list says it: Base, App or Project.
+  const summary = $derived(client.items.find((item) => item.id === viewing));
+  const kind = $derived(summary?.builtIn ? "Base" : summary?.home ? "App" : summary?.folder ? "Project" : "");
   const nameOf = (id: string) =>
     client.items.find((p) => p.id === id)?.name ?? id;
   const parentOptions = $derived(
@@ -82,7 +92,7 @@
       editingName = false;
   }
   const models = $derived([
-    { value: "", label: "No preference (use Ask’s choice or the default)" },
+    { value: "", label: "No preference" },
     ...sessions.providers.catalog.providers.flatMap((provider) =>
       provider.models
         .filter((m) => m.available)
@@ -129,9 +139,15 @@
       return next;
     });
   }
+  let askingDelete = $state(false);
   let home = $state("");
+  // What you typed stays until the saved value itself changes (a failed save reloads the agent).
+  let savedHome: string | undefined;
   $effect(() => {
-    home = definition?.home ?? "";
+    const next = definition?.home ?? "";
+    if (next === savedHome) return;
+    savedHome = next;
+    home = next;
   });
   function setHome() {
     const key = home.trim();
@@ -151,12 +167,12 @@
   }
 </script>
 
-<div class="space-y-6">
+<div class="editor">
   {#if !embedded}
-    <header class="space-y-2 border-b border-[var(--border)] pb-6 agent-heading">
+    <header class="head">
       {#if editingName}
         <form
-          class="space-y-3 max-w-xl"
+          class="space-y-3 max-w-xl flex-1"
           aria-label="Name and description"
           onsubmit={(event) => {
             event.preventDefault();
@@ -171,203 +187,192 @@
           </div>
         </form>
       {:else}
-        <div class="flex items-start gap-1">
-          <h1 class="text-[1.75rem] leading-tight font-semibold tracking-tight break-words">
-            {definition?.name ?? viewing}
-          </h1>
-          {#if definition}<Button
-              variant="ghost"
-              size="icon"
-              aria-label="Edit name and description"
-              class="mt-0.5 text-muted-foreground"
-              onclick={editName}><Icon name="pencil" class="h-4 w-4" /></Button
-            >{/if}
+        <IdentityMark name={definition?.name ?? viewing} size="lg" />
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-1">
+            <h1 class="name">{definition?.name ?? viewing}</h1>
+            {#if definition}<Button variant="ghost" size="icon" aria-label="Edit name and description" class="text-muted-foreground" onclick={editName}
+                ><Icon name="pencil" class="h-4 w-4" /></Button
+              >{/if}
+          </div>
+          <p class="sub">
+            {#if kind}<strong>{kind}</strong>{#if definition?.description}{" · "}{/if}{/if}{definition?.description ?? ""}
+          </p>
+          {#if isDefault}<p class="sub">Every agent starts from Default. What you add here reaches every session unless an agent turns it off.</p>{/if}
         </div>
-        {#if definition?.description}<p class="text-sm text-muted-foreground break-words">{definition.description}</p>{/if}
-        {#if isDefault}<p class="text-sm text-muted-foreground">
-            Every agent starts from Default. What you add here reaches every session unless an agent turns it off.
-          </p>{/if}
       {/if}
     </header>
+  {:else}
+    <p role="status" aria-live="polite" class="text-sm text-muted-foreground min-h-5">{client.busy ? "Saving…" : client.status}</p>
   {/if}
-  <p role="status" aria-live="polite" class="text-sm text-muted-foreground min-h-5">
-    {client.busy ? "Saving…" : client.status}
-  </p>
   {#if client.editorError}<p role="alert" class="inline-note" data-tone="danger">{client.editorError}</p>{/if}
-  {#if view?.error}<p role="alert" class="inline-note" data-tone="danger">
-      {agentError(view.error, view.detail)} Fix “Builds on” below.
-    </p>{/if}
+  {#if view?.error}<p role="alert" class="inline-note" data-tone="danger">{agentError(view.error, view.detail)} Fix “Builds on” below.</p>{/if}
   {#if !view && !client.editorError}<p role="status" class="text-sm text-muted-foreground">Loading…</p>{/if}
   {#if view}
     {#if !isDefault}
-      <Section
-        title="Builds on"
-        description={isSession ? "This session starts from its agent." : "Default always comes first. Later ones win."}
-        layout="split"
-        class="border-b border-[var(--border)] pb-6"
-      >
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="chip"><Icon name="person" class="h-3.5 w-3.5" />Default<span class="text-muted-foreground">· always</span></span>
-          {#each base as id}
-            <span class="chip">
-              {nameOf(id)}
-              {#if !(isSession && base.length === 1)}<button
-                  type="button"
-                  class="chip-remove"
-                  aria-label={`Stop building on ${nameOf(id)}`}
-                  disabled={client.busy}
-                  onclick={() => removeParent(id)}>×</button
-                >{/if}
-            </span>
-          {/each}
-          {#if parentOptions.length}<Selector
-              label="Add an agent to build on"
-              options={parentOptions}
-              bind:value={addParent}
-              action
-            >
-              {#snippet children()}<Icon name="plus" class="h-4 w-4" /><span>Add</span>{/snippet}
-            </Selector>{/if}
-        </div>
-      </Section>
-    {/if}
-    <ItemList
-      {client}
-      {viewing}
-      type="instructions"
-      description="Added to the system prompt, in order."
-    />
-    <ItemList
-      {client}
-      {viewing}
-      type="skills"
-      description="Knowledge the agent loads when a task needs it."
-    />
-    <ItemList
-      {client}
-      {viewing}
-      type="prompts"
-      description="Saved prompts you run by typing /name."
-    />
-    <ItemList
-      {client}
-      {viewing}
-      type="extensions"
-      description="Pi extensions loaded into the session."
-      help="Put extension files in the agent’s extensions folder on the server; they appear here."
-    />
-    {#if view.items.some((item) => item.type === "mcp")}
-      <ItemList {client} {viewing} type="mcp" description="MCP servers from agent.json." />
-    {/if}
-    <Section title="Tools" description="What the agent may do, from PiSpark and from this agent’s extensions." layout="split" class="border-b border-[var(--border)] pb-6">
-      {#each toolGroups(view.tools) as group (group.title)}
-        <h4 class="tool-group">{group.title}</h4>
-        <ul class="tool-grid" aria-label={`${group.title} tools`}>
-          {#each group.tools as tool (tool.name)}
-            <li class="flex items-center justify-between gap-3">
-              <span class="min-w-0">
-                <span class="text-sm font-medium" title={tool.description}>{tool.label ?? tool.name}</span>
-                {#if tool.label}<span class="block text-xs text-muted-foreground font-mono">{tool.name}</span>{/if}
-                {#if tool.setBy && tool.setBy.id !== viewing}<span class="block text-xs text-muted-foreground">from {tool.setBy.name}</span>
-                {:else if tool.setBy}<span class="block text-xs text-muted-foreground">set here</span>{/if}
-              </span>
-              <Toggle
-                label={`Allow ${tool.label ?? tool.name}`}
-                checked={tool.on}
-                disabled={client.busy}
-                onchange={(event: Event) =>
-                  void client.toggle("tool", tool.name, (event.currentTarget as HTMLInputElement).checked)}
-              />
-            </li>
-          {/each}
-        </ul>
-      {/each}
-      {#if view.toolsIncomplete}<p class="text-xs text-muted-foreground mt-2">
-          Some extensions could not be loaded, so their tools are not listed.
-        </p>{/if}
-    </Section>
-    <Section title="Model" description="A preferred model and thinking level for new sessions." layout="split" class="border-b border-[var(--border)] pb-6">
-      <div class="grid gap-3 sm:grid-cols-2">
-        <Selector
-          label="Preferred model"
-          display="field"
-          searchable
-          options={models}
-          bind:value={modelValue}
-        />
-        <Selector
-          label="Thinking"
-          display="field"
-          options={thinkingLevels}
-          bind:value={thinkingValue}
-        />
-      </div>
-      {#if view.settings.model && !definition?.settings?.model}<p class="text-xs text-muted-foreground mt-2">
-          Inherited: {view.settings.model}
-        </p>{/if}
-    </Section>
-    {#if !isDefault && !isSession}
-      <Section
-        title="Working folder"
-        description="Sessions with this agent always work in this folder and read its AGENTS.md."
-        layout="split"
-        class="border-b border-[var(--border)] pb-6"
-      >
-        <FolderChoice
-          display="field"
-          none={view.folder && !definition?.folder ? "Inherited folder" : "None: Ask chooses the folder"}
-          bind:value={() => definition?.folder ?? "", setFolder}
-        />
-        {#if view.folder && !definition?.folder}<p class="text-xs text-muted-foreground mt-2 break-all">
-            Inherited: {view.folder}
-          </p>{/if}
-      </Section>
-    {/if}
-    {#if !isDefault && !isSession}
-      <Section
-        title="App"
-        description="An app is opened from the sidebar and shows one of its extensions’ views first."
-        layout="split"
-        class="border-b border-[var(--border)] pb-6"
-      >
-        <form
-          class="flex items-center gap-2 max-w-md"
-          aria-label="Home view"
-          onsubmit={(event) => {
-            event.preventDefault();
-            setHome();
-          }}
+      <div class="builds" role="group" aria-label="Builds on">
+        <span class="label">Builds on</span>
+        <span class="chip" title={isSession ? "This session starts from its agent." : "Default always comes first. Later ones win."}
+          >Default<span class="text-muted-foreground">· always</span></span
         >
-          <Input label="Home view" placeholder="The view’s key, for example desk" maxlength={64} bind:value={home} />
-          <Button type="submit" unavailable={home.trim() === (definition?.home ?? "") ? "Nothing to save" : undefined}
-            >Save</Button
-          >
-        </form>
-        {#if view.home && !definition?.home}<p class="text-xs text-muted-foreground mt-2">Inherited: {view.home}</p>{/if}
-      </Section>
-    {/if}
-    <Section title="Advanced" description="How this agent is stored." layout="split">
-      <div class="space-y-3">
-        <p class="text-sm text-muted-foreground break-all">
-          {isSession ? "Stored with this session." : `agents/${viewing}/agent.json`} · Layers: {view.layers.map((l) => l.name).join(" → ")}
-        </p>
-        <Disclosure title="agent.json">
-          <pre class="text-xs overflow-auto max-h-80 mt-2">{JSON.stringify(view.definition, null, 2)}</pre>
-        </Disclosure>
-        {#if !embedded && !isDefault && !isSession}<Button
-            variant="destructive"
-            size="compact"
-            onclick={() => {
-              if (confirm(`Delete agent “${definition?.name ?? viewing}”? Sessions that used it keep their messages.`))
-                void client.remove(viewing);
-            }}>Delete agent</Button
-          >{/if}
+        {#each base as id}
+          <span class="chip">
+            {nameOf(id)}
+            {#if !(isSession && base.length === 1)}<button
+                type="button"
+                class="chip-remove"
+                aria-label={`Stop building on ${nameOf(id)}`}
+                disabled={client.busy}
+                onclick={() => removeParent(id)}><Icon name="close" class="h-3 w-3" /></button
+              >{/if}
+          </span>
+        {/each}
+        {#if parentOptions.length}<Selector label="Add an agent to build on" options={parentOptions} bind:value={addParent} action>
+            {#snippet children()}<Icon name="plus" class="h-4 w-4" /><span>Add</span>{/snippet}
+          </Selector>{/if}
       </div>
-    </Section>
+    {/if}
+    <div class="cards">
+      <ItemList {client} {viewing} type="instructions" description="Added to the system prompt, in order." />
+      <ItemList {client} {viewing} type="skills" description="Knowledge the agent loads when a task needs it." />
+      <ItemList {client} {viewing} type="prompts" description="Saved prompts you run by typing /name." />
+      <ItemList
+        {client}
+        {viewing}
+        type="extensions"
+        description="Pi extensions loaded into the session."
+        help="Put extension files in the agent’s extensions folder on the server; they appear here."
+      />
+      {#if view.items.some((item) => item.type === "mcp")}<ItemList {client} {viewing} type="mcp" description="MCP servers from agent.json." />{/if}
+      <Card title="Tools" count={`${view.tools.filter((tool) => tool.on).length} of ${view.tools.length} on`}>
+        {#each toolGroups(view.tools) as group (group.title)}
+          <div class="tools">
+            <p class="group">{group.title}</p>
+            <ul class="chips" aria-label={`${group.title} tools`}>
+              {#each group.tools as tool (tool.name)}
+                <li>
+                  <button
+                    type="button"
+                    role="switch"
+                    class="tool"
+                    aria-checked={tool.on}
+                    aria-label={`Allow ${tool.label ?? tool.name}`}
+                    title={`${tool.description ?? ""}${tool.label ? ` (${tool.name})` : ""}${tool.setBy ? ` · ${tool.setBy.id === viewing ? "set here" : `from ${tool.setBy.name}`}` : ""}`}
+                    disabled={client.busy}
+                    onclick={() => void client.toggle("tool", tool.name, !tool.on)}
+                    >{#if tool.on}<Icon name="check" class="h-3.5 w-3.5" />{/if}{tool.label ?? tool.name}{#if tool.label}<span class="sr-only">
+                        {tool.name}</span
+                      >{/if}</button
+                  >
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/each}
+        {#if view.toolsIncomplete}<p class="note">Some extensions could not be loaded, so their tools are not listed.</p>{/if}
+      </Card>
+      <!-- Values read as values (design set 1/2): plain and to the right, each opening its choices. -->
+      <div class="defaults"><Card title="Defaults">
+        <CardRow label="Model">
+          <Selector label="Preferred model" searchable options={models} bind:value={modelValue} />
+        </CardRow>
+        <CardRow label="Thinking">
+          <Selector label="Thinking" options={thinkingLevels} bind:value={thinkingValue} />
+        </CardRow>
+        {#if view.settings.model && !definition?.settings?.model}<p class="note">Inherited model: {view.settings.model}</p>{/if}
+        {#if !isDefault && !isSession}
+          <CardRow label="Working folder">
+            <FolderChoice
+              none={view.folder && !definition?.folder ? "Inherited folder" : "Chosen per session"}
+              bind:value={() => definition?.folder ?? "", setFolder}
+            />
+          </CardRow>
+          {#if view.folder && !definition?.folder}<p class="note break-all">Inherited folder: {view.folder}</p>{/if}
+          <CardRow label="App home view">
+            <form
+              class="home flex items-center justify-end gap-2 flex-1"
+              aria-label="Home view"
+              onsubmit={(event) => {
+                event.preventDefault();
+                setHome();
+              }}
+            >
+              <Input label="Home view" placeholder="none" density="compact" maxlength={64} bind:value={home} />
+              <Button type="submit" size="compact" unavailable={home.trim() === (definition?.home ?? "") ? "Nothing to save" : undefined}>Save</Button>
+            </form>
+          </CardRow>
+          {#if view.home && !definition?.home}<p class="note">Inherited home view: {view.home}</p>{/if}
+        {/if}
+      </Card></div>
+      <section class="advanced" aria-label="Advanced">
+        <Disclosure title="Advanced">
+          <div class="space-y-3 mt-2">
+            <p class="text-sm text-muted-foreground break-all">
+              <span class="mono">{isSession ? "Stored with this session" : `agents/${viewing}/agent.json`}</span> · Layers: {view.layers.map((l) => l.name).join(" → ")}
+            </p>
+            <pre class="json">{JSON.stringify(view.definition, null, 2)}</pre>
+            {#if !embedded && !isDefault && !isSession}<Button
+                variant="destructive"
+                size="compact"
+                onclick={() => (askingDelete = true)}>Delete agent</Button
+              >{/if}
+          </div>
+        </Disclosure>
+      </section>
+    </div>
   {/if}
 </div>
 
+{#if askingDelete}
+  <ConfirmDialog
+    title="Delete this agent?"
+    text={`“${definition?.name ?? viewing}” is deleted. Sessions that used it keep their messages.`}
+    action="Delete agent"
+    busy={client.busy}
+    onconfirm={() => void client.remove(viewing).then(() => (askingDelete = false))}
+    oncancel={() => (askingDelete = false)}
+  />
+{/if}
+
 <style>
+  .editor {
+    max-width: 62rem;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  .name {
+    font-size: var(--text-2xl, 1.5rem);
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+  .sub {
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    overflow-wrap: anywhere;
+  }
+  .sub strong {
+    color: var(--foreground);
+    font-weight: 600;
+  }
+  .builds {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .label {
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+  }
   .chip {
     display: inline-flex;
     align-items: center;
@@ -375,30 +380,85 @@
     padding: 0.25rem 0.625rem;
     border-radius: var(--radius-full);
     background: var(--chip);
-    font-size: 0.8125rem;
-    font-weight: 500;
+    font-size: var(--text-sm);
   }
   .chip-remove {
-    margin-left: 0.125rem;
+    display: grid;
+    place-items: center;
     color: var(--muted-foreground);
-    font-size: 1rem;
-    line-height: 1;
   }
   .chip-remove:hover {
     color: var(--foreground);
   }
-  .tool-group {
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--subtle-foreground);
-    margin: 0 0 0.5rem;
-  }
-  .tool-grid + .tool-group {
-    margin-top: 1.25rem;
-  }
-  .tool-grid {
+  .cards {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-    gap: 0.75rem 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+    gap: 0.75rem;
+    align-items: start;
+  }
+  .tools {
+    padding: 0.5rem 1rem 0.75rem;
+  }
+  .group {
+    margin-bottom: 0.375rem;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+  .tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 1.875rem;
+    padding: 0 0.625rem;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+  }
+  .tool[aria-checked="true"] {
+    border-style: solid;
+    background: var(--chip);
+    color: var(--foreground);
+  }
+  .tool:hover {
+    border-color: var(--foreground);
+  }
+  .note {
+    padding: 0.375rem 1rem 0.625rem;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+  }
+  .advanced {
+    grid-column: 1 / -1;
+  }
+  .mono {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+  .json {
+    max-height: 20rem;
+    overflow: auto;
+    padding: 0.75rem;
+    border-radius: var(--radius-md);
+    background: var(--muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+  .defaults {
+    display: contents;
+  }
+  .defaults :global(.value) {
+    justify-content: flex-end;
+  }
+  .defaults :global(.ui-selector) {
+    max-width: 100%;
+  }
+  .defaults .home :global(.ui-input) {
+    width: 7rem;
   }
 </style>

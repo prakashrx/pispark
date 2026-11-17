@@ -1,5 +1,12 @@
 <script lang="ts">
-  import Section from "../../lib/ui/Section.svelte";
+  /**
+   * One kind of an agent's items as a card (set 1): each with where it comes from and its switch;
+   * its name opens its text in a dialog (view, edit, customize, remove); + adds one in a dialog.
+   */
+  import Card from "../../lib/ui/Card.svelte";
+  import Icon from "../../lib/ui/Icon.svelte";
+  import Modal from "../../lib/ui/Modal.svelte";
+  import ConfirmDialog from "../../lib/ui/ConfirmDialog.svelte";
   import Toggle from "../../lib/ui/Toggle.svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Input from "../../lib/ui/Input.svelte";
@@ -41,6 +48,10 @@
   let revision = $state<string | null>(null);
   let loading = $state(false);
   let adding = $state(false);
+  /** The description under the title, shown by ?. */
+  let helping = $state(false);
+  /** The item whose removal waits to be confirmed. */
+  let removing = $state<ResolvedItem>();
   let newName = $state("");
   let newText = $state("");
   const key = (item: ResolvedItem) => `${type}:${item.name}`;
@@ -75,6 +86,11 @@
       loading = false;
     }
   }
+  const openItem = $derived(items.find((item) => key(item) === open));
+  async function closeItem() {
+    if (text !== baseline && !confirm("Discard unsaved changes?")) return;
+    open = undefined;
+  }
   async function save(item: ResolvedItem) {
     if (await client.writeFile(item.path!, text, revision)) {
       baseline = text;
@@ -96,130 +112,185 @@
   }
 </script>
 
-<Section title={labels.title} {description} layout="split" class="border-b border-[var(--border)] pb-6">
-  <div class="space-y-2">
-    {#if help}<p class="text-sm text-muted-foreground">{help}</p>{/if}
-    {#if !items.length && !adding}<p class="text-sm text-muted-foreground">
-        No {labels.title.toLowerCase()} yet.
-      </p>{/if}
-    <ul class="space-y-2">
+<Card title={labels.title} count={items.length ? `${items.filter((item) => item.on).length} of ${items.length} on` : undefined}>
+  {#snippet action()}
+    <button
+      type="button"
+      class="icon"
+      aria-label={`About ${labels.title.toLowerCase()}`}
+      aria-expanded={helping}
+      title={description}
+      onclick={() => (helping = !helping)}>?</button
+    >
+    {#if editable}<button
+        type="button"
+        class="icon"
+        aria-label={`Add ${labels.one}`}
+        title={`Add ${labels.one}`}
+        onclick={() => {
+          adding = true;
+          newName = "";
+          newText = template(type, "");
+        }}><Icon name="plus" class="h-4 w-4" /></button
+      >{/if}
+  {/snippet}
+  {#if helping}<p class="note">{description}{help ? ` ${help}` : ""}</p>{/if}
+  {#if items.length}
+    <ul>
       {#each items as item (key(item))}
-        {@const local = client.local(item)}
-        <li class="item-row" data-off={!item.on || undefined}>
-          <div class="flex items-start gap-3">
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-baseline gap-x-2">
-                <span class="font-medium text-sm break-all">{item.name}</span>
-                <span class="text-xs text-muted-foreground">{originLabel(item.origin, viewing)}</span>
-                {#if switchLabel(item, viewing)}<span class="text-xs text-muted-foreground">· {switchLabel(item, viewing)}</span>{/if}
-                {#if !item.on}<span class="text-xs font-medium text-muted-foreground">· Off</span>{/if}
-              </div>
-              {#if item.description}<p class="text-sm text-muted-foreground mt-0.5 break-words">{item.description}</p>{/if}
-              {#if type === "mcp"}<p class="text-xs text-muted-foreground mt-0.5">Saved in the agent; not connected to sessions yet.</p>{/if}
-            </div>
-            {#if editable && item.path}<Button
-                size="compact"
-                variant="ghost"
-                aria-expanded={open === key(item)}
-                onclick={() => void show(item)}
-                >{open === key(item) ? "Close" : local ? "Edit" : "View"}</Button
-              >{/if}
-            {#if type !== "mcp"}<Toggle
-                label={`Use ${labels.one} ${item.name}`}
-                checked={item.on}
-                disabled={client.busy}
-                onchange={(event: Event) =>
-                  void client.toggle(type, item.name, (event.currentTarget as HTMLInputElement).checked)}
-              />{/if}
-          </div>
-          {#if open === key(item)}
-            <div class="mt-3 space-y-2">
-              {#if loading}<p role="status" class="text-sm text-muted-foreground">Loading…</p>
-              {:else}
-                <Textarea
-                  label={`${item.name} text`}
-                  monospace
-                  rows={10}
-                  readonly={!local}
-                  bind:value={text}
-                />
-                <div class="flex flex-wrap justify-end gap-2">
-                  {#if local}
-                    <Button
-                      variant="ghost"
-                      size="compact"
-                      onclick={() => {
-                        if (confirm(`Remove ${labels.one} “${item.name}” from this agent?`))
-                          void client.deleteFile(item.path!).then(() => (open = undefined));
-                      }}>Remove</Button
-                    >
-                    <Button
-                      variant="primary"
-                      size="compact"
-                      unavailable={text === baseline ? "No changes" : client.busy ? "Saving…" : undefined}
-                      onclick={() => void save(item)}>Save</Button
-                    >
-                  {:else}
-                    <p class="text-xs text-muted-foreground mr-auto self-center">
-                      Inherited. Customize to make your own copy here; the original stays unchanged.
-                    </p>
-                    <Button
-                      size="compact"
-                      onclick={() => void client.customize(item).then(() => (open = undefined))}
-                      >Customize here</Button
-                    >
-                  {/if}
-                </div>
-              {/if}
-            </div>
-          {/if}
+        <li class="item" data-off={!item.on || undefined}>
+          <span class="min-w-0 flex-1">
+            {#if editable && item.path}<button type="button" class="name" aria-haspopup="dialog" onclick={() => void show(item)}>{item.name}</button>
+            {:else}<span class="name">{item.name}</span>{/if}
+            {#if item.description}<span class="sub clamp" title={item.description}>{item.description}</span>{/if}
+            {#if type === "mcp"}<span class="sub">Saved in the agent; not connected to sessions yet.</span>{/if}
+          </span>
+          <span class="origin"
+            >{originLabel(item.origin, viewing)}{#if switchLabel(item, viewing)}{" · "}{switchLabel(item, viewing)}{/if}{#if !item.on}{" · "}Off{/if}</span
+          >
+          {#if type !== "mcp"}<Toggle
+              label={`Use ${labels.one} ${item.name}`}
+              checked={item.on}
+              disabled={client.busy}
+              onchange={(event: Event) => void client.toggle(type, item.name, (event.currentTarget as HTMLInputElement).checked)}
+            />{/if}
         </li>
       {/each}
     </ul>
-    {#if editable}
-      {#if adding}
-        <form
-          class="item-row space-y-2"
-          aria-label={`Add ${labels.one}`}
-          onsubmit={(event) => {
-            event.preventDefault();
-            void add();
-          }}
-        >
-          <Input label="Name" placeholder={type === "prompts" ? "review" : "my-" + labels.one} bind:value={newName}
-            oninput={() => {
-              if (!newText || newText === template(type, "")) newText = template(type, newName);
-            }} />
-          <Textarea label="Text" monospace rows={8} bind:value={newText} />
-          <div class="flex justify-end gap-2">
-            <Button variant="ghost" size="compact" onclick={() => (adding = false)}>Cancel</Button>
-            <Button variant="primary" size="compact" type="submit" unavailable={client.busy ? "Saving…" : undefined}
-              >Add {labels.one}</Button
-            >
-          </div>
-        </form>
-      {:else}
-        <Button
-          size="compact"
-          onclick={() => {
-            adding = true;
-            newName = "";
-            newText = template(type, "");
-          }}>Add {labels.one}</Button
-        >
-      {/if}
+  {:else}<p class="note">No {labels.title.toLowerCase()} yet.</p>{/if}
+</Card>
+
+{#if openItem}
+  {@const item = openItem}
+  {@const local = client.local(item)}
+  <Modal label={item.name} title={item.name} size="wide" onclose={() => void closeItem()}>
+    {#if loading}<p role="status" class="text-sm text-muted-foreground">Loading…</p>
+    {:else}
+      <p class="text-xs text-muted-foreground">{originLabel(item.origin, viewing)}{local ? "" : ". Customize to make your own copy here; the original stays unchanged."}</p>
+      <Textarea label={`${item.name} text`} monospace rows={14} readonly={!local} bind:value={text} />
     {/if}
-  </div>
-</Section>
+    {#snippet footer()}
+      {#if local}
+        <Button
+          variant="ghost"
+          onclick={() => (removing = item)}>Remove</Button
+        >
+        <span class="flex-1"></span>
+        <Button variant="ghost" onclick={() => void closeItem()}>Close</Button>
+        <Button variant="primary" unavailable={text === baseline ? "No changes" : client.busy ? "Saving…" : undefined} onclick={() => void save(item)}>Save</Button>
+      {:else}
+        <Button variant="ghost" onclick={() => void closeItem()}>Close</Button>
+        <Button variant="primary" onclick={() => void client.customize(item).then(() => (open = undefined))}>Customize here</Button>
+      {/if}
+    {/snippet}
+  </Modal>
+{/if}
+
+{#if removing}
+  {@const item = removing}
+  <ConfirmDialog
+    title={`Remove this ${labels.one}?`}
+    text={`“${item.name}” is removed from this agent.`}
+    action={`Remove ${labels.one}`}
+    busy={client.busy}
+    onconfirm={() =>
+      void client.deleteFile(item.path!).then(() => {
+        removing = undefined;
+        open = undefined;
+      })}
+    oncancel={() => (removing = undefined)}
+  />
+{/if}
+
+{#if adding}
+  <Modal label={`Add ${labels.one}`} title={`Add ${labels.one}`} size="wide" dismiss={false} onclose={() => (adding = false)}>
+    {#snippet primary()}<Button variant="primary" type="submit" form="add-item" unavailable={client.busy ? "Saving…" : undefined}
+        >Add {labels.one}</Button
+      >{/snippet}
+    <form
+      id="add-item"
+      class="space-y-3"
+      aria-label={`Add ${labels.one}`}
+      onsubmit={(event) => {
+        event.preventDefault();
+        void add();
+      }}
+    >
+      <Input
+        label="Name"
+        placeholder={type === "prompts" ? "review" : "my-" + labels.one}
+        bind:value={newName}
+        oninput={() => {
+          if (!newText || newText === template(type, "")) newText = template(type, newName);
+        }}
+      />
+      <Textarea label="Text" monospace rows={10} bind:value={newText} />
+      {#if client.editorError}<p role="alert" class="text-sm text-[var(--danger-foreground)]">{client.editorError}</p>{/if}
+    </form>
+  </Modal>
+{/if}
 
 <style>
-  .item-row {
-    padding: 0.625rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--surface-raised);
+  .note {
+    padding: 0.5rem 1rem;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
   }
-  .item-row[data-off] {
-    background: var(--muted);
+  ul > li + li {
+    border-top: 1px solid var(--border);
+  }
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.5rem;
+    padding: 0.375rem 0.75rem 0.375rem 1rem;
+    font-size: var(--text-sm);
+  }
+  .item[data-off] .name {
+    color: var(--muted-foreground);
+  }
+  .name {
+    display: block;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  button.name:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .sub {
+    display: block;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+    overflow-wrap: anywhere;
+  }
+  .origin {
+    flex-shrink: 0;
+    max-width: 45%;
+    text-align: right;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+  }
+  .icon {
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+  }
+  .icon:hover,
+  .icon[aria-expanded="true"] {
+    background: var(--accent);
+    color: var(--foreground);
+  }
+  /* One line in the list; the whole description is on the item and in its tooltip. */
+  .clamp {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

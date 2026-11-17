@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { isAbsolute } from "node:path";
-import { SWITCH_PREFIX } from "../../contract/agent-protocol.js";
+import { DEFAULT_AGENT, SWITCH_PREFIX } from "../../contract/agent-protocol.js";
 import type {
   ItemType,
   AgentDefinition,
@@ -22,7 +22,7 @@ export const fail = (code: string, status = 400, detail?: string): never => {
   throw new AgentError(code, status, detail);
 };
 
-export const DEFAULT_AGENT = "default";
+export { DEFAULT_AGENT };
 /** Pi's built-in tools. The Default agent starts with all of them except powershell. */
 export const BUILTIN_TOOLS = [
   "read",

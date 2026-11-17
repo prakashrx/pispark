@@ -88,7 +88,9 @@ function validate(value: unknown): Command {
           ...(c.model === undefined ? [] : ["model"]),
           ...(c.agent === undefined ? [] : ["agent"]),
         ]
-      : ["open", "reload", "cancel", "stop", "archive", "restore", "delete", "allow-hold", "deny-hold", "release-hold"].includes(String(c.type))
+      : c.type === "reload"
+        ? ["sessionId", ...(c.model === undefined ? [] : ["model"])]
+      : ["open", "cancel", "stop", "archive", "restore", "delete", "allow-hold", "deny-hold", "release-hold"].includes(String(c.type))
         ? ["sessionId"]
         : ["start", "steer", "follow-up"].includes(String(c.type))
           ? ["sessionId", "text", ...(c.attachments === undefined ? [] : ["attachments"])]
@@ -314,7 +316,7 @@ export class SessionHttp {
           await this.runtime.open(command.sessionId);
           break;
         case "reload":
-          await this.runtime.reload(command.sessionId);
+          await this.runtime.reload(command.sessionId, command.model);
           break;
         case "start": {
           // A session is loaded when it is used; nobody opens or stops sessions by hand.

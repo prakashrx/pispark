@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, EventBus } from "@earendil-works/pi-coding-agent";
 import type { Provider } from "@earendil-works/pi-ai";
-import { HOLD_CHANNEL, NOTICE_ENTRY, type HoldRequest, type ItemsPage, type LiveDoc, type PartPage, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
+import { HOLD_CHANNEL, NOTICE_ENTRY, type HoldRequest, type ReadOnlyReason, type ItemsPage, type LiveDoc, type PartPage, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
 import { ExtensionUI } from "../extensions/extension-ui.js";
 import { ExtensionRendering } from "../extensions/extension-render.js";
 import { ExtensionViews } from "../extensions/views.js";
@@ -51,12 +51,16 @@ export type SessionStatus =
   | "cancelling"
   | "stopping"
   | "error"
-  | "stopped";
+  | "stopped"
+  /** Open for reading only: its model, agent or folder can't be used (`readOnly` says which). */
+  | "read-only";
 export interface SessionSummary {
   id: string;
   /** Working folder on this host. */
   folder: string;
   createdAt: string;
+  /** When it last did something (see `SessionInfo.lastActivity`). */
+  lastActivity: string;
   title?: string;
   hasHistory?: boolean;
   status: SessionStatus | "unloaded";
@@ -76,6 +80,8 @@ export interface SessionSummary {
   held?: { extension: string; reason: string };
   /** How many processes it started are running. */
   processes?: number;
+  /** Open for reading only, and why. */
+  readOnly?: ReadOnlyReason;
 }
 export interface RunResult {
   outcome: "completed" | "cancelled" | "failed";
@@ -186,6 +192,8 @@ export class Session {
   stopping?: Promise<void>;
   readonly observers = new Set<SessionChanges>();
 
+  /** Open for reading only (from its transcript, without Pi's agent session), and why. */
+  readOnly?: ReadOnlyReason;
   private pi?: AgentSession;
   private ui?: ExtensionUI;
   private views?: ExtensionViews;
@@ -235,7 +243,7 @@ export class Session {
   }
   /** Loaded and ready for clients. */
   get ready(): boolean {
-    return !!this.pi && !!this.items;
+    return !!this.items;
   }
   /** Pi has written the session's transcript; once it has, it always has. */
   get hasHistory(): boolean {
@@ -263,7 +271,7 @@ export class Session {
   /** Nothing runs, waits or is queued in the session, and no question is open. */
   get settled(): boolean {
     return (
-      (this.status === "idle" || this.status === "error") &&
+      (this.status === "idle" || this.status === "error" || this.status === "read-only") &&
       !this.loading &&
       !this.input &&
       !this.queuedRun &&
@@ -289,11 +297,25 @@ export class Session {
   // ---- What clients read ----------------------------------------------------------------------
 
   private loaded(): { session: AgentSession; items: ItemProjector } {
+    if (this.readOnly) throw new RuntimeError("read-only");
     if (!this.pi || !this.items) throw new RuntimeError("not-found");
     return { session: this.pi, items: this.items };
   }
+  /** The session's history, also when it is read-only. */
+  private history(): ItemProjector {
+    if (!this.items) throw new RuntimeError("not-found");
+    return this.items;
+  }
   /** Everything about the session except its history: status, model, queue and what extensions show. */
   doc(): SessionDoc {
+    if (this.readOnly)
+      return {
+        ...this.host.summary(this),
+        ...(this.metadata.model ? { model: { ...this.metadata.model } } : {}),
+        queue: { steering: 0, followUp: 0 },
+        extensions: { dialogs: [], statuses: [], widgets: [], notices: [], views: [] },
+        commands: [],
+      };
     const { session } = this.loaded();
     return {
       ...this.host.summary(this),
@@ -312,21 +334,21 @@ export class Session {
   }
   /** The live document: session state, the items in flight and what running tools reported. */
   liveDoc(): LiveDoc {
-    return { session: this.doc(), tail: this.loaded().items.tail(), progress: progressOf(this.running) };
+    return { session: this.doc(), tail: this.history().tail(), progress: progressOf(this.running) };
   }
   /** Finalized items on the session's active branch, read straight from Pi's session. */
   page(options: { before?: string; after?: string; limit?: number }): ItemsPage {
-    return this.loaded().items.page(options);
+    return this.history().page(options);
   }
   image(itemId: string, part: number) {
-    return this.loaded().items.image(itemId, part);
+    return this.history().image(itemId, part);
   }
   text(itemId: string, part: number, offset: number): PartPage {
-    return this.loaded().items.text(itemId, part, offset);
+    return this.history().text(itemId, part, offset);
   }
   /** A connection's live view of the session, and the invalidations that say when to ask it for more. */
   observe(): { view: LiveView; events: AsyncIterableIterator<SessionChange> & { close(): void } } {
-    const { items } = this.loaded();
+    const items = this.history();
     if (this.observers.size >= 16) throw new RuntimeError("limit");
     this.touch();
     const events = new SessionChanges(() => {
@@ -393,14 +415,24 @@ export class Session {
   private async initialize(): Promise<SessionDoc> {
     const { metadata, host } = this;
     const reopening = this.published;
-    const cwd = await resolveFolder(metadata.cwd);
-    let setup: Setup;
+    // What the session needs to run. When one of them can't be had, a session with a past opens to be read.
+    let step: ReadOnlyReason = "folder";
+    let cwd: string, setup: Setup, model: Awaited<ReturnType<SessionHost["model"]>>;
     try {
-      setup = host.setup(metadata);
-    } catch {
-      throw new RuntimeError("agent");
+      cwd = await resolveFolder(metadata.cwd);
+      step = "agent";
+      try {
+        setup = host.setup(metadata);
+      } catch {
+        throw new RuntimeError("agent");
+      }
+      step = "model";
+      model = await host.model(metadata, setup);
+    } catch (error) {
+      if (reopening && host.accepting()) return this.openReadOnly(step);
+      throw error;
     }
-    const { managed, fixed } = await host.model(metadata, setup);
+    const { managed, fixed } = model;
     metadata.model = managed ? managed.choice : { provider: fixed!.provider.id, id: fixed!.id };
     metadata.cwd = cwd;
     const dir = host.storage.prepare(metadata.id);
@@ -424,6 +456,7 @@ export class Session {
       save: (notice) => {
         if (!this.published || !this.pi || this.closed) return false;
         this.pi.sessionManager.appendCustomEntry(NOTICE_ENTRY, notice);
+        this.host.storage.active(this.id);
         this.changed();
         return true;
       },
@@ -547,6 +580,24 @@ export class Session {
     host.logger.event(reopening ? "session.recover" : "session.create", { sessionId: metadata.id, agentId: metadata.agent, outcome: "completed" });
     // A prompt that was waiting when PiSpark stopped rejoins the queue now that the session is open.
     if (reopening && metadata.queued !== undefined) this.restoreQueued(metadata.queued);
+    return this.doc();
+  }
+
+  /**
+   * Opens the session for reading only: its history from Pi's transcript, with no agent session, no
+   * extensions and no model. Nothing about the session is written; reloading tries the full open again.
+   */
+  private openReadOnly(reason: ReadOnlyReason): SessionDoc {
+    const { metadata, host } = this;
+    const transcript = host.storage.validateHistory(metadata);
+    const manager = transcript
+      ? SessionManager.open(transcript, host.storage.prepare(metadata.id), metadata.cwd)
+      : SessionManager.inMemory(metadata.cwd);
+    this.items = new ItemProjector({ sessionManager: manager, messages: [], state: {} });
+    this.readOnly = reason;
+    this.status = "read-only";
+    this.changed();
+    host.logger.event("session.recover", { sessionId: metadata.id, outcome: "rejected", code: reason === "model" ? "configuration" : reason });
     return this.doc();
   }
 
@@ -704,6 +755,8 @@ export class Session {
       }
     // A provider error is a failed run, unless the run was cancelled: then it is the cancel's result
     // (Pi records an error message for a run aborted before it reached the provider).
+    // Each finished message is in the history now: the session did something.
+    if (event.type === "message_end") this.host.storage.active(this.id);
     if (event.type === "message_end" && event.message.role === "assistant" && event.message.stopReason === "error" && !this.run?.cancelled)
       this.error ??= "execution";
     this.changed();

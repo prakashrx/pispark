@@ -62,9 +62,3 @@ export class ProcessClient {
   }
 }
 
-/** The process a conversation row asked to show; the Processes panel opens on it. */
-export const processPanel = $state<{ sessionId?: string; processId?: string }>({});
-export function showProcess(sessionId: string, processId?: string): void {
-  processPanel.sessionId = sessionId;
-  processPanel.processId = processId;
-}

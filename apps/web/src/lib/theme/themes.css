@@ -157,6 +157,15 @@
   --font-sans: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif;
   --font-reading: var(--font-sans);
   --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", Menlo, Consolas, ui-monospace, monospace;
+  /* Type scale: every font size comes from here. */
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.875rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
 }
 :root,
 [data-theme] {
@@ -164,6 +173,9 @@
   --foreground: rgb(var(--n-950));
   --surface-raised: color-mix(in srgb, rgb(var(--n-100)) var(--raise), rgb(var(--n-0)));
   --card: var(--surface-raised);
+  /* The soft ground under content: cards stand forward on it. Light themes put white cards
+     on a near-white canvas; dark themes lift cards a step instead. */
+  --canvas: color-mix(in srgb, rgb(var(--n-0)) var(--raise), color-mix(in srgb, rgb(var(--n-100)) 55%, rgb(var(--n-50))));
   /* Pills and selected segments: one step above whatever they sit on. */
   --chip: color-mix(in srgb, rgb(var(--n-200)) var(--raise), rgb(var(--n-100)));
   --control-selected: color-mix(in srgb, rgb(var(--n-200)) var(--raise), rgb(var(--n-0)));
@@ -196,6 +208,10 @@
   --interactive-text: var(--accent-text);
   --interactive-muted: color-mix(in srgb, var(--accent-fill) 13%, var(--background));
   --ring: var(--accent-ring, var(--accent-fill));
+  /* A switch that is on shows the text colour: the accent is kept for actions, links,
+     navigation selection and Needs you. */
+  --toggle-on: var(--foreground);
+  --toggle-knob: var(--background);
 
   --success: #16a34a;
   --warning: #d97706;
@@ -215,10 +231,23 @@
   --radius-lg: 18px;
   --radius-xl: 26px;
   --radius-full: 9999px;
+  /* Cards and panels: a step rounder than controls. */
+  --radius-card: 14px;
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.8));
   --shadow-composer: 0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.7)),
     0 4px 16px rgb(0 0 0 / var(--shadow-strength));
   --shadow-popover: 0 4px 12px rgb(0 0 0 / calc(var(--shadow-strength) * 1.3)),
     0 16px 40px rgb(0 0 0 / calc(var(--shadow-strength) * 1.6));
+  /* Light themes: the shadow is a card's edge. Dark themes add a hairline (--card-edge). */
+  --shadow-card: 0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.9)),
+    0 2px 8px rgb(0 0 0 / calc(var(--shadow-strength) * 0.5));
+  --card-edge: color-mix(in srgb, var(--border) calc(var(--raise) * 0.6), transparent);
+}
+
+/* An identity's or capability's hue (--h), mixed from the theme's own card and text colours
+   so every theme, light or dark, gets a readable tint without naming themes. */
+.hue-tint {
+  background: color-mix(in srgb, hsl(var(--h) 70% 55%) 22%, var(--card));
+  color: color-mix(in oklch, hsl(var(--h) 75% 45%) 62%, var(--foreground));
 }

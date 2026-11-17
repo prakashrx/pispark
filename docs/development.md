@@ -86,7 +86,7 @@ npm run test:browser -w @pispark/web
 Remove-Item Env:PISPARK_TEST_PRODUCTION
 ```
 
-CI installs Chromium and runs the production browser suite after the core checks and HTTP smoke. For a manual UI pass, test narrow layouts, Tab/Shift+Tab focus, Enter/Space activation, Escape dismissal/focus return, the skip link, sidebar toggle, independent Ask/reply drafts, real agent collection/create/editor and file-save/compose/validate/save/conflict states, session streaming/cancel/reconnect, concise Session info and actual native title changes. Sources remains truthfully unavailable. The status dot reports client connectivity, not model-provider health, and adds "Offline" or "Connecting…" text when not connected. Drafts intentionally disappear on reload.
+CI installs Chromium and runs the production browser suite after the core checks and HTTP smoke. For a manual UI pass, test the three sizes (phone, tablet, desktop), Tab/Shift+Tab focus, Enter/Space activation, Escape dismissal/focus return, the skip link, hiding the sidebar and the tablet drawer, independent New session/reply drafts, real agent collection/create/editor and file-save/compose/validate/save/conflict states, session streaming/cancel/reconnect, Details beside the conversation (column, overlay on a portrait tablet, its own screen on a phone; Back, Expand, Escape), archiving with its Undo toast (a long press on a phone row), the nudge when another session needs you, the "Can’t reach PiSpark" banner when the server stops, and actual native title changes. The status dot reports client connectivity, not model-provider health, and adds "Offline" or "Connecting…" text when not connected. Drafts intentionally disappear on reload.
 
 ## Dependency findings
 

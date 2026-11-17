@@ -31,7 +31,7 @@ export function agentError(code: string, detail?: string): string {
 export const ITEM_LABELS: Record<ItemType, { title: string; one: string }> = {
   instructions: { title: "Instructions", one: "instruction" },
   skills: { title: "Skills", one: "skill" },
-  prompts: { title: "Commands", one: "command" },
+  prompts: { title: "Prompts", one: "prompt" },
   extensions: { title: "Extensions", one: "extension" },
   mcp: { title: "MCP servers", one: "MCP server" },
 };

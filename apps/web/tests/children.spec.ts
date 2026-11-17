@@ -20,6 +20,8 @@ fresh("a session starts a session; its answer comes back as a card; the child si
   await expect(report).toContainText("From Zustand research · finished");
   // The card shows the answer, not the line the agent needs ("The session … you started finished:").
   await expect(report).toContainText("local:research zustand");
+  // The report is the child agent's words, drawn as Markdown like any reply.
+  await expect(report.locator(".prose")).toHaveCount(1);
   await expect(report).not.toContainText("you started finished");
 
   // In the sidebar the child is under its parent, behind a toggle once it is done.
@@ -29,13 +31,13 @@ fresh("a session starts a session; its answer comes back as a card; the child si
   await toggle.click();
   await expect(sessions.getByRole("group", { name: /^Started by / }).getByRole("link", { name: "Zustand research" })).toBeVisible();
 
-  // Session info lists it; opening it shows where it came from.
-  await page.getByRole("button", { name: "Session info" }).click();
+  // Details list it; opening it shows where it came from.
   const started = page.getByRole("list", { name: "Sessions it started" });
   await expect(started).toContainText("Finished");
   await started.getByRole("button", { name: "Zustand research" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Zustand research" })).toBeVisible();
-  await expect(page.getByText(/^Started by /)).toBeVisible();
+  // Details say where it came from, with a way back.
+  await expect(page.getByRole("complementary", { name: "Details" }).getByText("Started by", { exact: true })).toBeVisible();
   await expect(page.locator('[data-purpose="session-turn"]')).toContainText("research zustand");
   await expect(sessions.getByRole("group", { name: /^Started by / }).getByRole("link", { name: "Zustand research" })).toHaveAttribute("aria-current", "page");
 
@@ -44,11 +46,17 @@ fresh("a session starts a session; its answer comes back as a card; the child si
   await expect(page.locator('[data-purpose="session-turn"]')).toContainText("finished");
 
   await page.setViewportSize({ width: 390, height: 844 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const wide = await page.evaluate(() =>
+    [...document.querySelectorAll("body *")]
+      .filter((e) => e.getBoundingClientRect().right > innerWidth + 1 && e.getBoundingClientRect().width > 0)
+      .map((e) => `${e.tagName}.${String(e.className).slice(0, 60)}`)
+      .slice(0, 5),
+  );
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), wide.join(" | ")).toBe(true);
 });
 
 fresh("the agent editor lists PiSpark's own tools, found in its built-in extension", async ({ page }) => {
-  await page.goto("/#/agent");
+  await page.goto("/#/agents");
   await openAgent(page, "Default");
   const core = page.getByRole("list", { name: "PiSpark tools" });
   await expect(core.getByRole("switch", { name: "Allow read" })).toBeVisible();

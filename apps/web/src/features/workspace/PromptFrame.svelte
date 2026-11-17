@@ -1,19 +1,23 @@
 <script lang="ts">
   import { onMount, untrack, type Snippet } from "svelte";
   import Button from "../../lib/ui/Button.svelte";
+  import { TONE_WORDS, type QuestionTone } from "./question-tone";
 
   /**
    * What every question shares, whatever it asks: focus moves in and comes back, Escape skips, a
    * waiting question counts down, and key hints say what the keys do. A question's own view only
    * fills the body and answers; keeping this here is what makes any view behave the same way.
+   * It reads as part of the conversation: small, in the conversation's column, its tone (how much
+   * care it asks for) in colour and in words.
    */
   let {
     title,
     expiresAt,
     hint,
+    tone = "info",
     onskip,
     children,
-  }: { title: string; expiresAt?: number; hint: string; onskip: () => void; children: Snippet } = $props();
+  }: { title: string; expiresAt?: number; hint: string; tone?: QuestionTone; onskip: () => void; children: Snippet } = $props();
 
   const titleId = $props.id();
   let section = $state<HTMLElement>();
@@ -45,15 +49,15 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<section bind:this={section} class="prompt" role="group" aria-labelledby={titleId} tabindex="-1" onkeydown={keydown}>
+<section bind:this={section} class="prompt" data-tone={tone} role="group" aria-labelledby={titleId} tabindex="-1" onkeydown={keydown}>
   <div class="prompt-head">
-    <div class="prompt-text">
-      <p class="prompt-label">Needs your answer</p>
-      <p id={titleId} class="prompt-title">{title}</p>
-    </div>
+    <span class="prompt-mark" aria-hidden="true">{tone === "info" ? "?" : "!"}</span>
+    <p class="prompt-label">{TONE_WORDS[tone]}</p>
     {#if seconds !== undefined}<span class="prompt-timer" aria-label={`${seconds} seconds left`}>{seconds}s</span>{/if}
-    <Button variant="ghost" size="compact" onclick={onskip}>Skip</Button>
+    <Button variant="ghost" size="compact" class="prompt-skip" onclick={onskip}>Skip</Button>
   </div>
+  <!-- Blank lines an extension put between parts of its title would only make the card taller. -->
+  <p id={titleId} class="prompt-title">{title.replace(/\n\s*\n+/g, "\n").trim()}</p>
   {@render children()}
   <p class="prompt-hint">{hint}</p>
   {#if total}<div class="prompt-bar" style:animation-duration={`${total}ms`} aria-hidden="true"></div>{/if}
@@ -61,59 +65,94 @@
 
 <style>
   .prompt {
+    --tone: var(--interactive);
+    --tone-text: var(--interactive-text);
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    padding: 0.875rem 1.125rem 1rem;
-    border: 1px solid color-mix(in srgb, var(--interactive) 45%, var(--border));
-    border-radius: var(--radius-lg);
-    background: var(--card);
-    box-shadow: var(--shadow-sm);
+    gap: 0.375rem;
+    width: 100%;
+    max-width: 48rem;
+    margin: 0 auto;
+    padding: 0.5rem 0.75rem 0.625rem;
+    border: 1px solid color-mix(in srgb, var(--tone) 50%, var(--border));
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--tone) 5%, var(--card, var(--background)));
+    font-size: var(--text-sm);
     overflow: hidden;
+  }
+  .prompt[data-tone="warning"] {
+    --tone: var(--warning);
+    --tone-text: var(--warning-foreground);
+  }
+  .prompt[data-tone="danger"] {
+    --tone: var(--danger);
+    --tone-text: var(--danger-foreground);
   }
   .prompt:focus {
     outline: none;
   }
   .prompt-head {
     display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
+    align-items: center;
+    gap: 0.375rem;
+    min-height: 1.5rem;
   }
-  .prompt-text {
-    flex: 1;
-    min-width: 0;
+  .prompt-mark {
+    display: grid;
+    place-items: center;
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+    border-radius: var(--radius-full);
+    background: var(--tone);
+    color: var(--background);
+    font-size: 0.6875rem;
+    font-weight: 700;
   }
   .prompt-label {
-    margin: 0 0 0.125rem;
+    flex: 1;
+    min-width: 0;
+    margin: 0;
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--interactive-text);
+    color: var(--tone-text);
   }
   .prompt-title {
     margin: 0;
-    font-weight: 500;
+    font-weight: 600;
+    color: var(--foreground);
     white-space: pre-line;
     overflow-wrap: anywhere;
   }
   .prompt-timer {
-    padding-top: 0.25rem;
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
   }
+  .prompt :global(.prompt-skip) {
+    height: 1.5rem;
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
+  }
   .prompt-hint {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     color: var(--subtle-foreground);
+  }
+  /* Touch has no keys to hint at. */
+  @media (hover: none) {
+    .prompt-hint {
+      display: none;
+    }
   }
   .prompt-bar {
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
-    height: 3px;
-    background: var(--interactive);
+    height: 2px;
+    background: var(--tone);
     transform-origin: left;
     animation: prompt-shrink linear forwards;
   }

@@ -17,7 +17,7 @@ async function capture(page: Page, info: TestInfo, name: string) {
   });
 }
 
-hostedTest("four source pages render locally without errors or external requests", async ({
+hostedTest("every screen renders locally without errors or external requests", async ({
   page,
   baseURL,
 }, info) => {
@@ -46,23 +46,20 @@ hostedTest("four source pages render locally without errors or external requests
       external.push(request.url());
   });
   for (const [route, heading] of [
-    ["workspace", "New session"],
-    ["settings", "General"],
-    ["agent", "Agents"],
-    ["sources", "Sources"],
+    ["new", "New session"],
+    ["settings", "Settings"],
+    ["agents", "Agents"],
+    ["background", "Background"],
+    ["archived", "Archived"],
   ]) {
     await page.goto(`/#/${route}`);
     await expect(
       page.getByRole("heading", { name: new RegExp(heading), level: 1 }),
     ).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
-    if (await page.locator(".material-symbols-outlined").count()) {
-      expect(
-        await page.evaluate(() =>
-          document.fonts.check('24px "Material Symbols Outlined"'),
-        ),
-      ).toBe(true);
-    }
+    expect(
+      await page.evaluate(() => document.fonts.check('15px "Inter Variable"')),
+    ).toBe(true);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -112,23 +109,20 @@ hostedTest("keyboard selectors, independent draft composers and sidebar navigati
   await page.getByRole("textbox", { name: /Ask anything/ }).focus();
   await page.keyboard.press("Control+b");
   await expect(page.getByRole("complementary")).toBeVisible();
-  await page.getByRole("button", { name: "Collapse sidebar" }).focus();
+  await page.getByRole("button", { name: "Hide sidebar" }).focus();
   await page.keyboard.press("Control+b");
   await expect(page.getByRole("complementary")).toHaveCount(0);
-  await page.getByRole("button", { name: "Expand sidebar" }).click();
+  await page.getByRole("button", { name: "Show sidebar" }).click();
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "General", level: 1 }),
+    page.getByRole("heading", { name: "Theme", level: 2 }),
   ).toBeVisible();
-  await page
-    .getByRole("link", { name: "Manage agents", exact: true })
-    .last()
-    .click();
+  await page.getByRole("link", { name: "Agents", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
   await createAgent(page, "Keyboard writer");
   await addInstruction(page, "Local instructions");
-  await page.getByRole("link", { name: "Sources", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
+  await page.getByRole("link", { name: "Background", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Background", level: 1 })).toBeVisible();
   // Back returns to where you were: the agent's editor.
   await page.goBack();
   await expect(
@@ -140,48 +134,11 @@ hostedTest("keyboard selectors, independent draft composers and sidebar navigati
   ).toBeVisible();
 });
 
-test("Sources is truthfully unavailable and only navigates to real Agents without connection requests", async ({
-  page,
-  baseURL,
-}) => {
-  const external: string[] = [];
-  page.on("request", (r) => {
-    if (
-      !r.url().startsWith(new URL(baseURL!).origin) &&
-      !r.url().startsWith("data:")
-    )
-      external.push(r.url());
-  });
-  await page.goto("/#/sources");
-  await expect(
-    page.getByRole("heading", { name: "Sources", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(
-      "Source connections aren’t available yet. You can use local agents and skills in Agents.",
-    ),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Add Source|Sync|Remove/ }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByText(/local-review-kit|official registry|active/i),
-  ).toHaveCount(0);
-  await page
-    .getByRole("main")
-    .getByRole("link", { name: "Manage agents", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Agents", exact: true }),
-  ).toBeVisible();
-  expect(external).toEqual([]);
-});
-
 test("narrow pages reflow without clipping and popup/modal remain keyboard usable", async ({
   page,
 }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const route of ["workspace", "settings", "agent", "sources"]) {
+  for (const route of ["settings", "agents", "background", "new"]) {
     await page.goto(`/#/${route}`);
     await page.evaluate(() => document.fonts.ready);
     expect(
@@ -200,5 +157,18 @@ test("narrow pages reflow without clipping and popup/modal remain keyboard usabl
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  // On a phone the picker is a bottom sheet across the screen, with its title.
+  const sheet = page.locator("[data-selector-popup]");
+  await sheet.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
+  const box = (await sheet.boundingBox())!;
+  expect(Math.round(box.width)).toBe(390);
+  expect(Math.round(box.y + box.height)).toBe(844);
+  await expect(sheet.getByText("Working folder", { exact: true })).toBeVisible();
+  // A tap outside closes it; Escape closes it and focus goes back to the control.
+  await page.mouse.click(195, 40);
+  await expect(sheet).toHaveCount(0);
+  await folderButton(page).click();
   await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(folderButton(page)).toBeFocused();
 });

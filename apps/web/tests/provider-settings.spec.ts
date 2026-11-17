@@ -1,3 +1,4 @@
+import { newSession, shownSession } from "./ask";
 import { hostedTest } from "./isolated-host";
 import { test, expect } from "@playwright/test";
 
@@ -8,10 +9,7 @@ test.beforeEach(async ({ request }) => {
   await request.post("/api/providers/default", { data: { model: null } });
 });
 test.afterEach(async ({ request, page }) => {
-  for (const open of await page
-    .locator('.provider-summary[aria-expanded="true"]')
-    .all())
-    await open.click();
+  if (await page.getByRole("dialog").count()) await page.keyboard.press("Escape");
   const { sessions } = await (await request.get("/api/sessions")).json();
   for (const s of sessions.filter(
     (s: { status: string }) => s.status !== "unloaded",
@@ -30,29 +28,35 @@ test.afterEach(async ({ request, page }) => {
   }
 });
 type Page = import("@playwright/test").Page;
-/** The provider row's expand/collapse control. */
-const summary = (page: Page, name = provider) =>
-  page.getByRole("listitem", { name, exact: true }).locator(".provider-summary");
-/** Expand a provider row if it is collapsed. */
+/** Your providers: the ones set up, each opening its own dialog. */
+const yours = (page: Page) => page.getByRole("region", { name: "Your providers" });
+/** A provider's row in Your providers. */
+const summary = (page: Page, name = provider) => yours(page).getByRole("button", { name: new RegExp(`^${name}`) });
+/** The Add a provider button. */
+const add = (page: Page) => yours(page).getByRole("button", { name: "Add a provider" });
+/** Opens a provider: its own dialog once set up, otherwise chosen in Add a provider. */
 async function expand(page: Page, name = provider) {
-  const button = summary(page, name);
-  if ((await button.getAttribute("aria-expanded")) !== "true")
-    await button.click();
-  await expect(button).toHaveAttribute("aria-expanded", "true");
+  if (await summary(page, name).count()) {
+    await summary(page, name).click();
+    await expect(page.getByRole("dialog", { name })).toBeVisible();
+    return;
+  }
+  await add(page).click();
+  const dialog = page.getByRole("dialog", { name: "Add a provider" });
+  await dialog.getByRole("textbox", { name: "Search providers" }).fill(name);
+  await dialog.getByRole("button", { name: new RegExp(`^${name}`) }).click();
 }
 const signIn = (page: Page, name = provider) =>
   page.getByRole("region", { name: `Sign in to ${name}`, exact: true });
 const modelsOf = (page: Page, name = provider) =>
   page.getByRole("region", { name: `Models for ${name}`, exact: true });
-async function openLocal(page: import("@playwright/test").Page) {
-  await page.goto("/#/providers");
-  await expect(
-    page.getByRole("heading", { name: "Providers & models", exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "Search providers" })
-    .fill("Local auth");
-  await expect(summary(page)).toBeVisible();
+async function openLocal(page: import("@playwright/test").Page, by: "address" | "sidebar" = "address") {
+  if (by === "address") await page.goto("/#/settings/providers");
+  else {
+    await page.getByRole("link", { name: "Settings", exact: true }).click();
+    await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Providers & models" }).click();
+  }
+  await expect(yours(page)).toBeVisible();
 }
 async function login(page: import("@playwright/test").Page) {
   await expand(page);
@@ -66,7 +70,8 @@ async function login(page: import("@playwright/test").Page) {
   await expect(dialog.getByRole("status")).toContainText("Sign-in saved");
   await expect(dialog).not.toContainText("TEST-ONLY-NOT-REAL");
   await page.keyboard.press("Escape");
-  await expect(summary(page)).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(summary(page)).toBeVisible();
 }
 
 hostedTest("the default model picker accepts physical pointer clicks at narrow and wide widths", async ({ page, request }) => {
@@ -78,6 +83,10 @@ hostedTest("the default model picker accepts physical pointer clicks at narrow a
     await trigger.click();
     const option = page.getByRole("option", { name: width === 390 ? /deterministic/i : /second/i }).first();
     await expect(option).toBeVisible();
+    // On a phone the picker is a sheet that slides up: measure where it comes to rest.
+    await option.evaluate((element) =>
+      Promise.all(element.closest("[data-selector-popup]")!.getAnimations().map((animation) => animation.finished)),
+    );
     const point = await option.evaluate((element) => {
       const box = element.getBoundingClientRect();
       const x = box.left + box.width / 2, y = box.top + box.height / 2;
@@ -103,12 +112,14 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
     if (!new URL(r.url()).hostname.match(/^(127\.0\.0\.1|localhost)$/))
       external.push(r.url());
   });
-  await openLocal(page);
+  // A new session's draft waits while its model is set up in Settings.
+  await page.goto("/#/new");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await ask.fill("Keep shared Ask draft");
+  await openLocal(page, "sidebar");
   await login(page);
-  await expect(summary(page)).toBeFocused();
-  await expect(summary(page)).toContainText("Connected");
+  await expect(add(page)).toBeFocused();
+  await expect(summary(page)).toContainText("models");
   for (const width of [390, 1920, 3840]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
     await page.screenshot({
@@ -124,7 +135,8 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   const deterministic = models.getByRole("radio", { name: /deterministic/i });
   await deterministic.check();
   await expect(deterministic).toBeChecked();
-  await summary(page).click();
+  await page.keyboard.press("Escape");
+  await newSession(page);
   await expect(ask).toHaveText("Keep shared Ask draft");
   await expect(
     page.getByRole("button", { name: /Model: Default:/ }),
@@ -134,11 +146,8 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   await expect(
     page.getByText("local:first catalog session", { exact: true }),
   ).toBeVisible();
-  const a = await page.evaluate(() => localStorage.getItem("pispark-session"));
-  await page.goto("/#/providers");
-  await page
-    .getByRole("textbox", { name: "Search providers" })
-    .fill("Local auth");
+  const a = await shownSession(page);
+  await page.goto("/#/settings/providers");
   await expand(page);
   await modelsOf(page)
     .getByRole("radio", { name: /second/i })
@@ -153,9 +162,6 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   await expect(
     page.getByText("Second local model · Local auth fixture", { exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "Search providers" })
-    .fill("Local auth");
   await expand(page);
   await page
     .getByRole("button", { name: `Disconnect ${provider}`, exact: true })
@@ -167,14 +173,13 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
     })
     .click();
   await expect(
-    page.getByText(/Second local model.*unavailable, saved choice retained/),
+    page.getByText(/Second local model is unavailable; the saved choice is kept/),
   ).toBeVisible();
   expect(
     (await (await request.get(`/api/sessions/${a}`)).json()).model.id,
   ).toBe("deterministic");
-  expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([
-    "pispark-session",
-  ]);
+  // Browser storage holds nothing of the session: the address says which one is open.
+  expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
   expect(external).toEqual([]);
 });
 
@@ -182,7 +187,7 @@ test("ProviderConnection: native OAuth variants, safe links, Tab summary regress
   page,
 }) => {
   await openLocal(page);
-  const trigger = summary(page);
+  const trigger = add(page);
   await expand(page);
   const dialog = signIn(page);
   await dialog.getByRole("button", { name: /Local test OAuth/ }).click();
@@ -228,7 +233,7 @@ test("ProviderConnection: native OAuth variants, safe links, Tab summary regress
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
-  await expect(trigger).toContainText("Not set up");
+  await expect(summary(page)).toHaveCount(0);
 });
 
 for (const width of [1920, 3840, 390])
@@ -242,9 +247,10 @@ for (const width of [1920, 3840, 390])
       if (!new URL(r.url()).hostname.match(/^(127\.0\.0\.1|localhost)$/))
         external.push(r.url());
     });
-    await page.goto("/#/providers");
-    await expect(summary(page, "Anthropic")).toBeVisible();
-    await expect(page.getByRole("form", { name: "New session" })).toHaveCount(1);
+    await page.goto("/#/settings/providers");
+    await expect(yours(page)).toBeVisible();
+    // One message box, and only where a session starts or is replied to: none in Settings.
+    await expect(page.getByRole("form", { name: "New session" })).toHaveCount(0);
     await expect(
       page.getByText(/Design preview|simulator|simulated|Verified ·/),
     ).toHaveCount(0);
@@ -269,11 +275,11 @@ for (const width of [1920, 3840, 390])
       path: info.outputPath(`gate-dialog-${width}.png`),
     });
     await page.keyboard.press("Escape");
-    await expect(summary(page, "Anthropic")).toBeFocused();
-    await page
-      .getByRole("textbox", { name: "Search providers" })
-      .fill("no-such-provider");
+    await expect(add(page)).toBeFocused();
+    await add(page).click();
+    await page.getByRole("textbox", { name: "Search providers" }).fill("no-such-provider");
     await expect(page.getByText(/No matching providers/)).toBeVisible();
+    await page.keyboard.press("Escape");
     expect(external).toEqual([]);
   });
 
@@ -284,15 +290,13 @@ test("ProvidersPage: unavailable catalog retry and delayed dialog start cannot l
   await page.route("**/api/providers", (route) =>
     fail ? route.abort() : route.continue(),
   );
-  await page.goto("/#/providers");
+  await page.goto("/#/settings/providers");
   await expect(page.getByRole("alert")).toContainText(
     "Provider settings unavailable",
   );
   fail = false;
   await page.getByRole("button", { name: "Reload status" }).click();
-  await page
-    .getByRole("textbox", { name: "Search providers" })
-    .fill("Local auth");
+  await expect(page.getByRole("alert")).toHaveCount(0);
   let release!: () => void;
   const delayed = new Promise<void>((resolve) => {
     release = resolve;
@@ -371,9 +375,7 @@ test("shared model radios preserve native keyboard grouping, disabled options, d
     });
     await route.fulfill({ response, json: catalog });
   });
-  await page
-    .getByRole("button", { name: "Reload status", exact: true })
-    .click();
+  await page.reload();
   const trigger = summary(page);
   await expand(page);
   const dialog = modelsOf(page);

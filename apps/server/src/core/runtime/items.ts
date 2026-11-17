@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
-import type { AgentSession, SessionEntry, SessionProjection } from "@earendil-works/pi-coding-agent";
+import type { SessionEntry, SessionManager, SessionProjection } from "@earendil-works/pi-coding-agent";
 import type { ExtensionRendering } from "../extensions/extension-render.js";
 import { WOKEN_ENTRY } from "../../contract/wake-protocol.js";
 import { NOTICE_ENTRY, type Item, type ItemPart, type ItemsPage, type PartPage, type ToolProgress } from "../../contract/protocol.js";
@@ -119,6 +119,16 @@ function parts(content: unknown): ItemPart[] {
 }
 
 /** Structured details, bounded; the item says when they were cut. */
+/** When Pi recorded the message (epoch milliseconds); left out when it has no usable time. */
+function time(message: Raw): { at?: number } {
+  const at = message.timestamp;
+  return typeof at === "number" && Number.isFinite(at) && at > 0 ? { at: Math.round(at) } : {};
+}
+/** How long Pi measured it took: a model response from request to end, or a tool run. */
+function duration(message: Raw): { durationMs?: number } {
+  const ms = message.durationMs;
+  return typeof ms === "number" && Number.isFinite(ms) && ms >= 0 ? { durationMs: Math.round(ms) } : {};
+}
 function details(value: unknown): { details?: Json; clipped?: true } {
   if (value === undefined) return {};
   const flag = { clipped: false, left: DETAILS_BUDGET };
@@ -171,6 +181,14 @@ export const boundTail = (items: Item[]): Item[] => (size(items) > TAIL_BYTES ? 
 /** An item never outgrows what one frame can carry. */
 const fit = (item: Item): Item => (size(item) > ITEM_BYTES ? shrink(item) : item);
 
+/** What items are read from: Pi's running session, or only its transcript when the session is read-only. */
+export interface ItemSource {
+  readonly sessionManager: Pick<SessionManager, "getLeafId" | "getBranch" | "getEntry" | "buildSessionProjection">;
+  /** The agent's messages, persisted or not. */
+  readonly messages: readonly unknown[];
+  readonly state: { readonly streamingMessage?: unknown };
+}
+
 /**
  * Projects Pi's session into the session's items. Pi is the only store: history is read from its
  * entries, and the in-flight tail from the agent state that has not been persisted yet.
@@ -186,8 +204,9 @@ export class ItemProjector {
   private cache?: { leaf: string | null; projection: SessionProjection; starts: Map<string, number> };
 
   constructor(
-    private readonly session: AgentSession,
-    private readonly rendering: ExtensionRendering,
+    private readonly session: ItemSource,
+    /** The extensions' own renderers; none when the session is read-only. */
+    private readonly rendering?: ExtensionRendering,
     /** Whether an extension placed a component for a custom entry type. */
     private readonly entryView: (customType: string) => boolean = () => false,
   ) {}
@@ -227,12 +246,18 @@ export class ItemProjector {
   /** One Pi message as an item; `undefined` for messages the session does not show. */
   private message(message: Raw, id: string | undefined, pos: number | undefined, claim = false): Item | undefined {
     const role = message.role;
-    const base = { ...(id ? { id } : {}), key: this.key(message, id, claim), ...(pos === undefined ? {} : { pos }) };
-    const rendered = role === "toolResult" || role === "custom" ? this.rendering.message(message) : undefined;
+    const base = { ...(id ? { id } : {}), key: this.key(message, id, claim), ...(pos === undefined ? {} : { pos }), ...time(message) };
+    const rendered = role === "toolResult" || role === "custom" ? this.rendering?.message(message) : undefined;
     const extra = rendered ? { rendered } : {};
     if (role === "user") return { ...base, role, parts: parts(message.content) };
     if (role === "assistant")
-      return fit({ ...base, role, parts: parts(message.content), ...(message.stopReason ? { stopReason: label(message.stopReason) } : {}) });
+      return fit({
+        ...base,
+        role,
+        parts: parts(message.content),
+        ...(message.stopReason ? { stopReason: label(message.stopReason) } : {}),
+        ...duration(message),
+      });
     if (role === "toolResult")
       return fit({
         ...base,
@@ -241,7 +266,7 @@ export class ItemProjector {
         toolName: label(message.toolName),
         ...(opaque(message.toolCallId) ? { callId: opaque(message.toolCallId)! } : {}),
         isError: message.isError === true,
-        ...(typeof message.durationMs === "number" ? { durationMs: message.durationMs } : {}),
+        ...duration(message),
         ...details(message.details),
         ...extra,
       });
@@ -268,7 +293,7 @@ export class ItemProjector {
         return (
           entry.customType === NOTICE_ENTRY ||
           entry.customType === WOKEN_ENTRY ||
-          !!this.session.extensionRunner.getEntryRenderer(entry.customType) ||
+          !!this.rendering?.hasEntry(entry.customType) ||
           this.entryView(entry.customType)
         );
       default:
@@ -290,7 +315,7 @@ export class ItemProjector {
       case "custom": {
         if (entry.customType === NOTICE_ENTRY || entry.customType === WOKEN_ENTRY)
           return { id: entry.id, key: entry.id, role: "entry", customType: entry.customType, parts: [], ...details(entry.data) };
-        const body = this.rendering.entry(entry);
+        const body = this.rendering?.entry(entry);
         const view = this.entryView(entry.customType);
         if (!body && !view) return undefined;
         return {

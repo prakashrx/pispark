@@ -1,10 +1,8 @@
 <script lang="ts">
   import { focusMain } from "../../lib/focus";
-  import ConversationView from "./ConversationView.svelte";
+  import Conversation from "./Conversation.svelte";
   import ContributionPoint from "./ContributionPoint.svelte";
-  import SessionHeader from "./SessionHeader.svelte";
   import type { Session } from "./session.svelte";
-  import { provideSession } from "./session-client.svelte";
 
   /**
    * Hosts one session. It gives the session to whatever draws it and shows the view the person
@@ -13,8 +11,6 @@
    * anew for each session.
    */
   let { session }: { session: Session } = $props();
-  // svelte-ignore state_referenced_locally
-  provideSession(session);
   const view = $derived(session.views.find((offer) => offer.key === session.shownView));
 
   // Another view draws the area again, so focus that was inside it would fall to the page. It
@@ -37,12 +33,11 @@
 
 {#if view}
   <!-- An extension's view has the whole area under the session's header. -->
-  <main id="workspace" aria-label={view.title} class="flex-1 min-h-0 overflow-hidden flex flex-col items-center">
-    <div class="w-full max-w-3xl flex flex-col gap-8 px-6 pt-8 pb-5"><SessionHeader /></div>
-    <div class="session-view"><ContributionPoint point="session.view" only={view.key} /></div>
-  </main>
+  <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
+    <div class="session-view" aria-label={view.title} role="region"><ContributionPoint point="session.view" only={view.key} /></div>
+  </div>
 {:else}
-  <ConversationView />
+  <Conversation />
 {/if}
 
 <style>

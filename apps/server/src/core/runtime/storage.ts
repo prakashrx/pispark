@@ -59,6 +59,8 @@ export class SessionStorage {
   readonly root: string;
   private catalog = new Map<string, SessionMetadata>();
   private rescanAt = 0;
+  /** When each session last did something (ms), from its transcript or its running session; cleared on rescan. */
+  private readonly activity = new Map<string, number>();
   unreadable = 0;
   constructor(root: string) {
     this.root = resolve(root);
@@ -157,6 +159,7 @@ export class SessionStorage {
           }
         }
         this.catalog = entries;
+        this.activity.clear();
         this.unreadable = unreadable;
         // Local writes update the cache immediately; pick up outside edits every 30s.
         this.rescanAt = Date.now() + 30_000;
@@ -184,6 +187,7 @@ export class SessionStorage {
       throw new RuntimeError("storage");
     }
     this.catalog.delete(id);
+    this.activity.delete(id);
   }
   /** Remove a session folder that never got a session.json (a failed first start). */
   discardUnpublished(id: string): void {
@@ -197,6 +201,28 @@ export class SessionStorage {
     if (!existsSync(dir)) return undefined;
     const file = readdirSync(dir).find((name) => name.endsWith(`_${id}.jsonl`));
     return file ? join(dir, file) : undefined;
+  }
+  /**
+   * When the session last did something: Pi writes every entry to the transcript as it happens, so its
+   * last write; when it started if it has no history. Read once, then kept until the next rescan.
+   */
+  lastActivity(metadata: SessionMetadata): string {
+    let at = this.activity.get(metadata.id);
+    if (at === undefined) {
+      const path = this.transcript(metadata.id);
+      try {
+        at = path ? statSync(path).mtimeMs : 0;
+      } catch {
+        at = 0;
+      }
+      this.activity.set(metadata.id, at);
+    }
+    const created = Date.parse(metadata.createdAt);
+    return at > created ? new Date(at).toISOString() : metadata.createdAt;
+  }
+  /** A running session added to its history just now. */
+  active(id: string): void {
+    this.activity.set(id, Date.now());
   }
   hasHistory(id: string): boolean {
     return this.transcript(id) !== undefined;

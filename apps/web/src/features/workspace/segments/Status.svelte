@@ -12,7 +12,7 @@
 <p class="status-line" role="note" data-purpose="status-line">
   <Icon name={failed ? "alert" : "check"} class="h-3.5 w-3.5 shrink-0" />
   <span
-    >{#if known}<button type="button" class="link" onclick={() => client.select(segment.session!)}>{segment.title}</button
+    >{#if known}<button type="button" class="link" onclick={() => client.open(segment.session!)}>{segment.title}</button
       >{:else}{segment.title}{/if}
     {segment.how}</span
   >

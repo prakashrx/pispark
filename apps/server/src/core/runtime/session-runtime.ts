@@ -5,6 +5,7 @@ import { isAbsolute, join, relative } from "node:path";
 import type { Provider } from "@earendil-works/pi-ai";
 import type { HostSettings, ItemsPage, LiveDoc, PartPage, SessionDoc } from "../../contract/protocol.js";
 import type { SessionAgent, AgentSummary, AgentTarget } from "../../contract/agent-protocol.js";
+import type { ModelChoice } from "../../contract/provider-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { homePaths } from "../home.js";
 import { AgentStore } from "../agents/store.js";
@@ -260,7 +261,7 @@ export class SessionRuntime {
   get unreadableSessions(): number {
     return this.storage.unreadable;
   }
-  /** Recent distinct working folders, newest first, for Ask's folder picker. An app's own folder is its own. */
+  /** Recent distinct working folders, newest first, for the New session folder picker. An app's own folder is its own. */
   recentFolders(limit = 8): string[] {
     const folders: string[] = [];
     let apps = this.appsDir;
@@ -294,6 +295,7 @@ export class SessionRuntime {
       id: metadata.id,
       folder: metadata.cwd,
       createdAt: metadata.createdAt,
+      lastActivity: this.storage.lastActivity(metadata),
       hasHistory: session ? session.hasHistory : this.storage.hasHistory(metadata.id),
       ...(metadata.title ? { title: metadata.title } : {}),
       status: session?.status ?? "unloaded",
@@ -306,6 +308,7 @@ export class SessionRuntime {
       ...(metadata.schedule ? { schedule: { ...metadata.schedule } } : {}),
       ...(metadata.held ? { held: { ...metadata.held } } : {}),
       ...(this.processes?.runningIn(metadata.id) ? { processes: this.processes.runningIn(metadata.id) } : {}),
+      ...(session?.readOnly ? { readOnly: session.readOnly } : {}),
     };
   }
   private target(metadata: SessionMetadata): AgentTarget {
@@ -323,7 +326,7 @@ export class SessionRuntime {
       session.checkSetup(fingerprint);
     }
   }
-  /** A session keeps its model. A new session: Ask's choice, else the agent's, else the default. */
+  /** A session keeps its model. A new session: the choice made when starting it, else the agent's, else the default. */
   private async model(metadata: SessionMetadata, setup: Setup) {
     if (this.configuration.fixedModel) {
       const provider: Provider = this.configuration.fixedModel.provider();
@@ -452,16 +455,27 @@ export class SessionRuntime {
     else if (session?.loading) {
       await session.loading.catch(() => {});
       if (this.live.has(id)) return;
-    } else if (session) return;
+    } else if (session && !(session.readOnly && session.settled)) return;
+    // A read-only session gets a full open again: what it lacked may be back.
+    else if (session) await this.stop(id);
     await this.open(id);
   }
-  /** Restart a session's Pi session from its transcript, picking up agent changes. */
-  async reload(id: string): Promise<SessionDoc> {
+  /**
+   * Restart a session's Pi session from its transcript, picking up agent changes. With a model, the
+   * session runs that one from now on (how a read-only session whose model is gone goes on).
+   */
+  async reload(id: string, model?: ModelChoice): Promise<SessionDoc> {
     validateId(id);
+    if (model !== undefined && !validChoice(model)) throw new RuntimeError("invalid-input");
     const session = this.live.get(id);
     if (session) {
-      if (session.loading || (session.status !== "idle" && session.status !== "error")) throw new RuntimeError("busy");
+      if (session.loading || !["idle", "error", "read-only"].includes(session.status)) throw new RuntimeError("busy");
       await this.stop(id);
+    }
+    if (model) {
+      const metadata = this.storage.read(id);
+      if (metadata.archived) throw new RuntimeError("not-found");
+      this.storage.write({ ...metadata, model: { provider: model.provider, id: model.id } });
     }
     return this.open(id);
   }

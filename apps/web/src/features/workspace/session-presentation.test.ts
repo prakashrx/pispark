@@ -1,18 +1,22 @@
 import { expect, test } from "vitest";
 import {
   commandError,
+  dateGroups,
+  elapsed,
   commandUncertainty,
   folderName,
-  foremostStatus,
+  foremostState,
   goesByApp,
   sessionName,
   sessionStarted,
+  sessionState,
   sessionStatus,
 } from "./session-presentation";
 import type { SessionInfo } from "../../../../server/src/contract/protocol";
 const session: SessionInfo = {
   id: "private-uuid",
   createdAt: "2026-01-02T03:04:00Z",
+  lastActivity: "2026-01-02T03:04:00Z",
   folder: "/home/me/project",
   agent: { id: "default", name: "Default", layered: false },
   status: "idle",
@@ -47,19 +51,20 @@ test("normal status is quiet and cancellation/agent errors remain distinct", () 
   for (const status of ["idle", "unloaded"] as const)
     expect(sessionStatus({ status, interrupted: false })).toBe("");
   expect(sessionStatus()).toBe("");
-  expect(sessionStatus({ status: "running", interrupted: false })).toBe("Working…");
-  expect(sessionStatus({ status: "cancelling", interrupted: false })).toBe("Stopping…");
-  expect(sessionStatus({ status: "starting", interrupted: false })).toBe("Opening…");
-  expect(sessionStatus({ status: "error", interrupted: false })).toBe("Needs attention");
-  expect(sessionStatus({ status: "unloaded", interrupted: true })).toBe("Needs attention");
+  expect(sessionStatus({ status: "running", interrupted: false })).toBe("Working");
+  expect(sessionStatus({ status: "cancelling", interrupted: false })).toBe("Stopping");
+  expect(sessionStatus({ status: "starting", interrupted: false })).toBe("Opening");
+  expect(sessionStatus({ status: "error", interrupted: false })).toBe("Failed");
+  expect(sessionStatus({ status: "unloaded", interrupted: true })).toBe("Failed");
   // A question an extension asked comes first while the run waits on it.
-  expect(sessionStatus({ status: "running", interrupted: false, waiting: true })).toBe("Waiting for you");
+  expect(sessionState({ status: "running", interrupted: false, waiting: true })).toBe("needs-you");
+  expect(sessionStatus({ status: "running", interrupted: false, waiting: true })).toBe("Needs you");
   expect(sessionStatus({ status: "idle", interrupted: false, waiting: true })).toBe("");
   expect(sessionStatus({ status: "idle", interrupted: false, queued: true })).toBe("Queued");
-  // Of several, the one a person most needs to see.
-  expect(foremostStatus(["", "Working…", "Needs attention"])).toBe("Needs attention");
-  expect(foremostStatus(["Queued", "Waiting for you"])).toBe("Waiting for you");
-  expect(foremostStatus(["", ""])).toBe("");
+  // Of several, the one a person most needs to see: Needs you, then Failed.
+  expect(foremostState(["", "working", "failed"])).toBe("failed");
+  expect(foremostState(["queued", "needs-you", "failed"])).toBe("needs-you");
+  expect(foremostState(["", ""])).toBe("");
 });
 test("a refused command is said in words; an unknown code is still named", () => {
   expect(commandError("folder")).toBe("That working folder doesn’t exist on the server.");
@@ -93,4 +98,32 @@ test("folder labels use the last path segment on any platform", () => {
   expect(folderName("D:\\dev\\pispark")).toBe("pispark");
   expect(folderName("/home/me/project/")).toBe("project");
   expect(folderName("C:\\")).toBe("C:");
+});
+
+test("sessions group by the day they last did something, newest groups first, empty groups left out", () => {
+  const now = new Date(2026, 10, 17, 15, 0);
+  const at = (days: number) => ({ lastActivity: new Date(2026, 10, 17 - days, 9, 0).toISOString() });
+  const groups = dateGroups([at(0), at(1), at(3), at(30), at(0)], now);
+  expect(groups.map((group) => [group.label, group.items.length])).toEqual([
+    ["Today", 2],
+    ["Yesterday", 1],
+    ["This week", 1],
+    ["Older", 1],
+  ]);
+  expect(dateGroups([at(30)], now).map((group) => group.label)).toEqual(["Older"]);
+});
+
+test("durations read the way people say them", () => {
+  expect([0, 999, 8_000, 59_999, 60_000, 102_000, 3_599_000, 3_600_000, 7_500_000, -5].map(elapsed)).toEqual([
+    "0s",
+    "0s",
+    "8s",
+    "59s",
+    "1m 00s",
+    "1m 42s",
+    "59m 59s",
+    "1h 0m",
+    "2h 5m",
+    "0s",
+  ]);
 });

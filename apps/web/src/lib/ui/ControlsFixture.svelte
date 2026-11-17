@@ -114,6 +114,7 @@
       title="Test dialog"
       help="Dialog help"
       initialFocus="#dialog-name"
+      dismiss
       {busy}
       onclose={() => (open = false)}
     >

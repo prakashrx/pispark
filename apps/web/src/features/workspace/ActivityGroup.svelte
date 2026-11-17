@@ -12,6 +12,7 @@
   let openCall = $state<string>();
 
   const failed = $derived(calls.filter((call) => call.status === "error").length);
+  const blocked = $derived(calls.filter((call) => call.status === "blocked"));
   const unfinished = $derived(calls.some((call) => call.status === "unfinished"));
   const label = $derived.by(() => {
     if (live) {
@@ -20,8 +21,12 @@
       const words = describeCall(current);
       return `${words.doing}${words.object ? ` ${words.object}` : ""}…`;
     }
-    const summary = summarizeCalls(calls);
-    return [summary, failed ? `${failed} failed` : "", unfinished ? "didn’t finish" : ""].filter(Boolean).join(" · ");
+    // A call an extension blocked never ran: it is said as blocked, not counted with what ran.
+    const ran = calls.filter((call) => call.status !== "blocked");
+    const stopped =
+      blocked.length === 1 ? `Blocked ${describeCall(blocked[0]!).object || blocked[0]!.name}` : blocked.length ? `${blocked.length} blocked` : "";
+    const summary = ran.length ? summarizeCalls(ran) : "";
+    return [summary, stopped, failed ? `${failed} failed` : "", unfinished ? "didn’t finish" : ""].filter(Boolean).join(" · ");
   });
   // While a call runs, the end of what it has output so far shows under the line.
   const running = $derived(live ? calls.findLast((call) => call.status === "running" && call.progress?.output) : undefined);
@@ -37,12 +42,12 @@
   <button type="button" class="activity-toggle" aria-expanded={open} onclick={() => (open = !open)}>
     {#if live}<span class="activity-spinner" aria-hidden="true"></span>{:else}
       <svg class="activity-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 16.8V20h3.2l5.3-5.3a4 4 0 0 0 5.2-5.3l-2.5 2.5-2.3-.6-.6-2.3 2.4-2.6Z" />
+        <path stroke-linecap="round" stroke-linejoin="round" d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14" />
       </svg>
     {/if}
     <span class="activity-label">{label}</span>
     <svg class="activity-chevron" class:open viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-      <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
+      <path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6" />
     </svg>
   </button>
   {#if lastLines}<pre class="activity-progress">{lastLines}</pre>{/if}
@@ -59,7 +64,7 @@
           >
             <span class="call-dot" aria-hidden="true"></span>
             <span class="call-label">{rowLabel(call)}</span>
-            {#if call.status === "error"}<span class="call-state">failed</span>{:else if call.status === "unfinished"}<span class="call-state">didn’t finish</span>{/if}
+            {#if call.status === "error"}<span class="call-state">failed</span>{:else if call.status === "blocked"}<span class="call-state">blocked</span>{:else if call.status === "unfinished"}<span class="call-state">didn’t finish</span>{/if}
           </button>
           {#if openCall === call.id}
             {@const Detail = resolveToolView(call.name).detail ?? ToolDetail}
@@ -126,7 +131,7 @@
     transition: transform 0.15s;
   }
   .activity-chevron.open {
-    transform: rotate(180deg);
+    transform: rotate(90deg);
   }
   .activity-progress {
     align-self: stretch;
@@ -166,6 +171,9 @@
   }
   [data-status="error"] .call-dot {
     background: var(--danger);
+  }
+  [data-status="blocked"] .call-dot {
+    background: var(--warning);
   }
   [data-status="unfinished"] .call-dot {
     background: var(--subtle-foreground);

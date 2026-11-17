@@ -2,6 +2,7 @@ import { mount } from 'svelte';
 import App from './App.svelte';
 import PairPage from './features/remote/PairPage.svelte';
 import type { RemoteSelf } from '../../server/src/contract/remote-protocol';
+import '@fontsource-variable/inter';
 import './lib/theme/themes.css';
 import './app.css';
 import { appearance } from './lib/theme/appearance.svelte';

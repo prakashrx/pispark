@@ -1,7 +1,8 @@
 import { getContext, setContext } from "svelte";
 import type { Catalog, HostSettings, SessionDoc, SessionInfo } from "../../../../server/src/contract/protocol";
 import type { ModelChoice } from "../../../../server/src/contract/provider-protocol";
-import type { CommandUncertaintyKind } from "./session-presentation";
+import { sessionName, sessionState, type CommandUncertaintyKind } from "./session-presentation";
+import { attention } from "../../shell/attention.svelte";
 import { forgetViewChoice, Session } from "./session.svelte";
 import { CommandFailed, CommandUncertainty, Transport } from "./transport";
 import { Attachments } from "./attachments.svelte";
@@ -11,6 +12,7 @@ import { ScheduleClient } from "../schedules/schedule-client.svelte";
 import { ProcessClient, RoutineClient } from "../background/background-client.svelte";
 import { HostClient } from "../about/host-client.svelte";
 import { RemoteClient } from "../remote/remote-client.svelte";
+import { go } from "../../routes";
 const context = Symbol("session-client");
 
 /** How many sessions stay in memory as they were last shown, so opening one again shows it at once. */
@@ -32,13 +34,21 @@ export class SessionClient {
   /** How many sessions are archived, and which, once the Archived list has been opened. */
   archivedCount = $state(0);
   archived = $state<SessionInfo[]>();
-  /** The open session. */
+  /** The session on screen, as the address names it. */
   current = $state<Session>();
   get selected(): string {
     return this.current?.id ?? "";
   }
   /** The server as a whole: "Loading", "Connected" or "Disconnected". */
   private backend = $state("Loading");
+  /** The list is read again every few seconds, so a lost server is being retried. */
+  retrying = $state(false);
+  /** The sessions that needed you at the last read, to nudge only when one starts needing you. */
+  private needing?: Set<string>;
+  /** The server can't be reached: the app-wide banner says so, once, for every screen. */
+  get unreachable(): boolean {
+    return this.backend === "Disconnected";
+  }
   /** What the shell shows: the open session's connection once the server is reached. */
   get connection(): string {
     return this.backend === "Connected" && this.current ? this.current.connection : this.backend;
@@ -63,6 +73,11 @@ export class SessionClient {
   /** Sessions that have been opened, least recently shown first. */
   private readonly opened = new Map<string, Session>();
   private disposed = false;
+  /** Settles once the first session list has been read (or couldn't be): a session's row says whether the server must load it. */
+  private listedDone!: () => void;
+  private readonly listed = new Promise<void>((resolve) => (this.listedDone = resolve));
+  /** The latest select or leave; an earlier one that is still waiting gives way. */
+  private choosing = 0;
   private refreshTimer?: ReturnType<typeof setInterval>;
   private refreshing = false;
   private mounting = false;
@@ -100,23 +115,11 @@ export class SessionClient {
         .catch(() => {});
       this.catalogLoading = false;
       await this.refresh();
+      this.listedDone();
       this.backend = "Connected";
-      this.refreshTimer ??= setInterval(() => {
-        if (this.refreshing || this.disposed) return;
-        this.refreshing = true;
-        void this.refresh()
-          .catch(() => {})
-          .finally(() => {
-            this.refreshing = false;
-          });
-      }, 5000);
-      let stored: string | null = null;
-      try {
-        stored = localStorage.getItem("pispark-session");
-      } catch { /* Selection is optional when browser storage is unavailable. */ }
-      const session = this.sessions.find((s) => s.id === stored) ?? this.sessions.at(-1);
-      if (session) await this.select(session.id);
+      this.refreshTimer ??= setInterval(() => void this.poll(), 5000);
     } catch {
+      this.listedDone();
       if (!this.disposed) {
         this.backend = "Disconnected";
         this.error = "Backend unavailable. Drafts have not been sent.";
@@ -137,6 +140,7 @@ export class SessionClient {
     }>("/api/sessions");
     this.sessions = result.sessions;
     this.archivedCount = result.archived ?? 0;
+    this.noticeNeeds(result.sessions);
     void this.schedules.refresh().catch(() => {});
     void this.routines.refresh().catch(() => {});
     void this.processes.refresh().catch(() => {});
@@ -183,13 +187,25 @@ export class SessionClient {
   }
   /** Opens a session: it shows at once as it was last seen, and the live stream brings it up to date. */
   async select(id: string) {
+    const choice = ++this.choosing;
+    await this.listed;
+    if (choice !== this.choosing || this.disposed) return;
     const session = this.session(id);
-    if (this.current !== session) this.current?.hide();
+    if (attention.nudge?.id === id) attention.dismissNudge();
+    if (this.current === session) return;
+    this.current?.hide();
     this.current = session;
-    try {
-      localStorage.setItem("pispark-session", id);
-    } catch { /* In-memory selection still works. */ }
     await session.show();
+  }
+  /** Goes to a session's screen. */
+  open(id: string) {
+    go({ name: "session", id });
+  }
+  /** No session is on screen: stop following the one that was. It shows at once when opened again. */
+  leave() {
+    this.choosing++;
+    this.current?.hide();
+    this.current = undefined;
   }
   /** Keep the session list's row in step with what the open session reports. */
   private track(id: string, session: SessionDoc) {
@@ -215,13 +231,43 @@ export class SessionClient {
       body: JSON.stringify(settings),
     });
   }
-  reconnect() {
-    if (this.current) void this.current.reconnect();
-    else void this.mount();
+  /** Reads the list again; a failure means the server can't be reached (unless an update is restarting it). */
+  private async poll() {
+    if (this.refreshing || this.disposed) return;
+    this.refreshing = true;
+    try {
+      await this.refresh();
+      this.backend = "Connected";
+      this.retrying = false;
+    } catch {
+      if (!this.host.restarting) {
+        this.backend = "Disconnected";
+        this.retrying = true;
+      }
+    } finally {
+      this.refreshing = false;
+    }
   }
-  /** Starts a new session with a first message, in `folder` or, without one, in its project agent's. */
-  /** Files added to Ask's draft. They wait in the browser: the session they belong to starts on Send. */
+  reconnect() {
+    if (this.refreshTimer) void this.poll();
+    if (this.current) void this.current.reconnect();
+    else if (!this.refreshTimer) void this.mount();
+  }
+  /** New session's draft and choices, kept while the person looks elsewhere. */
+  askDraft = $state("");
+  /** Counts edits to the draft, so a start clears only the draft it sent, not a newer edit. */
+  private askRevision = 0;
+  editAskDraft(text: string) {
+    this.askRevision++;
+    this.askDraft = text;
+  }
+  /** The working folder; empty until the catalog names a default. */
+  askFolder = $state("");
+  /** The model as `{ provider, id }` JSON; empty for the default model. */
+  askModel = $state("");
+  /** Files added to the new session's draft. They wait in the browser: the session starts on Send. */
   readonly askAttachments = new Attachments();
+  /** Starts a new session with a first message, in `folder` or, without one, in its project agent's. */
   async ask(
     text: string,
     folder: string | undefined,
@@ -237,6 +283,7 @@ export class SessionClient {
     this.asking = true;
     this.error = "";
     this.errorKind = undefined;
+    const revision = this.askRevision;
     let id: string | undefined;
     try {
       const created = await this.transport.run({
@@ -269,11 +316,15 @@ export class SessionClient {
       void this.transport.settled(receipt).catch((error) => {
         if (!this.disposed) session.fail(error);
       });
-      window.location.hash = "/workspace";
+      if (revision === this.askRevision) this.askDraft = "";
+      go({ name: "session", id });
       return true;
     } catch (error) {
-      if (id) this.session(id).fail(error);
-      else {
+      // The session exists: show it with its failure. The draft stays on New session.
+      if (id) {
+        this.session(id).fail(error);
+        go({ name: "session", id });
+      } else {
         this.fail(error);
         this.error = `New session: ${this.error}`;
       }
@@ -296,7 +347,7 @@ export class SessionClient {
    */
   async openApp(agent: string, fresh = false): Promise<void> {
     const newest = fresh ? undefined : this.appSessions(agent)[0];
-    if (newest) return this.select(newest.id);
+    if (newest) return go({ name: "session", id: newest.id });
     if (this.busy) return;
     this.asking = true;
     this.error = "";
@@ -304,7 +355,7 @@ export class SessionClient {
     try {
       const created = await this.transport.run({ type: "create", agent });
       await this.refresh();
-      await this.select(created.sessionId!);
+      go({ name: "session", id: created.sessionId! });
     } catch (error) {
       this.fail(error);
       this.error = `New session: ${this.error}`;
@@ -317,9 +368,24 @@ export class SessionClient {
     const result = await this.transport.json<{ sessions: SessionInfo[] }>("/api/sessions?archived");
     this.archived = result.sessions.reverse();
   }
-  /** Puts a session away: it unloads and leaves the list. If it was open, no session is. */
-  archive(id: string): Promise<boolean> {
-    return this.manage("archive", id);
+  /** Puts a session away: it unloads and leaves the list. If it was open, no session is. Undo restores it. */
+  async archive(id: string): Promise<boolean> {
+    const row = this.sessions.find((session) => session.id === id);
+    const done = await this.manage("archive", id);
+    if (done) attention.say(`Archived “${row ? sessionName(row) : "the session"}”`, { label: "Undo", run: () => void this.restore(id) });
+    return done;
+  }
+  /** A session that starts needing you while you are elsewhere gets a nudge; the first read only notes them. */
+  private noticeNeeds(sessions: SessionInfo[]) {
+    const now = new Set(sessions.filter((session) => sessionState(session) === "needs-you").map((session) => session.id));
+    if (this.needing)
+      for (const id of now) {
+        if (this.needing.has(id) || id === this.current?.id) continue;
+        const row = sessions.find((session) => session.id === id)!;
+        attention.needsYou(id, sessionName(row), row.agent.name);
+      }
+    this.needing = now;
+    if (attention.nudge && !now.has(attention.nudge.id)) attention.dismissNudge();
   }
   /** Stops a session's run, such as one this session started, without opening it. */
   async stop(id: string): Promise<boolean> {
@@ -370,11 +436,9 @@ export class SessionClient {
       return false;
     }
     if (type !== "restore") {
-      if (open === this.current) {
+      if (open && open === this.current) {
         this.current = undefined;
-        try {
-          localStorage.removeItem("pispark-session");
-        } catch { /* Nothing was kept. */ }
+        go({ name: "home" });
       }
       this.opened.delete(id);
     }

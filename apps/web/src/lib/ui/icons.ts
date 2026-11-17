@@ -1,5 +1,25 @@
 // SVG geometry from the supplied PiSpark designs; no external icon runtime.
 export const icons = {
+  /** Close a panel. */
+  close: [{ tag: "path", attrs: { d: "M6 6l12 12M18 6L6 18", "stroke-linecap": "round", "stroke-width": "1.8" } }],
+  /** The side panel (a session's Details). */
+  panel: [
+    { tag: "rect", attrs: { x: "3.5", y: "4.5", width: "17", height: "15", rx: "2", "stroke-width": "1.6" } },
+    { tag: "path", attrs: { d: "M14.5 4.5v15", "stroke-width": "1.6" } },
+  ],
+  /** Give a panel the whole screen, or show something in full. */
+  expand: [{ tag: "path", attrs: { d: "M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7", "stroke-linecap": "round", "stroke-linejoin": "round", "stroke-width": "1.7" } }],
+  stop: [{ tag: "rect", attrs: { x: "7", y: "7", width: "10", height: "10", rx: "2", fill: "currentColor", stroke: "none" } }],
+  menu: [
+    {
+      tag: "path",
+      attrs: {
+        d: "M4 7h16M4 12h16M4 17h16",
+        "stroke-linecap": "round",
+        "stroke-width": "1.8",
+      },
+    },
+  ],
   collapse: [
     {
       tag: "path",

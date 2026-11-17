@@ -1,3 +1,4 @@
+import { newSession } from "./ask";
 import { expect, type Page } from "@playwright/test";
 import { hostedTest } from "./isolated-host";
 import { openAgent } from "./agent-journey";
@@ -12,7 +13,7 @@ const started = (page: Page) => apps(page).getByRole("link", { name: /^Started /
 
 fresh("an app is opened from the sidebar on its home view, and its sessions are listed under it", async ({ page }) => {
   await page.goto("/");
-  const app = apps(page).getByRole("link", { name: "Log app", exact: true });
+  const app = apps(page).getByRole("button", { name: "Log app", exact: true });
   await expect(app).toBeVisible();
   // It has no session yet, so there is nothing to unfold.
   await expect(toggle(page)).toHaveCount(0);
@@ -20,7 +21,7 @@ fresh("an app is opened from the sidebar on its home view, and its sessions are 
   // By keyboard. No message is sent: the session is made and shows the app's home view.
   await app.focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("main", { name: "Log" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Log", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "Log app", exact: true })).toBeVisible();
   const show = page.getByRole("radiogroup", { name: "Show" });
   await expect(show.getByRole("radio", { name: "Log" })).toBeChecked();
@@ -33,15 +34,15 @@ fresh("an app is opened from the sidebar on its home view, and its sessions are 
   // Any session shows as a conversation, and that choice is kept for it.
   await show.getByRole("radio", { name: "Log" }).focus();
   await page.keyboard.press("ArrowLeft");
-  await expect(page.getByRole("main", { name: "Session conversation" })).toBeVisible();
+  await expect(page.getByRole("main")).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("main", { name: "Session conversation" })).toBeVisible();
+  await expect(page.getByRole("main")).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "Log app", exact: true })).toBeVisible();
 
   // New session makes a second one, which opens on the home view again.
   await apps(page).getByRole("button", { name: "New session" }).click();
   await expect(started(page)).toHaveCount(2);
-  await expect(page.getByRole("main", { name: "Log" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Log", exact: true })).toBeVisible();
   // Opening the app goes to its newest session: nothing new is made.
   await app.click();
   await expect(started(page)).toHaveCount(2);
@@ -54,7 +55,9 @@ fresh("an app is opened from the sidebar on its home view, and its sessions are 
   await expect(started(page)).toHaveCount(0);
   await expect(app).toHaveAttribute("aria-current", "page");
 
+  // On a phone the list is its own screen.
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
   await toggle(page).click();
   await expect(started(page)).toHaveCount(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -68,6 +71,7 @@ fresh("sessions stay in the session list; an app started from Ask is listed unde
   await expect(sessions(page).getByRole("link", { name: /an ordinary session/ })).toBeVisible();
   await expect(toggle(page)).toHaveCount(0);
 
+  await newSession(page);
   await page.getByRole("button", { name: "Agent: Default" }).click();
   await page.getByRole("option", { name: "Log app", exact: true }).click();
   await ask.fill("asked of the app");
@@ -76,11 +80,11 @@ fresh("sessions stay in the session list; an app started from Ask is listed unde
   await expect(row).toBeVisible();
   await expect(row).toHaveAttribute("aria-current", "page");
   await expect(sessions(page).getByRole("link", { name: /asked of the app/ })).toHaveCount(0);
-  await expect(page.getByRole("main", { name: "Log" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Log", exact: true })).toBeVisible();
 });
 
 fresh("the editor makes an agent an app; with no view of that key, the app opens on the conversation", async ({ page }) => {
-  await page.goto("/#/agent");
+  await page.goto("/#/agents");
   await openAgent(page, "Review");
   const form = page.getByRole("form", { name: "Home view" });
   const key = form.getByRole("textbox", { name: "Home view" });
@@ -93,9 +97,9 @@ fresh("the editor makes an agent an app; with no view of that key, the app opens
   await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
 
   await page.goto("/");
-  await apps(page).getByRole("link", { name: "Review", exact: true }).click();
+  await apps(page).getByRole("button", { name: "Review", exact: true }).click();
   // Review has no extension that offers "board": nothing is made up, the conversation shows.
-  await expect(page.getByRole("main", { name: "Session conversation" })).toBeVisible();
+  await expect(page.getByRole("main")).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "Review", exact: true })).toBeVisible();
   await expect(page.getByRole("radiogroup", { name: "Show" })).toHaveCount(0);
 });

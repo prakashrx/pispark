@@ -13,3 +13,13 @@ export async function useFolder(page: Page, folder = otherFolder) {
   await page.getByRole("textbox", { name: "Another folder" }).fill(folder);
   await page.keyboard.press("Enter");
 }
+
+/** The id of the session on screen, from the address (`#/s/<id>`), or null on another screen. */
+export const shownSession = (page: Page) =>
+  page.evaluate(() => decodeURIComponent(/^#\/s\/([^/]+)/.exec(location.hash)?.[1] ?? "") || null);
+
+/** Goes to the New session screen the way a person would: the sidebar's New session. */
+export async function newSession(page: Page) {
+  await page.getByRole("link", { name: "New session", exact: true }).first().click();
+  await page.getByRole("textbox", { name: "Ask anything", exact: true }).waitFor();
+}

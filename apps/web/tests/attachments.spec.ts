@@ -42,7 +42,6 @@ test("attachments sit in the text where they were added, go with the message, an
   const sent = user.parts.find((part: { type: string }) => part.type === "text").text as string;
   expect(sent).toMatch(/^See <file name="[^"]*[\\/]sessions[\\/][\w-]+[\\/]files[\\/]shot\.png"><\/file>\s*<file name="[^"]*notes\.txt"><\/file>\s*and fix it$/);
   expect(user.parts.filter((part: { type: string }) => part.type === "image")).toHaveLength(1);
-  await expect(ask).toHaveText("");
 
   // A reply uploads at once; Backspace removes a chip like one character.
   const reply = page.getByRole("textbox", { name: "Reply to session" });

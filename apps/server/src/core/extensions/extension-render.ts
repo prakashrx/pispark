@@ -33,6 +33,10 @@ export class ExtensionRendering {
     };
   }
 
+  /** Whether an extension draws custom entries of this type. */
+  hasEntry(customType: string): boolean {
+    return !!this.session.extensionRunner.getEntryRenderer(customType);
+  }
   /** A tool result or custom message, when an extension renders it. */
   message(message: object): Rendered | undefined {
     if (this.cache.has(message)) return this.cache.get(message);

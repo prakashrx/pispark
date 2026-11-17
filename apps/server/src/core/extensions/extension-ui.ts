@@ -23,11 +23,11 @@ interface Widget {
 }
 type Notice = ExtensionView["notices"][number];
 
-/** What a question's answer is called in the line the session keeps: the choice, yes or no, or that it was answered. */
+/** What a question's answer is called in the line the session keeps, in plain words: what you said or chose. */
 function receipt(dialog: ExtensionDialog, answer: string | boolean | null): string {
   if (answer === null) return "skipped";
-  if (dialog.kind === "confirm") return answer === true ? "yes" : "no";
-  if (dialog.kind === "select") return plain(String(answer), 120);
+  if (dialog.kind === "confirm") return answer === true ? "you said yes" : "you said no";
+  if (dialog.kind === "select") return `you chose ${plain(String(answer), 120)}`;
   return "answered";
 }
 type Question = ExtensionDialog extends infer D
@@ -333,7 +333,9 @@ export class ExtensionUI {
     pending.settle(answer ?? undefined);
     // The session keeps a line of what was asked and answered, as terminal scrollback would. What a
     // person typed is not echoed: it may be a name, a path or something private.
-    this.notice(`${plain(dialog.title, 120).split(String.fromCharCode(10))[0]} → ${receipt(dialog, answer)}`, "info");
+    // Its title's first line without the colon that led into the question ("Dangerous command:").
+    const asked = plain(dialog.title, 120).split(String.fromCharCode(10))[0]!.replace(/\s*:\s*$/, "");
+    this.notice(`${asked} — ${receipt(dialog, answer)}`, "info");
     this.changed();
   }
 

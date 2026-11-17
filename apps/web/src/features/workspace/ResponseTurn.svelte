@@ -1,4 +1,5 @@
 <script lang="ts">
+  import TurnTime from "./TurnTime.svelte";
   import MessageReader from "./MessageReader.svelte";
   import UserTurn from "./UserTurn.svelte";
   import { clippedPart, itemText, type Turn } from "./session-turns";
@@ -40,19 +41,20 @@
       {/each}
     </div>
   {/if}
+  <TurnTime {turn} />
 </div>
 
 <style>
   .turn {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 0.75rem;
     min-width: 0;
   }
   .response {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.625rem;
     min-width: 0;
   }
 </style>

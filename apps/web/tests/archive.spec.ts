@@ -1,16 +1,18 @@
 import { expect, type Page } from "@playwright/test";
 import { hostedTest } from "./isolated-host";
+import { newSession } from "./ask";
 
 // Each test gets its own data folder.
 const fresh = hostedTest;
 
 const sessions = (page: Page) => page.getByRole("navigation", { name: "Sessions" });
-const archivedToggle = (page: Page) => sessions(page).getByRole("button", { name: /^Archived \(\d+\)$/ });
+const archivedLink = (page: Page) => sessions(page).getByRole("link", { name: /^Archived \d+$/ });
 const archived = (page: Page) => page.getByRole("list", { name: "Archived sessions" });
 const sessionLink = (page: Page, name: string) => sessions(page).getByRole("link", { name: new RegExp(name) });
 
 async function ask(page: Page, text: string) {
   const box = page.getByRole("textbox", { name: "Ask anything", exact: true });
+  if (!(await box.count())) await newSession(page);
   await box.fill(text);
   await box.press("Enter");
   await expect(page.getByText(`local:${text}`, { exact: true })).toBeVisible();
@@ -30,7 +32,17 @@ fresh("each session in the sidebar is archived from its row; Archived restores i
   await expect(archive).toHaveCSS("opacity", "1");
   await archive.click();
   await expect(sessionLink(page, "second session")).toHaveCount(0);
-  await expect(archivedToggle(page)).toHaveAccessibleName("Archived (1)");
+  await expect(archivedLink(page)).toHaveAccessibleName("Archived 1");
+  // A toast says so, with Undo, which puts it back; archiving again leaves it archived.
+  const toast = page.getByRole("status").filter({ hasText: "Archived “second session”" });
+  await expect(toast).toBeVisible();
+  await toast.getByRole("button", { name: "Undo" }).click();
+  await expect(sessionLink(page, "second session")).toHaveCount(1);
+  await expect(archivedLink(page)).toHaveCount(0);
+  await sessionLink(page, "second session").hover();
+  await archive.click();
+  await expect(sessionLink(page, "second session")).toHaveCount(0);
+  await expect(archivedLink(page)).toHaveAccessibleName("Archived 1");
   // The open session was another one: it stays open.
   await expect(page.getByText("local:third session", { exact: true })).toBeVisible();
 
@@ -45,37 +57,43 @@ fresh("each session in the sidebar is archived from its row; Archived restores i
   await expect(sessionLink(page, "third session")).toHaveCount(0);
   await expect(sessionLink(page, "first session")).toBeFocused();
   await expect(page.getByRole("heading", { level: 1, name: "New session" })).toBeVisible();
-  await expect(archivedToggle(page)).toHaveAccessibleName("Archived (2)");
+  await expect(archivedLink(page)).toHaveAccessibleName("Archived 2");
 
-  // Archived unfolds by keyboard; Restore puts a session back in the list.
-  await archivedToggle(page).focus();
+  // Archived is its own screen, reached by keyboard; Restore puts a session back in the list.
+  await archivedLink(page).focus();
   await page.keyboard.press("Enter");
-  await expect(archivedToggle(page)).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("heading", { level: 1, name: "Archived" })).toBeVisible();
+  await expect(archivedLink(page)).toHaveAttribute("aria-current", "page");
   await expect(archived(page).getByRole("listitem")).toHaveCount(2);
   await archived(page).getByRole("button", { name: "Restore second session" }).click();
   await expect(sessionLink(page, "second session")).toBeVisible();
-  await expect(archivedToggle(page)).toHaveAccessibleName("Archived (1)");
+  await expect(archivedLink(page)).toHaveAccessibleName("Archived 1");
 
-  // Delete asks first: Escape and Cancel keep it, with focus back on Delete; Delete removes it.
+  // Delete asks first in a dialog: Escape and Cancel keep it, with focus back on Delete; Delete removes it.
   const remove = archived(page).getByRole("button", { name: "Delete third session" });
+  const confirm = page.getByRole("dialog", { name: "Delete this session?" });
   await remove.click();
-  await expect(archived(page).getByText("Delete permanently? This can’t be undone.")).toBeVisible();
-  await expect(archived(page).getByRole("button", { name: "Cancel" })).toBeFocused();
+  await expect(confirm.getByText("“third session” and its messages are deleted from this computer. This can’t be undone.")).toBeVisible();
+  await expect(confirm.getByRole("button", { name: "Cancel" })).toBeFocused();
   await page.keyboard.press("Escape");
+  await expect(confirm).toHaveCount(0);
   await expect(remove).toBeFocused();
   await remove.click();
-  await archived(page).getByRole("button", { name: "Cancel" }).click();
+  await confirm.getByRole("button", { name: "Cancel" }).click();
   await expect(remove).toBeFocused();
   await remove.click();
-  await archived(page).getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(archivedToggle(page)).toHaveCount(0);
+  await confirm.getByRole("button", { name: "Delete session", exact: true }).click();
+  await expect(archivedLink(page)).toHaveCount(0);
+  await expect(page.getByText("Nothing archived.", { exact: false })).toBeVisible();
   const left = await page.request.get("/api/sessions?archived");
   expect((await left.json()).sessions).toEqual([]);
 
+  // On a phone the list is the first screen; Archived opens from it.
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
   await sessionLink(page, "first session").hover();
   await sessions(page).getByRole("button", { name: "Archive first session" }).click();
-  await archivedToggle(page).click();
+  await archivedLink(page).click();
   await expect(archived(page).getByRole("button", { name: "Delete first session" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

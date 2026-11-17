@@ -15,7 +15,9 @@ export type RuntimeErrorCode =
   | "extension"
   | "execution"
   | "timeout"
-  | "closed";
+  | "closed"
+  /** The session is open for reading only (`SessionInfo.readOnly`). */
+  | "read-only";
 
 /** Public errors never include provider exceptions, credentials or filesystem paths. */
 export class RuntimeError extends Error {

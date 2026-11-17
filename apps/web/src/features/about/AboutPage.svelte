@@ -1,7 +1,6 @@
 <script lang="ts">
-  import SettingsPage from "../../lib/ui/SettingsPage.svelte";
-  import Section from "../../lib/ui/Section.svelte";
-  import FieldRow from "../../lib/ui/FieldRow.svelte";
+  import Card from "../../lib/ui/Card.svelte";
+  import CardRow from "../../lib/ui/CardRow.svelte";
   import Segmented from "../../lib/ui/Segmented.svelte";
   import Toggle from "../../lib/ui/Toggle.svelte";
   import Button from "../../lib/ui/Button.svelte";
@@ -9,7 +8,7 @@
   import { useSessions } from "../workspace/session-client.svelte";
   import { formatBytes } from "./host-client.svelte";
   import type { HostAction, ReleaseChannel } from "../../../../server/src/contract/host-protocol";
-  /** Settings → About: this PiSpark's version, its updates and where it runs. */
+  /** Settings → About (set 6): its updates, and this PiSpark: version and where it runs. */
   const client = useSessions();
   const host = client.host;
   const status = $derived(host.status);
@@ -49,20 +48,11 @@
     const hours = Math.round(minutes / 60);
     return hours < 24 ? `${hours} hour${hours === 1 ? "" : "s"} ago` : new Date(at).toLocaleDateString();
   }
-  const channelLabel = (c: ReleaseChannel) => (c === "stable" ? "Stable" : "Latest");
-  const description = $derived(
-    !status
-      ? "Loading…"
-      : status.managed && launcher
-        ? `PiSpark v${status.version} · ${channelLabel(launcher.channel)} channel · running on the computer at ${status.address}.`
-        : "PiSpark, started from a copy of its source (npm start or dev). Updates come from however it was started.",
-  );
 </script>
 
-<SettingsPage title="About" {description} label="About PiSpark">
   {#if status?.managed && launcher && update}
-    <Section title="Updates" description="">
-      <div class="mt-4 space-y-3">
+    <Card title="Updates">
+      <div class="status">
         {#if launcher.kept && !host.restarting && update.phase !== "restarting"}
           <div class="notice" role="status">
             <Icon name="pin" class="w-4 h-4 shrink-0" />
@@ -147,59 +137,67 @@
         {/if}
         {#if error}<p role="alert" class="text-sm text-[var(--danger-foreground)]">{error}</p>{/if}
       </div>
-      <div class="settings-card mt-4">
-        <FieldRow label="Channel" description="Stable: tested releases. Latest: every change merged to main, sooner.">
-          <Segmented
-            label="Channel"
-            options={[
-              { value: "stable", label: "Stable" },
-              { value: "latest", label: "Latest" },
-            ]}
-            value={launcher.channel}
-            onchange={(channel) => void act({ action: "configure", channel: channel as ReleaseChannel })}
-          />
-        </FieldRow>
-        <FieldRow label="Install updates automatically" description="Only when nothing is running. Otherwise PiSpark asks.">
-          <Toggle
-            label="Install updates automatically"
-            checked={launcher.autoUpdate}
-            onchange={(event) => void act({ action: "configure", autoUpdate: (event.currentTarget as HTMLInputElement).checked })}
-          />
-        </FieldRow>
-      </div>
-    </Section>
+      <CardRow label="Channel">
+        <Segmented
+          label="Channel"
+          options={[
+            { value: "stable", label: "Stable" },
+            { value: "latest", label: "Latest" },
+          ]}
+          value={launcher.channel}
+          onchange={(channel) => void act({ action: "configure", channel: channel as ReleaseChannel })}
+        />
+      </CardRow>
+      <CardRow label="Install automatically">
+        <span class="flex-1 text-xs text-muted-foreground">when nothing runs; otherwise PiSpark asks</span>
+        <Toggle
+          label="Install updates automatically"
+          checked={launcher.autoUpdate}
+          onchange={(event) => void act({ action: "configure", autoUpdate: (event.currentTarget as HTMLInputElement).checked })}
+        />
+      </CardRow>
+    </Card>
   {/if}
   {#if status}
-    <Section title="This PiSpark" description="Where it runs. Paths are on the computer running PiSpark.">
-      <div class="settings-card px-5 py-4 mt-4">
-        <dl class="facts">
-          {#if launcher}<dt>Program</dt>
-            <dd>{launcher.program}</dd>{/if}
-          <dt>Data</dt>
-          <dd>{status.data}</dd>
-          <dt>Address</dt>
-          <dd>{status.address}</dd>
-          {#if launcher}<dt>Starts at login</dt>
-            <dd class="plain">{launcher.startsAtLogin ? "Yes" : "No"}</dd>
-            <dt>Logs</dt>
-            <dd>{launcher.logs}</dd>{/if}
-        </dl>
-      </div>
-    </Section>
+    <Card title="This PiSpark">
+      <CardRow label="Version"
+        >{status.version}{#if launcher}<span class="text-muted-foreground">{" · "}{launcher.channel === "stable" ? "Stable" : "Latest"} channel</span>{/if}</CardRow
+      >
+      {#if !status.managed}<CardRow
+          ><p class="text-xs text-muted-foreground">Started from a copy of its source (npm start or dev). Updates come from however it was started.</p></CardRow
+        >{/if}
+      <CardRow label="Data"><span class="mono">{status.data}</span></CardRow>
+      <CardRow label="Address"><span class="mono">{status.address}</span></CardRow>
+      {#if launcher}
+        <CardRow label="Program"><span class="mono">{launcher.program}</span></CardRow>
+        <CardRow label="Starts at login">{launcher.startsAtLogin ? "Yes" : "No"}</CardRow>
+        <CardRow label="Logs"><span class="mono">{launcher.logs}</span></CardRow>
+      {/if}
+    </Card>
   {/if}
-</SettingsPage>
 
 <style>
+  .status {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    font-size: var(--text-sm);
+  }
+  .status:empty {
+    display: none;
+  }
   .notice {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 0.625rem;
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-md);
-    background: var(--muted);
-    font-size: 0.875rem;
     color: var(--foreground);
+  }
+  .mono {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
   }
   .notice.block {
     display: block;
@@ -240,34 +238,6 @@
   @keyframes spin {
     to {
       transform: rotate(360deg);
-    }
-  }
-  .facts {
-    display: grid;
-    grid-template-columns: 9rem 1fr;
-    gap: 0.375rem 1rem;
-    font-size: 0.8125rem;
-    margin: 0;
-  }
-  .facts dt {
-    color: var(--muted-foreground);
-  }
-  .facts dd {
-    margin: 0;
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
-    overflow-wrap: anywhere;
-  }
-  .facts dd.plain {
-    font-family: inherit;
-    font-size: 0.8125rem;
-  }
-  @media (max-width: 40rem) {
-    .facts {
-      grid-template-columns: 1fr;
-    }
-    .facts dd {
-      margin-bottom: 0.375rem;
     }
   }
 </style>

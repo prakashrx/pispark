@@ -57,7 +57,7 @@ test("an extension's own frontend runs the session: it shows the messages as the
   // PiSpark's frontend is the other one for the same session: the same messages, and its reply box.
   await show.getByText("Conversation", { exact: true }).click();
   await expect(log).toHaveCount(0);
-  const conversation = page.getByRole("main", { name: "Session conversation" });
+  const conversation = page.getByRole("main");
   const mine = conversation.locator(".user-bubble");
   await expect(mine).toHaveText(["hello", "second", "ui-confirm"]);
   const reply = page.getByRole("textbox", { name: "Reply to session" });

@@ -36,8 +36,8 @@
 </label>
 
 <style>
-  /* Off: a quiet track with a raised knob. On: the theme accent, knob in its
-     on-fill color so it reads on every theme. Focus uses the shared ring. */
+  /* Off: a quiet track with a raised knob. On: the switch tokens (the text colour, so the
+     accent stays for actions). Focus uses the shared ring. */
   .toggle-track {
     position: relative;
     display: inline-block;
@@ -60,11 +60,11 @@
     transition: transform 0.15s;
   }
   .toggle-input:checked + .toggle-track {
-    background: var(--interactive);
+    background: var(--toggle-on);
   }
   .toggle-input:checked + .toggle-track::after {
     transform: translateX(1rem);
-    background: var(--interactive-foreground);
+    background: var(--toggle-knob);
   }
   .toggle-input:focus-visible + .toggle-track {
     outline: 2px solid var(--ring);

@@ -1,3 +1,4 @@
+import { shownSession, newSession } from "./ask";
 import { test, expect } from "@playwright/test";
 
 test.afterEach(async ({ request }) => {
@@ -41,19 +42,19 @@ test("real SDK via shared Ask/reply: streaming, native tools, cancellation, inde
   await ask.fill("hold alpha");
   await ask.press("Enter");
   await expect(page.getByText("partial-local", { exact: true })).toBeVisible();
-  const a = await page.evaluate(() => localStorage.getItem("pispark-session"));
+  const a = await shownSession(page);
   const reply = page.getByRole("textbox", { name: "Reply to session" });
   await reply.fill("Draft A");
+  await newSession(page);
   await ask.fill("hold beta");
   await ask.press("Enter");
-  await expect(ask).toHaveText("");
-  const b = await page.evaluate(() => localStorage.getItem("pispark-session"));
-  expect(b).not.toBe(a);
+  await expect.poll(async () => ![null, a].includes(await shownSession(page))).toBe(true);
+  const b = await shownSession(page);
   await expect(reply).toHaveText("");
   await reply.fill("Draft B");
   await page
     .getByRole("link", { name: /^hold alpha/ })
-    .last()
+    .first()
     .click();
   await expect(reply).toHaveText("Draft A");
   await context.setOffline(true);
@@ -84,7 +85,7 @@ test("real SDK via shared Ask/reply: streaming, native tools, cancellation, inde
   await page.screenshot({ path: info.outputPath("native-session.png") });
   await page
     .getByRole("link", { name: /^hold beta/ })
-    .last()
+    .first()
     .click();
   await expect(reply).toHaveText("Draft B");
   await page.getByRole("button", { name: "Stop response" }).click();
@@ -183,6 +184,8 @@ for (const mode of ["ask", "reply"] as const) {
     await expect(
       page.getByText("local:submitted", { exact: true }),
     ).toBeVisible();
+    // The new session opens; the newer draft waits on New session.
+    if (mode === "ask") await newSession(page);
     await expect(input).toHaveText("submitted");
   });
 }
@@ -208,7 +211,7 @@ test("background receipt failure stays with its originating session across selec
   await expect(
     page.getByText("local:session B", { exact: true }),
   ).toBeVisible();
-  const b = await page.evaluate(() => localStorage.getItem("pispark-session"));
+  const b = await shownSession(page);
   let release!: () => void;
   let entered!: () => void;
   const gate = new Promise<void>((r) => {
@@ -226,14 +229,16 @@ test("background receipt failure stays with its originating session across selec
     }
     await route.fulfill({ response });
   });
+  await newSession(page);
   await ask.fill("provider-error");
   await ask.press("Enter");
   await entering;
-  const a = await page.evaluate(() => localStorage.getItem("pispark-session"));
+  await expect.poll(async () => ![null, b].includes(await shownSession(page))).toBe(true);
+  const a = await shownSession(page);
   expect(a).not.toBe(b);
   await page
     .getByRole("link", { name: /^session B/ })
-    .last()
+    .first()
     .click();
   release();
   await expect(
@@ -244,7 +249,7 @@ test("background receipt failure stays with its originating session across selec
   ).toHaveCount(0);
   await page
     .getByRole("link", { name: /^provider-error/ })
-    .last()
+    .first()
     .click();
   await expect(
     page.getByRole("alert").filter({ hasText: "The run failed on the server." }),
@@ -277,18 +282,15 @@ for (const fail of [false, true]) {
     await expect(
       page.getByText("local:switch B", { exact: true }),
     ).toBeVisible();
-    const b = await page.evaluate(() =>
-      localStorage.getItem("pispark-session"),
-    );
+    const b = await shownSession(page);
     await reply.fill("B unsent");
+    await newSession(page);
     await ask.fill("switch A");
     await ask.press("Enter");
     await expect(
       page.getByText("local:switch A", { exact: true }),
     ).toBeVisible();
-    const a = await page.evaluate(() =>
-      localStorage.getItem("pispark-session"),
-    );
+    const a = await shownSession(page);
     expect(a).not.toBe(b);
     let release!: () => void;
     let entered!: () => void;
@@ -320,19 +322,16 @@ for (const fail of [false, true]) {
     await reply.fill("A newer unsent");
     await page
       .getByRole("link", { name: /^switch B/ })
-      .last()
+      .first()
       .click();
     release();
     await expect(reply).toHaveText("B unsent");
-    await expect(
-      page.getByRole("button", { name: "Start session", exact: true }),
-    ).not.toHaveAttribute("aria-disabled", "true");
     await expect(
       page.getByRole("alert").filter({ hasText: /busy/ }),
     ).toHaveCount(0);
     await page
       .getByRole("link", { name: /^switch A/ })
-      .last()
+      .first()
       .click();
     await expect(reply).toHaveText("A newer unsent");
     if (fail)
@@ -396,6 +395,7 @@ for (const fail of [false, true]) {
     await ask.fill("start delay");
     await ask.press("Enter");
     await entering;
+    // Still on New session while the first message is on its way: the draft can change.
     await ask.fill("new draft during start");
     release();
     if (fail)
@@ -409,6 +409,7 @@ for (const fail of [false, true]) {
       await expect(
         page.getByText("local:start delay", { exact: true }),
       ).toBeVisible();
+    await newSession(page);
     await expect(ask).toHaveText("new draft during start");
   });
 }
@@ -437,11 +438,9 @@ test("configuration/connectivity failures remain explicitly global, not selected
       : route.continue();
   });
   await page.goto("/");
-  await expect(page.getByRole("alert")).toContainText(
-    "Couldn’t connect to your workspace.",
-  );
+  await expect(page.getByRole("alert")).toContainText("Can’t reach PiSpark");
   await expect(
-    page.getByRole("button", { name: "Reconnect", exact: true }),
+    page.getByRole("button", { name: "Retry now", exact: true }),
   ).toHaveCount(1);
   await expect(
     page.getByText("Connection lost. Your session may still be running."),
@@ -455,7 +454,7 @@ test("configuration/connectivity failures remain explicitly global, not selected
     }),
   ).toBeVisible();
   fail = false;
-  await page.getByRole("button", { name: "Reconnect", exact: true }).click();
+  await page.getByRole("button", { name: "Retry now", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Start session", exact: true }),
   ).not.toHaveAttribute("aria-disabled", "true");
@@ -533,7 +532,12 @@ for (const mode of ["ask", "reply"] as const) {
       await entering;
       const retained =
         loss === "settlement" ? "New unsent draft while observing" : text;
-      if (loss === "settlement") await input.fill(retained);
+      if (loss === "settlement") {
+        // A new session's draft is typed on New session, while the session it started opens.
+        if (mode === "ask") await newSession(page);
+        await input.fill(retained);
+        if (mode === "ask") await page.goBack();
+      }
       release();
       const copy =
         loss === "acceptance"
@@ -544,7 +548,6 @@ for (const mode of ["ask", "reply"] as const) {
       const alert = page.getByRole("alert").filter({ has: warning });
       await expect(alert.locator("details")).not.toHaveAttribute("open", "");
       await expect(alert).not.toContainText("Reopen this session to try again.");
-      await expect(input).toHaveText(retained);
       await expect
         .poll(async () => {
           const history = await (
@@ -568,6 +571,8 @@ for (const mode of ["ask", "reply"] as const) {
           fullPage: true,
         });
       }
+      if (mode === "ask") await newSession(page);
+      await expect(input).toHaveText(retained);
     });
   }
 }
@@ -619,7 +624,7 @@ test("successful truncated session list is visible status without a draft, clear
   await expect(ask).toHaveText("Keep this draft");
 });
 
-test("create polling loss with known receipt session stays global, keeps displayed old session and draft, and never opens or starts the new session", async ({
+test("create polling loss with known receipt session stays global, keeps the draft on New session, and never opens or starts the new session", async ({
   page,
   request,
 }, info) => {
@@ -632,9 +637,7 @@ test("create polling loss with known receipt session stays global, keeps display
   await ask.fill(seed);
   await ask.press("Enter");
   await expect(page.getByText(`local:${seed}`, { exact: true })).toBeVisible();
-  const oldId = await page.evaluate(() =>
-    localStorage.getItem("pispark-session"),
-  );
+  const oldId = await shownSession(page);
   let createdId = "";
   let createCommandId = "";
   const commands: string[] = [];
@@ -660,6 +663,7 @@ test("create polling loss with known receipt session stays global, keeps display
       ? route.abort("failed")
       : route.continue(),
   );
+  await newSession(page);
   await ask.fill("Unsent initial question");
   await ask.press("Enter");
   const warning = page.getByText(
@@ -670,12 +674,12 @@ test("create polling loss with known receipt session stays global, keeps display
   const alert = page.getByRole("alert").filter({ has: warning });
   await expect(alert.locator("details")).not.toHaveAttribute("open", "");
   await expect(ask).toHaveText("Unsent initial question");
+  // Nothing opens: New session stays, and the earlier session is still listed as it was.
+  await expect(page).toHaveURL(/#\/new$/);
   await expect(
-    page.getByRole("heading", { name: seed, exact: true }),
+    page.getByRole("navigation", { name: "Sessions" }).getByRole("link", { name: seed, exact: true }),
   ).toBeVisible();
-  expect(
-    await page.evaluate(() => localStorage.getItem("pispark-session")),
-  ).toBe(oldId);
+  expect(oldId).toBeTruthy();
   expect(commands).toEqual(["create"]);
   const history = await (
     await request.get(`/api/sessions/${createdId}/items`)

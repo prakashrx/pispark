@@ -6,6 +6,11 @@ export interface SessionInfo {
   /** Working folder on the backend host. */
   folder: string;
   createdAt: string;
+  /**
+   * When it last did something: a message, a tool's result, a notice (its history's last write); when
+   * it started if nothing yet. Opening or reading it doesn't count.
+   */
+  lastActivity: string;
   title?: string;
   hasHistory?: boolean;
   status: string;
@@ -25,7 +30,13 @@ export interface SessionInfo {
   held?: { extension: string; reason: string };
   /** How many processes it started are running (see `process-protocol.ts`). */
   processes?: number;
+  /**
+   * Open for reading only: its model (or sign-in), agent or folder can't be used, so it can't reply.
+   * Its history is read from the transcript; no extension runs. Reloading tries again.
+   */
+  readOnly?: ReadOnlyReason;
 }
+export type ReadOnlyReason = "model" | "agent" | "folder";
 /**
  * An extension asks on its session's Pi bus (`HOLD_CHANNEL`) to keep the session loaded while no one
  * watches, so its own live work (a bot's connection, a watcher) keeps going and starts again after a
@@ -70,6 +81,9 @@ export interface Item {
   toolName?: string;
   callId?: string;
   isError?: boolean;
+  /** When Pi recorded the message (epoch milliseconds): a turn's start, a response's request. */
+  at?: number;
+  /** How long Pi measured it took: a model response (request to end) or a tool run. */
   durationMs?: number;
   /** Pi's structured result for UIs (an edit's diff, an extension tool's payload); bounded. */
   details?: Json;
@@ -202,7 +216,7 @@ export interface HostSettings {
    */
   unattendedPaused: boolean;
 }
-/** Starting points for Ask's folder picker. Any existing folder on the host is allowed. */
+/** Starting points for the New session folder picker. Any existing folder on the host is allowed. */
 export interface Catalog {
   home: string;
   recentFolders: string[];
@@ -219,7 +233,9 @@ export type Command = { commandId: string } & (
       /** Agent ID; Default when omitted. */
       agent?: string;
     }
-  | { type: "open" | "reload" | "cancel" | "stop" | "archive" | "restore" | "delete"; sessionId: string }
+  | { type: "open" | "cancel" | "stop" | "archive" | "restore" | "delete"; sessionId: string }
+  /** Start the session again from its history; with `model`, it runs that model from now on. */
+  | { type: "reload"; sessionId: string; model?: { provider: string; id: string } }
   /** The person answers an extension's hold request, or lets go of a hold. */
   | { type: "allow-hold" | "deny-hold" | "release-hold"; sessionId: string }
   /**

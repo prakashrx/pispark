@@ -3,6 +3,7 @@
   import { reportBody, type Turn } from "./session-turns";
   import { useSession, useSessions } from "./session-client.svelte";
   import { namedFiles } from "./attachments.svelte";
+  import StreamingMarkdown from "./StreamingMarkdown.svelte";
   /**
    * Your message, or (`woken`) one something else sent, labelled as such. One another session sent
    * (`from`: its report, or a parent's message to its child) is not yours, so it is not your bubble.
@@ -21,10 +22,12 @@
   <div class="flex flex-col items-start gap-1.5" data-purpose="session-turn">
     <p class="woken">
       <Icon name={from.kind === "process" ? "terminal" : "sessionBack"} class="h-3.5 w-3.5" /><span
-        >From {#if known}<button type="button" class="link" onclick={() => client.select(from.id)}>{title}</button>{:else}{title}{/if}{rest}</span
+        >From {#if known}<button type="button" class="link" onclick={() => client.open(from.id)}>{title}</button>{:else}{title}{/if}{rest}</span
       >
     </p>
-    <div class="report" class:output={from.kind === "process"}>{reportBody(text)}</div>
+    <!-- A session's report is its agent's words, Markdown as in a reply; a process's is its output, as written. -->
+    {#if from.kind === "process"}<div class="report output">{reportBody(text)}</div>
+    {:else}<div class="report markdown"><StreamingMarkdown text={reportBody(text)} /></div>{/if}
   </div>
 {:else}
   <div class="flex flex-col items-end gap-1.5" data-purpose="user-turn">
@@ -106,10 +109,16 @@
   .named-image:focus-visible {
     border-color: var(--interactive);
   }
+  /* Another session's words (design set 3/2): indented under its line, a rule beside them, no bubble. */
   .report {
-    max-width: min(36rem, 90%);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
+    max-width: 100%;
+    margin-left: 0.4rem;
+    padding: 0 0 0 0.75rem;
+    border-left: 2px solid var(--border);
+    border-radius: 0;
+  }
+  .report.markdown {
+    white-space: normal;
   }
   .report.output {
     font-family: var(--font-mono, ui-monospace, monospace);

@@ -9,6 +9,7 @@ import {
   type ResolvedItem,
 } from "../../../../server/src/contract/agent-protocol";
 import { agentError } from "./agent-presentation";
+import { go } from "../../routes";
 
 export async function agentRequest<T>(
   operation: string,
@@ -148,7 +149,7 @@ export class AgentClient {
       this.busy = false;
     }
     await this.refresh();
-    await this.open({ agent: id });
+    go({ name: "agents", id });
     return id;
   }
   updateDefinition(update: (definition: AgentDefinition) => AgentDefinition) {
@@ -224,6 +225,7 @@ export class AgentClient {
       this.mode = "collection";
       this.view = undefined;
       this.target = undefined;
+      go({ name: "agents" });
     }
     return ok;
   }

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Button from "../../lib/ui/Button.svelte";
   import { tick } from "svelte";
-  import SessionHeader from "./SessionHeader.svelte";
+  import { useScreen } from "../../shell/screen-context";
   import ResponseTurn from "./ResponseTurn.svelte";
   import { buildTurns } from "./session-turns";
   import UserTurn from "./UserTurn.svelte";
@@ -12,7 +12,6 @@
   const session = useSession();
   const doc = $derived(session.doc);
   const placed = $derived(placedPoints(doc?.extensions));
-  const queued = $derived((doc?.queue.steering ?? 0) + (doc?.queue.followUp ?? 0));
   const running = $derived(["running", "cancelling"].includes(doc?.status ?? ""));
   // The session as turns of ordered segments; extension notices land where they happened.
   const turns = $derived(
@@ -30,7 +29,9 @@
   // One continuous scroll: older items are read in above as you reach the top, the view stays
   // where it was, and new output follows while you are at the bottom. Following stops only when
   // you scroll up, not because something grew below you, and starts again at the bottom.
-  let scroller = $state<HTMLElement>();
+  // The screen's Main is the scroll (design language §1.4), so the bars and the composer stay put.
+  const screen = useScreen();
+  const scroller = $derived(screen?.main);
   let column = $state<HTMLElement>();
   let top = $state<HTMLElement>();
   let following = $state(true);
@@ -66,6 +67,12 @@
     scroller.scrollTop = scroller.scrollHeight;
     lastTop = scroller.scrollTop;
   }
+  $effect(() => {
+    const element = scroller;
+    if (!element) return;
+    element.addEventListener("scroll", onscroll, { passive: true });
+    return () => element.removeEventListener("scroll", onscroll);
+  });
   function onscroll() {
     if (!scroller) return;
     if (atBottom()) following = true;
@@ -89,19 +96,9 @@
   const button = "conversation-action";
 </script>
 
-<main
-  id="workspace"
-  aria-label="Session conversation"
-  class="conversation flex-1 overflow-y-auto px-6 pt-8 pb-6 flex flex-col items-center"
-  bind:this={scroller}
-  {onscroll}
->
-  <div class="w-full max-w-3xl flex flex-col gap-8" bind:this={column}>
-    <SessionHeader />
+<div class="conversation px-4 pt-4 pb-4 sm:px-6 flex flex-col items-center">
+  <div class="w-full max-w-3xl flex flex-col gap-6" bind:this={column}>
     {#if doc}
-      {#if queued > 0}<p class="text-sm text-muted-foreground">
-          {queued} messages queued
-        </p>{/if}
       <div bind:this={top} aria-hidden="true"></div>
       {#if loadingEarlier}<p role="status" class="text-sm text-muted-foreground">Loading earlier messages…</p>
       {:else if session.more && earlierFailed}<Button
@@ -111,7 +108,7 @@
             void earlier();
           }}>Load earlier messages</Button
         >{/if}
-      <div class="flex flex-col gap-8">
+      <div class="flex flex-col gap-6">
         {#each turns as turn (turn.key)}
           <ResponseTurn {turn} sessionId={session.id} />
         {/each}
@@ -128,7 +125,7 @@
         <Button class={button} onclick={jumpToLatest}>Jump to latest</Button>
       </div>{/if}
   </div>
-</main>
+</div>
 
 <style>
   /* Prepending older items must not move what you are reading; the position is restored by hand. */

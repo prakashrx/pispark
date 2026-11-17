@@ -10,6 +10,10 @@ export class HostClient {
   status = $state<HostStatus>();
   /** The version an update is restarting into, while the server is away. */
   restarting = $state<string>();
+  /** The server now runs a newer version than the one this page was loaded from. */
+  updated = $state<string>();
+  /** The version this page was loaded from. */
+  private loaded?: string;
   private watch?: ReturnType<typeof setTimeout>;
   constructor(
     private readonly transport: Transport,
@@ -28,7 +32,7 @@ export class HostClient {
   async refresh(): Promise<void> {
     try {
       const status = await this.transport.json<HostStatus>("/api/host");
-      this.status = status;
+      this.seen(status);
       const u = status.launcher?.update;
       if (u?.phase === "restarting") this.away(u.version);
       else if (this.restarting) this.returned();
@@ -52,6 +56,11 @@ export class HostClient {
     }
   }
 
+  private seen(status: HostStatus) {
+    this.status = status;
+    this.loaded ??= status.version;
+    if (status.version !== this.loaded) this.updated = status.version;
+  }
   private away(version: string) {
     this.restarting = version;
     this.watchReturn();
@@ -67,7 +76,7 @@ export class HostClient {
     this.watch = setTimeout(async () => {
       try {
         const status = await this.transport.json<HostStatus>("/api/host");
-        this.status = status;
+        this.seen(status);
         if (status.launcher?.update.phase !== "restarting") return this.returned();
       } catch {
         /* Not back yet. */

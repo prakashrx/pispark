@@ -1,15 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
-import { folderButton, otherFolderLabel, useFolder } from "./ask";
+import { folderButton, newSession, otherFolderLabel, useFolder } from "./ask";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-const routes = [
-  "workspace",
-  "settings",
-  "providers",
-  "agent",
-  "sources",
-] as const;
+/** The screens every size can reach from the sidebar, by address. */
+const routes = ["new", "agents", "background", "settings", "settings/providers"] as const;
 
 async function navigate(page: Page, route: string) {
   await page.evaluate((route) => {
@@ -20,260 +15,117 @@ async function navigate(page: Page, route: string) {
 }
 
 for (const width of [1920, 3840]) {
-  test(`common shell geometry and computed presentation at ${width} CSSpx`, async ({
-    page,
-  }, info) => {
+  test(`one shell: the same sidebar and top bar on every screen at ${width} CSSpx`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 1200 });
-    const evidence =
-      process.env.PISPARK_EVIDENCE_DIR ?? info.outputPath("evidence");
+    const evidence = process.env.PISPARK_EVIDENCE_DIR ?? info.outputPath("evidence");
     await mkdir(evidence, { recursive: true });
-    await page.goto("/#/workspace");
-    await expect(
-      folderButton(page),
-    ).toBeVisible();
-    // Ask recedes once a session is open; measure after the initial selection settles.
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            !!localStorage.getItem("pispark-session") ||
-            document.body.innerText.includes("No sessions yet."),
-        ),
-      )
-      .toBe(true);
+    await page.goto("/#/new");
+    await expect(folderButton(page)).toBeVisible();
     const measurements = [];
     for (const route of routes) {
-      if (route !== "workspace") await navigate(page, route);
+      if (route !== "new") await navigate(page, route);
       await page.evaluate(() => document.fonts.ready);
-      // Settle CSS transitions (e.g. Ask receding) so computed styles are final.
-      await page.evaluate(() =>
-        document
-          .getAnimations()
-          .filter((animation) => animation instanceof CSSTransition)
-          .forEach((animation) => animation.finish()),
-      );
       const metrics = await page.evaluate(() => {
-        const measure = (element: Element) => {
-          const box = element.getBoundingClientRect();
-          const style = getComputedStyle(element);
-          return {
-            tag: element.tagName,
-            x: box.x,
-            y: box.y,
-            width: box.width,
-            height: box.height,
-            presentation: Object.fromEntries(
-              [
-                "font-family",
-                "font-size",
-                "font-weight",
-                "line-height",
-                "color",
-                "background-color",
-                "border-color",
-                "border-width",
-                "border-radius",
-                "padding",
-                "margin",
-                "gap",
-                "box-shadow",
-                "max-width",
-                "display",
-              ].map((property) => [property, style.getPropertyValue(property)]),
-            ),
-          };
+        const box = (selector: string) => {
+          const element = document.querySelector(selector);
+          if (!element) return undefined;
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return { x, y, width, height };
         };
-        const header = document.querySelector(".global-header")!;
-        const sidebar = document.querySelector(".app-sidebar")!;
-        const brand = document.querySelector(".header-brand")!;
-        const composer = document.querySelector('[aria-label="New session"]')!;
         return {
           route: window.location.hash,
-          header: measure(header),
-          sidebar: measure(sidebar),
-          brand: measure(brand),
-          composer: measure(composer),
-          controls: [
-            ...composer.querySelectorAll("input, button, span, svg"),
-          ].map(measure),
-          overflow: document.documentElement.scrollWidth > innerWidth,
+          sidebar: box('aside[aria-label="Sidebar"]'),
+          topbar: box(".topbar"),
+          // Main is the only scroll: the page itself never scrolls.
+          pageScrolls: document.documentElement.scrollHeight > innerHeight || document.documentElement.scrollWidth > innerWidth,
         };
       });
       measurements.push(metrics);
-      expect(metrics.header).toMatchObject({
-        x: 272,
-        y: 0,
-        width: width - 272,
-        height: 64,
-      });
-      expect(metrics.sidebar).toMatchObject({
-        x: 0,
-        y: 0,
-        width: 272,
-        height: 1200,
-      });
-      expect(metrics.brand.height).toBe(64);
-      expect(metrics.composer.x).toBe(292);
-      expect(metrics.composer.width).toBe(width - 272 - 40);
-      expect(width - metrics.composer.x - metrics.composer.width).toBe(20);
-      expect(metrics.composer.presentation["max-width"]).toBe("none");
-      expect(metrics.overflow).toBe(false);
-      const { route: _route, ...chrome } = metrics;
-      const { route: _baselineRoute, ...baseline } = measurements[0];
-      expect(chrome).toEqual(baseline);
-      await page.screenshot({
-        path: resolve(evidence, `after-${width}-${route}.png`),
-        animations: "disabled",
-      });
+      expect(metrics.sidebar).toEqual({ x: 0, y: 0, width: 272, height: 1200 });
+      expect(metrics.pageScrolls).toBe(false);
+      // Agents heads its own content; every other screen names itself in the bar.
+      if (metrics.topbar) expect(metrics.topbar).toMatchObject({ x: 272, y: 0, width: width - 272, height: 48 });
+      else expect(metrics.route).toBe("#/agents");
+      await page.screenshot({ path: resolve(evidence, `shell-${width}-${route.replace("/", "-")}.png`), animations: "disabled" });
     }
-    await writeFile(
-      resolve(evidence, `shell-metrics-${width}.json`),
-      JSON.stringify(measurements, null, 2),
-    );
+    // The New session composer keeps a reading width in the middle of the screen.
+    await navigate(page, "new");
+    const composer = (await page.getByRole("form", { name: "New session" }).boundingBox())!;
+    expect(composer.width).toBeLessThanOrEqual(704);
+    expect(Math.abs(composer.x + composer.width / 2 - (272 + (width - 272) / 2))).toBeLessThan(2);
+    await writeFile(resolve(evidence, `shell-metrics-${width}.json`), JSON.stringify(measurements, null, 2));
   });
 }
 
-test("one global Ask retains draft and all selectors through routes, history and collapse; reply stays independent", async ({
+test("the new session's draft and choices survive other screens, history and hiding the sidebar; a reply stays its own", async ({
   page,
 }) => {
-  await page.goto("/#/workspace");
-  await expect(
-    page.getByRole("button", { name: "Start session", exact: true }),
-  ).not.toHaveAttribute("aria-disabled", "true");
-  const ask = page.getByRole("textbox", { name: "Ask anything" });
-  const mountedAsk = await ask.elementHandle();
+  await page.goto("/#/new");
+  await expect(page.getByRole("button", { name: "Start session", exact: true })).not.toHaveAttribute("aria-disabled", "true");
+  const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await ask.fill("Open a session to reply to");
   await page.getByRole("button", { name: "Start session", exact: true }).click();
-  await expect(
-    page.getByRole("textbox", { name: /Reply to session/ }),
-  ).toBeVisible();
-  await expect(ask).toHaveText("");
-  await ask.fill("Persistent global question");
-  await page
-    .getByRole("textbox", { name: /Reply to session/ })
-    .fill("Independent session follow-up");
-  await useFolder(page);
-  await page
-    .getByRole("button", {
-      name: "Agent: Default",
-    })
-    .click();
-  await page.keyboard.press("Escape");
-  async function retained() {
-    await expect(ask).toHaveText("Persistent global question");
-    expect(
-      await mountedAsk!.evaluate(
-        (el) => el === document.querySelector('[aria-label="Ask anything"]'),
-      ),
-    ).toBe(true);
-    for (const label of [otherFolderLabel, "Agent: Default"]) {
-      await expect(
-        page.getByRole("button", { name: label, exact: true }),
-      ).toBeVisible();
-    }
-    await expect(page.getByRole("form", { name: "New session" })).toHaveCount(1);
-  }
-  for (const route of ["settings", "agent", "sources", "workspace"]) {
-    await navigate(page, route);
-    await retained();
-    await page.getByRole("button", { name: "Collapse sidebar" }).click();
-    await expect(
-      page.getByRole("button", { name: "Expand sidebar" }),
-    ).toBeFocused();
-    await expect(page.getByRole("complementary")).toHaveCount(0);
-    await retained();
-    await page.getByRole("button", { name: "Expand sidebar" }).click();
-    await expect(
-      page.getByRole("button", { name: "Collapse sidebar" }),
-    ).toBeFocused();
-    await retained();
-  }
-  for (const route of ["sources", "agent", "settings", "workspace"]) {
-    await page.goBack();
-    await expect(page).toHaveURL(new RegExp(`#/${route}$`));
-    await expect(page.getByRole("main")).toBeFocused();
-    await retained();
-  }
-  for (const route of ["settings", "agent", "sources", "workspace"]) {
-    await page.goForward();
-    await expect(page).toHaveURL(new RegExp(`#/${route}$`));
-    await expect(page.getByRole("main")).toBeFocused();
-    await retained();
-  }
   const reply = page.getByRole("textbox", { name: /Reply to session/ });
+  await expect(reply).toBeVisible();
+  await reply.fill("Independent session follow-up");
+  const session = page.url();
+
+  await newSession(page);
+  await expect(ask).toHaveText("");
+  await ask.fill("Unsent question");
+  await useFolder(page);
+  async function retained() {
+    await navigate(page, "new");
+    await expect(ask).toHaveText("Unsent question");
+    await expect(page.getByRole("button", { name: otherFolderLabel, exact: true })).toBeVisible();
+  }
+  for (const route of ["settings", "agents", "background"]) {
+    await navigate(page, route);
+    await page.getByRole("button", { name: "Hide sidebar" }).click();
+    await expect(page.getByRole("button", { name: "Show sidebar" })).toBeFocused();
+    await expect(page.getByRole("complementary", { name: "Sidebar" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Show sidebar" }).click();
+    await expect(page.getByRole("button", { name: "Hide sidebar" })).toBeFocused();
+    await retained();
+  }
+  // Back and forward go through the same screens, focus starting on each.
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/background$/);
+  await expect(page.getByRole("main")).toBeFocused();
+  await page.goForward();
+  await expect(page).toHaveURL(/#\/new$/);
+  await expect(ask).toHaveText("Unsent question");
+
+  await page.goto(session);
   await expect(reply).toHaveText("Independent session follow-up");
   await reply.fill("Changed reply only");
-  await retained();
-  await navigate(page, "settings");
-  await expect(
-    page.getByRole("button", { name: otherFolderLabel, exact: true }),
-  ).toBeVisible();
+  await newSession(page);
+  await expect(ask).toHaveText("Unsent question");
 });
 
-test("narrow shell preserves Ask across routes and keyboard sidebar toggles", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/#/workspace");
-  const ask = page.getByRole("textbox", { name: /Ask anything/ });
-  await ask.fill("Mobile global draft");
-  for (const route of routes) {
-    if (route !== "workspace") await navigate(page, route);
-    await expect(ask).toHaveText("Mobile global draft");
-    await page.getByRole("button", { name: "Collapse sidebar" }).focus();
-    await page.keyboard.press("Control+b");
-    await expect(
-      page.getByRole("button", { name: "Expand sidebar" }),
-    ).toBeFocused();
-    await expect(page.getByRole("complementary")).toHaveCount(0);
-    await page.keyboard.press("Enter");
-    await expect(
-      page.getByRole("button", { name: "Collapse sidebar" }),
-    ).toBeFocused();
-    await folderButton(page).click();
-    await expect(
-      page.getByRole("combobox", { name: "Search Working folder" }),
-    ).toBeFocused();
-    await page.keyboard.press("Escape");
-    await expect(
-      folderButton(page),
-    ).toBeFocused();
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
-  }
-});
-
-test("Ask remains typeable and controls stay inside its surface at mobile/tablet widths", async ({
-  page,
-}) => {
+test("the New session composer stays typeable and its controls inside it at every width", async ({ page }) => {
   for (const width of [320, 390, 768, 1024]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("/#/workspace");
-    for (const route of routes) {
-      if (route !== "workspace") await navigate(page, route);
-      const ask = page.getByRole("textbox", { name: /Ask anything/ });
-      await ask.fill(`Question at ${width}`);
-      expect((await ask.boundingBox())!.width).toBeGreaterThan(100);
-      const surface = await page
-        .getByRole("form", { name: "New session" })
-        .boundingBox();
-      const run = await page
-        .getByRole("button", { name: "Start session", exact: true })
-        .boundingBox();
-      expect(run!.x + run!.width).toBeLessThanOrEqual(
-        surface!.x + surface!.width,
-      );
-      expect(run!.y + run!.height).toBeLessThanOrEqual(
-        surface!.y + surface!.height,
-      );
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      ).toBe(true);
+    await page.goto("/#/new");
+    const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
+    await ask.fill(`Question at ${width}`);
+    expect((await ask.boundingBox())!.width).toBeGreaterThan(200);
+    // A resize can move the composer between the middle and the dock: measure once it has settled.
+    const form = page.getByRole("form", { name: "New session" });
+    const start = page.getByRole("button", { name: "Start session", exact: true });
+    await expect.poll(async () => !!(await form.boundingBox()) && !!(await start.boundingBox())).toBe(true);
+    const surface = (await form.boundingBox())!;
+    const run = (await start.boundingBox())!;
+    expect(run.x + run.width).toBeLessThanOrEqual(surface.x + surface.width);
+    expect(run.y + run.height).toBeLessThanOrEqual(surface.y + surface.height);
+    // The choices are reachable and their picker returns focus.
+    await folderButton(page).click();
+    await expect(page.getByRole("combobox", { name: "Search Working folder" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(folderButton(page)).toBeFocused();
+    for (const route of [...routes.slice(1), "new"]) {
+      await navigate(page, route);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     }
   }
 });

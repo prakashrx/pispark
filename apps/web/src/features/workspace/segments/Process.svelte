@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import Icon from "../../../lib/ui/Icon.svelte";
   import { useSession, useSessions } from "../session-client.svelte";
-  import { showProcess } from "../../background/background-client.svelte";
+  import { details } from "../details.svelte";
   import { processName, processState } from "../../background/process-presentation";
   import type { ProcessInfo } from "../../../../../server/src/contract/process-protocol";
   import type { Segment } from "../session-turns";
@@ -23,31 +23,54 @@
       .catch(() => {});
   });
   const shown = $derived(running ?? known);
+  const name = $derived(shown ? processName(shown) : segment.title);
 </script>
 
+<!-- A quiet line (design set 3): name · state, the output beside, Stop while it runs. -->
 <div class="started" data-purpose="process-row">
   <Icon name="terminal" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-  <span class="min-w-0 flex-1 truncate">{shown ? processName(shown) : segment.title}</span>
-  <span class="text-xs text-muted-foreground">{shown ? processState(shown) : "Starting…"}</span>
-  {#if session}<button type="button" class="open" onclick={() => showProcess(session.id, segment.processId)}
-      >Show output<span class="sr-only"> of {shown ? processName(shown) : segment.title}</span></button
-    >{/if}
+  <span class="min-w-0 truncate">{name}</span>
+  <span class="state">· {shown ? processState(shown) : "Starting…"}</span>
+  {#if session}<button
+      type="button"
+      class="icon"
+      aria-label={`Show output of ${name}`}
+      title="Show output"
+      onclick={() => details.show(session.id, "tasks", segment.processId)}><Icon name="expand" class="h-3.5 w-3.5" /></button
+    >
+    {#if shown?.state === "running"}<button
+        type="button"
+        class="icon"
+        aria-label={`Stop ${name}`}
+        title="Stop"
+        onclick={() => void client.processes.stop(session.id, segment.processId)}><Icon name="stop" class="h-3.5 w-3.5" /></button
+      >{/if}{/if}
 </div>
 
 <style>
   .started {
     display: flex;
     align-items: center;
-    gap: 0.625rem;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    font-size: 0.875rem;
+    gap: 0.375rem;
+    min-height: 1.75rem;
+    font-size: var(--text-sm);
   }
-  .open {
-    font-size: 0.875rem;
-    color: var(--interactive-text);
-    text-decoration: underline;
-    text-underline-offset: 2px;
+  .state {
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+  }
+  .icon {
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    color: var(--muted-foreground);
+  }
+  .icon:hover {
+    background: var(--accent);
+    color: var(--foreground);
   }
 </style>

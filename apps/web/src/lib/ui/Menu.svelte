@@ -6,8 +6,11 @@
     items,
     trigger,
     disabled = false,
+    title,
   }: {
     label: string;
+    /** The heading when the menu is a sheet (phones); its label by default. */
+    title?: string;
     trigger?: Snippet;
     disabled?: boolean;
     items: {
@@ -41,7 +44,7 @@
   }
 </script>
 
-<Popover {label} trigger={trigger ?? dots} {disabled} role="menu" onkeydown={navigate}>
+<Popover {label} {title} trigger={trigger ?? dots} {disabled} role="menu" onkeydown={navigate}>
   {#snippet children(close)}
     {#each items as item (item.id)}
       <button

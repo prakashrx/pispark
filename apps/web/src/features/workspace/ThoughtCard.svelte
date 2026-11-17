@@ -12,7 +12,7 @@
     </svg>
     <span>{label}</span>
     <svg class="thought-chevron" class:open={expanded} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-      <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
+      <path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6" />
     </svg>
   </button>
   {#if expanded}
@@ -60,7 +60,7 @@
     transition: transform 0.15s;
   }
   .thought-chevron.open {
-    transform: rotate(180deg);
+    transform: rotate(90deg);
   }
   .thought-body {
     align-self: stretch;

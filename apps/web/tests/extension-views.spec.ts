@@ -91,26 +91,32 @@ test("an extension offers whole views of the session: the person switches, the c
   const show = page.getByRole("radiogroup", { name: "Show" });
   await expect(show).toHaveCount(0);
 
-  // The commands the extension registered with Pi are a menu in the header. Escape closes it and
-  // focus returns to its button; choosing one sends it as if it were typed in the reply box.
-  const commands = page.getByRole("button", { name: "Commands" });
+  // The session's ⋯ menu (Details, Commands…, Copy link, Archive). Escape closes it and focus returns
+  // to its button. Commands… lists what the extensions registered with Pi; choosing one sends it as
+  // if it were typed in the reply box.
+  const commands = page.getByRole("button", { name: "Session actions" });
   await commands.focus();
   await page.keyboard.press("Enter");
-  const menu = page.getByRole("menu", { name: "Commands" });
-  // (The agent's other fixture extension registers the first one.)
-  await expect(menu.getByRole("menuitem")).toHaveText([
-    "unsupported-reload",
-    "page — Offer the fixture page; 'show' asks to show it",
-    "note",
-  ]);
+  const menu = page.getByRole("menu", { name: "Session actions" });
+  await expect(menu.getByRole("menuitem")).toHaveText(["Details", "Commands…", "Copy link", "Archive"]);
   await expect(menu.getByRole("menuitem").first()).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   await expect(commands).toBeFocused();
   await page.keyboard.press("Enter");
   await page.keyboard.press("ArrowDown");
-  await expect(menu.getByRole("menuitem", { name: "page — Offer" })).toBeFocused();
+  await expect(menu.getByRole("menuitem", { name: "Commands…" })).toBeFocused();
   await page.keyboard.press("Enter");
+  const picker = page.getByRole("dialog", { name: "Commands" });
+  // (The agent's other fixture extension registers the first one.)
+  await expect(picker.getByRole("listitem")).toHaveText([
+    "/unsupported-reload",
+    "/page Offer the fixture page; 'show' asks to show it",
+    "/note",
+  ]);
+  await picker.getByRole("searchbox", { name: "Filter commands" }).fill("page");
+  await page.keyboard.press("Enter");
+  await expect(picker).toHaveCount(0);
 
   // The view is offered, not shown: the conversation stays until the person chooses.
   await expect(show.locator("label")).toHaveText(["Conversation", "Fixture page"]);
@@ -127,7 +133,7 @@ test("an extension offers whole views of the session: the person switches, the c
   await expect(show.getByRole("radio", { name: "Fixture page" })).toBeFocused();
   // The view has the area under the header, at its whole width; the reply box steps aside.
   await expect(reply).toHaveCount(0);
-  await expect(page.getByRole("main", { name: "Fixture page" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Fixture page", exact: true }).first()).toBeVisible();
   const main = (await page.getByRole("main").boundingBox())!;
   expect((await area.boundingBox())!.width).toBeGreaterThan(main.width - 2);
   await expect(page.locator('[data-point="session.title"]')).toHaveText("fixture chip");
@@ -143,7 +149,7 @@ test("an extension offers whole views of the session: the person switches, the c
   await page.keyboard.press("ArrowLeft");
   await expect(show.getByRole("radio", { name: "Conversation" })).toBeFocused();
   await expect(area).toHaveCount(0);
-  await expect(page.getByRole("main", { name: "Session conversation" })).toBeVisible();
+  await expect(page.getByRole("main")).toBeVisible();
   await page.reload();
   await expect(reply).toBeVisible();
   await expect(show.getByRole("radio", { name: "Conversation" })).toBeChecked();
@@ -153,7 +159,9 @@ test("an extension offers whole views of the session: the person switches, the c
   await reply.fill("/page show");
   await reply.press("Enter");
   await expect(area.getByRole("heading", { name: "Fixture page" })).toBeVisible();
-  await expect(page.getByRole("main", { name: "Fixture page" })).toBeFocused();
+  // Focus moves to the screen's main region, where the view now is.
+  await expect(page.getByRole("main")).toBeFocused();
+  await expect(page.getByRole("region", { name: "Fixture page", exact: true }).first()).toBeVisible();
   // It asked once: the person switches back, and another offer does not move them.
   await show.getByText("Conversation", { exact: true }).click();
   await ready();
@@ -181,7 +189,7 @@ test("an extension offers whole views of the session: the person switches, the c
   await expect(area).toHaveCount(0);
   await expect(show.locator("label")).toHaveText(["Conversation", "Second page"]);
   await expect(reply).toBeVisible();
-  await expect(page.getByRole("main", { name: "Session conversation" })).toBeFocused();
+  await expect(page.getByRole("main")).toBeFocused();
 
   expect(errors).toEqual([]);
 });
