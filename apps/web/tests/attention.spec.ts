@@ -63,6 +63,8 @@ fresh("back on a newer version, the page reloads itself when nothing is typed, a
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await ask.fill("keep this");
   newer = true;
+  // An update restarts the server: the page reconnects and reads everything again (here, without a restart).
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
   const banner = page.getByRole("status").filter({ hasText: "Updated to v99.0.0." });
   await expect(banner).toBeVisible({ timeout: 15_000 });
   await expect(ask).toHaveText("keep this");
