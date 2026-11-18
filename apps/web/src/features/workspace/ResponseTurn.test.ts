@@ -115,3 +115,18 @@ test("an activity that gains a call keeps its element", async () => {
   expect(container.querySelectorAll("[data-purpose=activity]")).toHaveLength(1);
   expect(container.querySelector("[data-purpose=activity]")).toBe(activity);
 });
+
+test("naming the session is housekeeping: a done title call shows no activity line, a failed one still does", () => {
+  const named = turn([
+    item("user", [{ type: "text", text: "plan a trip" }]),
+    item("assistant", [{ type: "toolCall", id: "t1", name: "pispark_set_title", args: { title: "Trip" } }, { type: "text", text: "Here's a plan." }]),
+    item("toolResult", [{ type: "text", text: "Session title updated." }], { callId: "t1", toolName: "pispark_set_title" }),
+  ]);
+  expect(named.segments.map((segment) => segment.kind)).toEqual(["text"]);
+  const failed = turn([
+    item("user", [{ type: "text", text: "plan a trip" }]),
+    item("assistant", [{ type: "toolCall", id: "t2", name: "pispark_set_title", args: { title: "" } }]),
+    item("toolResult", [{ type: "text", text: "The title must contain printable text" }], { callId: "t2", toolName: "pispark_set_title", isError: true }),
+  ]);
+  expect(failed.segments.map((segment) => segment.kind)).toContain("activity");
+});

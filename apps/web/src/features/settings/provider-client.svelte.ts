@@ -63,18 +63,25 @@ export class ProviderClient {
   error = $state("");
   busy = $state(false);
   private generation = 0;
+  /** Saved sign-ins the last check found not working; kept until a check says otherwise. */
+  private expired = new Set<string>();
   private controller = new AbortController();
-  async refresh() {
+  /** Reads the catalog; with `check`, each saved sign-in is tried too (Settings → Providers). */
+  async refresh(options: { check?: boolean } = {}) {
     const generation = ++this.generation;
     this.loading = true;
     try {
       const data = await providerRequest<ProviderCatalog>(
-        "",
+        options.check ? "?check" : "",
         undefined,
         undefined,
         this.controller.signal,
       );
+      // What a check found holds even if a newer read overtook it.
+      if (options.check) this.expired = new Set(data.providers.filter((p) => p.health === "expired").map((p) => p.id));
       if (generation === this.generation) {
+        // A read without the check keeps what the last check found, for sign-ins still saved.
+        for (const p of data.providers) if (p.stored && this.expired.has(p.id)) p.health = "expired";
         this.catalog = data;
         this.error = "";
       }

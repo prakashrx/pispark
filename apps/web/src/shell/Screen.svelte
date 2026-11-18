@@ -6,6 +6,7 @@
    */
   import { setContext, type Snippet } from "svelte";
   import Icon from "../lib/ui/Icon.svelte";
+  import InlineEdit from "../lib/ui/InlineEdit.svelte";
   import { href, type Route } from "../routes";
   import Banner from "./Banner.svelte";
   import NudgeHost from "./NudgeHost.svelte";
@@ -17,6 +18,8 @@
     back = { name: "home" },
     backLabel,
     hideTitle = false,
+    rename,
+    renaming = $bindable(false),
     actions,
     below,
     notices,
@@ -33,6 +36,10 @@
     backLabel?: string;
     /** The screen shows its own heading; the top bar shows no title. */
     hideTitle?: boolean;
+    /** The title names something that can be renamed in place: a pencil beside it starts editing. */
+    rename?: (title: string) => Promise<void>;
+    /** Editing the title now (the pencil, or the screen's own Rename action). */
+    renaming?: boolean;
     actions?: Snippet;
     /** A second row under the top bar (a session's view tabs on compact). */
     below?: Snippet;
@@ -72,7 +79,26 @@
       {:else if compact}
         <a class="tap" href={href(back)} aria-label="Back"><Icon name="back" class="h-5 w-5" /></a>
       {/if}
-      {#if hideTitle}<span class="grow"></span>{:else}<h1 class="title">{title}</h1>{/if}
+      {#if hideTitle}<span class="grow"></span>
+      {:else if rename && renaming}<div class="title editing">
+          <InlineEdit
+            value={title}
+            label="Name"
+            onsave={rename}
+            ondone={() => {
+              renaming = false;
+              // Back to where editing began.
+              queueMicrotask(() => document.querySelector<HTMLElement>("[data-rename-title]")?.focus());
+            }}
+          />
+        </div>
+      {:else if rename}<div class="title named">
+          <h1>{title}</h1>
+          <button type="button" class="pencil" data-rename-title aria-label={`Rename ${title}`} title="Rename" onclick={() => (renaming = true)}
+            ><Icon name="pencil" class="h-3.5 w-3.5" /></button
+          >
+        </div>
+      {:else}<h1 class="title">{title}</h1>{/if}
       {#if actions}<div class="actions">{@render actions()}</div>{/if}
     </header>
   {/if}
@@ -143,6 +169,38 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .named {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .named h1 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font: inherit;
+  }
+  .editing {
+    display: flex;
+    overflow: visible;
+  }
+  /* Quiet until you reach for it: faint beside the title, clear on hover or focus. */
+  .pencil {
+    flex-shrink: 0;
+    display: inline-grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--radius-sm);
+    color: var(--muted-foreground);
+    opacity: 0.55;
+  }
+  .pencil:hover,
+  .pencil:focus-visible {
+    opacity: 1;
+    background: var(--accent);
+    color: var(--foreground);
   }
   .grow {
     flex: 1;

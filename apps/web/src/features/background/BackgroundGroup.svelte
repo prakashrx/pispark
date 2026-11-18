@@ -18,12 +18,16 @@
   import { nextText, runFailed } from "../schedules/schedule-presentation";
   import { details } from "../workspace/details.svelte";
   import { useSessions } from "../workspace/session-client.svelte";
-  import { folderName, sessionName, STATE_WORDS } from "../workspace/session-presentation";
+  import { elapsed, folderName, sessionName, STATE_WORDS } from "../workspace/session-presentation";
+  import { useNow } from "../workspace/clock.svelte";
   import type { BackgroundGroup } from "./background-groups";
   import { processName, processState } from "./process-presentation";
 
   let { group, onerror }: { group: BackgroundGroup; onerror: (message: string) => void } = $props();
   const client = useSessions();
+  // "Working · 43s" (design set 5): how long each reply here has run, ticking while one does.
+  const clock = useNow(() => group.rows.some((row) => (row.kind === "session" && !!row.session.workingSince) || row.kind === "task"));
+  const workingFor = (since?: string) => (since ? elapsed(Math.max(0, clock.now - Date.parse(since))) : undefined);
   const owner = $derived(group.owner);
   let open = $state<string>();
   /** The schedule open in its dialog. */
@@ -69,13 +73,18 @@
       <li>
         {#if row.kind === "session"}
           <a class="row" href={href({ name: "session", id: row.session.id })}>
-            <StatusMark kind={row.state === "needs-you" ? "attention" : row.state === "queued" ? "waiting" : "busy"} label={STATE_WORDS[row.state]} words />
+            <StatusMark
+              kind={row.state === "needs-you" ? "attention" : row.state === "queued" ? "waiting" : "busy"}
+              label={STATE_WORDS[row.state]}
+              words
+              detail={row.state === "working" ? workingFor(row.session.workingSince) : undefined}
+            />
             {#if owner.kind !== "session"}<span class="what meta">{sessionName(row.session)}</span>{:else}<span class="what"></span>{/if}
           </a>
         {:else if row.kind === "task"}
           <div class="row">
             <Icon name="terminal" class="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span class="what"><span class="mono">{processName(row.process)}</span><span class="meta">{" · "}{processState(row.process)}</span></span>
+            <span class="what"><span class="mono">{processName(row.process)}</span><span class="meta">{" · "}{processState(row.process, clock.now)}</span></span>
             <button
               type="button"
               class="icon"

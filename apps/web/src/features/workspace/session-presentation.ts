@@ -125,6 +125,26 @@ export function sessionStarted(session: SessionInfo): string {
 }
 
 /** A model's name from the providers' catalog, or its id when the catalog doesn't list it. */
+/** Thinking levels in words. */
+export const THINKING_WORDS: Record<string, string> = {
+  off: "Off",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+};
+/** "400k", "1.2M": a context window's size, short. */
+export function tokensShort(tokens: number): string {
+  if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`.replace(".0M", "M");
+  if (tokens >= 1000) return `${Math.round(tokens / 1000)}k`;
+  return String(tokens);
+}
+/** "38% of 400k", or the window alone while it isn't measured (right after a summary). */
+export function contextText(context: { percent: number | null; window: number }): string {
+  return context.percent === null ? `${tokensShort(context.window)} window` : `${Math.round(context.percent)}% of ${tokensShort(context.window)}`;
+}
 export function modelName(
   providers: { id: string; models: { id: string; name: string }[] }[],
   model?: { provider: string; id: string },

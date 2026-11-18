@@ -78,6 +78,10 @@ test("a session waiting on a question gives its slot up, and goes first when ans
     const runA = f.runtime.start(a.id, "ui-select");
     await eventually(() => f.runtime.session(a.id).extensions.dialogs.length === 1);
     assert.equal(f.runtime.session(a.id).queued, undefined);
+    // The list carries the question's title, for a nudge elsewhere.
+    const row = f.runtime.list().find((session) => session.id === a.id)!;
+    assert.equal(row.waiting, true);
+    assert.equal(row.question, "Pick one");
 
     // Its slot is free while it waits for a person.
     const runB = f.runtime.start(b.id, "second");

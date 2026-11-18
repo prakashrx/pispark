@@ -1,12 +1,19 @@
 <script lang="ts">
   /**
-   * A session's Details (design language §1.5a): a stack of foldable panels. Session (agent, model,
-   * folder, when and by whom it started), its schedules, its background tasks, the sessions it
-   * started, its agent's routines and what keeps it running. Each row acts with a small icon; the
+   * A session's Details (design language §1.5a): a stack of foldable panels. Session (agent, model
+   * and thinking, which change between replies, folder, when and by whom it started), its context,
+   * the panels its extensions add (`session.details`), its schedules, its background tasks, the
+   * sessions it started, its agent's routines and what keeps it running. Each row acts with a small icon; the
    * longer work (a schedule's form, a process's output, editing the agent) opens as a view in the
    * same panel, with Back to here.
    */
   import Fold from "../../lib/ui/Fold.svelte";
+  import Selector from "../../lib/ui/Selector.svelte";
+  import type { ThinkingLevel } from "../../../../server/src/contract/agent-protocol";
+  import { contributionsFor } from "./extension-views";
+  import { useNow } from "./clock.svelte";
+  import type { SessionFile } from "../../../../server/src/contract/protocol";
+  import { fileKind, fileSize, fileUrl } from "../files/file-kinds";
   import Icon from "../../lib/ui/Icon.svelte";
   import Toggle from "../../lib/ui/Toggle.svelte";
   import StatusMark from "../../lib/ui/StatusMark.svelte";
@@ -20,7 +27,7 @@
   import ContributionPoint from "./ContributionPoint.svelte";
   import { details } from "./details.svelte";
   import { useSession, useSessions } from "./session-client.svelte";
-  import { modelName, sessionName, sessionStarted, sessionState, sessionStatus } from "./session-presentation";
+  import { contextText, modelName, sessionName, sessionStarted, sessionState, sessionStatus, THINKING_WORDS } from "./session-presentation";
 
   const client = useSessions();
   const session = useSession();
@@ -29,8 +36,46 @@
   const parent = $derived(info?.parent ? client.sessions.find((each) => each.id === info.parent) : undefined);
   const schedules = $derived(info ? client.schedules.of(info.id) : []);
   const tasks = $derived(info ? client.processes.running.filter((p) => p.sessionId === info.id) : []);
+  // "Running · 4 min" keeps counting while a task runs.
+  const clock = useNow(() => tasks.length > 0);
   const started = $derived(info ? client.sessions.filter((each) => each.parent === info.id) : []);
   const routines = $derived(info ? client.routines.of(info.agent.id) : []);
+  const doc = $derived(session.doc);
+  // Model and thinking change between replies (Pi switches from the next one on).
+  const between = $derived((doc?.status === "idle" || doc?.status === "error") && !doc.readOnly);
+  const models = $derived(
+    client.providers.catalog.providers.flatMap((p) =>
+      p.models.filter((m) => m.available).map((m) => ({ value: JSON.stringify({ provider: p.id, id: m.id }), label: `${m.name} · ${p.name}` })),
+    ),
+  );
+  const modelValue = $derived(doc?.model ? JSON.stringify({ provider: doc.model.provider, id: doc.model.id }) : "");
+  const levels = $derived((doc?.thinking?.levels ?? []).map((level) => ({ value: level, label: THINKING_WORDS[level] ?? level })));
+  let configureError = $state("");
+  async function configure(change: { model?: { provider: string; id: string }; thinking?: ThinkingLevel }) {
+    configureError = "";
+    try {
+      await session.configure(change);
+    } catch (failure) {
+      configureError = (failure as Error).message;
+    }
+  }
+  // Artifacts (design set 4/2): the files you attached and the ones the agent made for you, read
+  // again when the session has said or done something new.
+  let files = $state<SessionFile[]>([]);
+  const changes = $derived(`${session.items.length}:${doc?.status}`);
+  $effect(() => {
+    void changes;
+    let stale = false;
+    void session
+      .files()
+      .then((list) => {
+        if (!stale) files = list;
+      })
+      .catch(() => {});
+    return () => (stale = true);
+  });
+  // Panels the session's extensions add, each under its own title, built like PiSpark's own.
+  const panels = $derived(contributionsFor(doc?.extensions, "session.details"));
   let routineError = $state("");
   /** The schedule open in its dialog; `true` for a new one. */
   let editing = $state<ScheduleSummary | true>();
@@ -56,8 +101,27 @@
         </div>
         <div>
           <dt>Model</dt>
-          <dd>{model ?? "Not available"}</dd>
+          <dd data-model-picker>
+            {#if doc && !doc.readOnly && models.length}<Selector
+                label="Model"
+                options={models}
+                searchable
+                disabled={!between}
+                bind:value={() => modelValue, (value) => void (value && value !== modelValue && configure({ model: JSON.parse(value) }))}
+              />{:else}{model ?? "Not available"}{/if}
+          </dd>
         </div>
+        {#if doc?.thinking && levels.length > 1}<div>
+            <dt>Thinking</dt>
+            <dd>
+              <Selector
+                label="Thinking"
+                options={levels}
+                disabled={!between}
+                bind:value={() => doc.thinking!.level, (value) => void (value && value !== doc.thinking!.level && configure({ thinking: value as ThinkingLevel }))}
+              />
+            </dd>
+          </div>{/if}
         <div>
           <dt>Folder</dt>
           <dd class="path">{info.folder}</dd>
@@ -71,9 +135,52 @@
             <dd><button type="button" class="link" onclick={() => client.open(parent.id)}>{sessionName(parent)}</button></dd>
           </div>{/if}
       </dl>
+      {#if doc && !between && !doc.readOnly}<p class="note">Model and thinking change between replies.</p>{/if}
+      {#if configureError}<p role="alert" class="note danger">{configureError}</p>{/if}
       <!-- An extension's title chips sit beside the name on wide screens, and here otherwise. -->
       {#if layout.size !== "expanded" && session.doc}<div class="chips"><ContributionPoint point="session.title" /></div>{/if}
     </Fold>
+
+    {#if doc?.context}{@const context = doc.context}<Fold title="Context" count={contextText(context)}>
+        {#if context.percent !== null}<div
+            class="meter"
+            role="meter"
+            aria-label="Context used"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow={Math.round(context.percent)}
+          >
+            <span style:width={`${Math.min(100, context.percent)}%`}></span>
+          </div>{/if}
+        <p class="note">
+          {context.percent === null ? "Measured again after the next reply. " : ""}Earlier messages are summarized when it’s nearly full.
+        </p>
+      </Fold>{/if}
+
+    {#if files.length}<Fold title="Artifacts" count={String(files.length)}>
+        <ul class="tiles" aria-label="Artifacts">
+          {#each files as file (file.name)}<li>
+              <button
+                type="button"
+                class="tile"
+                aria-label={`${file.name}${file.by ? `, ${file.by === "you" ? "uploaded" : "made"}` : ""}`}
+                title={`${file.name} · ${fileSize(file.size)}`}
+                onclick={() => details.show(session.id, "file", file.name)}
+              >
+                <span class="thumb">
+                  {#if fileKind(file.name) === "image"}<img src={fileUrl(session.id, file.name)} alt="" loading="lazy" />
+                  {:else}<span class="ext" aria-hidden="true">{file.name.split(".").pop()?.slice(0, 5) || "file"}</span>{/if}
+                </span>
+                <span class="tile-name">{file.name}</span>
+                {#if file.by}<span class="sub">{file.by === "you" ? "uploaded" : "made"}</span>{/if}
+              </button>
+            </li>{/each}
+        </ul>
+      </Fold>{/if}
+
+    {#each panels as panel (panel.key)}<Fold title={panel.title ?? panel.key} tag="extension">
+        <ContributionPoint point="session.details" only={panel.key} />
+      </Fold>{/each}
 
     <Fold title="Schedules" count={schedules.length ? String(schedules.length) : undefined}>
       {#snippet action()}<button
@@ -106,7 +213,7 @@
           <ul class="rows" aria-label="Background tasks of this session">
             {#each tasks as task (task.id)}<li class="row">
                 <Icon name="terminal" class="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span class="grow"><span class="line mono">{processName(task)}</span><span class="sub">{processState(task)}</span></span>
+                <span class="grow"><span class="line mono">{processName(task)}</span><span class="sub">{processState(task, clock.now)}</span></span>
                 <button
                   type="button"
                   class="icon"
@@ -220,12 +327,74 @@
     min-width: 0;
     overflow-wrap: anywhere;
   }
+  /* A value that changes (model, thinking) lines up with the values that don't. */
+  .facts dd :global(.ui-selector) {
+    margin-inline-start: -0.5rem;
+    font-weight: 400;
+  }
   .path {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
   }
   .muted {
     color: var(--muted-foreground);
+  }
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+    gap: 0.5rem;
+    padding: 0.25rem 0 0.375rem;
+  }
+  .tile {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    width: 100%;
+    text-align: left;
+    border-radius: var(--radius-sm);
+  }
+  .thumb {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--muted);
+  }
+  .thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .ext {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+  .tile:hover .thumb,
+  .tile:focus-visible .thumb {
+    border-color: var(--interactive);
+  }
+  .tile-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-xs);
+  }
+  .meter {
+    height: 0.375rem;
+    margin: 0.375rem 0 0.25rem;
+    border-radius: var(--radius-full);
+    background: var(--muted);
+    overflow: hidden;
+  }
+  .meter span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--foreground);
   }
   .chips {
     display: flex;

@@ -90,7 +90,7 @@ CI installs Chromium and runs the production browser suite after the core checks
 
 ## Dependency findings
 
-The pinned Pi SDK 1.5.0 brings `undici@8.12.3`, which already includes the fixes the earlier root override supplied; no override is needed. Both SDK and OpenAI optional-peer paths deduplicate to 8.12.3. This does **not** certify Node's separately bundled fetch/WebSocket implementation or external provider behavior.
+The pinned Pi SDK 1.5.2 brings `undici@8.12.3`, which already includes the fixes the earlier root override supplied; no override is needed. Both SDK and OpenAI optional-peer paths deduplicate to 8.12.3. This does **not** certify Node's separately bundled fetch/WebSocket implementation or external provider behavior.
 
 Remaining production audit findings are **moderate**: `minimatch@10.2.6` and its Pi SDK parent (GHSA-g3hv-75wg-m249). The affected preprocessing requires attacker-controlled patterns with `optimizationLevel >= 2`; the host admits exact resources/models, not client glob patterns, and inspected SDK core call sites do not request that optimization level. Patched 11.0.1 is a major-version change, not applied without compatibility review. This is a documented constrained-path mitigation, not blanket risk acceptance for extensions or future endpoints. Review before external-provider/remote enablement or publication.
 

@@ -1,3 +1,5 @@
+/** PiSpark's built-in title tool: housekeeping, which the conversation doesn't show as work. */
+export const TITLE_TOOL = "pispark_set_title";
 /** A session title: one printable line of at most 80 code points. User content: never log it. */
 export function sessionTitle(input: string): string {
   const line =

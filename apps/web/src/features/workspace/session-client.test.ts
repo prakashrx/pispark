@@ -54,8 +54,10 @@ test("no-session reconnect recovers catalog without duplicate timers/listeners o
     expect(client.catalogError).toBe(false);
     expect(client.error).toBe("");
     expect(
-      timers.mock.calls.filter(([, delay]) => delay === 5000),
+      timers.mock.calls.filter(([, delay]) => delay === 60_000),
     ).toHaveLength(1);
+    // Changes come on one workspace stream, opened once.
+    expect(calls.mock.calls.filter(([url]) => url === "/api/live")).toHaveLength(1);
     for (const type of ["beforeunload", "offline", "online"]) {
       const handlers = listeners.mock.calls
         .filter(([name]) => name === type)

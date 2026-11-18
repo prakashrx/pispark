@@ -31,6 +31,14 @@ fresh("a session that starts needing you while you are elsewhere gets a nudge; O
 
   const nudge = page.getByRole("group", { name: "asks later needs you" });
   await expect(nudge).toBeVisible({ timeout: 15_000 });
+  // It says what the session asks (set 9/2), not just that it needs you.
+  await expect(nudge).toContainText("Proceed?");
+  // The first nudge also offers notifications on this device (G-19); Not now is remembered.
+  const offer = nudge.getByText(/even when PiSpark is closed\?/);
+  await expect(offer).toBeVisible();
+  await nudge.getByRole("button", { name: "Not now" }).click();
+  await expect(offer).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem("pispark.notifications.offer"))).toBe("no");
   await nudge.getByRole("link", { name: "Open" }).click();
   await expect(nudge).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1, name: "asks later" })).toBeVisible();

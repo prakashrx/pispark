@@ -27,9 +27,10 @@ fresh("each session in the sidebar is archived from its row; Archived restores i
 
   // The Archive button shows when the row is pointed at, and works.
   const archive = sessions(page).getByRole("button", { name: "Archive second session" });
-  await expect(archive).toHaveCSS("opacity", "0");
+  // (The row's actions fade in together: Rename and Archive.)
+  await expect(archive.locator("xpath=..")).toHaveCSS("opacity", "0");
   await sessionLink(page, "second session").hover();
-  await expect(archive).toHaveCSS("opacity", "1");
+  await expect(archive.locator("xpath=..")).toHaveCSS("opacity", "1");
   await archive.click();
   await expect(sessionLink(page, "second session")).toHaveCount(0);
   await expect(archivedLink(page)).toHaveAccessibleName("Archived 1");
@@ -50,9 +51,11 @@ fresh("each session in the sidebar is archived from its row; Archived restores i
   // session closes it, and focus moves to the next session in the list.
   await sessionLink(page, "third session").focus();
   await page.keyboard.press("Tab");
+  await expect(sessions(page).getByRole("button", { name: "Rename third session" })).toBeFocused();
+  await page.keyboard.press("Tab");
   const third = sessions(page).getByRole("button", { name: "Archive third session" });
   await expect(third).toBeFocused();
-  await expect(third).toHaveCSS("opacity", "1");
+  await expect(third.locator("xpath=..")).toHaveCSS("opacity", "1");
   await page.keyboard.press("Enter");
   await expect(sessionLink(page, "third session")).toHaveCount(0);
   await expect(sessionLink(page, "first session")).toBeFocused();

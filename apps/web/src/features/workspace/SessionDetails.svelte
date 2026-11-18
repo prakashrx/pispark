@@ -11,6 +11,8 @@
         return "Agent for this session";
       case "tasks":
         return "Process output";
+      case "file":
+        return "File";
     }
   }
 </script>
@@ -22,11 +24,12 @@
    */
   import AgentEditor from "../agent/AgentEditor.svelte";
   import ProcessOutput from "../background/ProcessOutput.svelte";
+  import FileView from "../files/FileView.svelte";
   import RoutinesPanel from "../background/RoutinesPanel.svelte";
   import DetailsPanels from "./DetailsPanels.svelte";
   import { useSession, useSessions } from "./session-client.svelte";
 
-  /** `focus`: what the view opens on, a process for Background tasks. */
+  /** `focus`: what the view opens on, a process for Background tasks or a file's name. */
   let { view, focus }: { view: DetailsView; focus?: string } = $props();
   const client = useSessions();
   const session = useSession();
@@ -52,6 +55,8 @@
   {:else if view === "agent"}
     <p class="help">Changes apply to this session only. Leaving here reloads the session with them; your messages stay.</p>
     <AgentEditor target={{ session: session.id }} embedded />
+  {:else if view === "file"}
+    {#if focus}<FileView sessionId={session.id} name={focus} />{:else}<p class="help">Choose a file in Details.</p>{/if}
   {:else}
     {#key focus}<ProcessOutput sessionId={session.id} {focus} />{/key}
   {/if}

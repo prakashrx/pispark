@@ -69,6 +69,7 @@ export default function (pi) {
 | `session.title` | Small things beside the session's name in the top bar (chips) on wide screens; in Details' Session panel otherwise | — | — |
 | `session.header` | Under the session's notices, in every view | — | `setHeader` |
 | `session.status` | In the status line under the reply box, after the model | — | `setFooter` |
+| `session.details` | A panel in the session's Details, under the contribution's `title` (else its key), folded like PiSpark's own panels | — | — |
 | `session.view` | A whole view of the session, offered beside the conversation (see [views](#views-of-a-session)) | — | — |
 | `session.input.above`, `session.input.below` | Above the reply box (in the shelf, after questions) and below it | — | `setWidget` above or below the editor |
 | `session.input.actions` | Small actions beside Send (toggles, buttons) | — | — |
@@ -77,7 +78,7 @@ Commands an extension registers with Pi are the session's actions (`registerComm
 
 PiSpark owns each point's frame (chips and actions sit in a row, blocks around the reply box are spaced like widgets), and the extension owns what is inside. Thinking, answer text, summaries and notices are PiSpark's own, as they are Pi's in the terminal.
 
-- **Event shape:** `{ point, component, props?, calls?, files?, key? }`, and for a view also `title` and `attention?`. `component` is a `file:` URL (a `URL` or its string) or absolute path of a `.svelte` file inside the extension's own folder. `key` tells several contributions to one point apart. New props for the same file update the mounted component in place.
+- **Event shape:** `{ point, component, props?, calls?, files?, key?, title? }`, and for a view also `attention?`. `title` (1 to 40 characters) names the contribution where PiSpark shows a heading, such as a Details panel; a view must have one. `component` is a `file:` URL (a `URL` or its string) or absolute path of a `.svelte` file inside the extension's own folder. `key` tells several contributions to one point apart. New props for the same file update the mounted component in place.
 - **Calls:** `calls[name](data, { signal })` runs in the extension, in the server. A component reaches only the functions its own placement gave it, never the bus or another extension. Data and results are JSON of at most 64 KiB; a call is cancelled when the session closes (its `signal` aborts) and times out after 30 s; a session has at most 16 calls pending. A function that throws rejects the component's call with its message, and the session is unaffected.
 - **Files:** `files` is a folder (a `file:` URL or absolute path) the component may read from, for example the session's working folder or a data folder of the extension. `host.file("photos/1.jpg")` gives an address for an `<img>`, a `fetch` or a link; it reads the file as it is now. Only files inside that folder are served (at most 64 MiB each), as inert data: nothing in them runs. A placement that names no folder can read none.
 - **Static files:** a component imports an image, font, sound, video or PDF of its extension (`import logo from "./logo.svg"`) and gets its address. The file must be inside the extension's folder and at most 8 MiB. JSON and text imports are bundled into the component. Global `.css` imports are not supported; a component's `<style>` is.
@@ -131,7 +132,7 @@ An offer does not take the session over. The person chooses what shows:
 | While a view shows | It has the area under the top bar, at full width, and scrolls when it is taller; the conversation and the reply box step aside. If an extension's question is open, the header says the session is waiting and offers the conversation. |
 | Removal | When the view that shows is removed, the conversation shows again. |
 
-`title` and `attention` belong to views only; other points refuse them.
+`attention` belongs to views only; other points refuse it.
 
 A view is an ordinary component: `session` for the session itself, `props` for what its extension wants it to show, `calls` for what it can do (for example `pi.sendUserMessage(...)` to have the agent work; the session then shows as working and can be stopped, like a run you started), `files` for what it reads. The layout inside is the extension's. Because every view is given the same session and nothing else, a view can be a page that hardly shows the conversation, or a different session altogether (the test fixture `apps/server/test/fixtures/frontend-extension` is a session drawn as a plain log with its own input, built from `session` alone). A view that keeps its data in files in the session's working folder can watch them and emit the offer again when the agent changes them.
 
@@ -164,7 +165,7 @@ Earlier builds used slot names (`tool:<name>`, `session.page`, `reply.*` and the
 - `ctx.ui.custom()` returns `undefined`, and `onTerminalInput`, `setEditorComponent` and theme switching are quiet no-ops, exactly as in Pi's own RPC mode. Extensions that need `custom()` check `ctx.mode === "tui"` and fall back (Pi's `custom-header` example only sets its header in `tui` mode, so it shows nothing here).
 - `getEditorText` returns `""`, and autocomplete providers are not used yet.
 - Session actions from commands (`newSession`, `fork`, `navigateTree`, `switchSession`, `reload`) fail visibly.
-- Shortcuts and flags, expanded tool output, completion of `/` commands and their arguments in the reply box.
+- Shortcuts and flags, expanded tool output, and completion of a command's arguments in the reply box. (Typing `/` in a reply offers the session's prompt templates and commands by name.)
 
 ## Trying it
 

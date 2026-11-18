@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { hostedTest } from "./isolated-host";
+import { newSession } from "./ask";
 
 // Each test gets its own data folder.
 const fresh = hostedTest;
@@ -56,4 +57,23 @@ fresh("a process the agent starts: a row in the reply, on Background with its se
 
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+fresh("a reply working shows on Background with how long it has run, and leaves when it stops", async ({ page }) => {
+  await page.goto("/");
+  await newSession(page);
+  const box = page.getByRole("textbox", { name: "Ask anything", exact: true });
+  await box.fill("hold the line");
+  await box.press("Enter");
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+  await page.goto("/#/background");
+  const row = page.getByRole("region", { name: "hold the line" }).getByRole("link").filter({ hasText: "Working" });
+  // How long it has run (design set 5), ticking while it runs.
+  await expect(row).toContainText(/Working \d+s/);
+  const first = await row.textContent();
+  await expect(row).not.toHaveText(first!);
+  await page.getByRole("region", { name: "hold the line" }).getByRole("link").first().click();
+  await page.getByRole("button", { name: "Stop" }).click();
+  await page.goto("/#/background");
+  await expect(page.getByRole("region", { name: "hold the line" })).toHaveCount(0);
 });

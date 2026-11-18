@@ -120,7 +120,11 @@ export class ProviderSettings {
       AbortSignal.timeout(milliseconds),
     ]);
   }
-  async catalog(): Promise<ProviderCatalog> {
+  /**
+   * Providers and models as the browser may see them. With `check`, each saved sign-in is tried with
+   * Pi's own check (an OAuth sign-in refreshes): one that no longer works says so.
+   */
+  async catalog(options: { check?: boolean } = {}): Promise<ProviderCatalog> {
     this.healthy();
     const stored = new Set(
       (await this.runtime.listCredentials({ signal: this.signal(5000) })).map(
@@ -184,6 +188,21 @@ export class ProviderSettings {
             })),
         };
       });
+    if (options.check) {
+      const checked = await Promise.all(
+        providers.map(async (p) => {
+          if (!p.stored) return false;
+          try {
+            return !(await this.runtime.checkAuth(p.id, { signal: this.signal(10_000) }));
+          } catch {
+            return true;
+          }
+        }),
+      );
+      providers.forEach((p, index) => {
+        if (checked[index]) p.health = "expired";
+      });
+    }
     return {
       providers,
       defaultModel: this.defaults.value,

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Popover from "../../lib/ui/Popover.svelte";
   /**
    * Background (design language §6, set 5): the one view across everything that runs without you.
    * Pause all in the top bar; filters (All, Running, Scheduled, Failed); one card per owner (an app
@@ -74,10 +75,28 @@
       </p>{/if}
     {#if error}<p role="alert" class="text-sm text-[var(--danger-foreground)]">{error}</p>{/if}
 
-    <div class="filters" role="group" aria-label="Show">
-      {#each filters as [id, label] (id)}
-        <button type="button" class="filter" aria-pressed={filter === id} onclick={() => (filter = id)}>{label}</button>
-      {/each}
+    <div class="filter-row">
+      <div class="filters" role="group" aria-label="Show">
+        {#each filters as [id, label] (id)}
+          <button type="button" class="filter" aria-pressed={filter === id} onclick={() => (filter = id)}>{label}</button>
+        {/each}
+      </div>
+      <!-- What each kind is (B-08): one line each, on demand. -->
+      <Popover label="What runs here">
+        {#snippet trigger()}<Icon name="help" class="h-4 w-4" />{/snippet}
+        {#snippet children()}
+          <dl class="explain">
+            <dt>Schedules</dt>
+            <dd>A prompt sent to a session at set times, in that session or a new one each time.</dd>
+            <dt>Routines</dt>
+            <dd>An agent’s own schedules: off until you switch them on; each run is a new session.</dd>
+            <dt>Background tasks</dt>
+            <dd>Commands a session started that keep running, such as a dev server. They end with PiSpark.</dd>
+            <dt>Kept running</dt>
+            <dd>A session an extension keeps loaded while no one watches, because its agent allows it.</dd>
+          </dl>
+        {/snippet}
+      </Popover>
     </div>
 
     {#if !schedules.loaded}<p role="status" class="empty">Loading…</p>
@@ -128,6 +147,29 @@
     border-radius: var(--radius);
     background: var(--muted);
     font-size: var(--text-sm);
+  }
+  .filter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .filter-row .filters {
+    flex: 1;
+    min-width: 0;
+  }
+  .explain {
+    display: grid;
+    gap: 0.25rem 0;
+    width: min(22rem, 80vw);
+    padding: 0.75rem;
+    font-size: var(--text-sm);
+  }
+  .explain dt {
+    font-weight: 600;
+  }
+  .explain dd {
+    margin-bottom: 0.375rem;
+    color: var(--muted-foreground);
   }
   .filters {
     display: flex;

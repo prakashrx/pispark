@@ -88,6 +88,8 @@ rmSync(join(app, "node_modules", "@pispark"), { recursive: true, force: true });
 rmSync(join(app, "node_modules", ".package-lock.json"), { force: true });
 for (const [from, to] of [
   ["apps/server/dist", "apps/server/dist"],
+  // PiSpark's built-in skills, read from beside the server's build.
+  ["apps/server/skills", "apps/server/skills"],
   ["apps/web/dist", "apps/web/dist"],
   ["apps/launcher/dist", "apps/launcher/dist"],
 ])

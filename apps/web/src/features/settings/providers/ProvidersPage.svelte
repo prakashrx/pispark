@@ -4,6 +4,7 @@
    * provider opens in a dialog (sign in again, its models, Disconnect); + adds one (set 7: choose,
    * then Pi's own sign-in steps).
    */
+  import { onMount } from "svelte";
   import Button from "../../../lib/ui/Button.svelte";
   import Card from "../../../lib/ui/Card.svelte";
   import CardRow from "../../../lib/ui/CardRow.svelte";
@@ -18,6 +19,8 @@
   import type { ProviderInfo } from "./types";
 
   const client = useSessions().providers;
+  // Opening Providers tries each saved sign-in, so one that no longer works says so (set 6/2).
+  onMount(() => void client.refresh({ check: true }));
   let notice = $state("");
   /** The provider open in its dialog. */
   let open = $state<string>();
@@ -68,7 +71,7 @@
     defaultModel={defaultChoice?.provider === provider.id ? defaultChoice.id : ""}
     busy={client.busy}
     error={client.error}
-    onrefreshstatus={() => void client.refresh()}
+    onrefreshstatus={() => void client.refresh({ check: true })}
     onrefreshmodels={() => void client.change("/refresh", { provider: provider.id })}
     ondefault={(id) => void setDefault({ provider: provider.id, id })}
     ondisconnect={() => disconnect(provider.id)}
@@ -114,7 +117,8 @@
     <button type="button" class="provider" onclick={() => (open = provider.id)}>
       <IdentityMark name={provider.name} />
       <span class="name">{provider.name}</span>
-      <span class="muted small">✓ {summary(provider)}</span>
+      {#if provider.health === "expired"}<span class="expired small">! Sign-in expired</span>
+      {:else}<span class="muted small">✓ {summary(provider)}</span>{/if}
       <span class="grow"></span>
       <Icon name="chevronRight" class="h-4 w-4 text-muted-foreground" />
     </button>
@@ -174,6 +178,11 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+  }
+  /* With its "!" mark, so it never rests on colour alone. */
+  .expired {
+    font-weight: 600;
+    color: var(--warning-foreground, var(--foreground));
   }
   .muted {
     color: var(--muted-foreground);

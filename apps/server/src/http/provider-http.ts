@@ -31,11 +31,12 @@ export class ProviderHttp {
   async handle(request: IncomingMessage, response: ServerResponse) {
     try {
       const url = new URL(request.url!, "http://localhost");
-      if (url.search) throw new ProviderError("auth-invalid");
-      if (request.method === "GET" && url.pathname === "/api/providers") {
-        sendJson(response, 200, await this.settings.catalog(), 2 * 1024 * 1024);
+      // `?check`: try each saved sign-in too (Settings → Providers asks when it opens).
+      if (request.method === "GET" && url.pathname === "/api/providers" && (!url.search || url.search === "?check")) {
+        sendJson(response, 200, await this.settings.catalog({ check: url.search === "?check" }), 2 * 1024 * 1024);
         return;
       }
+      if (url.search) throw new ProviderError("auth-invalid");
       if (request.method !== "POST") {
         sendJson(response, 404, { error: "not-found" });
         return;

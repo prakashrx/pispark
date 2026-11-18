@@ -32,6 +32,17 @@
   provideSession(session);
   const client = useSessions();
   const name = $derived(session.info ? sessionName(session.info) : "Session");
+  let renaming = $state(false);
+  // Looking at it reads it (L-17): when it is on screen and the page is in view.
+  let visible = $state(typeof document === "undefined" || document.visibilityState === "visible");
+  $effect(() => {
+    const update = () => (visible = document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  });
+  $effect(() => {
+    if (session.info?.unread && visible) void client.seen(session.id);
+  });
   const agent = $derived(session.info?.agent.name);
   const view = $derived(session.views.find((offer) => offer.key === session.shownView));
   const compact = $derived(layout.size === "compact");
@@ -78,8 +89,8 @@
     <SessionDetails view={panelRoute} focus={details.focus(session.id)} />
   </Screen>
 {:else}
-  <Screen title={name} flush scroll={!view} below={compact && session.views.length ? tabs : undefined}>
-    {#snippet actions()}<SessionBar tabs={!compact} />{/snippet}
+  <Screen title={name} rename={session.info ? (title) => session.rename(title) : undefined} bind:renaming flush scroll={!view} below={compact && session.views.length ? tabs : undefined}>
+    {#snippet actions()}<SessionBar tabs={!compact} onrename={() => (renaming = true)} />{/snippet}
     {#snippet notices()}<SessionNotices />{/snippet}
     <SessionArea {session} />
     {#snippet dock()}

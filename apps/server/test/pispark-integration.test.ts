@@ -1,3 +1,4 @@
+import { RuntimeError } from "../src/core/runtime/errors.js";
 import { PROCESS_TOOL } from "../src/core/runtime/process-tool.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -329,6 +330,27 @@ test("PiSpark integration: legacy unmentioned tool activates on reopen; explicit
       ].sort(),
       [PROCESS_TOOL, SCHEDULE_TOOL, SESSION_TOOL, TITLE_TOOL].sort(),
     );
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a person's name for a session stays: the agent's title tool no longer changes it, loaded or not", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.cwd });
+    await f.runtime.start(session.id, command("Agent title")).completion;
+    assert.equal(f.runtime.session(session.id).title, "Agent title");
+    f.runtime.rename(session.id, "  My\nname ");
+    assert.equal(f.runtime.session(session.id).title, "My");
+    await f.runtime.start(session.id, command("Agent again")).completion;
+    assert.equal(f.runtime.session(session.id).title, "My", "the person's name stays");
+    await f.runtime.stop(session.id);
+    f.runtime.rename(session.id, "Second name");
+    assert.equal(f.runtime.list().find((s) => s.id === session.id)?.title, "Second name");
+    await f.runtime.open(session.id);
+    assert.equal(f.runtime.session(session.id).title, "Second name");
+    assert.throws(() => f.runtime.rename(session.id, " \n "), (e) => e instanceof RuntimeError && e.code === "invalid-input");
   } finally {
     await f.cleanup();
   }

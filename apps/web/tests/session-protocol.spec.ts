@@ -251,9 +251,11 @@ test("background receipt failure stays with its originating session across selec
     .getByRole("link", { name: /^provider-error/ })
     .first()
     .click();
+  // Said once, in the conversation where it happened (design set 8/4): no notice repeats it.
   await expect(
-    page.getByRole("alert").filter({ hasText: "The run failed on the server." }),
+    page.getByRole("alert").filter({ hasText: "The run failed: the model couldn’t finish." }),
   ).toBeVisible();
+  await expect(page.getByText(/Reopen this session|was interrupted|failed on the server/)).toHaveCount(0);
 });
 
 for (const fail of [false, true]) {
@@ -617,6 +619,8 @@ test("successful truncated session list is visible status without a draft, clear
     "",
   );
   truncated = false;
+  // Nothing changed on the server, so the list is read again when the connection comes back.
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(page.getByText(copy, { exact: true })).toHaveCount(0, {
     timeout: 15_000,
   });

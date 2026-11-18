@@ -652,3 +652,19 @@ test("ProviderAuth: cancel after native credential commit preserves saved-sync-f
   );
   finish();
 });
+
+test("ProviderSettings: asked to check, a saved sign-in that no longer works says so; a working one doesn't", async (t) => {
+  const f = await fixture(t);
+  const c = f.auth.start(id, "api_key");
+  const p = await current(f.auth, c, "secret");
+  f.auth.respond(c.id, c.token, p.id, "test-saved-key");
+  await eventually(() => f.auth.observe(c.id, c.token).state === "saved");
+  const health = async (check: boolean) => (await f.settings.catalog({ check })).providers.find((each) => each.id === id)?.health;
+  assert.equal(await health(true), undefined, "it works");
+  // The saved key stops working (the provider's own check fails).
+  f.control.syncFails = true;
+  assert.equal(await health(false), undefined, "not checked unless asked");
+  assert.equal(await health(true), "expired");
+  f.control.syncFails = false;
+  assert.equal(await health(true), undefined);
+});

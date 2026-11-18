@@ -32,6 +32,9 @@
 </script>
 
 <div class="provider-panel">
+  {#if provider.health === "expired"}<p class="inline-note" data-tone="warning" role="status">
+      The saved sign-in no longer works. Sign in again to use {provider.name}'s models.
+    </p>{/if}
   {#if interactive}
     {#key attempt}<ProviderConnection
         {provider}

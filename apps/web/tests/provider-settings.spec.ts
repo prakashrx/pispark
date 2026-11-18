@@ -410,3 +410,22 @@ test("shared model radios preserve native keyboard grouping, disabled options, d
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
 });
+
+// Its own server: the shared one keeps its sign-in for the files that follow.
+hostedTest("opening Providers checks saved sign-ins: one that no longer works says so, and its dialog asks to sign in again", async ({ page }) => {
+  // The server's check is covered by its own test; here its answer is that the saved sign-in failed.
+  // The provider has a saved sign-in; the check (only when asked) finds it no longer works.
+  await page.route((url) => url.pathname === "/api/providers", async (route) => {
+    const response = await route.fetch();
+    const catalog = await response.json();
+    const checked = new URL(route.request().url()).search === "?check";
+    for (const each of catalog.providers)
+      if (each.id === id) Object.assign(each, { configured: true, stored: true, ...(checked ? { health: "expired" } : {}) });
+    await route.fulfill({ response, json: catalog });
+  });
+  await page.goto("/#/settings/providers");
+  const row = summary(page);
+  await expect(row).toContainText("! Sign-in expired");
+  await row.click();
+  await expect(page.getByRole("dialog", { name: provider }).getByRole("status").filter({ hasText: "The saved sign-in no longer works." })).toBeVisible();
+});

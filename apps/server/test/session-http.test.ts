@@ -217,13 +217,14 @@ test("SessionHttp: strict Host/Origin/JSON/identity, explicit failures, receipts
   );
   assert.equal(failed.outcome, "failed");
   assert.equal(failed.error, "execution");
+  // The next message goes: the session starts again from its transcript after a failed reply.
   assert.equal(
     (
       await f.settle(
         await f.post({ type: "start", sessionId: id, text: "again" }),
       )
-    ).error,
-    "busy",
+    ).outcome,
+    "completed",
   );
 });
 
@@ -606,4 +607,83 @@ test("SessionHttp: archive, restore and delete are commands; the list says how m
   assert.deepEqual((await list()).sessions.map((s) => s.id), [b]);
   // No other query is accepted.
   assert.equal((await fetch(`${f.base}/api/sessions?all`)).status, 404);
+});
+
+/** Reads the workspace stream's frames as they come. */
+async function workspaceStream(base: string) {
+  const controller = new AbortController();
+  const response = await fetch(`${base}/api/live`, { signal: controller.signal });
+  assert.equal(response.headers.get("content-type"), "text/event-stream");
+  const events: { type: string; areas?: string[] }[] = [];
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  void (async () => {
+    let pending = "";
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return;
+        pending += decoder.decode(value, { stream: true });
+        let end: number;
+        while ((end = pending.indexOf("\n\n")) >= 0) {
+          const frame = pending.slice(0, end);
+          pending = pending.slice(end + 2);
+          events.push(JSON.parse(frame.slice(frame.indexOf("data: ") + 6)));
+        }
+      }
+    } catch {
+      /* aborted */
+    }
+  })();
+  return { events, close: () => controller.abort() };
+}
+
+test("the workspace stream says which areas changed, soon after a session changes, and nothing while nothing does", async (t) => {
+  const f = await fixture(t);
+  const stream = await workspaceStream(f.base);
+  await eventually(() => stream.events[0]?.type === "ready");
+  const id = await f.create("a");
+  await eventually(() => stream.events.some((event) => event.type === "changed" && event.areas!.includes("sessions")));
+  // A running reply is in the list with when it started; the stream says so without polling.
+  f.provider.automatic = false;
+  const before = stream.events.length;
+  const run = await f.post({ type: "start", sessionId: id, text: "slow" });
+  await eventually(() => f.provider.active === 1);
+  await eventually(() => stream.events.length > before);
+  const working = f.runtime.list().find((session) => session.id === id)!;
+  assert.ok(working.workingSince && Date.parse(working.workingSince) <= Date.now());
+  f.provider.requests.at(-1)!.release();
+  await f.settle(run);
+  await eventually(() => f.runtime.list().find((session) => session.id === id)!.workingSince === undefined);
+  // Quiet when nothing changes.
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  const quiet = stream.events.length;
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  assert.equal(stream.events.length, quiet);
+  stream.close();
+});
+
+test("notification routes: the key, subscribe with a push service only, state, presence; unread clears when seen", async (t) => {
+  const f = await fixture(t);
+  const post = (path: string, body: unknown) =>
+    fetch(`${f.base}/api/notifications/${path}`, { method: "POST", headers: { "Content-Type": "application/json", Origin: f.base }, body: JSON.stringify(body) });
+  const endpoint = "https://fcm.googleapis.com/fcm/send/device";
+  const state = await (await post("state", {})).json();
+  assert.match(state.publicKey, /^[\w-]{87}$/);
+  assert.equal(state.subscribed, false);
+  assert.equal((await post("subscribe", { endpoint: "https://127.0.0.1/x", events: ["failed"] })).status, 400);
+  assert.equal((await post("subscribe", { endpoint, events: ["nope"] })).status, 400);
+  assert.equal((await post("subscribe", { endpoint, events: ["failed", "needs-you"] })).status, 200);
+  assert.deepEqual(await (await post("state", { endpoint })).json(), { publicKey: state.publicKey, subscribed: true, events: ["failed", "needs-you"] });
+  assert.equal((await post("presence", { page: "p1", visible: true })).status, 200);
+  assert.equal((await post("presence", { page: "../x", visible: true })).status, 400);
+  assert.equal((await post("unsubscribe", { endpoint })).status, 200);
+
+  // Unread: a session that did something since it was seen; seeing it reads it, on every device.
+  f.provider.automatic = true;
+  const id = await f.create("a");
+  await f.settle(await f.post({ type: "start", sessionId: id, text: "hello" }));
+  await eventually(() => f.runtime.list().find((s) => s.id === id)?.unread === true);
+  assert.equal((await f.settle(await f.post({ type: "seen", sessionId: id }))).outcome, "completed");
+  assert.equal(f.runtime.list().find((s) => s.id === id)?.unread, undefined);
 });

@@ -28,6 +28,10 @@ export class HostHttp {
       running: this.running(),
     };
   }
+  /** What changes in the status, without the per-request address: for the workspace stream. */
+  changes(): unknown {
+    return { launcher: this.link.launcher(), running: this.running() };
+  }
   async handle(request: IncomingMessage, response: ServerResponse) {
     if (request.method === "GET") return sendJson(response, 200, this.status(request), 256 * 1024);
     if (request.method !== "POST") return sendJson(response, 405, { error: "invalid-input" });

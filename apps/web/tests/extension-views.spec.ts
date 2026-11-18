@@ -25,6 +25,11 @@ test("an extension's own Svelte components appear at the session's points, answe
   await expect(counter.getByText("Count 0", { exact: true })).toBeVisible();
   await expect(page.locator('[data-point="session.title"]')).toHaveText("fixture chip");
   await expect(page.locator('[data-point="session.status"]')).toHaveText("Fixture footer");
+  // A panel in the session's Details, under the title its extension gave it.
+  const details = page.getByRole("complementary", { name: "Details" });
+  if (!(await details.isVisible())) await page.getByRole("button", { name: "Details", exact: true }).click();
+  await expect(details.getByText("Fixture notes", { exact: true })).toBeVisible();
+  await expect(details.locator('[data-point="session.details"]')).toHaveText("Fixture details panel");
   const toggle = page.locator('[data-point="session.input.actions"]').getByRole("button", { name: "Fixture mode" });
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await toggle.click();
@@ -98,12 +103,13 @@ test("an extension offers whole views of the session: the person switches, the c
   await commands.focus();
   await page.keyboard.press("Enter");
   const menu = page.getByRole("menu", { name: "Session actions" });
-  await expect(menu.getByRole("menuitem")).toHaveText(["Details", "Commands…", "Copy link", "Archive"]);
+  await expect(menu.getByRole("menuitem")).toHaveText(["Rename", "Details", "Commands…", "Copy link", "Archive"]);
   await expect(menu.getByRole("menuitem").first()).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   await expect(commands).toBeFocused();
   await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   await expect(menu.getByRole("menuitem", { name: "Commands…" })).toBeFocused();
   await page.keyboard.press("Enter");

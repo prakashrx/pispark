@@ -1,3 +1,4 @@
+import type { ThinkingLevel } from "../../../../server/src/contract/agent-protocol";
 import type { Json } from "../../../../server/src/contract/stream-ops";
 import type {
   CallRequest,
@@ -9,6 +10,7 @@ import type {
   SessionDoc,
   SessionInfo,
   ToolProgress,
+  SessionFile,
 } from "../../../../server/src/contract/protocol";
 import type { CommandUncertaintyKind } from "./session-presentation";
 import { contributionsFor } from "./extension-views";
@@ -65,6 +67,8 @@ export class Session {
   /** What went wrong with the last thing asked of this session, in words. */
   error = $state("");
   errorKind = $state<CommandUncertaintyKind>();
+  /** The server's code for the failure, when a command failed there ("execution": the run failed). */
+  errorCode = $state<string>();
   /** The unsent reply. Kept while other sessions are shown. */
   draft = $state("");
   /** A message is being handed to the server. */
@@ -85,7 +89,8 @@ export class Session {
   async send(text?: string): Promise<boolean> {
     const message = text ?? this.draft;
     const revision = this.draftRevision;
-    if (this.sending || !message.trim() || this.doc?.status !== "idle") return false;
+    // After a failed reply the next message goes too: the server starts the session again first.
+    if (this.sending || !message.trim() || !["idle", "error"].includes(this.doc?.status ?? "")) return false;
     // The draft's attachments go with it, each named where it sits; a given text carries none.
     const placed = text === undefined ? this.attachments.placed(message) : [];
     if (placed.length && this.attachments.blocked) {
@@ -154,6 +159,20 @@ export class Session {
       this.fail(error);
     }
     if (this.shown && !this.transport.closed) this.observe();
+  }
+  /** Between replies: another model or thinking level from the next reply on. Throws so the picker can say why. */
+  async configure(change: { model?: { provider: string; id: string }; thinking?: ThinkingLevel }) {
+    await this.transport.run({ type: "configure", sessionId: this.id, ...change });
+  }
+  /** The session's files: what the person attached and what the agent made (its artifacts). */
+  async files(): Promise<SessionFile[]> {
+    const files = (await this.transport.json<{ files?: SessionFile[] }>(`/api/sessions/${this.id}/attachments`)).files;
+    return Array.isArray(files) ? files : [];
+  }
+  /** A person names the session; it keeps that name. Throws so the form can say why. */
+  async rename(title: string) {
+    await this.transport.run({ type: "rename", sessionId: this.id, title });
+    await this.host.refresh();
   }
   /** Follows the session again after the connection was lost. Never sends a message again. */
   async reconnect() {
@@ -278,10 +297,12 @@ export class Session {
   fail(error: unknown) {
     this.error = (error as Error).message;
     this.errorKind = error instanceof CommandUncertainty ? error.kind : undefined;
+    this.errorCode = error instanceof CommandFailed ? error.code : undefined;
   }
   private clearError() {
     this.error = "";
     this.errorKind = undefined;
+    this.errorCode = undefined;
   }
   private async command(command: Parameters<Transport["run"]>[0]) {
     try {

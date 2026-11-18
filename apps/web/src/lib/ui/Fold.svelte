@@ -9,6 +9,7 @@
   let {
     title,
     count,
+    tag,
     open = $bindable(true),
     action,
     children,
@@ -16,6 +17,8 @@
     title: string;
     /** A short figure after the title: "2", "1 running". */
     count?: string;
+    /** A small word that says what kind of panel it is ("extension"). */
+    tag?: string;
     open?: boolean;
     action?: Snippet;
     children: Snippet;
@@ -29,6 +32,7 @@
       <button type="button" class="toggle" aria-expanded={open} aria-controls="{id}-body" onclick={() => (open = !open)}>
         <Icon name={open ? "chevronDown" : "chevronRight"} class="h-3.5 w-3.5 shrink-0" />
         <span id="{id}-title" class="title">{title}</span>
+        {#if tag}<span class="tag">{tag}</span>{/if}
         {#if count}<span class="count">{count}</span>{/if}
       </button>
     </h3>
@@ -73,6 +77,14 @@
     font-size: var(--text-sm);
     font-weight: 600;
     color: var(--foreground);
+  }
+  .tag {
+    padding: 0 0.375rem;
+    border: 1px dashed var(--border-strong, var(--border));
+    border-radius: var(--radius-sm);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    color: var(--muted-foreground);
   }
   .count {
     font-size: var(--text-xs);

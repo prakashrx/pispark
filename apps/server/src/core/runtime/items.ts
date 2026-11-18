@@ -194,6 +194,19 @@ export interface ItemSource {
  * entries, and the in-flight tail from the agent state that has not been persisted yet.
  */
 export class ItemProjector {
+  /** The text of the person's messages on the active branch (attachments are named in it). */
+  userTexts(): string[] {
+    return this.session.sessionManager.getBranch().flatMap((entry) => {
+      const message = (entry as { type?: string; message?: { role?: string; content?: unknown } }).message;
+      if ((entry as { type?: string }).type !== "message" || message?.role !== "user") return [];
+      const content = message.content;
+      return typeof content === "string"
+        ? [content]
+        : Array.isArray(content)
+          ? content.flatMap((part: { type?: string; text?: unknown }) => (part?.type === "text" && typeof part.text === "string" ? [part.text] : []))
+          : [];
+    });
+  }
   private readonly keys = new WeakMap<object, string>();
   private counter = 0;
   /**

@@ -5,13 +5,14 @@
 export const settingsSections = {
   appearance: { label: "Appearance", hint: "Theme, text size, fonts" },
   providers: { label: "Providers & models", hint: "Sign-ins and the default model" },
+  notifications: { label: "Notifications", hint: "On this device, when a session needs you" },
   remote: { label: "Remote access", hint: "Your phone and other devices" },
   about: { label: "About", hint: "Version and updates" },
 } as const;
 export type SettingsSection = keyof typeof settingsSections;
 
 /** What a session's side panel shows: its Details, or one of the views opened from them. */
-const detailsViews = ["details", "routines", "agent", "tasks"] as const;
+const detailsViews = ["details", "routines", "agent", "tasks", "file"] as const;
 export type DetailsView = (typeof detailsViews)[number];
 
 export type Route =

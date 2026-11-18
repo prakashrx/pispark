@@ -55,3 +55,51 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+// Notifications (design set 9). A push carries nothing: what to show is read here from PiSpark, so
+// the browser's push service learns only that something happened. If PiSpark can't be reached, a
+// plain notice still shows (a browser requires one for every push).
+self.addEventListener("push", (event) => {
+  event.waitUntil(
+    (async () => {
+      let list = [];
+      try {
+        const subscription = await self.registration.pushManager.getSubscription();
+        if (subscription) {
+          const response = await fetch("/api/notifications/pending", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ endpoint: subscription.endpoint }),
+          });
+          if (response.ok) list = (await response.json()).notifications ?? [];
+        }
+      } catch {
+        /* out of reach: the plain notice below */
+      }
+      if (!list.length) list = [{ title: "PiSpark", body: "A session may need you.", url: "/#/", tag: "pispark" }];
+      await Promise.all(
+        list.map((each) =>
+          self.registration.showNotification(each.title, { body: each.body, tag: each.tag, icon: "/icon-192.png", badge: "/icon-192.png", data: { url: each.url } }),
+        ),
+      );
+    })(),
+  );
+});
+
+// Tapping one opens PiSpark at that session: an open window goes there, else a new one opens.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url ?? "/", self.location.origin);
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const open = windows.find((client) => new URL(client.url).origin === url.origin);
+      if (open) {
+        await open.focus();
+        open.postMessage({ type: "pispark:open", hash: url.hash });
+        return;
+      }
+      await self.clients.openWindow(url.href);
+    })(),
+  );
+});

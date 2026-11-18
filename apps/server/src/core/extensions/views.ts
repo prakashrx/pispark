@@ -176,7 +176,9 @@ export class ExtensionViews {
     if (typeof key !== "string" || !KEY.test(key)) throw new Error("key must be a short name");
     const view = point === VIEW_POINT;
     if (view && !key) throw new Error(`${point} needs a key`);
-    if (!view && (title !== undefined || attention !== undefined)) throw new Error(`${point} takes no title or attention: only a view does`);
+    // Any contribution may be titled (a panel's heading); only a view must be, and only a view asks to be shown.
+    if (!view && attention !== undefined) throw new Error(`${point} takes no attention: only a view does`);
+    if (!view && title !== undefined && (typeof title !== "string" || !TITLE.test(title.trim()))) throw new Error("a title is 1 to 40 characters");
     const id = `${point}\u0000${key}`;
     // No component: remove what this point and key held.
     if (component === undefined || component === null) {
@@ -201,7 +203,8 @@ export class ExtensionViews {
       // New props for the same file show at once; the compiled component is reused.
       url: previous?.file === file ? previous.url : undefined,
       // Each request to be shown counts once, so a client can tell a new one from one it has seen.
-      ...(view ? { title: (title as string).trim(), attention: (previous?.attention ?? 0) + (attention ? 1 : 0) } : {}),
+      ...(typeof title === "string" ? { title: title.trim() } : {}),
+      ...(view ? { attention: (previous?.attention ?? 0) + (attention ? 1 : 0) } : {}),
     };
     this.placed.set(id, entry);
     this.host.changed();

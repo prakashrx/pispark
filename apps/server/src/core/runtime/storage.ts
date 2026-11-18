@@ -1,3 +1,4 @@
+import type { ThinkingLevel } from "../../contract/agent-protocol.js";
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
@@ -28,6 +29,12 @@ export interface SessionMetadata {
   model?: ModelChoice;
   createdAt: string;
   title?: string;
+  /** A person named the session: the agent's title tool no longer changes it. */
+  renamed?: true;
+  /** The thinking level chosen for this session, over its agent's. */
+  thinking?: ThinkingLevel;
+  /** When a person last looked at it (any device); newer activity makes it unread. */
+  seenAt?: string;
   /** A run was in progress; set before model or tool side effects. */
   active: boolean;
   interrupted: boolean;
@@ -47,6 +54,7 @@ export interface SessionMetadata {
   held?: { extension: string; reason: string };
 }
 
+const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 const UUID =
   /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 export function validateId(id: string): void {
@@ -96,6 +104,9 @@ export class SessionStorage {
         (value.model !== undefined && !validChoice(value.model)) ||
         typeof value.createdAt !== "string" ||
         (value.title !== undefined && !validSessionTitle(value.title)) ||
+        (value.renamed !== undefined && value.renamed !== true) ||
+        (value.thinking !== undefined && !THINKING_LEVELS.includes(value.thinking)) ||
+        (value.seenAt !== undefined && (typeof value.seenAt !== "string" || Number.isNaN(Date.parse(value.seenAt)))) ||
         typeof value.active !== "boolean" ||
         typeof value.interrupted !== "boolean" ||
         (value.setup !== undefined && !/^[a-f0-9]{64}$/.test(value.setup)) ||

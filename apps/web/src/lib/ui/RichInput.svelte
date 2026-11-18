@@ -45,6 +45,8 @@
     onfiles,
     onsubmit,
     onremove,
+    onkey,
+    attributes = {},
     class: className = "",
   }: {
     value: RichPiece[];
@@ -58,6 +60,10 @@
     onsubmit?: () => void;
     /** A token left the text (deleted, cut, or its × pressed). */
     onremove?: (id: string) => void;
+    /** A key, before the input acts on it (a list of suggestions takes arrows and Enter); true when taken. */
+    onkey?: (event: KeyboardEvent) => boolean;
+    /** Attributes for the text box itself, such as `aria-controls` for its suggestions. */
+    attributes?: Record<string, string | boolean | undefined>;
     class?: string;
   } = $props();
 
@@ -244,6 +250,10 @@
     insertTokens(onfiles(files));
   }
   function onkeydown(event: KeyboardEvent) {
+    if (onkey?.(event)) {
+      event.preventDefault();
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       onsubmit?.();
@@ -262,6 +272,7 @@
   role="textbox"
   tabindex="0"
   aria-multiline="true"
+  {...attributes}
   aria-label={label}
   aria-placeholder={placeholder}
   data-placeholder={placeholder}

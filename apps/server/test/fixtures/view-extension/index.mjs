@@ -53,6 +53,8 @@ export default function (pi) {
 
   show(pi, { point: "session.title", component: file("./Chip.svelte"), props: { text: "fixture chip" } });
   show(pi, { point: "session.status", component: file("./Footer.svelte"), props: { text: "Fixture footer" } });
+  // A panel in the session's Details, under its own title.
+  show(pi, { point: "session.details", key: "notes", title: "Fixture notes", component: file("./Footer.svelte"), props: { text: "Fixture details panel" } });
   show(pi, {
     point: "session.header",
     component: file("./Banner.svelte"),

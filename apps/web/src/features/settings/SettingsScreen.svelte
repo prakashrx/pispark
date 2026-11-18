@@ -11,6 +11,7 @@
   import AppearanceSettings from "./AppearanceSettings.svelte";
   import ProvidersPage from "./providers/ProvidersPage.svelte";
   import RemoteAccessPage from "../remote/RemoteAccessPage.svelte";
+  import NotificationsPage from "../notifications/NotificationsPage.svelte";
   import AboutPage from "../about/AboutPage.svelte";
   import { useSessions } from "../workspace/session-client.svelte";
 
@@ -19,11 +20,12 @@
   const compact = $derived(layout.size === "compact");
   const shown = $derived(section ?? "appearance");
   const sections = Object.entries(settingsSections) as [SettingsSection, (typeof settingsSections)[SettingsSection]][];
-  const icons: Record<SettingsSection, IconName> = { appearance: "general", providers: "providers", remote: "globe", about: "info" };
+  const icons: Record<SettingsSection, IconName> = { appearance: "general", providers: "providers", notifications: "bell", remote: "globe", about: "info" };
 </script>
 
 {#snippet page(which: SettingsSection)}
   {#if which === "providers"}<ProvidersPage />
+  {:else if which === "notifications"}<NotificationsPage />
   {:else if which === "remote"}<RemoteAccessPage />
   {:else if which === "about"}<AboutPage />
   {:else}<AppearanceSettings />{/if}

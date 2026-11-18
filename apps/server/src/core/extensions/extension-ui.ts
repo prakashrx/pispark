@@ -312,6 +312,15 @@ export class ExtensionUI {
     this.notice(`The ${name} extension failed in ${event}: ${message.slice(0, 500)}`, "error");
   }
 
+  /** The first open question's title, one line, for a nudge elsewhere. */
+  get question(): string | undefined {
+    const first = this.dialogs.values().next().value?.dialog.title;
+    if (!first) return undefined;
+    const line = first.split(/\r?\n/).map((each) => each.trim()).find(Boolean) ?? "";
+    // "Dangerous command:" introduces the message under it; alone, it reads without the colon.
+    const said = line.replace(/\s*:$/, "");
+    return said.length > 120 ? `${said.slice(0, 119)}…` : said || undefined;
+  }
   /** Whether a question is open, so the session can say it waits for someone. */
   get asking(): boolean {
     return this.dialogs.size > 0;

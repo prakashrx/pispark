@@ -8,6 +8,8 @@
   import ContributionPoint from "./ContributionPoint.svelte";
   import { placedPoints, pointOf } from "./extension-views";
   import { useSession } from "./session-client.svelte";
+  import Icon from "../../lib/ui/Icon.svelte";
+  import { attention } from "../../shell/attention.svelte";
 
   /**
    * One turn: your message, then everything the agent did and said, in order. Each segment is drawn
@@ -20,6 +22,21 @@
   const placed = $derived(placedPoints(session.doc?.extensions));
   // Text cut at its limit ends where the cut was, not mid-word as if it were whole.
   const ellipsis = (text: string, cut: boolean) => (cut ? `${text.trimEnd()}…` : text);
+  // Copy (C-20): the reply's text as it was written (Markdown), once it is finished.
+  const replyText = $derived(
+    turn.segments
+      .flatMap((segment) => (segment.kind === "text" ? [segment.text] : []))
+      .join("\n\n")
+      .trim(),
+  );
+  async function copyReply() {
+    try {
+      await navigator.clipboard.writeText(replyText);
+      attention.say("Reply copied");
+    } catch {
+      attention.say("Couldn’t copy the reply");
+    }
+  }
 </script>
 
 <div class="turn" data-purpose="turn">
@@ -41,7 +58,12 @@
       {/each}
     </div>
   {/if}
-  <TurnTime {turn} />
+  <div class="foot">
+    <TurnTime {turn} />
+    {#if !turn.running && replyText}<button type="button" class="copy" aria-label="Copy reply" title="Copy reply" onclick={() => void copyReply()}
+        ><Icon name="copy" class="h-3.5 w-3.5" /></button
+      >{/if}
+  </div>
 </div>
 
 <style>
@@ -50,6 +72,32 @@
     flex-direction: column;
     gap: 0.75rem;
     min-width: 0;
+  }
+  .foot {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: -0.25rem;
+    min-height: 1.5rem;
+  }
+  .foot :global(.turn-time) {
+    margin-top: 0;
+  }
+  /* Quiet until reached for: faint, clear on hover or focus. */
+  .copy {
+    display: inline-grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: var(--radius-sm);
+    color: var(--muted-foreground);
+    opacity: 0.6;
+  }
+  .copy:hover,
+  .copy:focus-visible {
+    opacity: 1;
+    background: var(--accent);
+    color: var(--foreground);
   }
   .response {
     display: flex;

@@ -149,3 +149,27 @@ test("only images inside the session's own files folder are read as content", as
   assert.equal(images.length, 1);
   assert.ok(existsSync(join(session, "files", "in.png")));
 });
+
+test("a session's files list what the person attached and what the agent made there, newest first", async (t) => {
+  const f = await fixture(t);
+  f.provider.automatic = true;
+  await f.upload("photo.png", "png-bytes");
+  // Sent with a message: the person's.
+  await f.settle((await f.post({ type: "start", sessionId: f.id, text: "look", attachments: ["photo.png"] })).receipt);
+  // The agent saves something there (as its PiSpark guidance says), and a dotfile is not listed.
+  const folder = join(f.sessions, f.id, "files");
+  writeFileSync(join(folder, "report.md"), "# Report");
+  writeFileSync(join(folder, ".hidden"), "x");
+  const listed = (await (await fetch(`${f.base}/api/sessions/${f.id}/attachments`)).json()) as { files: { name: string; size: number; by?: string }[] };
+  assert.deepEqual(
+    listed.files.map(({ name, by, size }) => ({ name, by, size })).sort((a, b) => a.name.localeCompare(b.name)),
+    [
+      { name: "photo.png", by: "you", size: 9 },
+      { name: "report.md", by: "agent", size: 8 },
+    ],
+  );
+  // Each opens as inert data from the same place as an attachment.
+  const report = await fetch(`${f.base}/api/sessions/${f.id}/attachments/report.md`);
+  assert.equal(await report.text(), "# Report");
+  assert.equal((await fetch(`${f.base}/api/sessions/${randomUUID()}/attachments`)).status, 400);
+});

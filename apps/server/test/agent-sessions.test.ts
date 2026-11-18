@@ -1,3 +1,5 @@
+import { viewAgent } from "../src/core/agents/resolve.js";
+import { BUILT_IN_SKILLS } from "../src/core/runtime/configuration.js";
 import { PROCESS_TOOL } from "../src/core/runtime/process-tool.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -24,6 +26,16 @@ const toolsOf = (request: LocalRequest) => [
     ),
   ),
 ];
+/** The tools the model has at this request: each system message's additions and removals, in order. */
+const currentTools = (request: LocalRequest) => {
+  const on = new Set<string>();
+  for (const message of request.context.messages)
+    if (message.role === "system") {
+      for (const tool of message.toolsRemoved ?? []) on.delete(tool.name);
+      for (const tool of message.toolsAdded ?? []) on.add(tool.name);
+    }
+  return [...on];
+};
 const systemText = (request: LocalRequest) =>
   JSON.stringify(request.context.messages.filter((m) => m.role === "system"));
 
@@ -84,6 +96,30 @@ test("an agent's instructions, skills, /commands, extensions and tool switches r
     assert.ok(tools.includes("dev_tool"));
     assert.ok(tools.includes("read"));
     assert.ok(!tools.includes("bash") && !tools.includes("write"));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a tool an extension registers once the session runs reaches the model; the agent's switches still win on reopen", async () => {
+  const f = await fixture();
+  try {
+    const late = `export default pi => pi.on("session_start", () => pi.registerTool({name:'late_tool',label:'Late',description:'Registered at session start',parameters:{type:'object',properties:{}},execute:async()=>({content:[{type:'text',text:'ok'}],details:undefined})}));`;
+    await f.agent("late", { name: "Late", off: ["tool:bash"] }, { "extensions/late.mjs": late });
+    const session = await f.runtime.create({ folder: f.folder, agent: "late" });
+    await f.runtime.start(session.id, "first").completion;
+    let tools = currentTools(f.provider.requests.at(-1)!);
+    assert.ok(tools.includes("late_tool"), "registered after startup, still offered");
+    assert.ok(tools.includes("read") && !tools.includes("bash"));
+
+    // The transcript now records read on and bash off; the agent flips both, and the agent wins.
+    await f.agent("late", { name: "Late", off: ["tool:read"] }, { "extensions/late.mjs": late });
+    await f.runtime.reload(session.id);
+    await f.runtime.start(session.id, "second").completion;
+    tools = currentTools(f.provider.requests.at(-1)!);
+    assert.ok(!tools.includes("read"), "read is off");
+    assert.ok(tools.includes("bash"), "bash is back on");
+    assert.ok(tools.includes("late_tool"));
   } finally {
     await f.cleanup();
   }
@@ -247,6 +283,76 @@ test("an app agent's session says its home view and, given no folder, starts in 
     assert.equal(project.agent.home, "desk");
     // An agent that is neither still needs a folder.
     assert.equal(f.runtime.session(await f.runtime.create({ folder: f.folder }).then((doc) => doc.id)).agent.home, undefined);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("every session is told it runs in PiSpark and gets PiSpark's own skills, which agents don't list or switch", async () => {
+  const f = await fixture();
+  try {
+    // Even an agent that switches every skill of its own off.
+    await f.agent("plain", { name: "Plain", off: ["skill:pispark", "skill:pispark-extensions"] });
+    const session = await f.runtime.create({ folder: f.folder, agent: "plain" });
+    await f.runtime.start(session.id, "hello").completion;
+    const system = systemText(f.provider.requests.at(-1)!);
+    assert.match(system, /You are working in PiSpark/);
+    const files = JSON.stringify(join(f.runtime.dataFolder, "sessions", session.id, "files")).slice(1, -1);
+    assert.ok(system.includes(files), "the session's files folder is named");
+    for (const skill of BUILT_IN_SKILLS)
+      assert.ok(system.includes(JSON.stringify(join(skill, "SKILL.md")).slice(1, -1)), `${skill} is offered`);
+    // Part of the system, not the agent: the editor lists none of them.
+    const view = viewAgent(f.runtime.agents, { agent: "plain" });
+    assert.ok(!view.items.some((item) => item.name.startsWith("pispark")));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("between replies a session's thinking level and model can change; the choice stays on reopen; never mid-reply", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    await f.runtime.start(session.id, "first").completion;
+    let doc = f.runtime.session(session.id);
+    // Pi says what the model offers and how full its context is.
+    assert.ok(doc.thinking && doc.thinking.levels.includes(doc.thinking.level));
+    assert.equal(doc.context?.window, 100_000);
+    // A level the model doesn't offer is clamped by Pi to one it does.
+    doc = await f.runtime.configure(session.id, { thinking: "high" });
+    assert.ok(doc.thinking!.levels.includes(doc.thinking!.level));
+    const chosen = doc.thinking!.level;
+    await f.runtime.stop(session.id);
+    await f.runtime.open(session.id);
+    assert.equal(f.runtime.session(session.id).thinking!.level, chosen, "kept on reopen");
+    // A model that isn't offered is refused, and nothing changes.
+    const model = f.runtime.session(session.id).model;
+    await assert.rejects(f.runtime.configure(session.id, { model: { provider: model!.provider, id: "no-such-model" } }), (e) => e instanceof RuntimeError && e.code === "configuration");
+    assert.deepEqual(f.runtime.session(session.id).model, model);
+    // Not while a reply runs.
+    f.provider.automatic = false;
+    const run = f.runtime.start(session.id, "slow");
+    await eventually(() => f.provider.active === 1);
+    await assert.rejects(f.runtime.configure(session.id, { thinking: "off" }), (e) => e instanceof RuntimeError && e.code === "busy");
+    f.provider.requests.at(-1)!.release();
+    await run.completion;
+    await assert.rejects(f.runtime.configure(session.id, {}), (e) => e instanceof RuntimeError && e.code === "invalid-input");
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("after a failed reply, the next message goes: the session starts again from its transcript", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    assert.deepEqual((await f.runtime.start(session.id, "provider-error").completion).outcome, "failed");
+    assert.equal(f.runtime.session(session.id).status, "error");
+    // What a command does first (as the HTTP start does): the errored session opens again.
+    await f.runtime.ensure(session.id);
+    assert.equal(f.runtime.session(session.id).status, "idle");
+    assert.deepEqual(await f.runtime.start(session.id, "after the failure").completion, { outcome: "completed" });
+    assert.match(sessionText(f.runtime, session.id), /after the failure/);
   } finally {
     await f.cleanup();
   }

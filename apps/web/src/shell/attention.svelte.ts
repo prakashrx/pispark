@@ -14,6 +14,8 @@ export interface Nudge {
   name: string;
   /** Its agent's name, for the mark. */
   agent: string;
+  /** What it asks (the question's title), when it says. */
+  question?: string;
 }
 
 const TOAST_MS = 6000;
@@ -42,8 +44,8 @@ class Attention {
   }
 
   /** Another session needs you. */
-  needsYou(id: string, name: string, agent = name) {
-    this.nudge = { id, name, agent };
+  needsYou(id: string, name: string, agent = name, question?: string) {
+    this.nudge = { id, name, agent, question };
     this.holdNudge(false);
   }
   holdNudge(held: boolean) {

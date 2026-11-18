@@ -24,10 +24,11 @@
       info && connection === "Disconnected" && !client.unreachable && !client.host.restarting ? disconnected : undefined,
       info && connection === "Unloaded" ? unloaded : undefined,
       info && connection === "Reconnecting" ? reconnecting : undefined,
-      session.error ? failedHere : undefined,
-      // A failed reply is said in the conversation, where it happened; any other failure here.
+      // A failed reply is said once, in the conversation where it happened (design set 8/4): not
+      // again as the command's error, the session's error or "interrupted". Any other failure here.
+      session.error && !(session.errorCode === "execution" && saidInConversation) ? failedHere : undefined,
       doc?.error && !(doc.error === "execution" && saidInConversation) ? failed : undefined,
-      doc?.interrupted ? interrupted : undefined,
+      doc?.interrupted && !saidInConversation ? interrupted : undefined,
       session.shownView && info?.waiting ? waiting : undefined,
       doc?.agentChanged ? agentChanged : undefined,
       doc?.holdAsked ? holdAsked : undefined,

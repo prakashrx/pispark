@@ -31,6 +31,11 @@ import { ProviderError } from "./provider-errors.js";
 import type { ProviderSettings } from "./provider-settings.js";
 import type { Setup } from "../agents/resolve.js";
 
+/** PiSpark's built-in skills (`apps/server/skills/`), the same from source and from a build. */
+export const BUILT_IN_SKILLS = ["pispark", "pispark-extensions"].map((name) =>
+  fileURLToPath(new URL(`../../../skills/${name}`, import.meta.url)),
+);
+
 /** How a server is started. Only `home` is needed; the rest serve tests. */
 export interface RuntimeConfiguration {
   /** Data root: sessions, agents, providers and logs live under it. */
@@ -212,7 +217,8 @@ export async function createSessionServices(options: {
   const loadedSkills = loadSkills({
     cwd,
     agentDir,
-    skillPaths: setup.skillDirs,
+    // PiSpark's own skills come first: part of the system for every session, not an agent's items.
+    skillPaths: [...BUILT_IN_SKILLS, ...setup.skillDirs],
     includeDefaults: false,
   });
   const builtIn = builtInExtension();
@@ -287,21 +293,25 @@ export async function createSessionServices(options: {
     extendResources: unsupported,
     reload: unsupported,
   };
-  // The resolved setup decides the active tools, also on reopen, where Pi would otherwise
-  // restore whatever the transcript last recorded.
+  // The agent's tool switches, in Pi's own terms: tools switched off are excluded (never
+  // registered, so no transcript can bring them back), and those switched on are `+name` modifiers
+  // applied on top of the loadout a reopened transcript recorded. Not an allowlist, so a tool an
+  // extension registers once the session runs is offered like any other.
   const off = new Set(setup.toolsOff);
   const extensionTools = loadedExtensions.extensions.flatMap((extension) => [
     ...extension.tools.keys(),
   ]);
-  const activeTools = [
-    ...new Set([...setup.toolsOn, ...extensionTools]),
-  ].filter((name) => !off.has(name));
+  const toolSwitches = [...new Set([...setup.toolsOn, ...extensionTools])]
+    .filter((name) => !off.has(name))
+    .map((name) => `+${name}`);
+  const excludedTools = [...off];
   return {
     modelRuntime,
     model: selectedModel,
     settingsManager,
     resourceLoader,
     eventBus,
-    activeTools,
+    toolSwitches,
+    excludedTools,
   };
 }

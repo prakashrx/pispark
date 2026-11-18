@@ -18,6 +18,7 @@
   import Screen from "./Screen.svelte";
   import Sidebar from "./Sidebar.svelte";
   import NudgeHost from "./NudgeHost.svelte";
+  import { deviceNotifications, followPresence } from "../features/notifications/notifications.svelte";
   import ToastHost from "./ToastHost.svelte";
   import { layout } from "./layout.svelte";
   import { router } from "./router.svelte";
@@ -50,6 +51,12 @@
     else if (!layout.drawerOpen && drawer.open) drawer.close();
   });
   onMount(() => router.sync());
+  // While this page is in view, this device gets the nudge rather than a notification; and whether
+  // notifications are on here is read once, for the offer in the nudge.
+  onMount(() => {
+    void deviceNotifications.load();
+    return followPresence();
+  });
 
   const title = $derived(
     route.name === "session" && sessions.current?.info ? sessionName(sessions.current.info) : routeTitle(route),

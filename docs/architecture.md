@@ -8,7 +8,7 @@ Three npm workspaces, with no shared package or framework layer:
 
 | Workspace | What it is |
 | --- | --- |
-| `apps/server` | Node's own HTTP server in TypeScript. It hosts the sessions (Pi SDK sessions, pinned at 1.5.0), agents, providers, schedules and background work, and serves the built web app. `src/index.ts` wires it and owns listening and shutdown. |
+| `apps/server` | Node's own HTTP server in TypeScript. It hosts the sessions (Pi SDK sessions, pinned at 1.5.2), agents, providers, schedules and background work, and serves the built web app. `src/index.ts` wires it and owns listening and shutdown. |
 | `apps/web` | Svelte 5, built with Vite and Tailwind. The browser app: sessions, agents, settings. |
 | `apps/launcher` | The installed `pispark` program. It runs the server as its child, restarts it after a crash, updates it and rolls back a version that doesn't start ([install](install.md)). |
 

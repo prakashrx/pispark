@@ -15,11 +15,11 @@ export function assertPiBoundary(
   version: unknown,
   loader: unknown,
 ): asserts loader is ExplicitLoader {
-  if (version !== "1.5.0" || typeof loader !== "function")
+  if (version !== "1.5.2" || typeof loader !== "function")
     throw new RuntimeError("sdk-version");
 }
 
-/** Compatibility debt: 1.5.0 exports discovery, but not its explicit native loader. No discovery fallback. */
+/** Compatibility debt: 1.5.2 exports discovery, but not its explicit native loader. No discovery fallback. */
 export async function loadExplicitExtensions(
   paths: string[],
   cwd: string,

@@ -47,7 +47,7 @@ test("extensions show components with Pi's bus: points, props, calls back, entri
     const notices = () => noticeText(runtime, session.id);
 
     // Placed while the extension loaded; each shows once compiled.
-    await eventually(() => views().length === 7);
+    await eventually(() => views().length === 8);
     assert.deepEqual(
       views().map(({ point, key, props }) => ({ point, key, props })),
       [
@@ -55,6 +55,7 @@ test("extensions show components with Pi's bus: points, props, calls back, entri
         { point: "session.input.actions", key: "", props: { on: false } },
         { point: "session.title", key: "", props: { text: "fixture chip" } },
         { point: "session.status", key: "", props: { text: "Fixture footer" } },
+        { point: "session.details", key: "notes", props: { text: "Fixture details panel" } },
         { point: "session.header", key: "", props: { text: "Fixture banner" } },
         { point: "item.tool:shout", key: "", props: undefined },
         { point: "item.custom:note", key: "", props: undefined },
@@ -127,7 +128,7 @@ test("host.call over HTTP is a plain request and response: many calls never bloc
     const address = server.address() as AddressInfo;
     const base = `http://127.0.0.1:${address.port}`;
     const session = await runtime.create({ folder: await h.folder("work") });
-    await eventually(() => runtime.session(session.id).extensions.views.length === 7);
+    await eventually(() => runtime.session(session.id).extensions.views.length === 8);
     const call = (body: unknown) =>
       fetch(`${base}/api/sessions/${session.id}/calls`, {
         method: "POST",
@@ -217,7 +218,7 @@ test("session.view takes offers: a key and a title each, six at most, requests t
     await addViewExtension(h.home, "default");
     const runtime = new SessionRuntime(h.configuration);
     const session = await runtime.create({ folder: await h.folder("work") });
-    await eventually(() => runtime.session(session.id).extensions.views.length === 7);
+    await eventually(() => runtime.session(session.id).extensions.views.length === 8);
     const offers = () =>
       runtime
         .session(session.id)
@@ -234,16 +235,18 @@ test("session.view takes offers: a key and a title each, six at most, requests t
       await eventually(() => refused(`unknown point ${old}`) === 1);
     }
 
-    // A view needs a key and a title of 1 to 40 characters; only a view takes a title or attention.
+    // A view needs a key and a title of 1 to 40 characters; any contribution may have a title (a
+    // panel's heading), and only a view asks for attention.
     await offer({ title: "No key" });
     await eventually(() => refused("session.view needs a key") === 1);
     for (const title of [undefined, "   ", "x".repeat(41), "two\nlines", 7]) await offer({ key: "a", title });
     await eventually(() => refused("a view needs a title of 1 to 40 characters") === 5);
     await offer({ key: "a", title: "A", attention: "yes" });
     await eventually(() => refused("attention must be true or false") === 1);
-    await emit({ point: "session.input.below", title: "A" });
+    await emit({ point: "session.input.below", title: "x".repeat(41) });
+    await eventually(() => refused("a title is 1 to 40 characters") === 1);
     await emit({ point: "session.input.below", attention: true });
-    await eventually(() => refused("session.input.below takes no title or attention") === 2);
+    await eventually(() => refused("session.input.below takes no attention: only a view does") === 1);
     assert.deepEqual(offers(), []);
 
     // Offers stay in the order first made; the same key updates its offer in place.

@@ -1,10 +1,15 @@
+import { Notifications } from "./notifications.js";
+import { validEndpoint } from "./push.js";
+import { validEvents, type NotificationState } from "../contract/notification-protocol.js";
+import { WorkspaceLive } from "./workspace-live.js";
+import { sessionTitle } from "../contract/session-title.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { once } from "node:events";
 import {
   type SessionRuntime,
   RuntimeError,
 } from "../core/runtime/session-runtime.js";
-import type { Catalog, Command, LiveEvent, Receipt } from "../contract/protocol.js";
+import type { Catalog, Command, LiveEvent, Receipt, WorkspaceArea, WorkspaceChange } from "../contract/protocol.js";
 import type { Json } from "../contract/stream-ops.js";
 import type { ScheduleInput } from "../contract/schedule-protocol.js";
 import type { ProviderHttp } from "./provider-http.js";
@@ -22,7 +27,7 @@ import { validAgentId } from "../core/agents/format.js";
 import { homedir } from "node:os";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { basename, extname } from "node:path";
+import { basename, extname, join } from "node:path";
 import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_MESSAGE, validAttachmentName } from "../core/runtime/attachments.js";
 import { pipeline } from "node:stream/promises";
 import { ASSET_TYPES, viewAsset, viewBundle } from "../core/extensions/view-compiler.js";
@@ -92,6 +97,12 @@ function validate(value: unknown): Command {
         ? ["sessionId", ...(c.model === undefined ? [] : ["model"])]
       : ["open", "cancel", "stop", "archive", "restore", "delete", "allow-hold", "deny-hold", "release-hold"].includes(String(c.type))
         ? ["sessionId"]
+        : c.type === "rename"
+          ? ["sessionId", "title"]
+        : c.type === "seen"
+          ? ["sessionId"]
+        : c.type === "configure"
+          ? ["sessionId", ...(c.model === undefined ? [] : ["model"]), ...(c.thinking === undefined ? [] : ["thinking"])]
         : ["start", "steer", "follow-up"].includes(String(c.type))
           ? ["sessionId", "text", ...(c.attachments === undefined ? [] : ["attachments"])]
           : undefined;
@@ -113,12 +124,15 @@ function validate(value: unknown): Command {
       new Set(c.attachments).size !== c.attachments.length)
   )
     throw new RuntimeError("invalid-input");
+  if (c.type === "configure" && keys.length === 1) throw new RuntimeError("invalid-input");
   for (const key of keys.filter((key) => key !== "model" && key !== "agent" && key !== "attachments"))
     if (typeof c[key] !== "string" || !(c[key] as string).trim())
       throw new RuntimeError("invalid-input");
   if ("sessionId" in c && !uuid.test(String(c.sessionId)))
     throw new RuntimeError("invalid-input");
   if (c.type === "create" && typeof c.folder === "string" && c.folder.length > 4096)
+    throw new RuntimeError("invalid-input");
+  if (c.type === "rename" && (String(c.title).length > 4096 || !sessionTitle(String(c.title))))
     throw new RuntimeError("invalid-input");
   if ("text" in c && Buffer.byteLength(String(c.text)) > 64 * 1024)
     throw new RuntimeError("invalid-input");
@@ -215,7 +229,66 @@ export class SessionHttp {
     this.host = host ?? new HostHttp(new HostLink(() => runtime.runningWork(), () => {}), runtime.dataFolder, () => runtime.runningWork());
     this.agents = new AgentHttp(runtime.agents, (target) => runtime.discoverTools(target));
     this.remote = remote && new RemoteHttp(remote, (device) => this.endRemote(device));
+    this.workspace = new WorkspaceLive({
+      sessions: () => [this.runtime.list(), this.runtime.archived().length, this.runtime.unreadableSessions],
+      schedules: () => this.runtime.listSchedules(),
+      routines: () => this.runtime.listRoutines(),
+      processes: () => this.runtime.runningProcesses(),
+      host: () => this.host.changes(),
+    });
+    this.untouch = runtime.onTouched(() => this.workspace.poke());
+    this.notifications = new Notifications(join(runtime.dataFolder, "notifications"), () => this.runtime.list());
+    this.watchForNotifications();
   }
+  private readonly notifications: Notifications;
+  private stopNotifying?: () => void;
+  /** The session list is watched for notifications only while some device is subscribed. */
+  private watchForNotifications() {
+    if (this.notifications.active && !this.stopNotifying) {
+      this.notifications.sessionsChanged();
+      this.stopNotifying = this.workspace.listen((areas) => {
+        if (areas.includes("sessions")) this.notifications.sessionsChanged();
+      });
+    } else if (!this.notifications.active && this.stopNotifying) {
+      this.stopNotifying();
+      this.stopNotifying = undefined;
+    }
+  }
+  /** `/api/notifications/*`: this device's notifications (design set 9). All POST, with the device's push endpoint. */
+  private async notify(path: string, request: IncomingMessage, response: ServerResponse, device: string) {
+    const input = (await body(request, 8192)) as Record<string, unknown>;
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new RuntimeError("invalid-input");
+    const endpoint = input.endpoint === undefined ? undefined : validEndpoint(input.endpoint) ? input.endpoint : null;
+    if (endpoint === null) throw new RuntimeError("invalid-input");
+    switch (path) {
+      case "/api/notifications/state":
+        return sendJson(response, 200, { publicKey: this.notifications.keys.publicKey, ...this.notifications.state(endpoint) } satisfies NotificationState);
+      case "/api/notifications/subscribe":
+        if (!endpoint || !validEvents(input.events)) throw new RuntimeError("invalid-input");
+        this.notifications.subscribe(device, endpoint, input.events);
+        this.watchForNotifications();
+        return sendJson(response, 200, {});
+      case "/api/notifications/unsubscribe":
+        if (!endpoint) throw new RuntimeError("invalid-input");
+        this.notifications.unsubscribe(endpoint);
+        this.watchForNotifications();
+        return sendJson(response, 200, {});
+      case "/api/notifications/test":
+        if (!endpoint) throw new RuntimeError("invalid-input");
+        return sendJson(response, 200, { sent: await this.notifications.test(endpoint) });
+      case "/api/notifications/pending":
+        if (!endpoint) throw new RuntimeError("invalid-input");
+        return sendJson(response, 200, { notifications: this.notifications.take(endpoint) });
+      case "/api/notifications/presence":
+        if (typeof input.page !== "string" || !/^[\w-]{1,64}$/.test(input.page) || typeof input.visible !== "boolean") throw new RuntimeError("invalid-input");
+        this.notifications.present(device, input.page, input.visible);
+        return sendJson(response, 200, {});
+    }
+    sendJson(response, 404, { error: "not-found" });
+  }
+  private readonly workspace: WorkspaceLive;
+  private readonly untouch: () => void;
+  private workspaceStreams = 0;
   /**
    * Only requests on a loopback socket, for this server's loopback Host, or for the remote address
    * while remote access is on (Tailscale Serve proxies it to loopback). Same-origin only.
@@ -254,6 +327,11 @@ export class SessionHttp {
   /** Ends the live streams of one paired device, or of every remote device. */
   private endRemote(device?: string) {
     for (const [stream, owner] of this.streams) if (owner && (device === undefined || owner === device)) stream.end();
+    // A removed device is told nothing more.
+    if (device !== undefined) {
+      this.notifications.forgetDevice(device);
+      this.watchForNotifications();
+    }
   }
   private prune() {
     for (const [id, entry] of this.receipts)
@@ -352,6 +430,18 @@ export class SessionHttp {
         case "archive":
           await this.runtime.archive(command.sessionId);
           break;
+        case "rename":
+          this.runtime.rename(command.sessionId, command.title);
+          break;
+        case "seen":
+          this.runtime.seen(command.sessionId);
+          break;
+        case "configure":
+          await this.runtime.configure(command.sessionId, {
+            ...(command.model ? { model: command.model } : {}),
+            ...(command.thinking ? { thinking: command.thinking } : {}),
+          });
+          break;
         case "restore":
           this.runtime.restore(command.sessionId);
           break;
@@ -423,6 +513,14 @@ export class SessionHttp {
       }
       if (path === "/api/agents" || path.startsWith("/api/agents/")) {
         await this.agents.handle(request, response);
+        return;
+      }
+      if (path.startsWith("/api/notifications/") && !url.search && request.method === "POST") {
+        await this.notify(path, request, response, who.local ? "local" : who.device!.id);
+        return;
+      }
+      if (path === "/api/live" && !url.search && request.method === "GET") {
+        await this.watchWorkspace(response, who.local ? undefined : who.device?.id);
         return;
       }
       if (path === "/api/host" && !url.search) {
@@ -570,6 +668,11 @@ export class SessionHttp {
           return;
         }
         const attachments = /^\/api\/sessions\/([\w-]+)\/attachments$/.exec(path);
+        // The session's files: what the person attached and what the agent made (its artifacts).
+        if (request.method === "GET" && attachments && uuid.test(attachments[1]!) && !url.search) {
+          sendJson(response, 200, { files: this.runtime.files(attachments[1]!) });
+          return;
+        }
         if (request.method === "POST" && attachments && uuid.test(attachments[1]!) && !url.search) {
           try {
             sendJson(response, 201, await this.attach(attachments[1]!, request));
@@ -814,8 +917,56 @@ data: ${JSON.stringify(event)}
       response.off("close", close);
     }
   }
+  /**
+   * The workspace stream: `ready` once listening (the client reads everything then), then which areas
+   * changed. Ends after five minutes; the client follows on at once and reads everything again.
+   */
+  private async watchWorkspace(response: ServerResponse, device?: string) {
+    if (this.workspaceStreams >= 16) throw new RuntimeError("limit");
+    this.workspaceStreams++;
+    this.streams.set(response, device);
+    let pending: WorkspaceArea[] = [];
+    let wake: (() => void) | undefined;
+    const stop = this.workspace.listen((areas) => {
+      pending = [...new Set([...pending, ...areas])];
+      wake?.();
+    });
+    let gone = false;
+    const ended = new Promise<void>((resolve) => response.once("close", resolve)).then(() => void (gone = true));
+    const lifetime = setTimeout(() => response.end(), 5 * 60_000);
+    const frame = (event: string, data: unknown) => `event: ${event}
+data: ${JSON.stringify(data)}
+
+`;
+    try {
+      response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", "X-Accel-Buffering": "no" });
+      response.write(frame("ready", { type: "ready" }));
+      while (!gone && !response.destroyed && !response.writableEnded) {
+        if (!pending.length) {
+          await Promise.race([ended, new Promise<void>((resolve) => (wake = resolve))]);
+          wake = undefined;
+          continue;
+        }
+        const areas = pending;
+        pending = [];
+        // A reader that stops reading is dropped rather than buffered for.
+        if (!response.write(frame("changed", { type: "changed", areas } satisfies WorkspaceChange))) {
+          const drained = await Promise.race([once(response, "drain").then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 2000))]);
+          if (!drained) response.destroy();
+        }
+      }
+    } finally {
+      stop();
+      clearTimeout(lifetime);
+      this.streams.delete(response);
+      this.workspaceStreams--;
+      if (!response.writableEnded) response.end();
+    }
+  }
   async shutdown() {
     this.closed = true;
+    this.untouch();
+    this.workspace.close();
     for (const stream of this.streams.keys()) stream.end();
     // Both owners begin cleanup even if the other throws or never settles.
     const results = await Promise.allSettled([

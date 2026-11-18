@@ -87,7 +87,7 @@
                 !sessions.providers.loading
               ? "Choose a model in Providers & models."
               : undefined
-        : session?.doc?.status !== "idle"
+        : !["idle", "error"].includes(session?.doc?.status ?? "")
           ? "Open a session that is ready for a message."
           : session.connection !== "Live"
             ? "Waiting for the session to reconnect."
@@ -98,6 +98,46 @@
   const turn = $derived(
     doc && ["running", "cancelling"].includes(doc.status) ? "running" : doc?.status === "queued" ? "queued" : undefined,
   );
+  // `/` suggestions (R-09): while a reply is only "/" and a name, the session's prompts and commands
+  // that match; arrows move, Enter or Tab picks (the name goes in the box), Escape closes.
+  const listId = $props.id();
+  let active = $state(0);
+  let dismissed = $state("");
+  const typed = $derived(mode === "reply" && /^\/[\w:.-]*$/.test(text) ? text.slice(1).toLowerCase() : undefined);
+  const suggestions = $derived(
+    typed === undefined || dismissed === text
+      ? []
+      : [...(session?.doc?.prompts ?? []).map((p) => ({ ...p, kind: "prompt" as const })), ...(session?.doc?.commands ?? []).map((c) => ({ ...c, kind: "command" as const }))]
+          .filter(({ name }) => name.toLowerCase().includes(typed))
+          .sort((a, b) => Number(!a.name.toLowerCase().startsWith(typed)) - Number(!b.name.toLowerCase().startsWith(typed)))
+          .slice(0, 8),
+  );
+  $effect(() => {
+    void typed;
+    active = 0;
+  });
+  function pick(name: string) {
+    session?.setDraft(`/${name} `);
+    input?.focus();
+  }
+  function suggest(event: KeyboardEvent): boolean {
+    if (!suggestions.length) return false;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      active = (active + (event.key === "ArrowDown" ? 1 : suggestions.length - 1)) % suggestions.length;
+      return true;
+    }
+    if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+      // A name typed out in full goes as it is with Enter.
+      if (event.key === "Enter" && suggestions.some((s) => s.name.toLowerCase() === typed)) return false;
+      pick(suggestions[active]!.name);
+      return true;
+    }
+    if (event.key === "Escape") {
+      dismissed = text;
+      return true;
+    }
+    return false;
+  }
   async function send() {
     if (unavailable) return;
     if (mode === "ask")
@@ -136,8 +176,27 @@
         onfiles={(files) => attachments.add(files, mode === "reply" ? session?.id : undefined)}
         onremove={(id) => attachments.remove(id)}
         onsubmit={() => void send()}
+        onkey={suggest}
+        attributes={suggestions.length
+          ? { "aria-controls": listId, "aria-expanded": true, "aria-activedescendant": `${listId}-${active}`, "aria-autocomplete": "list" }
+          : { "aria-expanded": mode === "reply" ? false : undefined }}
         placeholder={mode === "reply" ? "Reply…" : "Ask anything…"}
       />{/if}
+    {#if suggestions.length}<ul class="slash" id={listId} role="listbox" aria-label="Prompts and commands">
+        {#each suggestions as suggestion, index (suggestion.kind + suggestion.name)}<li
+            id={`${listId}-${index}`}
+            role="option"
+            aria-selected={index === active}
+            class:active={index === active}
+            onpointerdown={(event) => {
+              event.preventDefault();
+              pick(suggestion.name);
+            }}
+          >
+            <span class="slash-name">/{suggestion.name}</span>
+            {#if suggestion.description}<span class="slash-description">{suggestion.description}</span>{/if}
+          </li>{/each}
+      </ul>{/if}
     <div class="composer-row">
       <input
         bind:this={picker}
@@ -190,7 +249,41 @@
 </div>
 
 <style>
+  /* `/` suggestions: above the box, inside its frame. */
+  .slash {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 0.375rem);
+    z-index: 20;
+    max-height: 16rem;
+    overflow-y: auto;
+    padding: 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised, var(--background));
+    box-shadow: var(--shadow-popover);
+  }
+  .slash li {
+    display: flex;
+    flex-direction: column;
+    padding: 0.375rem 0.5rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .slash li.active {
+    background: var(--accent);
+  }
+  .slash-name {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+  }
+  .slash-description {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+  }
   .composer {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;

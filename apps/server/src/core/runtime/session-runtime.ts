@@ -1,9 +1,11 @@
+import type { ThinkingLevel } from "../../contract/agent-protocol.js";
+import { sessionTitle } from "../../contract/session-title.js";
 import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
-import { mkdirSync, realpathSync } from "node:fs";
+import { mkdirSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import type { Provider } from "@earendil-works/pi-ai";
-import type { HostSettings, ItemsPage, LiveDoc, PartPage, SessionDoc } from "../../contract/protocol.js";
+import type { HostSettings, ItemsPage, LiveDoc, PartPage, SessionDoc, SessionFile } from "../../contract/protocol.js";
 import type { SessionAgent, AgentSummary, AgentTarget } from "../../contract/agent-protocol.js";
 import type { ModelChoice } from "../../contract/provider-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
@@ -22,7 +24,7 @@ import type { ProviderSettings } from "./provider-settings.js";
 import { validChoice } from "./provider-storage.js";
 import { RunSlots } from "./run-slots.js";
 import { SessionStorage, validateId, type SessionMetadata } from "./storage.js";
-import { attachmentPath, placeAttachments, saveAttachment } from "./attachments.js";
+import { attachmentPath, filesFolder, placeAttachments, saveAttachment, validAttachmentName } from "./attachments.js";
 import { Schedules } from "./schedules.js";
 import { ToolDiscovery } from "./tool-discovery.js";
 import { Wakes } from "./wakes.js";
@@ -44,6 +46,8 @@ import { SessionProcesses } from "./session-processes.js";
  * and when idle ones unload. Each loaded session is a `Session`, which owns its Pi session and lifecycle.
  * No HTTP, browser lifetime, terminal configuration or replay of interrupted tools.
  */
+const THINKING: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
 export class SessionRuntime {
   readonly agents: AgentStore;
   private readonly tools: ToolDiscovery;
@@ -66,6 +70,12 @@ export class SessionRuntime {
    * again only after an agent change.
    */
   private known?: Map<string, AgentSummary>;
+  private readonly touchedListeners = new Set<() => void>();
+  /** Called whenever a loaded session changes (often; keep it cheap). Returns the unsubscribe. */
+  onTouched(listener: () => void): () => void {
+    this.touchedListeners.add(listener);
+    return () => this.touchedListeners.delete(listener);
+  }
   private readonly appsDir: string;
   private readonly layered = new Map<string, boolean>();
   /** Delivery of every wake (whatever asks a session to work besides the person), and Pause all. */
@@ -161,6 +171,9 @@ export class SessionRuntime {
       freed: () => {
         if (this.accepting) void this.wakes.drain();
       },
+      touched: () => {
+        for (const listener of this.touchedListeners) listener();
+      },
       schedules: {
         of: (sessionId) => this.schedules.of(sessionId),
         add: (sessionId, input, by) => this.schedules.add(sessionId, input, by),
@@ -181,9 +194,6 @@ export class SessionRuntime {
         },
         run: async (id, wake, details) => {
           this.admit();
-          // A session whose last run failed starts again from its transcript, as reopening it would.
-          const session = this.live.get(id);
-          if (session?.ready && session.settled && session.status === "error") await this.stop(id);
           await this.ensure(id);
           let text = wake.text;
           // A child's report: the session's extensions see it first and may take it or reword it.
@@ -303,6 +313,9 @@ export class SessionRuntime {
       agent,
       ...(session?.setupChanged ? { agentChanged: true } : {}),
       ...(session?.asking ? { waiting: true } : {}),
+      ...(session?.question ? { question: session.question } : {}),
+      ...(metadata.seenAt && this.storage.lastActivity(metadata) > metadata.seenAt ? { unread: true } : {}),
+      ...(session?.workingSince ? { workingSince: new Date(session.workingSince).toISOString() } : {}),
       ...(session?.waitingForSlot || (!session && metadata.queued !== undefined) ? { queued: true } : {}),
       ...(metadata.parent ? { parent: metadata.parent } : {}),
       ...(metadata.schedule ? { schedule: { ...metadata.schedule } } : {}),
@@ -409,6 +422,7 @@ export class SessionRuntime {
     if ((bound.folder && request.folder !== undefined) || typeof folder !== "string" || !isAbsolute(folder) || folder.length > 4096)
       throw new RuntimeError("invalid-input");
     // The folder is checked and made canonical during setup, after the session is reserved.
+    const createdAt = new Date().toISOString();
     return this.load(
       {
         version: 2,
@@ -416,7 +430,9 @@ export class SessionRuntime {
         cwd: folder,
         agent,
         ...(request.model ? { model: request.model } : {}),
-        createdAt: new Date().toISOString(),
+        createdAt,
+        // Nothing to read yet: it becomes unread when it does something no one has looked at.
+        seenAt: createdAt,
         active: false,
         interrupted: false,
         ...child,
@@ -455,8 +471,9 @@ export class SessionRuntime {
     else if (session?.loading) {
       await session.loading.catch(() => {});
       if (this.live.has(id)) return;
-    } else if (session && !(session.readOnly && session.settled)) return;
-    // A read-only session gets a full open again: what it lacked may be back.
+    } else if (session && !((session.readOnly || session.status === "error") && session.settled)) return;
+    // A read-only session gets a full open again: what it lacked may be back. A session whose last
+    // run failed starts again from its transcript, as reopening it would, so the next message goes.
     else if (session) await this.stop(id);
     await this.open(id);
   }
@@ -510,6 +527,35 @@ export class SessionRuntime {
     }
   }
   /** Brings a session back, with its children. */
+  /** Between replies: another model or thinking level for this session, from its next reply on. */
+  async configure(id: string, change: { model?: ModelChoice; thinking?: ThinkingLevel }): Promise<SessionDoc> {
+    validateId(id);
+    if (change.model !== undefined && !validChoice(change.model)) throw new RuntimeError("invalid-input");
+    if (change.thinking !== undefined && !THINKING.includes(change.thinking)) throw new RuntimeError("invalid-input");
+    if (!change.model && !change.thinking) throw new RuntimeError("invalid-input");
+    await this.ensure(id);
+    const session = this.live.get(id);
+    if (!session) throw new RuntimeError("not-found");
+    await session.configure(change);
+    return session.doc();
+  }
+  /** A person looked at a session (on any device): it's read. */
+  seen(id: string): void {
+    validateId(id);
+    const at = new Date().toISOString();
+    const live = this.live.get(id);
+    if (live) return live.seen(at);
+    this.storage.write({ ...this.storage.read(id), seenAt: at });
+  }
+  /** A person names a session, loaded or not; the agent's title tool no longer changes it. */
+  rename(id: string, input: string): void {
+    validateId(id);
+    const title = sessionTitle(input);
+    if (!title) throw new RuntimeError("invalid-input");
+    const live = this.live.get(id);
+    if (live) return live.rename(title);
+    this.storage.write({ ...this.storage.read(id), title, renamed: true });
+  }
   restore(id: string): void {
     validateId(id);
     for (const each of [id, ...this.children.of(id).map((child) => child.id)]) {
@@ -734,6 +780,33 @@ export class SessionRuntime {
     return saveAttachment(this.storage.directory(id), name, body);
   }
   /** The path of an attachment of this session, to be served as inert data. */
+  /** The session's files folder: what the person attached and what the agent made there, newest first. */
+  files(id: string): SessionFile[] {
+    validateId(id);
+    this.storage.read(id);
+    const folder = filesFolder(this.storage.directory(id));
+    const session = this.live.get(id);
+    const uploads = session?.ready ? session.uploads() : undefined;
+    let names: string[];
+    try {
+      names = readdirSync(folder);
+    } catch {
+      return [];
+    }
+    return names
+      .filter((name) => validAttachmentName(name))
+      .flatMap((name) => {
+        try {
+          const stats = statSync(join(folder, name));
+          if (!stats.isFile()) return [];
+          return [{ name, size: stats.size, modified: stats.mtime.toISOString(), ...(uploads ? { by: uploads.has(name) ? ("you" as const) : ("agent" as const) } : {}) }];
+        } catch {
+          return [];
+        }
+      })
+      .sort((a, b) => b.modified.localeCompare(a.modified))
+      .slice(0, 200);
+  }
   attachment(id: string, name: string): string {
     validateId(id);
     this.storage.read(id);

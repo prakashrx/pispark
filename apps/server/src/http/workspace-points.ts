@@ -7,6 +7,8 @@ export const WORKSPACE_POINTS = [
   "session.title",
   "session.header",
   "session.status",
+  // A panel in the session's Details, titled by its contribution.
+  "session.details",
   // A whole view of the session, beside the conversation.
   "session.view",
   "session.input.above",

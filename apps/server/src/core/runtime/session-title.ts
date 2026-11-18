@@ -2,7 +2,7 @@ import { sessionTitle } from "../../contract/session-title.js";
 import { RuntimeError } from "./errors.js";
 
 /** The built-in extension's title tool; no agent extension may register the same name. */
-export const TITLE_TOOL = "pispark_set_title";
+export { TITLE_TOOL } from "../../contract/session-title.js";
 
 /** Tool input is bounded before normalization; titles never enter operational errors. */
 export function toolSessionTitle(value: unknown): string {

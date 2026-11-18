@@ -1,6 +1,7 @@
 import { NOTICE_ENTRY, type ExtensionView, type Item, type ItemPart, type StyledLine, type ToolProgress } from "../../../../server/src/contract/protocol";
 import type { Json } from "../../../../server/src/contract/stream-ops";
 import { STATUS_ENTRY, WOKEN_ENTRY, type WakeSource } from "../../../../server/src/contract/wake-protocol";
+import { TITLE_TOOL } from "../../../../server/src/contract/session-title";
 import { artifactsOf } from "./tool-views";
 
 /** A clipped part of a finalized item, read on demand. */
@@ -194,6 +195,8 @@ export function buildTurns(
             ...(part.clipped ? { clipped: true as const } : {}),
             ...(!result && options.progress?.[part.id] ? { progress: options.progress[part.id] } : {}),
           };
+          // Naming the session is housekeeping, not the agent's work: the title says it.
+          if (call.name === TITLE_TOOL && call.status === "done") return;
           // A tool an extension placed a component for is drawn by that component alone: no activity
           // line, no default output. The next call then starts a new activity.
           const point = `item.tool:${call.name}`;

@@ -4,6 +4,7 @@
   import Icon from "../../lib/ui/Icon.svelte";
   import Modal from "../../lib/ui/Modal.svelte";
   import IdentityMark from "../../lib/ui/IdentityMark.svelte";
+  import InlineEdit from "../../lib/ui/InlineEdit.svelte";
   import SessionMark from "./SessionMark.svelte";
   import { useSessions } from "./session-client.svelte";
   import { canArchive, sessionState, type SessionState } from "./session-presentation";
@@ -13,8 +14,8 @@
   import { href } from "../../routes";
   /**
    * A session in the sidebar, on one line: its agent's mark when it isn't Default, its name, what
-   * runs in the background for it, and its state. Archive (on hover or focus) puts it away; on a
-   * touch screen a long press (or a right-click anywhere) opens the row's actions in a sheet.
+   * runs in the background for it, and its state. Rename (in place) and Archive show on hover or
+   * focus; on a touch screen a long press (or a right-click anywhere) opens the row's actions in a sheet.
    */
   let {
     session,
@@ -42,10 +43,15 @@
   let row = $state<HTMLElement>();
   /** The row's actions, opened by a long press or a right-click. */
   let actions = $state(false);
+  let renaming = $state(false);
+  function startRename() {
+    actions = false;
+    renaming = true;
+  }
   let press: ReturnType<typeof setTimeout> | undefined;
   let pressed = false;
   function pressStart(event: PointerEvent) {
-    if (event.pointerType !== "touch" || !archivable) return;
+    if (event.pointerType !== "touch") return;
     pressed = false;
     press = setTimeout(() => {
       pressed = true;
@@ -69,7 +75,17 @@
 
 <div class="nav-item session-row {className}" bind:this={row}>
   {@render before?.()}
-  <a
+  {#if renaming}
+    <InlineEdit
+      value={session.title ?? ""}
+      label="Name"
+      onsave={(title) => client.rename(session.id, title)}
+      ondone={() => {
+        renaming = false;
+        void tick().then(() => row?.querySelector<HTMLElement>("[data-rename]")?.focus());
+      }}
+    />
+  {:else}<a
     href={href({ name: "session", id: session.id })}
     class="flex min-w-0 flex-1 items-center gap-2"
     data-session-link={session.id}
@@ -79,7 +95,6 @@
     onpointercancel={pressEnd}
     onpointermove={pressEnd}
     oncontextmenu={(event) => {
-      if (!archivable) return;
       event.preventDefault();
       clearTimeout(press);
       actions = true;
@@ -93,8 +108,8 @@
     }}
   >
     {#if agent}<span class="inline-flex" title={agent}><IdentityMark name={agent} /><span class="sr-only">{agent}:</span></span>{/if}
-    <span class="min-w-0 flex-1 truncate" class:text-muted-foreground={muted}>{name}</span>
-  </a>
+    <span class="min-w-0 flex-1 truncate" class:text-muted-foreground={muted} class:unread={session.unread}>{name}</span>
+  </a>{/if}
   {#if scheduled}<span class="background" title={`Scheduled: ${describeSchedule(scheduled)}`}
       ><Icon name="clock" class="h-3.5 w-3.5" /><span class="sr-only">Scheduled: {describeSchedule(scheduled)}</span></span
     >{/if}
@@ -107,15 +122,23 @@
       ></span
     >{/if}
   <SessionMark state={status ?? sessionState(session)} />
-  {#if archivable}<button type="button" class="row-action" aria-label={`Archive ${name}`} title="Archive" onclick={archive}
-      ><Icon name="archive" class="h-4 w-4" /></button
+  {#if session.unread && !(status ?? sessionState(session))}<span class="unread-dot" title="New since you looked"
+      ><span class="sr-only">New since you looked</span></span
     >{/if}
+  {#if !renaming}<span class="row-actions">
+      <button type="button" class="row-action" data-rename aria-label={`Rename ${name}`} title="Rename" onclick={startRename}
+        ><Icon name="pencil" class="h-3.5 w-3.5" /></button
+      >{#if archivable}<button type="button" class="row-action" aria-label={`Archive ${name}`} title="Archive" onclick={archive}
+          ><Icon name="archive" class="h-4 w-4" /></button
+        >{/if}
+    </span>{/if}
 </div>
 
 {#if actions}
   <Modal label={name} title={name} size="small" onclose={() => (actions = false)}>
     <div class="flex flex-col gap-2">
-      <Button onclick={() => void archive()}><Icon name="archive" class="h-4 w-4" />Archive</Button>
+      <Button onclick={startRename}><Icon name="pencil" class="h-4 w-4" />Rename</Button>
+      {#if archivable}<Button onclick={() => void archive()}><Icon name="archive" class="h-4 w-4" />Archive</Button>{/if}
     </div>
   </Modal>
 {/if}
@@ -126,6 +149,18 @@
     min-height: 2rem;
     padding-top: 0.25rem;
     padding-bottom: 0.25rem;
+  }
+  /* New since you looked (on any device): the name stands out and a dot says so (design set 9/2). */
+  .unread {
+    font-weight: 600;
+  }
+  .unread-dot {
+    flex-shrink: 0;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-inline: 0.25rem;
+    border-radius: var(--radius-full);
+    background: var(--interactive);
   }
   .background {
     flex-shrink: 0;
@@ -142,28 +177,32 @@
     font-weight: 500;
   }
   /* Over the end of the row when pointed at or reached by keyboard, so the name keeps its width. */
-  .row-action {
+  .row-actions {
     position: absolute;
     right: 0.375rem;
     top: 50%;
     transform: translateY(-50%);
+    display: flex;
+    background: var(--sidebar-hover);
+    box-shadow: -0.75rem 0 0.5rem 0.125rem var(--sidebar-hover);
+    border-radius: var(--radius-sm);
+    opacity: 0;
+  }
+  .session-row:has(a[aria-current="page"]) .row-actions {
+    background: var(--sidebar-accent);
+    box-shadow: -0.75rem 0 0.5rem 0.125rem var(--sidebar-accent);
+  }
+  .session-row:hover .row-actions,
+  .session-row:focus-within .row-actions {
+    opacity: 1;
+  }
+  .row-action {
     display: inline-grid;
     place-items: center;
     width: 1.75rem;
     height: 1.75rem;
     border-radius: var(--radius-sm);
     color: var(--muted-foreground);
-    background: var(--sidebar-hover);
-    box-shadow: -0.75rem 0 0.5rem 0.125rem var(--sidebar-hover);
-    opacity: 0;
-  }
-  .session-row:has(a[aria-current="page"]) .row-action {
-    background: var(--sidebar-accent);
-    box-shadow: -0.75rem 0 0.5rem 0.125rem var(--sidebar-accent);
-  }
-  .session-row:hover .row-action,
-  .session-row:focus-within .row-action {
-    opacity: 1;
   }
   .row-action:hover {
     color: var(--foreground);
@@ -174,7 +213,7 @@
       min-height: 2.75rem;
     }
     /* Reached by a long press instead; still there for a screen reader. */
-    .row-action {
+    .row-actions {
       position: absolute;
       width: 1px;
       height: 1px;

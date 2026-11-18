@@ -1,3 +1,4 @@
+import { workspaceEvents } from "./live-stream";
 import { getContext, setContext } from "svelte";
 import type { Catalog, HostSettings, SessionDoc, SessionInfo } from "../../../../server/src/contract/protocol";
 import type { ModelChoice } from "../../../../server/src/contract/provider-protocol";
@@ -78,7 +79,9 @@ export class SessionClient {
   private readonly listed = new Promise<void>((resolve) => (this.listedDone = resolve));
   /** The latest select or leave; an earlier one that is still waiting gives way. */
   private choosing = 0;
+  /** A full read now and then, in case a change was missed; changes themselves come on the workspace stream. */
   private refreshTimer?: ReturnType<typeof setInterval>;
+  private following?: AbortController;
   private refreshing = false;
   private mounting = false;
   private offline = () => this.current?.offline();
@@ -117,7 +120,8 @@ export class SessionClient {
       await this.refresh();
       this.listedDone();
       this.backend = "Connected";
-      this.refreshTimer ??= setInterval(() => void this.poll(), 5000);
+      this.refreshTimer ??= setInterval(() => void this.poll(), 60_000);
+      this.follow();
     } catch {
       this.listedDone();
       if (!this.disposed) {
@@ -131,7 +135,58 @@ export class SessionClient {
       this.mounting = false;
     }
   }
+  /** Everything the workspace shows: the session list, then schedules, routines, processes and the host. */
   async refresh() {
+    await this.refreshList();
+    void this.schedules.refresh().catch(() => {});
+    void this.routines.refresh().catch(() => {});
+    void this.processes.refresh().catch(() => {});
+    void this.host.refresh().catch(() => {});
+  }
+  /**
+   * Follows the workspace stream: on `ready` everything is read once, then only what changed. If the
+   * stream is lost, a read says whether the server is there, and it follows on again shortly.
+   */
+  private follow() {
+    this.following?.abort();
+    const source = new AbortController();
+    this.following = source;
+    void (async () => {
+      while (!source.signal.aborted && !this.disposed) {
+        let received = false;
+        try {
+          const response = await fetch("/api/live", { signal: AbortSignal.any([source.signal, AbortSignal.timeout(6 * 60_000)]) });
+          for await (const event of workspaceEvents(response)) {
+            if (source.signal.aborted) return;
+            received = true;
+            if (event.type === "ready") await this.poll();
+            else await this.changed(event.areas);
+          }
+        } catch {
+          /* lost: read once below to say whether the server is there, then follow on */
+        }
+        if (source.signal.aborted || this.disposed) return;
+        // The server ends the stream after a while on purpose: follow on at once.
+        if (received) continue;
+        await this.poll();
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    })();
+  }
+  private async changed(areas: readonly string[]) {
+    try {
+      if (areas.includes("sessions")) await this.refreshList();
+      if (areas.includes("schedules")) void this.schedules.refresh().catch(() => {});
+      if (areas.includes("routines")) void this.routines.refresh().catch(() => {});
+      if (areas.includes("processes")) void this.processes.refresh().catch(() => {});
+      if (areas.includes("host")) void this.host.refresh().catch(() => {});
+      this.backend = "Connected";
+      this.retrying = false;
+    } catch {
+      /* the next change or the safety read tries again */
+    }
+  }
+  private async refreshList() {
     const result = await this.transport.json<{
       sessions: SessionInfo[];
       truncated: boolean;
@@ -141,10 +196,6 @@ export class SessionClient {
     this.sessions = result.sessions;
     this.archivedCount = result.archived ?? 0;
     this.noticeNeeds(result.sessions);
-    void this.schedules.refresh().catch(() => {});
-    void this.routines.refresh().catch(() => {});
-    void this.processes.refresh().catch(() => {});
-    void this.host.refresh().catch(() => {});
     if (this.archived && this.archived.length !== this.archivedCount) void this.loadArchived();
     const apps = new Set(this.agents.items.filter((agent) => agent.home).map((agent) => agent.id));
     if (this.agents.items.length && result.sessions.some((session) => !!session.agent.home !== apps.has(session.agent.id)))
@@ -369,6 +420,16 @@ export class SessionClient {
     this.archived = result.sessions.reverse();
   }
   /** Puts a session away: it unloads and leaves the list. If it was open, no session is. Undo restores it. */
+  /** A person looked at a session: it's read, on every device. */
+  async seen(id: string) {
+    await this.transport.run({ type: "seen", sessionId: id }).catch(() => {});
+    await this.refreshList().catch(() => {});
+  }
+  /** A person names a session; it keeps that name. Throws so the field can say why. */
+  async rename(id: string, title: string) {
+    await this.transport.run({ type: "rename", sessionId: id, title });
+    await this.refreshList();
+  }
   async archive(id: string): Promise<boolean> {
     const row = this.sessions.find((session) => session.id === id);
     const done = await this.manage("archive", id);
@@ -382,7 +443,7 @@ export class SessionClient {
       for (const id of now) {
         if (this.needing.has(id) || id === this.current?.id) continue;
         const row = sessions.find((session) => session.id === id)!;
-        attention.needsYou(id, sessionName(row), row.agent.name);
+        attention.needsYou(id, sessionName(row), row.agent.name, row.question);
       }
     this.needing = now;
     if (attention.nudge && !now.has(attention.nudge.id)) attention.dismissNudge();
@@ -454,6 +515,7 @@ export class SessionClient {
     for (const session of this.opened.values()) session.hide();
     this.transport.close();
     clearInterval(this.refreshTimer);
+    this.following?.abort();
     window.removeEventListener("beforeunload", this.beforeUnload);
     window.removeEventListener("offline", this.offline);
     window.removeEventListener("online", this.online);

@@ -290,7 +290,7 @@ test("SessionRuntime: errors are safe, missing model/auth/resources rejected, in
       hasCode("sdk-version"),
     );
     assert.throws(
-      () => assertPiBoundary("1.5.0", undefined),
+      () => assertPiBoundary("1.5.2", undefined),
       hasCode("sdk-version"),
     );
     const wrongModel = new SessionRuntime({

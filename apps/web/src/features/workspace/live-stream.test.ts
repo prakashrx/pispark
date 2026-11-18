@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { liveEvents } from "./live-stream";
+import { liveEvents, workspaceEvents } from "./live-stream";
 function response(chunks: string[]) {
   return new Response(
     new ReadableStream({
@@ -37,4 +37,18 @@ test("live-stream: bounded incomplete frames and invalid framing fail closed", a
       }
     }).rejects.toThrow();
   }
+});
+
+test("workspace stream: ready, then which areas changed; a session's frames are not accepted there", async () => {
+  const values = [];
+  for await (const value of workspaceEvents(
+    response(['event: ready\ndata: {"type":"ready"}\n\nevent: chan', 'ged\ndata: {"type":"changed","areas":["sessions","host"]}\n\n']),
+  ))
+    values.push(value);
+  expect(values).toEqual([{ type: "ready" }, { type: "changed", areas: ["sessions", "host"] }]);
+  await expect(async () => {
+    for await (const _ of workspaceEvents(response(['event: ops\ndata: {"type":"ops"}\n\n']))) {
+      /* none */
+    }
+  }).rejects.toThrow("Unexpected observation");
 });

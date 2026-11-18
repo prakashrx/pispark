@@ -9,7 +9,7 @@ PiSpark is an open-source workspace for [Pi](https://github.com/earendil-works/p
 - **[Pi extensions](docs/extensions.md)** run as they are, and can add their own interface to a session, up to a whole app.
 - **Yours:** sessions, settings and sign-ins stay in one folder on your machine.
 
-Several sessions run at once; sessions can be scheduled, run background processes and hand work to other sessions.
+Several sessions run at once; sessions can be scheduled, run background processes and hand work to other sessions. Use it from your phone too (through Tailscale), with notifications when a session needs you.
 
 Pi runs the agent. PiSpark hosts the experience. Extensions make it their own. ([VISION.md](VISION.md))
 

@@ -1,5 +1,22 @@
-import type { SessionAgent } from "./agent-protocol.js";
+import type { SessionAgent, ThinkingLevel } from "./agent-protocol.js";
 import type { DocOp, Json } from "./stream-ops.js";
+/** What the workspace stream (`GET /api/live`) says changed; a client re-reads only those. */
+export type WorkspaceArea = "sessions" | "schedules" | "routines" | "processes" | "host";
+export const WORKSPACE_AREAS: readonly WorkspaceArea[] = ["sessions", "schedules", "routines", "processes", "host"];
+export interface WorkspaceChange {
+  type: "changed";
+  areas: WorkspaceArea[];
+}
+/**
+ * A file in a session's files folder (its artifacts): what the person attached, and what the agent
+ * made for them there. `by` is unknown for a session that is not open.
+ */
+export interface SessionFile {
+  name: string;
+  size: number;
+  modified: string;
+  by?: "you" | "agent";
+}
 /** Client-independent v2 contract. No SDK objects, secrets or file paths. */
 export interface SessionInfo {
   id: string;
@@ -20,6 +37,12 @@ export interface SessionInfo {
   agentChanged?: boolean;
   /** An extension asked a question and the run waits for an answer. */
   waiting?: boolean;
+  /** The waiting question's title (one line, at most 120 characters), for a nudge elsewhere. */
+  question?: string;
+  /** When the current reply started (ISO time), while it runs. */
+  workingSince?: string;
+  /** It did something since a person last looked at it (on any device). */
+  unread?: boolean;
   /** Waits for a free run slot: a prompt that has not started, or a run resuming after an answer. */
   queued?: boolean;
   /** The session that started this one (a child session). */
@@ -178,6 +201,13 @@ export interface ExtensionView {
 /** Everything about a session except its history: status, model, queue, and what extensions show. */
 export interface SessionDoc extends SessionInfo {
   model?: { provider: string; id: string };
+  /** The thinking level now, and the ones this model offers. */
+  thinking?: { level: ThinkingLevel; levels: ThinkingLevel[] };
+  /**
+   * How full the model's context is: estimated tokens of the conversation it sees, of its window.
+   * `tokens` and `percent` are null right after a summary, until the next reply measures it.
+   */
+  context?: { tokens: number | null; window: number; percent: number | null };
   /** The prompt waiting for a run slot, while the session is `queued`. */
   queuedText?: string;
   /** That prompt was waiting when PiSpark stopped, and was queued again when the session opened. */
@@ -187,6 +217,8 @@ export interface SessionDoc extends SessionInfo {
   extensions: ExtensionView;
   /** The commands extensions registered with Pi (`registerCommand`); sending `/name` runs one. */
   commands: SessionCommand[];
+  /** The agent's prompt templates, run by typing `/name` (offered as you type `/`). */
+  prompts?: SessionCommand[];
   /** An extension asked to keep this session loaded and the agent does not allow it yet. */
   holdAsked?: { extension: string; reason: string };
 }
@@ -236,6 +268,12 @@ export type Command = { commandId: string } & (
   | { type: "open" | "cancel" | "stop" | "archive" | "restore" | "delete"; sessionId: string }
   /** Start the session again from its history; with `model`, it runs that model from now on. */
   | { type: "reload"; sessionId: string; model?: { provider: string; id: string } }
+  /** A person names the session; it keeps that name. */
+  | { type: "rename"; sessionId: string; title: string }
+  /** A person looked at the session: it's read (on every device). */
+  | { type: "seen"; sessionId: string }
+  /** Between replies: run another model, or think more or less, from the next reply on. */
+  | { type: "configure"; sessionId: string; model?: { provider: string; id: string }; thinking?: ThinkingLevel }
   /** The person answers an extension's hold request, or lets go of a hold. */
   | { type: "allow-hold" | "deny-hold" | "release-hold"; sessionId: string }
   /**

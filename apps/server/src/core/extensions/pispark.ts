@@ -1,3 +1,4 @@
+import { dirname, join } from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { sessionTitle } from "../../contract/session-title.js";
@@ -235,11 +236,12 @@ export default function pispark(pi: ExtensionAPI): void {
       return { content: [{ type: "text", text: answer.text }], details: undefined };
     },
   });
-  pi.on("before_agent_start", (event) => {
+  pi.on("before_agent_start", (event, ctx) => {
     const active = pi.getActiveTools();
     const guidance = [
+      pisparkContext(ctx.sessionManager.getSessionDir()),
       active.includes(TITLE_TOOL)
-        ? "PiSpark hosts this session. Use pispark_set_title to give it a short, meaningful title when its purpose is clear; update only when the topic meaningfully changes."
+        ? "PiSpark hosts this session. In your first reply, once its purpose is clear, call pispark_set_title with a short title of a few words; change it only when the topic meaningfully changes."
         : "",
       active.includes(SCHEDULE_TOOL)
         ? `When the person asks to do something later or repeatedly in this session, use pispark_schedule; PiSpark asks them to confirm. The server's local time now is ${localNow()}.`
@@ -254,9 +256,21 @@ export default function pispark(pi: ExtensionAPI): void {
         ? "Another session started this one and hears only that it ended. If you find something it needs to know or act on, raise it with pispark_report; otherwise just finish."
         : "",
     ].filter(Boolean);
-    if (!guidance.length) return;
     event.systemPromptOptions.appendSystemPrompt = [event.systemPromptOptions.appendSystemPrompt, ...guidance]
       .filter(Boolean)
       .join("\n\n");
   });
+}
+
+/**
+ * What every PiSpark session is told, whatever its agent: where it runs and how it is seen, where
+ * files for the person go, and which built-in skills say more. Short on purpose: the skills carry
+ * the detail, and Pi loads them only when they are needed.
+ */
+function pisparkContext(sessionFolder: string): string {
+  return [
+    "You are working in PiSpark, a web workspace that hosts this Pi session and shows it to a person in a browser, often on a phone. Write replies as clear Markdown that reads well on a narrow screen.",
+    `Files you make for the person to keep or open (documents, images, PDFs, data exports) go in this session's files folder: ${join(sessionFolder, "files")}. Changes to their project stay in the project.`,
+    `PiSpark's data folder is ${dirname(dirname(sessionFolder))}. The pispark skill says how to present work and use PiSpark's tools; read the pispark-extensions skill before you suggest or plan an extension with its own web view (a panel, a view, a control).`,
+  ].join(" ");
 }

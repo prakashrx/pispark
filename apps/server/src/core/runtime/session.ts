@@ -10,7 +10,8 @@ import { ExtensionViews } from "../extensions/views.js";
 import type { Json } from "../../contract/stream-ops.js";
 import type { SafeLogger } from "../logger.js";
 import type { Setup } from "../agents/resolve.js";
-import type { SessionAgent } from "../../contract/agent-protocol.js";
+import type { SessionAgent, ThinkingLevel } from "../../contract/agent-protocol.js";
+import type { ModelChoice } from "../../contract/provider-protocol.js";
 import { sessionTitle } from "../../contract/session-title.js";
 import { toolSessionTitle } from "./session-title.js";
 import { attachedImages, namingFiles } from "./attachments.js";
@@ -70,6 +71,9 @@ export interface SessionSummary {
   agentChanged?: boolean;
   /** An extension asked a question and the run waits for an answer. */
   waiting?: boolean;
+  question?: string;
+  workingSince?: string;
+  unread?: boolean;
   /** Waits for a free run slot: a prompt that has not started, or a run resuming after an answer. */
   queued?: boolean;
   /** The session that started this one. */
@@ -116,6 +120,8 @@ export interface SessionHost {
   released(session: Session): void;
   /** The session became free (`settled`), so a waiting wake can go. Called outside Pi's listeners. */
   freed?(session: Session): void;
+  /** Something about the session changed (cheap; the workspace stream coalesces it). */
+  touched?(): void;
   /** The processes a session starts and follows, for its agent (`pispark_process`). */
   readonly processes?: {
     request(sessionId: string, request: ProcessRequest, signal?: AbortSignal): Promise<{ ok: boolean; text: string }>;
@@ -160,6 +166,14 @@ function commandsOf(session: AgentSession): SessionCommand[] {
     });
 }
 
+/** The agent's prompt templates, run as `/name`: what the reply box offers as you type `/`. */
+function promptsOf(session: AgentSession): SessionCommand[] {
+  return session.promptTemplates.slice(0, 100).map(({ name, description }) => {
+    const text = description?.replace(/\s+/g, " ").trim().slice(0, 200);
+    return text ? { name, description: text } : { name };
+  });
+}
+
 /** "extensions/notes.ts" and "extensions/notes/index.ts" are both "notes". */
 export function extensionName(path: string): string {
   const name = basename(path).replace(/\.[^.]+$/, "");
@@ -196,6 +210,7 @@ export class Session {
   readOnly?: ReadOnlyReason;
   private pi?: AgentSession;
   private ui?: ExtensionUI;
+  private runStartedAt?: number;
   private views?: ExtensionViews;
   private items?: ItemProjector;
   private sequence = 0;
@@ -253,6 +268,14 @@ export class Session {
   get asking(): boolean {
     return !!this.ui?.asking;
   }
+  /** The waiting question's title, while one is open. */
+  get question(): string | undefined {
+    return this.ui?.question;
+  }
+  /** When the current run started, while it runs. */
+  get workingSince(): number | undefined {
+    return this.status === "running" || this.status === "cancelling" ? this.runStartedAt : undefined;
+  }
   get waitingForSlot(): boolean {
     return this.status === "queued" || this.host.slots.queued(this.id);
   }
@@ -264,6 +287,7 @@ export class Session {
     this.sequence++;
     // No client callbacks, serialization, I/O or transcript copying in synchronous SDK listeners.
     for (const observer of this.observers) observer.push({ sessionId: this.id, sequence: this.sequence, type: "changed" });
+    this.host.touched?.();
     const settled = this.settled;
     if (settled && !this.wasSettled) setImmediate(() => this.host.freed?.(this));
     this.wasSettled = settled;
@@ -320,6 +344,8 @@ export class Session {
     return {
       ...this.host.summary(this),
       model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined,
+      thinking: { level: session.thinkingLevel as ThinkingLevel, levels: session.getAvailableThinkingLevels() as ThinkingLevel[] },
+      ...contextOf(session),
       queue: { steering: session.getSteeringMessages().length, followUp: session.getFollowUpMessages().length },
       ...(this.status === "queued" && this.metadata.queued !== undefined ? { queuedText: this.metadata.queued } : {}),
       ...(this.status === "queued" && this.restored ? { restored: true as const } : {}),
@@ -329,6 +355,7 @@ export class Session {
         views: this.views?.view() ?? [],
       },
       commands: commandsOf(session),
+      prompts: promptsOf(session),
       ...(this.holdAsked ? { holdAsked: { ...this.holdAsked } } : {}),
     };
   }
@@ -518,7 +545,8 @@ export class Session {
         },
       },
     });
-    const thinkingLevel = setup.settings.thinking ?? "off";
+    // The level chosen for this session wins over its agent's.
+    const thinkingLevel = metadata.thinking ?? setup.settings.thinking ?? "off";
     let session: AgentSession;
     try {
       ({ session } = await createAgentSession({
@@ -529,7 +557,9 @@ export class Session {
         settingsManager: services.settingsManager,
         resourceLoader: services.resourceLoader,
         sessionManager: manager,
-        tools: services.activeTools,
+        // An empty list would be an allowlist of nothing; the settings' default tools are then [].
+        tools: services.toolSwitches.length ? services.toolSwitches : undefined,
+        excludeTools: services.excludedTools,
         thinkingLevel,
         scopedModels: [{ model: services.model, thinkingLevel }],
         sessionStartEvent: { type: "session_start", reason: reopening ? "resume" : "new" },
@@ -763,6 +793,8 @@ export class Session {
   }
 
   private setTitle(input: string): void {
+    // A person's name for the session stays.
+    if (this.metadata.renamed) return;
     if (
       !this.host.accepting() ||
       this.closed ||
@@ -776,6 +808,58 @@ export class Session {
     const metadata = { ...this.metadata, title: toolSessionTitle(input) };
     this.host.storage.write(metadata);
     this.metadata = metadata;
+    this.changed();
+  }
+  /**
+   * Between replies, the person chooses another model or thinking level for this session: Pi switches
+   * (and records it in the transcript), and the session keeps the choice when it opens again.
+   */
+  async configure(change: { model?: ModelChoice; thinking?: ThinkingLevel }): Promise<void> {
+    const { session } = this.loaded();
+    // Between replies, a failed one included.
+    if (!["idle", "error"].includes(this.status) || this.input || this.cancelling) throw new RuntimeError("busy");
+    const metadata: SessionMetadata = { ...this.metadata };
+    // Pi resets thinking when the model changes; the level the session had goes on with it (clamped to what it offers).
+    const thinking = change.thinking ?? metadata.thinking ?? (session.thinkingLevel as ThinkingLevel);
+    if (change.model) {
+      const model = session.modelRuntime.getModel(change.model.provider, change.model.id);
+      if (!model || !(await session.modelRuntime.getAvailable(change.model.provider)).some((m) => m.id === change.model!.id))
+        throw new RuntimeError("configuration");
+      try {
+        await session.setModel(model);
+      } catch {
+        throw new RuntimeError("credentials");
+      }
+      metadata.model = { provider: change.model.provider, id: change.model.id };
+    }
+    session.setThinkingLevel(thinking);
+    // Kept with the session only when the person chose it; otherwise the agent's applies on reopen.
+    if (change.thinking) metadata.thinking = session.thinkingLevel as ThinkingLevel;
+    this.host.storage.write(metadata);
+    this.metadata = metadata;
+    this.changed();
+  }
+  /** The names of files the person attached to their messages (the rest of the files folder the agent made). */
+  uploads(): Set<string> {
+    if (!this.items) return new Set();
+    const names = new Set<string>();
+    for (const text of this.items.userTexts())
+      for (const match of text.matchAll(/<file name="([^"]+)"><\/file>/g)) names.add(match[1]!.split(/[\\/]/).pop()!);
+    return names;
+  }
+  /** A person looked at the session. */
+  seen(at: string): void {
+    const metadata: SessionMetadata = { ...this.metadata, seenAt: at };
+    this.host.storage.write(metadata);
+    this.metadata = metadata;
+    this.changed();
+  }
+  /** A person names the session. Pi's session name follows, as in terminal Pi's `/name`. */
+  rename(title: string): void {
+    const metadata: SessionMetadata = { ...this.metadata, title, renamed: true };
+    this.host.storage.write(metadata);
+    this.metadata = metadata;
+    if (this.pi && !this.closed) this.pi.setSessionName(title);
     this.changed();
   }
   /** An empty, never-started session is named after its first message until the agent names it. */
@@ -867,6 +951,7 @@ export class Session {
   private mark(text?: string): { run: Run; settle: () => RunResult } {
     const { host } = this;
     const started = Date.now();
+    this.runStartedAt = started;
     const { queued: _queued, ...current } = this.metadata;
     const metadata = { ...current, active: true, interrupted: false };
     if (text !== undefined) this.firstTitle(metadata, text);
@@ -1122,4 +1207,11 @@ export class Session {
     this.host.released(this);
     if (cleanupError) throw new RuntimeError(cleanupError);
   }
+}
+
+/** How full the model's context is, from Pi; nothing when the model has no known window. */
+function contextOf(session: AgentSession): { context?: { tokens: number | null; window: number; percent: number | null } } {
+  const usage = session.getContextUsage();
+  if (!usage) return {};
+  return { context: { tokens: usage.tokens, window: usage.contextWindow, percent: usage.percent === null ? null : Math.round(usage.percent * 10) / 10 } };
 }

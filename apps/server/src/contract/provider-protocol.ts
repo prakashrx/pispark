@@ -19,6 +19,8 @@ export interface ProviderInfo {
   configured: boolean;
   stored: boolean;
   source: "stored" | "host" | "none";
+  /** A saved sign-in that no longer works (checked when asked: `GET /api/providers?check`). */
+  health?: "expired";
 }
 export interface ProviderCatalog {
   providers: ProviderInfo[];

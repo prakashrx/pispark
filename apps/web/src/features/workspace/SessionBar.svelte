@@ -19,7 +19,7 @@
    * What a session's top bar holds after its name (design language §1.2): an extension's title
    * chips (where there is room), its state, the switch between its views, Details, and ⋯.
    */
-  let { tabs = true }: { tabs?: boolean } = $props();
+  let { tabs = true, onrename }: { tabs?: boolean; onrename?: () => void } = $props();
   const client = useSessions();
   const session = useSession();
   const doc = $derived(session.doc);
@@ -66,8 +66,9 @@
       attention.say("Couldn’t copy the link");
     }
   }
-  // The session ⋯ menu (design set 7/3). Rename waits for session names on the server.
+  // The session ⋯ menu (design set 7/3).
   const actions = $derived([
+    ...(onrename && info ? [{ id: "rename", label: "Rename", onselect: onrename }] : []),
     { id: "details", label: "Details", onselect: () => details.show(session.id) },
     ...(doc?.commands?.length ? [{ id: "commands", label: "Commands…", onselect: () => (picking = true) }] : []),
     { id: "copy-link", label: "Copy link", onselect: () => void copyLink() },
