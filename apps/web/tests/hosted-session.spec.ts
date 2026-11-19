@@ -65,9 +65,15 @@ test("blocked browser storage supports live replies and a session unloaded by a 
   const id = sessions.findLast(
     (s: { title: string }) => s.title === "peer unload regression",
   ).id;
-  await request.post("/api/commands", {
+  // The old stream can still report Live until it sees the unload. Wait for its replacement.
+  const reconnected = page.waitForResponse((response) =>
+    response.ok() && response.url().endsWith(`/api/sessions/${id}/live`),
+  );
+  const stop = await request.post("/api/commands", {
     data: { type: "stop", commandId: crypto.randomUUID(), sessionId: id },
   });
+  expect(stop.ok()).toBe(true);
+  await reconnected;
   await expect(page.getByRole("img", { name: "Backend: Live" })).toBeVisible({
     timeout: 15_000,
   });
