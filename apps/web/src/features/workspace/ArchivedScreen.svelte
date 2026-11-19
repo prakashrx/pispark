@@ -40,10 +40,14 @@
     const neighbour = (sessions[at + 1] ?? sessions[at - 1])?.id;
     if (action === "delete") deleting = true;
     const done = await (action === "restore" ? client.restore(id) : client.delete(id));
-    deleting = false;
+    if (action === "delete") {
+      deleting = false;
+      if (done) confirming = undefined;
+    }
     if (!done) return;
-    confirming = undefined;
     await tick();
+    // A restore can finish while a different session's delete confirmation is open.
+    if (confirming) return;
     const next = neighbour ? row(neighbour)?.querySelector<HTMLElement>("button") : undefined;
     if (next) next.focus();
     else focusMain();

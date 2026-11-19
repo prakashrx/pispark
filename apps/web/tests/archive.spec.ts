@@ -68,21 +68,41 @@ fresh("each session in the sidebar is archived from its row; Archived restores i
   await expect(page.getByRole("heading", { level: 1, name: "Archived" })).toBeVisible();
   await expect(archivedLink(page)).toHaveAttribute("aria-current", "page");
   await expect(archived(page).getByRole("listitem")).toHaveCount(2);
-  await archived(page).getByRole("button", { name: "Restore second session" }).click();
-  await expect(sessionLink(page, "second session")).toBeVisible();
-  await expect(archivedLink(page)).toHaveAccessibleName("Archived 1");
 
   // Delete asks first in a dialog: Escape and Cancel keep it, with focus back on Delete; Delete removes it.
   const remove = archived(page).getByRole("button", { name: "Delete third session" });
   const confirm = page.getByRole("dialog", { name: "Delete this session?" });
+  const cancel = confirm.getByRole("button", { name: "Cancel" });
+  // Live updates can show the restored session before the browser receives the command response.
+  let acknowledge!: () => void;
+  const restoring = new Promise<void>((resolve) => { acknowledge = resolve; });
+  await page.route("**/api/commands", async (route) => {
+    if (route.request().postDataJSON().type !== "restore") return route.continue();
+    const response = await route.fetch();
+    await restoring;
+    await route.fulfill({ response });
+  });
+  try {
+    await archived(page).getByRole("button", { name: "Restore second session" }).click();
+    await expect(sessionLink(page, "second session")).toBeVisible();
+    await expect(archivedLink(page)).toHaveAccessibleName("Archived 1");
+    await expect(archived(page).getByRole("listitem")).toHaveCount(1);
+    await remove.click();
+    await expect(cancel).toBeFocused();
+    const refreshed = page.waitForResponse((res) => res.url().endsWith("/api/sessions?archived") && res.ok());
+    acknowledge();
+    await refreshed;
+    await cancel.click();
+    await expect(remove).toBeFocused();
+  } finally {
+    acknowledge();
+  }
+
   await remove.click();
   await expect(confirm.getByText("“third session” and its messages are deleted from this computer. This can’t be undone.")).toBeVisible();
-  await expect(confirm.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await expect(cancel).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(confirm).toHaveCount(0);
-  await expect(remove).toBeFocused();
-  await remove.click();
-  await confirm.getByRole("button", { name: "Cancel" }).click();
   await expect(remove).toBeFocused();
   await remove.click();
   await confirm.getByRole("button", { name: "Delete session", exact: true }).click();
