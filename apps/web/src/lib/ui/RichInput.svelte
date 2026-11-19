@@ -250,17 +250,15 @@
     insertTokens(onfiles(files));
   }
   function onkeydown(event: KeyboardEvent) {
+    if (event.isComposing) return;
     if (onkey?.(event)) {
       event.preventDefault();
       return;
     }
-    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
-      event.preventDefault();
-      onsubmit?.();
-    } else if (event.key === "Enter" && event.shiftKey) {
-      event.preventDefault();
-      document.execCommand("insertLineBreak");
-    }
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (event.shiftKey || window.matchMedia?.("(pointer: coarse)").matches) document.execCommand("insertLineBreak");
+    else onsubmit?.();
   }
 </script>
 
@@ -382,6 +380,15 @@
   .rich-input :global(.rich-token[data-state="failed"] .rich-token-remove) {
     display: inline;
   }
+  @media (pointer: coarse) {
+    .rich-input :global(.rich-token) { min-height: 2.125rem; }
+    .rich-input :global(.rich-token .rich-token-remove) {
+      display: inline-grid;
+      place-items: center;
+      min-width: 2rem;
+      min-height: 2rem;
+    }
+  }
   .rich-input :global(.rich-token-picture .rich-token-remove) {
     position: absolute;
     top: -0.45rem;
@@ -392,5 +399,12 @@
     border-radius: 50%;
     background: var(--background);
     font-size: 0.75rem;
+  }
+  @media (pointer: coarse) {
+    .rich-input :global(.rich-token-picture .rich-token-remove) {
+      position: static;
+      border: 0;
+      background: transparent;
+    }
   }
 </style>

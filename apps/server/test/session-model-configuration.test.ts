@@ -507,3 +507,65 @@ test("createSessionServices: independently mutable managed runtimes share only e
   );
   assert.equal((await f.runtime.getAuth(provider))?.auth.apiKey, "test-stored");
 });
+
+test("a refreshed catalog is available to open, new and reopened sessions without loading implicit model config", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pispark-refresh-"));
+  await writeFile(join(root, "models.json"), "{not an explicitly configured file");
+  const control = new AuthProviderControl();
+  const original = control.native;
+  let networkReads = 0;
+  let switching: (() => void) | undefined;
+  let resume: Promise<void> | undefined;
+  control.native = () => {
+    const base = original();
+    const initial = base.getModels();
+    const discovered = { ...initial[0]!, id: "discovered", name: "New model" };
+    let models = initial;
+    return {
+      ...base,
+      getModels: () => models,
+      async refreshModels({ allowNetwork, stored, publish }) {
+        if (allowNetwork) networkReads++;
+        else if (resume) { switching?.(); await resume; }
+        if (allowNetwork || stored?.models.some(m => m.id === discovered.id)) {
+          const next = [...initial, discovered];
+          await publish({
+            ...(allowNetwork && { persist: { models: next } }),
+            update: () => { models = next; },
+          });
+        }
+      },
+    };
+  };
+  const f = await localProviderSettings(root, control);
+  const sessions = new SessionRuntime({ home: join(root, "pispark") }, f.settings);
+  t.after(async () => {
+    await sessions.shutdown();
+    await f.settings.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  await writeFile(f.authPath, JSON.stringify({ [provider]: { type: "api_key", key: "test-key" } }));
+  const selected = { provider, id: "discovered" };
+  const warm = await sessions.create({ folder: root, model: { provider, id: "deterministic" } });
+  await assert.rejects(sessions.configure(warm.id, { model: selected }), /model-unavailable/);
+  assert.equal(sessions.session(warm.id).model?.id, "deterministic");
+  await f.settings.refresh(provider);
+  const reached = new Promise<void>(resolve => { switching = resolve; });
+  let release!: () => void;
+  resume = new Promise<void>(resolve => { release = resolve; });
+  const pending = sessions.configure(warm.id, { model: selected });
+  await reached;
+  try {
+    await assert.rejects(sessions.configure(warm.id, { thinking: "low" }), /busy/);
+    sessions.rename(warm.id, "Renamed while switching");
+  } finally {
+    release();
+    resume = undefined;
+  }
+  assert.equal((await pending).model?.id, selected.id);
+  assert.equal(sessions.session(warm.id).title, "Renamed while switching");
+  assert.equal((await sessions.create({ folder: root, model: selected })).model?.id, selected.id);
+  await sessions.stop(warm.id);
+  assert.equal((await sessions.open(warm.id)).model?.id, selected.id);
+  assert.equal(networkReads, 1);
+});

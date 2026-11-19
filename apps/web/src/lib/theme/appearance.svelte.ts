@@ -84,9 +84,7 @@ class AppearanceState {
     root.style.setProperty("--font-sans", font(this.current.interfaceFont));
     root.style.setProperty("--font-reading", font(this.current.messageFont));
     root.style.fontSize = `${textSizes.find((s) => s.id === this.current.textSize)?.px ?? 16}px`;
-    document
-      .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", theme.swatch[0]);
+    for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.setAttribute("content", theme.swatch[0]);
   }
 }
 

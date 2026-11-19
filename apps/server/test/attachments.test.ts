@@ -154,6 +154,7 @@ test("a session's files list what the person attached and what the agent made th
   const f = await fixture(t);
   f.provider.automatic = true;
   await f.upload("photo.png", "png-bytes");
+  await f.upload("unsent.txt", "draft");
   // Sent with a message: the person's.
   await f.settle((await f.post({ type: "start", sessionId: f.id, text: "look", attachments: ["photo.png"] })).receipt);
   // The agent saves something there (as its PiSpark guidance says), and a dotfile is not listed.
@@ -166,6 +167,7 @@ test("a session's files list what the person attached and what the agent made th
     [
       { name: "photo.png", by: "you", size: 9 },
       { name: "report.md", by: "agent", size: 8 },
+      { name: "unsent.txt", by: "you", size: 5 },
     ],
   );
   // Each opens as inert data from the same place as an attachment.

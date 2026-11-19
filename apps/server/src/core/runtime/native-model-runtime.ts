@@ -6,6 +6,7 @@ import {
   type CreateModelRuntimeOptions,
 } from "@earendil-works/pi-coding-agent";
 import { bundledTransportPatched } from "./transport-gate.js";
+import { nativeCatalogStore } from "./pi-boundary.js";
 import { ProviderError } from "./provider-errors.js";
 import type {
   Api,
@@ -21,7 +22,7 @@ export function requireSupportedTransport(version = process.versions.undici) {
     throw new ProviderError("network-blocked");
 }
 
-/** Explicit paths only. Null disables model configuration and uses Pi's in-memory catalog cache. */
+/** Scope the native model catalog and its optional configuration to the installation. */
 export async function nativeModelRuntime(
   options: CreateModelRuntimeOptions & { modelsPath: string | null },
 ) {
@@ -46,6 +47,9 @@ export async function nativeModelRuntime(
   try {
     const runtime = await ModelRuntime.create({
       ...options,
+      modelsStore: options.modelsStore ?? (!options.modelsPath && options.modelsStorePath
+        ? await nativeCatalogStore(options.modelsStorePath)
+        : undefined),
       refreshOnCreate: false,
       allowModelNetwork: false,
     });

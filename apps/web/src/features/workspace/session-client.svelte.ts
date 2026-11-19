@@ -24,6 +24,7 @@ const KEPT = 8;
  * settings. Each session that has been opened is a `Session`, which owns everything about it.
  */
 export class SessionClient {
+  readonly phoneList = { query: "", top: 0 };
   readonly providers = new ProviderClient();
   readonly agents = new AgentClient();
   catalog = $state<Catalog>({ home: "", recentFolders: [] });

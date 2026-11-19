@@ -205,6 +205,12 @@
   .grow {
     flex: 1;
   }
+  @media (pointer: coarse) {
+    .actions :global(.ui-button[aria-haspopup]), .actions :global([data-details-toggle]) {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
   .actions {
     display: flex;
     align-items: center;

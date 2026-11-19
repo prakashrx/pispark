@@ -40,6 +40,8 @@ export interface SessionHost {
  * the views extensions offer. The members up to `showView` are what a view may rely on.
  */
 export class Session {
+  /** Reading position across workspace screens. Undefined follows the live end. */
+  readingTop?: number;
   /** Everything about the session except its history: status, title, model, queue, what extensions show. */
   get doc(): SessionDoc | undefined {
     return this.live.doc?.session;

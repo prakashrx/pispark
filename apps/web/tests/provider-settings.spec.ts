@@ -135,7 +135,11 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   const deterministic = models.getByRole("radio", { name: /deterministic/i });
   await deterministic.check();
   await expect(deterministic).toBeChecked();
+  // Checking the native radio precedes persistence. Wait for the dialog to finish saving.
+  await expect(models.getByText("Default", { exact: true })).toBeVisible();
+  await expect(deterministic).toBeEnabled();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await newSession(page);
   await expect(ask).toHaveText("Keep shared Ask draft");
   await expect(

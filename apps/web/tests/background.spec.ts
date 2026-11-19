@@ -77,3 +77,20 @@ fresh("a reply working shows on Background with how long it has run, and leaves 
   await page.goto("/#/background");
   await expect(page.getByRole("region", { name: "hold the line" })).toHaveCount(0);
 });
+
+fresh("a completed process discloses its original output on demand", async ({ page }) => {
+  await page.goto("/#/new");
+  const box = page.getByRole("textbox", { name: "Ask anything", exact: true });
+  await box.fill(start({ command: 'node -e "console.log(78143)"', title: "Catalog sample", report: "result" }));
+  await box.press("Enter");
+  const report = page.locator("details").filter({ has: page.locator("summary", { hasText: "Catalog sample · exited 0" }) });
+  const summary = report.locator("summary");
+  await expect(summary).toContainText("Show output", { timeout: 20_000 });
+  const output = report.locator(".output");
+  await expect(output).toBeHidden();
+  await summary.click();
+  await expect(output).toBeVisible();
+  await expect(output).toContainText("78143");
+  await summary.press("Enter");
+  await expect(output).toBeHidden();
+});

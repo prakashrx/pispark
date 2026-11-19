@@ -34,7 +34,7 @@
   const scroller = $derived(screen?.main);
   let column = $state<HTMLElement>();
   let top = $state<HTMLElement>();
-  let following = $state(true);
+  let following = $state(session.readingTop === undefined);
   let lastTop = 0;
   let loadingEarlier = $state(false);
   let earlierFailed = $state(false);
@@ -70,6 +70,10 @@
   $effect(() => {
     const element = scroller;
     if (!element) return;
+    if (session.readingTop !== undefined) {
+      element.scrollTop = session.readingTop;
+      lastTop = element.scrollTop;
+    }
     element.addEventListener("scroll", onscroll, { passive: true });
     return () => element.removeEventListener("scroll", onscroll);
   });
@@ -78,6 +82,7 @@
     if (atBottom()) following = true;
     else if (scroller.scrollTop < lastTop - 2) following = false;
     lastTop = scroller.scrollTop;
+    session.readingTop = following ? undefined : lastTop;
   }
   // Anything that makes the conversation taller (a reply, a late image, a diff, a question) keeps
   // the end in view while following.
@@ -90,6 +95,7 @@
     return () => watcher.disconnect();
   });
   function jumpToLatest() {
+    session.readingTop = undefined;
     following = true;
     toBottom();
   }

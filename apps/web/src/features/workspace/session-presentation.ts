@@ -18,6 +18,9 @@ export function commandUncertainty(
 
 /** What the server's code for a refused or failed command means, in words. */
 const COMMAND_ERRORS: Record<string, string> = {
+  configuration: "The session configuration couldn’t be applied.",
+  credentials: "The provider couldn’t authorize this request. Check its sign-in under Settings.",
+  "model-unavailable": "The selected model is unavailable for this session.",
   folder: "That working folder doesn’t exist on the server.",
   agent: "That agent can’t be used: it is missing or can’t be resolved. Check it under Agents.",
   busy: "The session is busy. Try again when it has finished.",

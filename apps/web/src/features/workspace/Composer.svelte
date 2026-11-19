@@ -157,6 +157,10 @@
     class:composer-reply={mode === "reply"}
     data-empty={!text.trim() || undefined}
     aria-label={mode === "ask" ? "New session" : "Reply to session"}
+    onpointerdown={(event) => {
+      // Keep the dock still until the native click submits or stops the turn.
+      if (event.pointerType === "touch" && event.target instanceof Element && event.target.closest(".send-btn")) event.preventDefault();
+    }}
     onsubmit={(event) => {
       event.preventDefault();
       void send();
@@ -220,7 +224,7 @@
           unavailable={doc?.status === "cancelling" ? "Stopping…" : undefined}
           class="send-btn stop"
           onclick={() => session?.stop()}><Icon name="stop" class="w-[18px] h-[18px]" /></Button
-        >{:else}      <Button aria-label={mode === "reply" ? "Send message" : "Start session"} type="submit" {unavailable} class="send-btn"
+        >{:else}<Button aria-label={mode === "reply" ? "Send message" : "Start session"} type="submit" {unavailable} class="send-btn"
         ><Icon name="arrowUp" class="w-[18px] h-[18px]" /></Button
       >{/if}
     </div>

@@ -5,6 +5,7 @@
    * The same content is the sidebar on expanded, the drawer on medium and the first screen on
    * compact, where its three destinations become a bar at the bottom.
    */
+  import { untrack } from "svelte";
   import Icon from "../lib/ui/Icon.svelte";
   import StatusMark from "../lib/ui/StatusMark.svelte";
   import AppEntry from "../features/workspace/AppEntry.svelte";
@@ -18,7 +19,10 @@
 
   let { screen = false }: { screen?: boolean } = $props();
   const client = useSessions();
-  let query = $state("");
+  let query = $state(untrack(() => screen ? client.phoneList.query : ""));
+  function restoreList(node: HTMLElement) {
+    if (screen) node.scrollTop = client.phoneList.top;
+  }
   let step = 0;
 
   const backend = $derived(
@@ -35,6 +39,7 @@
   // sessions under the app.
   const listed = $derived(new Set(client.sessions.map((session) => session.id)));
   const roots = $derived(newestFirst.filter((session) => !session.agent?.home && !(session.parent && listed.has(session.parent))));
+  $effect(() => { if (screen) client.phoneList.query = query; });
   const needle = $derived(query.trim().toLowerCase());
   const found = $derived(needle ? newestFirst.filter((session) => sessionName(session).toLowerCase().includes(needle)) : []);
   const groups = $derived(dateGroups(roots));
@@ -95,7 +100,7 @@
       </button>{/if}
   </div>
 
-  <div class="list">
+  <div class="list" use:restoreList onscroll={(event) => { if (screen) client.phoneList.top = event.currentTarget.scrollTop; }}>
     {#if apps.length && !needle}
       <nav aria-label="Apps">
         <p class="label">Apps</p>
@@ -172,6 +177,14 @@
   }
   .sidebar.screen {
     background: var(--background);
+  }
+  .screen :global([data-session-link]) {
+    font-size: 1rem;
+    letter-spacing: -0.01em;
+  }
+  .screen .label {
+    padding-top: 0.55rem;
+    padding-bottom: 0.125rem;
   }
   .head {
     display: flex;

@@ -24,7 +24,7 @@ import type { ProviderSettings } from "./provider-settings.js";
 import { validChoice } from "./provider-storage.js";
 import { RunSlots } from "./run-slots.js";
 import { SessionStorage, validateId, type SessionMetadata } from "./storage.js";
-import { attachmentPath, filesFolder, placeAttachments, saveAttachment, validAttachmentName } from "./attachments.js";
+import { attachmentPath, filesFolder, placeAttachments, saveAttachment, uploadedNames, validAttachmentName } from "./attachments.js";
 import { Schedules } from "./schedules.js";
 import { ToolDiscovery } from "./tool-discovery.js";
 import { Wakes } from "./wakes.js";
@@ -427,6 +427,7 @@ export class SessionRuntime {
       {
         version: 2,
         id: randomUUID(),
+        tracksUploads: true,
         cwd: folder,
         agent,
         ...(request.model ? { model: request.model } : {}),
@@ -783,10 +784,14 @@ export class SessionRuntime {
   /** The session's files folder: what the person attached and what the agent made there, newest first. */
   files(id: string): SessionFile[] {
     validateId(id);
-    this.storage.read(id);
-    const folder = filesFolder(this.storage.directory(id));
-    const session = this.live.get(id);
-    const uploads = session?.ready ? session.uploads() : undefined;
+    const metadata = this.storage.read(id);
+    const directory = this.storage.directory(id);
+    const folder = filesFolder(directory);
+    const uploads = uploadedNames(directory);
+    if (!metadata.tracksUploads) {
+      const session = this.live.get(id);
+      if (session?.ready) for (const name of session.uploads()) uploads.add(name);
+    }
     let names: string[];
     try {
       names = readdirSync(folder);
@@ -799,7 +804,7 @@ export class SessionRuntime {
         try {
           const stats = statSync(join(folder, name));
           if (!stats.isFile()) return [];
-          return [{ name, size: stats.size, modified: stats.mtime.toISOString(), ...(uploads ? { by: uploads.has(name) ? ("you" as const) : ("agent" as const) } : {}) }];
+          return [{ name, size: stats.size, modified: stats.mtime.toISOString(), by: uploads.has(name) ? "you" as const : metadata.tracksUploads ? "agent" as const : undefined }];
         } catch {
           return [];
         }

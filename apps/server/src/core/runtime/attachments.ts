@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync, readdirSync } from "node:fs";
 import { basename, extname, join, relative, isAbsolute, resolve, sep } from "node:path";
 import type { Readable } from "node:stream";
 import { detectSupportedImageMimeTypeFromFile, resizeImage } from "@earendil-works/pi-coding-agent";
@@ -16,6 +16,16 @@ export const ATTACHMENTS_PER_MESSAGE = 20;
  * the tag terminal Pi uses, so the agent opens it with its tools. Images also go to the model as content.
  */
 export const filesFolder = (sessionFolder: string) => join(sessionFolder, "files");
+
+/** Upload ownership is recorded before a file is published, independently of the draft. */
+export function uploadedNames(sessionFolder: string): Set<string> {
+  try {
+    return new Set(readdirSync(join(sessionFolder, "uploads")));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Set();
+    throw error;
+  }
+}
 
 /** A name a person's file can be stored under: one plain file name, nothing that could reach elsewhere. */
 export function validAttachmentName(name: unknown): name is string {
@@ -59,7 +69,16 @@ export async function saveAttachment(sessionFolder: string, name: string, body: 
       body.pipe(out);
     });
     const stored = freeName(folder, name);
-    renameSync(partial, join(folder, stored));
+    const owners = join(sessionFolder, "uploads");
+    mkdirSync(owners, { recursive: true, mode: 0o700 });
+    const marker = join(owners, stored);
+    writeFileSync(marker, "", { mode: 0o600 });
+    try {
+      renameSync(partial, join(folder, stored));
+    } catch (error) {
+      rmSync(marker, { force: true });
+      throw error;
+    }
     return { name: stored, size };
   } catch (error) {
     rmSync(partial, { force: true });

@@ -4,6 +4,7 @@ export type RuntimeErrorCode =
   | "busy"
   | "limit"
   | "configuration"
+  | "model-unavailable"
   | "credentials"
   | "resources"
   | "folder"

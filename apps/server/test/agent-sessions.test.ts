@@ -327,7 +327,7 @@ test("between replies a session's thinking level and model can change; the choic
     assert.equal(f.runtime.session(session.id).thinking!.level, chosen, "kept on reopen");
     // A model that isn't offered is refused, and nothing changes.
     const model = f.runtime.session(session.id).model;
-    await assert.rejects(f.runtime.configure(session.id, { model: { provider: model!.provider, id: "no-such-model" } }), (e) => e instanceof RuntimeError && e.code === "configuration");
+    await assert.rejects(f.runtime.configure(session.id, { model: { provider: model!.provider, id: "no-such-model" } }), (e) => e instanceof RuntimeError && e.code === "model-unavailable");
     assert.deepEqual(f.runtime.session(session.id).model, model);
     // Not while a reply runs.
     f.provider.automatic = false;

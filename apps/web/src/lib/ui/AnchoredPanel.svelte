@@ -44,7 +44,16 @@
   $effect(() => {
     if (!("popover" in layer)) return;
     layer.popover = compact ? "manual" : null;
-    if (compact) layer.showPopover();
+    if (compact) {
+      layer.showPopover();
+      // Android Back participates in the native close stack above the current route.
+      if ("CloseWatcher" in window) {
+        const Watcher = window.CloseWatcher as new () => EventTarget & { destroy(): void };
+        const watcher = new Watcher();
+        watcher.addEventListener("close", onclose);
+        return () => watcher.destroy();
+      }
+    }
   });
   $effect(() => {
     const anchor = layer.parentElement?.getBoundingClientRect();

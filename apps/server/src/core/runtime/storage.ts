@@ -44,6 +44,8 @@ export interface SessionMetadata {
   queued?: string;
   /** Put away by the person: not listed or opened until restored. */
   archived?: true;
+  /** Uploads have been recorded from this session’s creation. */
+  tracksUploads?: true;
   /** The session that started this one (a child session); its runs report back to it. */
   parent?: string;
   /** How it tells its parent when a run ends; `result` when not given. */

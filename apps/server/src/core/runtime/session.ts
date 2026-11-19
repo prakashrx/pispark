@@ -224,7 +224,7 @@ export class Session {
   private settleAdopted?: () => void;
   /** Whether the session was settled at the last change, to tell the host when it becomes free. */
   private wasSettled = true;
-  /** Steer or follow-up input being prepared. */
+  /** A change of configuration, steer or follow-up being prepared. */
   private input?: Promise<unknown>;
   private cancelling?: Promise<void>;
   /** Running tool calls and what they reported last (Pi's partial result), by call id. References only. */
@@ -818,21 +818,34 @@ export class Session {
     const { session } = this.loaded();
     // Between replies, a failed one included.
     if (!["idle", "error"].includes(this.status) || this.input || this.cancelling) throw new RuntimeError("busy");
-    const metadata: SessionMetadata = { ...this.metadata };
+    this.input = this.applyConfiguration(session, change);
+    try {
+      await this.input;
+    } finally {
+      this.input = undefined;
+    }
+  }
+
+  private async applyConfiguration(session: AgentSession, change: { model?: ModelChoice; thinking?: ThinkingLevel }): Promise<void> {
     // Pi resets thinking when the model changes; the level the session had goes on with it (clamped to what it offers).
-    const thinking = change.thinking ?? metadata.thinking ?? (session.thinkingLevel as ThinkingLevel);
-    if (change.model) {
-      const model = session.modelRuntime.getModel(change.model.provider, change.model.id);
-      if (!model || !(await session.modelRuntime.getAvailable(change.model.provider)).some((m) => m.id === change.model!.id))
-        throw new RuntimeError("configuration");
+    const thinking = change.thinking ?? this.metadata.thinking ?? (session.thinkingLevel as ThinkingLevel);
+    const choice = change.model;
+    if (choice) {
+      // Pick up explicitly refreshed provider catalogs, including in an already-open session.
+      const refreshed = await session.modelRuntime.refresh({ providers: [choice.provider], allowNetwork: false });
+      if (refreshed.aborted || refreshed.errors.size) throw new RuntimeError("configuration");
+      const model = session.modelRuntime.getModel(choice.provider, choice.id);
+      if (!model || !(await session.modelRuntime.getAvailable(choice.provider)).some((m) => m.id === choice.id))
+        throw new RuntimeError("model-unavailable");
       try {
         await session.setModel(model);
       } catch {
         throw new RuntimeError("credentials");
       }
-      metadata.model = { provider: change.model.provider, id: change.model.id };
     }
     session.setThinkingLevel(thinking);
+    const metadata = { ...this.metadata };
+    if (choice) metadata.model = { ...choice };
     // Kept with the session only when the person chose it; otherwise the agent's applies on reopen.
     if (change.thinking) metadata.thinking = session.thinkingLevel as ThinkingLevel;
     this.host.storage.write(metadata);

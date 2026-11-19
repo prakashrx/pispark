@@ -18,16 +18,19 @@
   const known = $derived(from?.kind === "session" && client.sessions.some((session) => session.id === from.id));
 </script>
 
-{#if from}
+{#if from?.kind === "process"}
+  <details class="process-report" data-purpose="session-turn">
+    <summary class="woken">{from.label} <span class="disclosure"><span class="closed">▸ Show output</span><span class="opened">▾ Hide output</span></span></summary>
+    <div class="report output">{reportBody(text)}</div>
+  </details>
+{:else if from}
   <div class="flex flex-col items-start gap-1.5" data-purpose="session-turn">
     <p class="woken">
-      <Icon name={from.kind === "process" ? "terminal" : "sessionBack"} class="h-3.5 w-3.5" /><span
+      <Icon name="sessionBack" class="h-3.5 w-3.5" /><span
         >From {#if known}<button type="button" class="link" onclick={() => client.open(from.id)}>{title}</button>{:else}{title}{/if}{rest}</span
       >
     </p>
-    <!-- A session's report is its agent's words, Markdown as in a reply; a process's is its output, as written. -->
-    {#if from.kind === "process"}<div class="report output">{reportBody(text)}</div>
-    {:else}<div class="report markdown"><StreamingMarkdown text={reportBody(text)} /></div>{/if}
+    <div class="report markdown"><StreamingMarkdown text={reportBody(text)} /></div>
   </div>
 {:else}
   <div class="flex flex-col items-end gap-1.5" data-purpose="user-turn">
@@ -120,6 +123,16 @@
   .report.markdown {
     white-space: normal;
   }
+  .process-report > summary {
+    display: block;
+    list-style: none;
+    cursor: pointer;
+    padding-block: 0.5rem;
+  }
+  .process-report summary::-webkit-details-marker { display: none; }
+  .disclosure { white-space: nowrap; }
+  .opened, .process-report[open] .closed { display: none; }
+  .process-report[open] .opened { display: inline; }
   .report.output {
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 0.8125rem;
