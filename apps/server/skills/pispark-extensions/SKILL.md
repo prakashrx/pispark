@@ -1,71 +1,59 @@
 ---
 name: pispark-extensions
-description: Read this before you suggest, plan or write anything that adds to PiSpark's interface. PiSpark runs ordinary Pi extensions and lets them show their own Svelte web components in a session, such as views, panels above or below the reply box, controls, chips and custom renderings of tool results. Covers how they work, where they live and how they get loaded.
+description: Design, write, or troubleshoot ordinary Pi extensions hosted by PiSpark. Read before adding tools, extension-owned state, custom rendering, or Svelte panels, views and controls. Covers scope, loading, and how to verify an extension in a live session.
 ---
 
 # Extensions in PiSpark
 
-An extension is an ordinary Pi extension: a folder with `index.ts` whose default export receives `pi`. It can register tools, commands, message renderers and event handlers, exactly as in terminal Pi.
+Use an ordinary Pi extension for executable behavior. Register tools with Pi for things the session's agent needs to do. Add a browser component only when the person needs a display or control. A tool does not need a component, and a read-only panel does not need a model turn. PiSpark hosts both; the extension owns its behavior and state. There is no separate manifest or runtime.
 
-In PiSpark it can also show **its own Svelte components** in the session. There is no PiSpark API, manifest or second entry file: it emits one event on Pi's own event bus. Terminal Pi ignores the event and keeps its terminal rendering.
+## Choose where it loads before writing
 
-## Showing a component
+- **Named agent:** put the extension under `<PiSpark data folder>/agents/<id>/extensions/<name>/index.ts`. All sessions that resolve that resource can load it on start or reload, including agents that inherit it. For an isolated dev agent, use its own folder and select it in a separate dev workspace; don't add trials to Default. Agent layering controls where code loads, not what it can access. Extensions run with the host user's permissions; their components run in the PiSpark page.
+- **One session:** use that session's existing agent layer (`sessions/<id>/agent/extensions/<name>/`). This changes what that session loads, not the base agent. Session extension **code** goes under `agent/extensions`; session extension **data** does not. There is no built-in promotion action that saves trial code to a named agent.
+- A component needs a folder extension: keep its `.svelte` file and helpers beside the entry point. Resolve paths with `new URL('./…', import.meta.url)`, not the person's project folder. Confirm the target and what the code will do before editing. Work on the agent in its intended data home; use work records for plans and evidence, not as a second source tree.
+
+## Tools, components, and state
+
+1. **Register tools in the extension's default export**, not only when a view opens. This lets the agent editor discover them without starting a session. Keep registration free of session-specific reads, writes and background work. Give tools a bounded input schema and concise description; honor cancellation and return a useful result or a clear error.
+2. **Read the session's state in the tool's `ctx` or in `session_start`.** Use the same backend functions for a tool and a panel action that do the same job. The component calls only the functions its contribution offers via `host.call(name, data)`; it should not edit state files or call unrelated workspace APIs. Calls carry JSON up to 64 KiB and time out after 30 s. Bound I/O and surface loading and errors. Do not expose secrets or raw logs in props, call results, or `host.file`.
+3. **Store mutable session data with the session.** Use namespaced `pi.appendEntry` entries for small state that should follow the conversation branch, and restore them from `ctx.sessionManager.getBranch()`. Use files under `ctx.sessionManager.getSessionDir()/extensions/<name>/` for file-backed state (for example, an explicitly selected preview target). Have the extension create and manage those files through its tools; don't ship mutable state in the agent definition or ask the model to hand-edit it. If tools write files, see Pi's `withFileMutationQueue` guidance. No state should leak to another session just because it uses the same agent.
+
+## Offer a panel
 
 ```ts
-export default function (pi) {
-  let count = 0;
-  const show = () =>
-    pi.events.emit("pispark:view", {
-      point: "session.input.above",
-      component: new URL("./Counter.svelte", import.meta.url),
-      props: { count },
-      calls: { add: (by) => { count += by; show(); return count; } },
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+
+export default function (pi: ExtensionAPI) {
+  pi.on('session_start', (_event, ctx) => {
+    pi.events.emit('pispark:view', {
+      point: 'session.details',
+      key: 'project-location',
+      title: 'Project location',
+      component: new URL('./Location.svelte', import.meta.url),
+      props: { folder: ctx.cwd },
     });
-  pi.on("session_start", () => show());
+  });
 }
 ```
 
 ```svelte
 <script>
-  let { session, data, host, count } = $props();
+  let { folder } = $props();
 </script>
-<button onclick={() => host.call("add", 1)}>Count {count}</button>
+<p>{folder}</p>
 ```
 
-- **Updating:** emit again with new props and the mounted component updates in place.
-- **Removing:** leave out `component`.
-- **Several at one point:** use `key` to tell several components at the same point apart.
-- **Props a component gets:**
-  - `session`: the live session, with `doc`, `items`, `send(text)`, `stop()`, `answer()`, `views` and `showView()`;
-  - `data`: what the point draws, such as a tool call;
-  - `host`;
-  - your own props.
-- **`host.call(name, data)`** runs one of the functions in `calls`, on the server, and resolves with its result. Data and results are JSON of at most 64 KiB; a call times out after 30 s.
-- **`files`** names a folder the component may read. `host.file("a.png")` then gives an address for `<img>` or `fetch`.
-- **Imports:** a component may import images or fonts from its own folder, `.svelte` files, TypeScript, and npm packages installed in the extension's folder. It is compiled on the server and uses PiSpark's theme tokens (`var(--foreground)`, `var(--muted-foreground)`, `var(--border)`, `var(--interactive)`, `var(--accent)`).
+- `session.details` adds a foldable panel beside Context and Artifacts. `session.view` offers a whole view without replacing the conversation by default. For smaller additions, use `session.title`, `session.header`, `session.status`, or `session.input.above`, `.below` and `.actions`.
+- Use `item.tool:<name>` for a tool card or `item.custom:<type>` for custom entries and messages. See the docs for what each point passes as `data` and what it replaces.
+- The component can read its live `session`, contribution `data`, `host` and its own props. Re-emit with the same point and key to update props; omit `component` to remove it. Load expensive facts on demand rather than polling while the panel is closed. Use PiSpark's theme tokens and keep controls usable at both wide and narrow sizes.
 
-## Where components can go (points)
+## Reload and verify the real path
 
-| Point | Where it shows |
-| --- | --- |
-| `session.view` | A whole view of the session beside the conversation. Needs `key` and `title`. The person switches views; `attention: true` asks to be shown. |
-| `session.input.above` / `session.input.below` | Above or below the reply box |
-| `session.input.actions` | Small actions beside Send |
-| `session.header` | Under the session's notices |
-| `session.status` | In the status line under the reply box |
-| `session.title` | Small chips beside the session's name |
-| `item.tool:<name>` | Replaces how every call of that tool is drawn in the conversation |
-| `item.custom:<type>` | Draws custom messages or entries of that type |
+- After editing resources, use **Reload session** when idle (or start a fresh session). Reopening a browser page alone is not a reload of the agent. Pi extension command-context `reload()` is not supported in PiSpark; don't promise that writing a file makes new code active.
+- Check the resolved agent and its tools, then actually call the tool or open the panel in the browser. Read any startup or compile notice. If you still see old behavior after a session reload, verify the checkout/build, data home and extension path before changing code again. Reproduce against the intended dev host, not the installation serving the conversation.
+- For state, change it using the tool or control, reload or reopen, and confirm the expected value. Open a second session of the same agent to check isolation. Saving files is not evidence that a tool executed or a view rendered. Report what you checked and what's still unverified.
 
-The extension owns what is inside the component; PiSpark owns where it sits. Keep components quiet and small, and readable on a phone.
+## References
 
-## State
-
-Keep state where Pi keeps an extension's state: `pi.appendEntry(type, data)` when it changes, read back on `session_start` from `ctx.sessionManager.getBranch()`. It survives reloads and restarts. Files too large for that go in `<ctx.sessionManager.getSessionDir()>/extensions/<name>/`.
-
-## Where an extension lives, and loading it
-
-- **Its folder:** an agent's extensions live in `<data folder>/agents/<agent id>/extensions/<name>/index.ts`. The system prompt gives the data folder. Each agent's `agent.json` says its name; Default is `default`.
-- **Taking effect:** PiSpark watches those folders. When an extension changes, open sessions of that agent say "The agent changed", and the person reloads the session to load it. A running session does not load new extensions by itself, so tell the person when a reload is needed.
-- **Writing one:** prefer a new extension folder to editing someone else's. Explain what it will do before writing it, because extensions run with the person's permissions on their machine.
-- **Further reading:** PiSpark's `docs/extensions.md` and Pi's own `docs/extensions.md` describe the full API.
+The PiSpark app root is four directories above this skill's containing directory (`apps/server/skills/pispark-extensions/`). Read its `docs/extensions.md` for the contribution contract and supported UI APIs, and `docs/agents.md` for layering. Use the Pi SDK docs and examples named in the system prompt for tool schemas, lifecycle, and persistence. An installed build may have compiled code rather than a source checkout; do not assume a nearby checkout is the running build.

@@ -276,8 +276,8 @@ export default function pispark(pi: ExtensionAPI): void {
  */
 function pisparkContext(sessionFolder: string): string {
   return [
-    "You are working in PiSpark, a web workspace that hosts this Pi session and shows it to a person in a browser, often on a phone. Write replies as clear Markdown that reads well on a narrow screen.",
+    "This Pi session runs in PiSpark, not a terminal. The person may be on a phone or desktop in the same workspace. PiSpark displays Markdown, inline images, file previews and rich tool results. Pi extensions can customize rendering and add views and controls.",
     `Files you make for the person to keep or open (documents, images, PDFs, data exports) go in this session's files folder: ${join(sessionFolder, "files")}. Changes to their project stay in the project.`,
-    `PiSpark's data folder is ${dirname(dirname(sessionFolder))}. The pispark skill says how to present work and use PiSpark's tools; read the pispark-extensions skill before you suggest or plan an extension with its own web view (a panel, a view, a control).`,
+    `PiSpark's data folder is ${dirname(dirname(sessionFolder))}. Read the pispark skill for workspace settings, files, sessions and agents, or pispark-extensions before planning or writing an extension.`,
   ].join(" ");
 }

@@ -336,7 +336,11 @@ test("every session is told it runs in PiSpark and gets PiSpark's own skills, wh
     const session = await f.runtime.create({ folder: f.folder, agent: "plain" });
     await f.runtime.start(session.id, "hello").completion;
     const system = systemText(f.provider.requests.at(-1)!);
-    assert.match(system, /You are working in PiSpark/);
+    assert.match(system, /This Pi session runs in PiSpark, not a terminal/);
+    assert.match(system, /Markdown, inline images, file previews and rich tool results/);
+    assert.match(system, /extensions can customize rendering and add views and controls/);
+    assert.doesNotMatch(system, /Turn the request into the smallest useful definition/, "the workspace skill body is loaded on demand");
+    assert.doesNotMatch(system, /project-location/, "the extension skill example is loaded on demand");
     const files = JSON.stringify(join(f.runtime.dataFolder, "sessions", session.id, "files")).slice(1, -1);
     assert.ok(system.includes(files), "the session's files folder is named");
     for (const skill of BUILT_IN_SKILLS)

@@ -1,50 +1,53 @@
 ---
 name: pispark
-description: How to work well inside PiSpark, the web workspace this session runs in. Covers presenting replies so they read well in a browser or on a phone, files you make for the person, naming the session, and PiSpark's tools for later, parallel or background work. Read it when deciding how to present a result or which PiSpark tool fits.
+description: Help the person use or configure PiSpark from chat. Read this for workspace settings, models, sessions, files and rendering, creating or editing agents, or choosing PiSpark tools for background or later work.
 ---
 
-# Working in PiSpark
+# Work in PiSpark
 
-PiSpark hosts this Pi session and shows it to a person in a web page. They may be on a desktop, or on a phone with a narrow screen. The session keeps running on the server when they close the page, and they can come back to it later.
+Help the person set up the workspace they need. Before changing anything, identify the target and scope: this session, a named agent, or the whole workspace. Clarify if the request could affect other sessions or a different installation. Use a supported operation and read back the result. If you can't act, give the exact UI path and next step. Don't edit internal settings, credentials or transcripts as a workaround.
 
-## What the person sees
+## Sessions and files
 
-- **Your replies** are rendered as Markdown, including headings, lists, tables, links and fenced code blocks with syntax highlighting. Raw HTML is not rendered, and links open in a new tab.
-  - Give code blocks a language (` ```ts `).
-  - Keep paragraphs short and lead with the answer.
-  - Prefer a short list or a small table to a long paragraph when it reads better on a phone.
-- **Your tool calls** show as quiet one-line activities ("Read 3 files", "Ran 2 commands"), which the person can open. Edits show as a diff. Don't repeat in prose what a diff or a tool's output already shows; say what it means.
-- **Thinking** is folded away under a label.
-- **Questions** an extension asks through Pi's UI (confirmations, choices) appear as a card the person answers. The run waits until then.
+The server owns the session; closing the browser does not stop it. Reloading a session applies changed resources when idle and keeps the transcript. Starting a fresh session uses the selected agent's resolved resources without the old conversation.
 
-## Files for the person
+- Save reports, images and other deliverables in the session files directory named in the system prompt. Leave source changes and project files in the project. Uploads are in the session's files, too; look under **Details → Artifacts** to open or preview them.
+- Write Markdown, not raw HTML. Tool image results can appear inline (for example, `read` on a supported image). PiSpark can preview SVG from a successful `write` to an `.svg` file. Saving a file makes it an artifact, not a guarantee that a Markdown image URL will render. Name the saved file in the reply. Edits and tool results have their own displays, so summarize what matters rather than repeating them.
 
-When you make something the person will keep or open (a report, an image, a chart, a PDF, a CSV, an export), save it in this session's files folder. The system prompt gives its path. Files the person attached to their messages are there too. PiSpark shows that folder to the person as the session's files.
+## Settings: choose the scope before changing it
 
-- Give the files clear names (`trip-plan.md`, `sales-by-month.png`).
-- Changes to the person's project (source code, configuration) belong in the project, not here.
-- Scratch files and intermediate outputs don't belong here either.
-- After saving, mention the file by name in your reply.
+| Scope | Where the person can change it |
+| --- | --- |
+| This session's model and thinking | Open **Details** and use the **Model** and **Thinking** controls. Change between runs. |
+| Preferred model and thinking for a named agent | **Agents → [agent] → Model**. Check inherited settings before changing the shared definition. |
+| Workspace default model for new sessions, provider sign-in and catalog | **Settings → Providers & models**. Use the person's sign-in UI for credentials. |
+| Unattended work and concurrent runs | **Background → Pause all** or **Sessions working at once**. These affect the workspace, not just the current session. |
 
-## Naming the session
+If acting from chat, use the documented host API when available (see below). For an uncertain command outcome, inspect its receipt or the current state before doing anything again. Never ask the person to paste credentials into chat or pass them through a shell command.
 
-In your first reply, once its purpose is clear, give the session a short title of a few words with `pispark_set_title`. Change it only when the topic really changes. If the person named the session themselves, their name stays.
+## Create or edit an agent
 
-## PiSpark's tools
+1. Turn the request into the smallest useful definition. Use instructions for standing behavior, a slash prompt for a repeatable request, a skill for an on-demand procedure, and an extension for code. Read `pispark-extensions` before planning or writing an extension.
+2. For a new reusable setup, create a **new named agent**. PiSpark layers Default, any named parents, the selected agent, then session-only overrides. Inherit a parent only if its other resources and settings are wanted; to reuse just one skill, keep it in the new agent's own `skills/` folder with its scripts and references. Leave the working folder unbound unless the agent should always work in a particular project. Editing Default affects other agents. For a session-only edit use **Details → ⋯ → Edit agent for this session**; for a shared edit use **Agents → [agent]**.
+3. Use the agent editor or the documented `/api/agents` operations. For chat-driven creation, `POST /api/agents/create` takes `{name, description?, base?}` and returns the ID. Read `/api/agents/read` with `{target:{agent:id}}` before editing. Use its revision for a definition save, and the file endpoint with the file's revision (or `null` for a new file) for instructions, prompts or skills. If a revision changed, read again and reconcile instead of overwriting. The HTTP table in `docs/agents.md` is authoritative for all request shapes.
+4. Read the saved, resolved view to verify the agent, its inheritance and its resources; select it under **New session** to use it. For an existing session where resources changed, use **Reload session** when idle. Don't claim a new agent ran unless you actually verified a run.
 
-These tools exist only while they are active for this session.
+## Find the running build and its documentation
 
-- **`pispark_schedule`:** when the person asks for something later or repeatedly ("check again in an hour", "every weekday at 9"). PiSpark asks them to confirm.
-- **`pispark_session`:** for work that can run on its own, such as research, a long job, or one of several parallel parts. Start another session and carry on; its answer arrives here as a message later.
-- **`pispark_process`:** for commands that run long or never end on their own, such as dev servers, watchers, or long builds and tests. Run them in the background instead of `bash`, and wait for a ready line with `wait_for`.
-- **`pispark_report`:** only in a session another session started. Raise something the starting session must know or act on.
+Start from the absolute `SKILL.md` location Pi advertised, not the conversation's working folder. Go four directories up from its containing directory (`apps/server/skills/pispark/`) to find the checkout or installed app root. Resolve these paths inside that root:
 
-## Checking a process result
+- `docs/agents.md` — editor, layering, resource format and agent API.
+- `docs/session-runtime.md` — session lifetime, settings and PiSpark tools.
+- `docs/session-protocol.md` — host requests, settings, providers and model commands.
+- `docs/extensions.md` — extension integration; use with the `pispark-extensions` skill.
+- `apps/server/dist/` — compiled host code when present. In a source checkout, see `apps/server/src/` and `apps/web/src/` for implementation. An installed release need not have TypeScript source. If a file isn't present, say so; do not silently use a different checkout as evidence for the running version.
 
-Use the process record for **whether it ended** and output for **why**. A ready line, a test summary, or the last line of a log does not prove the command has exited. If `start` says **running**, use `list` to check that process ID without pulling more output. Report the recorded exit code when available; do not infer one from stdout.
+Use APIs only against the intended host. From the server shell, use the known loopback listener (`PORT`, default `3000`); check `GET /api/host` and match its `data` to the intended PiSpark data home. A healthy endpoint or matching data home does not identify the running build. When testing a change, verify which build was launched, separately from the worktree you edited. Don't guess if the target is ambiguous. Use the documented local request format, including the matching Origin on JSON mutations. If the operation is unavailable or refused, use the UI rather than working around it.
 
-For a build or test, prefer the runner's concise reporter and keep detailed output available. If the summary is incomplete, search the saved log for the diagnostic or read a small range with `offset` and `limit`; don't load the whole file or rerun just to find the cause. If the evidence is gone, say what is unknown. If you plan to collect the result yourself, use `report: "none"` on start so completion doesn't also wake the session.
+## Built-in tools
 
-## Extensions
+Check which tools are active.
 
-PiSpark can show an extension's own web components: panels, views and controls in the session. See the `pispark-extensions` skill when the person wants a custom view, a dashboard, a control or a new tool for their work.
+- **Title and schedule:** `pispark_set_title` leaves the person's own title alone. `pispark_schedule` asks the person to confirm later or repeating work.
+- **Processes:** `wait_for` on `start` or `output` waits for a line such as a server's readiness signal; it does not prove completion. Use `wait` for terminal status without stdout and `search` for exact matches in the retained log. A search miss doesn't rule out discarded output. If you plan to wait explicitly and don't need a separate completion wake, start with `report: "none"`.
+- **Children:** decide how to collect the answer before starting. The default `result` arrives inline; reading it early doesn't cancel its wake. With `notice`, use `read` with the child ID and `run_id` to fetch that exact run, not the latest answer. Use `none` if you plan to collect the answers yourself. In `status` mode, `pispark_report` can raise something the parent needs to act on.

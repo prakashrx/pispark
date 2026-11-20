@@ -74,7 +74,7 @@ rmSync(join(stage, "node", "lib", "node_modules"), { recursive: true, force: tru
 // 2. The app: production dependencies of the server for the target platform, from the lockfile.
 const app = join(stage, "app");
 mkdirSync(app, { recursive: true });
-for (const file of ["package.json", "package-lock.json", "LICENSE"]) if (existsSync(join(repo, file))) cpSync(join(repo, file), join(app, file));
+for (const file of ["package.json", "package-lock.json", "LICENSE", "VISION.md"]) if (existsSync(join(repo, file))) cpSync(join(repo, file), join(app, file));
 for (const workspace of ["server", "web", "launcher"]) {
   mkdirSync(join(app, "apps", workspace), { recursive: true });
   cpSync(join(repo, "apps", workspace, "package.json"), join(app, "apps", workspace, "package.json"));
@@ -90,6 +90,8 @@ for (const [from, to] of [
   ["apps/server/dist", "apps/server/dist"],
   // PiSpark's built-in skills, read from beside the server's build.
   ["apps/server/skills", "apps/server/skills"],
+  // Keep the workspace skill's references local and matched to the running build.
+  ["docs", "docs"],
   ["apps/web/dist", "apps/web/dist"],
   ["apps/launcher/dist", "apps/launcher/dist"],
 ])
