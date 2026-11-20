@@ -833,6 +833,11 @@ export class Session {
     this.input = this.applyConfiguration(session, change);
     try {
       await this.input;
+    } catch (error) {
+      // Pi already applied the change. Discard that runtime rather than risk dispatch on an
+      // unsaved choice. The next open uses the last committed session metadata.
+      if (error instanceof RuntimeError && error.code === "storage") await this.stop();
+      throw error;
     } finally {
       this.input = undefined;
     }
@@ -863,7 +868,11 @@ export class Session {
     if (choice) metadata.model = { ...choice };
     // Kept with the session only when the person chose it; otherwise the agent's applies on reopen.
     if (change.thinking) metadata.thinking = session.thinkingLevel as ThinkingLevel;
-    this.host.storage.write(metadata);
+    try {
+      this.host.storage.write(metadata);
+    } catch {
+      throw new RuntimeError("storage");
+    }
     this.metadata = metadata;
     this.changed();
   }

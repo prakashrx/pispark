@@ -508,6 +508,43 @@ test("createSessionServices: independently mutable managed runtimes share only e
   assert.equal((await f.runtime.getAuth(provider))?.auth.apiKey, "test-stored");
 });
 
+test("a rejected configuration save cannot change the next dispatch or the restored thinking level", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pispark-config-save-"));
+  const control = new AuthProviderControl();
+  control.automatic = true;
+  const native = control.native;
+  control.native = () => {
+    const p = native();
+    return { ...p, getModels: () => p.getModels().map(m => ({ ...m, reasoning: true })) };
+  };
+  const f = await localProviderSettings(root, control);
+  const sessions = new SessionRuntime({ home: join(root, "pispark") }, f.settings);
+  t.after(async () => {
+    await sessions.shutdown();
+    await f.settings.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  await writeFile(f.authPath, JSON.stringify({ [provider]: { type: "api_key", key: "test-key" } }));
+  const original = { provider, id: "deterministic" }, replacement = { provider, id: "second" };
+  const { id } = await sessions.create({ folder: root, model: original });
+  assert.equal((await sessions.configure(id, { thinking: "low" })).thinking?.level, "low");
+  await sessions.start(id, "before change").completion;
+  for (const change of [{ model: replacement, thinking: "high" as const }, { thinking: "high" as const }]) {
+    t.mock.method(sessions["storage"], "write", () => { throw new Error("injected save failure"); }, { times: 1 });
+    await assert.rejects(sessions.configure(id, change), { code: "storage" });
+    await sessions.ensure(id);
+    assert.deepEqual(sessions.session(id).model, original);
+    assert.equal(sessions.session(id).thinking?.level, "low");
+    assert.equal((await sessions.start(id, "after rejected change").completion).outcome, "completed");
+    assert.equal(control.requests.at(-1)?.model.id, original.id);
+  }
+  await sessions.configure(id, { model: replacement, thinking: "high" });
+  await sessions.stop(id);
+  assert.equal((await sessions.open(id)).thinking?.level, "high");
+  await sessions.start(id, "after successful retry").completion;
+  assert.equal(control.requests.at(-1)?.model.id, replacement.id);
+});
+
 test("a refreshed catalog is available to open, new and reopened sessions without loading implicit model config", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pispark-refresh-"));
   await writeFile(join(root, "models.json"), "{not an explicitly configured file");
@@ -557,6 +594,7 @@ test("a refreshed catalog is available to open, new and reopened sessions withou
   await reached;
   try {
     await assert.rejects(sessions.configure(warm.id, { thinking: "low" }), /busy/);
+    assert.throws(() => sessions.start(warm.id, "while switching"), /busy/);
     sessions.rename(warm.id, "Renamed while switching");
   } finally {
     release();
