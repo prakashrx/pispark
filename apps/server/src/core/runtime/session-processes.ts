@@ -80,6 +80,18 @@ export class SessionProcesses {
         const note = await waited(process, request, process.cursors[sessionId] ?? process.written);
         return { ok: true, text: `${describe(process)}\n${note}${output(process)}` };
       }
+      case "wait": {
+        const process = processes.get(request.id, visible());
+        const result = await processes.waitForExit(process, request.timeoutSeconds * 1000, signal);
+        const note = result === "timeout" ? (signal?.aborted ? " (wait cancelled)" : " (wait timed out)") : "";
+        const state = process.ended ?? process.state;
+        const exit = process.exitCode === undefined ? "" : ` (exit ${process.exitCode})`;
+        return { ok: true, text: `${process.id}: ${state}${exit}${note}` };
+      }
+      case "search": {
+        const process = processes.get(request.id, visible());
+        return { ok: true, text: processes.search(process, request.query) };
+      }
       case "watch":
       case "unwatch": {
         const process = processes.get(request.id, visible());
@@ -90,7 +102,7 @@ export class SessionProcesses {
         const process = processes.get(request.id, visible());
         if (process.state !== "running") return { ok: true, text: "It is not running." };
         processes.stop(process.id, "agent");
-        await processes.wait(process, /(?!)/, process.written, 5000);
+        await processes.waitForExit(process, 5000, signal);
         if (processes.get(process.id, [process.sessionId]).state === "running") return { ok: true, text: "Stopping; it has not ended yet (list shows when it has)." };
         return { ok: true, text: "Stopped." };
       }

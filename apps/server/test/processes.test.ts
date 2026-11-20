@@ -44,6 +44,37 @@ test("a wait always comes with a time limit", () => {
   assert.equal(validProcessMessage({ request: { action: "start", command: "x", waitFor: "ready", timeoutSeconds: 5 }, reply }), true);
 });
 
+test("wait returns only status; search finds early literal evidence without consuming output", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    const run = async (args: object) => {
+      await f.runtime.start(session.id, call(args)).completion;
+      return f.lastTool(f.runtime, session.id);
+    };
+    await run({ action: "start", command: SERVER, report: "none" });
+    const [server] = f.runtime.listProcesses(session.id);
+    assert.equal(await run({ action: "wait", id: server!.id, timeout_seconds: 1 }), `${server!.id}: running (wait timed out)`);
+    await run({ action: "stop", id: server!.id });
+
+    // Write the diagnostic and enough later output to hide it from the tail. Release the
+    // command only after start moved its unread cursor past the ready line.
+    const command = `node -e "const f=require('fs'); console.log('ready'); const t=setInterval(()=>{if(!f.existsSync('release'))return; clearInterval(t); console.log('not ok [41]'); console.log('expected 41, got 43'); console.log('later\\n'.repeat(4000)); console.log('last line'); process.exitCode=23},25)"`;
+    await run({ action: "start", command, report: "none", wait_for: "ready", timeout_seconds: 10 });
+    const process = f.runtime.listProcesses(session.id).find((p) => p.id !== server!.id)!;
+    writeFileSync(join(f.folder, "release"), "");
+    assert.equal(await run({ action: "wait", id: process.id, timeout_seconds: 10 }), `${process.id}: failed (exit 23)`);
+    assert.doesNotMatch(f.runtime.processOutput(session.id, process.id, 20_000).text, /not ok/);
+    assert.equal(await run({ action: "search", id: process.id, query: "NOT OK [41]" }), "  1: ready\n> 2: not ok [41]\n  3: expected 41, got 43");
+    assert.match(await run({ action: "search", id: process.id, query: "later" }), /first 5 matching lines/);
+    assert.equal(await run({ action: "search", id: process.id, query: ".*" }), "No match in the retained log.");
+    assert.match((await run({ action: "output", id: process.id })).split("\n").slice(1).join("\n"), /^not ok \[41\]\nexpected 41, got 43/);
+    assert.ok(!f.runtime.items(session.id, {}).items.some((item) => item.customType === WOKEN_ENTRY));
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("a process runs in the background, outlives its idle session, streams its output, and tells the session when stopped", async () => {
   const f = await fixture();
   try {

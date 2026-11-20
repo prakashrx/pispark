@@ -163,10 +163,10 @@ export default function pispark(pi: ExtensionAPI): void {
     name: PROCESS_TOOL,
     label: "Run in the background",
     description:
-      "Run a command in the background on this host (a dev server, a build, a test suite), owned by PiSpark so it keeps running while this session is idle or unloaded. start returns at once with its id and first output; with wait_for (a regular expression) and timeout_seconds it returns when the output shows it or the time is up. output returns what you have not read yet, optionally waiting the same way. watch wakes this session when a line matches a pattern. When a process ends this session is told: 'result' (default) wakes it with the exit code and last output; 'status' adds a line; 'none' says nothing. Also lists and stops this session's processes and those of sessions it started.",
+      "Run a command in the background on this host (a dev server, a build, a test suite), owned by PiSpark so it keeps running while this session is idle or unloaded. start returns at once with its id and first output; with wait_for (a regular expression) and timeout_seconds it returns when the output shows it or the time is up. output returns what you have not read yet, optionally waiting the same way. wait returns terminal status without output. search looks for a literal string in retained output without consuming it. watch wakes this session when a line matches a pattern. When a process ends this session is told: 'result' (default) wakes it with the exit code and last output; 'status' adds a line; 'none' says nothing. Also lists and stops this session's processes and those of sessions it started.",
     parameters: Type.Object(
       {
-        action: Type.Union([Type.Literal("start"), Type.Literal("list"), Type.Literal("output"), Type.Literal("watch"), Type.Literal("unwatch"), Type.Literal("stop")]),
+        action: Type.Union([Type.Literal("start"), Type.Literal("list"), Type.Literal("output"), Type.Literal("wait"), Type.Literal("search"), Type.Literal("watch"), Type.Literal("unwatch"), Type.Literal("stop")]),
         command: Type.Optional(Type.String({ maxLength: 8192, description: "start: the shell command." })),
         folder: Type.Optional(Type.String({ maxLength: 4096, description: "start: where to run it; this session's folder when left out." })),
         title: Type.Optional(Type.String({ maxLength: 120, description: "start: a short name." })),
@@ -176,9 +176,10 @@ export default function pispark(pi: ExtensionAPI): void {
           }),
         ),
         wait_for: Type.Optional(Type.String({ maxLength: 200, description: "start, output: a regular expression to wait for in the output, e.g. 'ready|listening'. Needs timeout_seconds." })),
-        timeout_seconds: Type.Optional(Type.Number({ minimum: 1, maximum: 3600, description: "With wait_for: the longest to wait." })),
+        timeout_seconds: Type.Optional(Type.Number({ minimum: 1, maximum: 3600, description: "Required for wait, or with wait_for: the longest to wait." })),
         stop_after_seconds: Type.Optional(Type.Number({ minimum: 1, maximum: 604800, description: "start: stop it after this long. Without it, it runs until it ends or is stopped." })),
-        id: Type.Optional(Type.String({ maxLength: 64, description: "output, watch, unwatch, stop: the process (list shows them)." })),
+        id: Type.Optional(Type.String({ maxLength: 64, description: "output, wait, search, watch, unwatch, stop: the process (list shows them)." })),
+        query: Type.Optional(Type.String({ maxLength: 200, pattern: "^[^\\r\\n]+$", description: "search: literal text, case-insensitive." })),
         pattern: Type.Optional(Type.String({ maxLength: 200, description: "watch, unwatch: a regular expression, e.g. 'error|failed'." })),
       },
       { additionalProperties: false },
@@ -186,7 +187,9 @@ export default function pispark(pi: ExtensionAPI): void {
     async execute(_id, parameters, signal) {
       if (signal?.aborted) throw new Error("Cancelled");
       const p = parameters;
-      if ((p.wait_for === undefined) !== (p.timeout_seconds === undefined)) throw new Error("A wait needs both wait_for and timeout_seconds");
+      if (p.action === "wait") {
+        if (p.timeout_seconds === undefined || p.wait_for !== undefined) throw new Error("wait needs timeout_seconds, without wait_for");
+      } else if ((p.wait_for === undefined) !== (p.timeout_seconds === undefined)) throw new Error("A wait needs both wait_for and timeout_seconds");
       const wait = p.wait_for !== undefined ? { waitFor: p.wait_for, timeoutSeconds: p.timeout_seconds! } : {};
       const need = (value: string | undefined, what: string) => {
         if (!value?.trim()) throw new Error(`Give ${what}`);
@@ -205,6 +208,8 @@ export default function pispark(pi: ExtensionAPI): void {
           ...wait,
         };
       else if (p.action === "output") request = { action: "output", id: need(p.id, "the id (list shows them)"), ...wait };
+      else if (p.action === "wait") request = { action: "wait", id: need(p.id, "the id"), timeoutSeconds: p.timeout_seconds! };
+      else if (p.action === "search") request = { action: "search", id: need(p.id, "the id"), query: need(p.query, "the search term") };
       else if (p.action === "watch")
         request = { action: "watch", id: need(p.id, "the id"), pattern: need(p.pattern, "the pattern"), ...(p.report ? { report: p.report } : {}) };
       else if (p.action === "unwatch") request = { action: "unwatch", id: need(p.id, "the id"), pattern: need(p.pattern, "the pattern") };

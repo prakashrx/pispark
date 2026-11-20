@@ -321,6 +321,33 @@ export class Processes {
       }
     return { text: clean(buffer.toString("utf8")), next: start + length, ...(since < process.offset ? { cut: true as const } : {}) };
   }
+  /** Literal, case-insensitive search over the retained log. No unread cursor is involved. */
+  search(process: Stored, query: string): string {
+    const out = this.read(process, 0, MAX_LOG);
+    const lines = out.text.split(/\r?\n/);
+    const literal = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "iu");
+    const selected = new Map<number, number>();
+    let matches = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const at = lines[i]!.search(literal);
+      if (at < 0) continue;
+      if (++matches > 5) break;
+      if (i > 0 && !selected.has(i - 1)) selected.set(i - 1, -1);
+      selected.set(i, at);
+      if (i + 1 < lines.length) selected.set(i + 1, -1);
+    }
+    const excerpt = [...selected].map(([i, at]) => {
+      const line = lines[i]!;
+      const start = Math.max(0, at - 80);
+      const end = start + 320;
+      return `${at >= 0 ? ">" : " "} ${i + 1}: ${start ? "…" : ""}${line.slice(start, end)}${end < line.length ? "…" : ""}`;
+    });
+    return [
+      out.cut ? "Older output was discarded; line numbers are relative to the retained log." : "",
+      excerpt.length ? excerpt.join("\n") : "No match in the retained log.",
+      matches > 5 ? "Showing the first 5 matching lines; more matches exist." : "",
+    ].filter(Boolean).join("\n");
+  }
   /** The last `bytes` of output. */
   tail(process: Stored, bytes = 4096): string {
     return this.read(process, Math.max(0, process.written - bytes)).text;
@@ -338,7 +365,6 @@ export class Processes {
    * ends, the time is up or `signal` aborts. Never without a time limit.
    */
   async wait(process: Stored, pattern: RegExp | undefined, since: number, timeoutMs: number, signal?: AbortSignal): Promise<"matched" | "ended" | "timeout"> {
-    const live = this.live.get(process.id);
     // Only what came since the last look is read, with a little before it so a match split
     // across two chunks is still seen.
     let from = since;
@@ -348,7 +374,20 @@ export class Processes {
       return pattern ? pattern.test(out.text) : out.next > since;
     };
     if (matched()) return "matched";
+    return this.waitUntilEnd(process, timeoutMs, signal, matched);
+  }
+
+  /** Wait for terminal state, without inspecting output or moving a reader's cursor. */
+  waitForExit(process: Stored, timeoutMs: number, signal?: AbortSignal): Promise<"ended" | "timeout"> {
+    return this.waitUntilEnd(process, timeoutMs, signal);
+  }
+
+  private waitUntilEnd(process: Stored, timeoutMs: number, signal?: AbortSignal): Promise<"ended" | "timeout">;
+  private waitUntilEnd(process: Stored, timeoutMs: number, signal: AbortSignal | undefined, matched: () => boolean): Promise<"matched" | "ended" | "timeout">;
+  private async waitUntilEnd(process: Stored, timeoutMs: number, signal?: AbortSignal, matched?: () => boolean): Promise<"matched" | "ended" | "timeout"> {
+    const live = this.live.get(process.id);
     if (!live) return "ended";
+    if (signal?.aborted) return "timeout";
     return new Promise((resolve) => {
       const done = (result: "matched" | "ended" | "timeout") => {
         clearTimeout(timer);
@@ -356,7 +395,7 @@ export class Processes {
         signal?.removeEventListener("abort", aborted);
         resolve(result);
       };
-      const check = () => (matched() ? done("matched") : !this.live.has(process.id) ? done("ended") : undefined);
+      const check = () => (matched?.() ? done("matched") : !this.live.has(process.id) ? done("ended") : undefined);
       const aborted = () => done("timeout");
       const timer = setTimeout(() => done("timeout"), timeoutMs);
       live.waiters.add(check);

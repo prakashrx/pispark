@@ -15,6 +15,8 @@ export type ProcessRequest =
   | ({ action: "start"; command: string; folder?: string; title?: string; report?: ReportMode; stopAfterSeconds?: number } & Partial<Wait>)
   | { action: "list" }
   | ({ action: "output"; id: string } & Partial<Wait>)
+  | { action: "wait"; id: string; timeoutSeconds: number }
+  | { action: "search"; id: string; query: string }
   | { action: "watch"; id: string; pattern: string; report?: ReportMode }
   | { action: "unwatch"; id: string; pattern: string }
   | { action: "stop"; id: string };
@@ -50,6 +52,10 @@ export function validProcessMessage(value: unknown): value is ProcessMessage {
       return true;
     case "output":
       return text(r.id, 64) && wait;
+    case "wait":
+      return text(r.id, 64) && r.waitFor === undefined && seconds(r.timeoutSeconds, 3600);
+    case "search":
+      return text(r.id, 64) && text(r.query, 200) && !/[\r\n]/.test(r.query as string);
     case "watch":
       return text(r.id, 64) && text(r.pattern, 200) && (r.report === undefined || validReportMode(r.report));
     case "unwatch":
