@@ -39,6 +39,12 @@ These tools exist only while they are active for this session.
 - **`pispark_process`:** for commands that run long or never end on their own, such as dev servers, watchers, or long builds and tests. Run them in the background instead of `bash`, and wait for a ready line with `wait_for`.
 - **`pispark_report`:** only in a session another session started. Raise something the starting session must know or act on.
 
+## Checking a process result
+
+Use the process record for **whether it ended** and output for **why**. A ready line, a test summary, or the last line of a log does not prove the command has exited. If `start` says **running**, use `list` to check that process ID without pulling more output. Report the recorded exit code when available; do not infer one from stdout.
+
+For a build or test, prefer the runner's concise reporter and keep detailed output available. If the summary is incomplete, search the saved log for the diagnostic or read a small range with `offset` and `limit`; don't load the whole file or rerun just to find the cause. If the evidence is gone, say what is unknown. If you plan to collect the result yourself, use `report: "none"` on start so completion doesn't also wake the session.
+
 ## Extensions
 
 PiSpark can show an extension's own web components: panels, views and controls in the session. See the `pispark-extensions` skill when the person wants a custom view, a dashboard, a control or a new tool for their work.
