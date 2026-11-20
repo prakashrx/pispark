@@ -77,7 +77,7 @@ A session records only which agent it uses; nothing is copied. When its Pi sessi
 
 **Editing inside a session** (Details ⋯ → Edit agent for this session) writes the session's own layer in `sessions/<id>/agent/`, with the same folder shape and the session's agent as its base. The agent itself is unchanged. Closing the panel reloads the session.
 
-Model choice for a new session: the one chosen under the New session composer, else the agent's preferred model (when signed in), else the default.
+Model choice for a new session: the one chosen under the New session composer, else the agent's preferred model (when signed in), else the default. If an extension switches the model with Pi's `setModel`, that model stays attached to this session when reopened. Other sessions, the agent's preference and the workspace default are unchanged.
 
 ## Editor
 

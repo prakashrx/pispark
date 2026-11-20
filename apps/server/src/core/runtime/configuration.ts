@@ -121,6 +121,8 @@ export async function createSessionServices(options: {
     beforeProviderDispatch: () => void;
   };
   host: {
+    /** Pi's native model selection, including switches initiated by an extension. */
+    modelSelected?: () => void;
     /** Extension components placed with `pispark:view` events on the session's bus. */
     views: { bind: (bus: EventBus) => () => void };
     /** The built-in schedule tool's requests, on the same bus. */
@@ -268,6 +270,7 @@ export async function createSessionServices(options: {
       // Returns nothing, so the system prompt other handlers chained stays as it is.
       ["before_agent_start", [async () => void (await admission.beforeRun())]],
       ["agent_before_settle", [admission.beforeSettle]],
+      ["model_select", [async () => host.modelSelected?.()]],
     ]),
     tools: new Map(),
     messageRenderers: new Map(),

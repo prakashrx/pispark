@@ -226,6 +226,8 @@ export class Session {
   private wasSettled = true;
   /** A change of configuration, steer or follow-up being prepared. */
   private input?: Promise<unknown>;
+  // configure() saves its model and thinking choice together after Pi has applied both.
+  private configuringModel = false;
   private cancelling?: Promise<void>;
   /** Running tool calls and what they reported last (Pi's partial result), by call id. References only. */
   private readonly running = new Map<string, unknown>();
@@ -526,6 +528,16 @@ export class Session {
         },
       },
       host: {
+        modelSelected: () => {
+          const model = this.pi?.model;
+          if (!model || this.configuringModel) return;
+          const choice = { provider: model.provider, id: model.id };
+          if (this.metadata.model?.provider === choice.provider && this.metadata.model.id === choice.id) return;
+          // Keep the attached model used by reopen and child creation in step with Pi's live selection.
+          if (this.published) host.storage.write({ ...this.metadata, model: choice });
+          this.metadata.model = choice;
+          this.changed();
+        },
         views,
         schedules: { bind: (bus) => bus.on(SCHEDULE_CHANNEL, (message) => this.scheduleRequest(message)) },
         sessions: {
@@ -837,10 +849,13 @@ export class Session {
       const model = session.modelRuntime.getModel(choice.provider, choice.id);
       if (!model || !(await session.modelRuntime.getAvailable(choice.provider)).some((m) => m.id === choice.id))
         throw new RuntimeError("model-unavailable");
+      this.configuringModel = true;
       try {
         await session.setModel(model);
       } catch {
         throw new RuntimeError("credentials");
+      } finally {
+        this.configuringModel = false;
       }
     }
     session.setThinkingLevel(thinking);

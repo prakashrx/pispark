@@ -213,6 +213,46 @@ test("model choice: Ask's model, else the agent's preferred model, else the defa
   }
 });
 
+test("a native model switch stays attached to just that session on reopen", async () => {
+  const h = await testHome("pispark-session-model-");
+  const settings = await localProviderSettings(join(h.root, "providers"));
+  const provider = "pispark-local-test";
+  settings.control.automatic = true;
+  const runtime = new SessionRuntime({ home: h.home }, settings.settings);
+  try {
+    await writeFile(settings.authPath, JSON.stringify({ [provider]: { type: "api_key", key: "test-key" } }));
+    await settings.runtime.refresh({ allowNetwork: false });
+    await settings.settings.setDefault({ provider, id: "deterministic" });
+    const folder = await h.folder("work");
+    await h.agent("fast", { name: "Fast", settings: { model: `${provider}/second` } }, {
+      "extensions/switch.js": `export default pi => pi.registerCommand("switch-model", {
+        description: "Switch this session", handler: async (_, ctx) => {
+          await pi.setModel(ctx.modelRegistry.find("${provider}", "deterministic"));
+        }
+      })`,
+    });
+    const create = () => runtime.create({ agent: "fast", folder });
+    const a = await create(), b = await create();
+    const checkDispatch = async (id: string, expected: string) => {
+      const before = settings.control.requests.length;
+      assert.equal((await runtime.start(id, "Hello").completion).outcome, "completed");
+      assert.deepEqual(settings.control.requests.slice(before).map(r => r.model.id), [expected]);
+    };
+    await checkDispatch(a.id, "second");
+    await runtime.start(a.id, "/switch-model").completion;
+    await checkDispatch(a.id, "deterministic");
+    await runtime.stop(a.id);
+    await runtime.open(a.id);
+    await checkDispatch(a.id, "deterministic");
+    await checkDispatch(b.id, "second");
+    await checkDispatch((await create()).id, "second");
+  } finally {
+    await runtime.shutdown();
+    await settings.settings.close();
+    await h.remove();
+  }
+});
+
 test("editing any file of an extension folder outside PiSpark flags open sessions; a single-file extension is its file", async () => {
   const f = await fixture();
   try {
