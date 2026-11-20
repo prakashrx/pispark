@@ -45,7 +45,13 @@ export class Children {
     if (request.action === "read") {
       if (child.archived) return { ok: false, text: "That session is archived." };
       await ensure(child.id);
-      return { ok: true, text: get(child.id).lastReply() ?? "It has not answered yet." };
+      const session = get(child.id);
+      if (request.runId === undefined) return { ok: true, text: session.lastReply() ?? "It has not answered yet." };
+      const result = session.childRunResult(request.runId);
+      if (!result) return { ok: false, text: "No such completed run for that child session." };
+      const status = result.outcome === "failed" ? `failed${result.error ? ` (${result.error})` : ""}` : result.outcome === "cancelled" ? "stopped" : "finished";
+      const body = `Run ${request.runId} ${status}.\n\n${result.answer ?? "No answer for this run."}`;
+      return { ok: true, text: body + dataText(result.data, 56 * 1024 - body.length) };
     }
     if (request.action === "stop") {
       const session = live(child.id);
@@ -73,17 +79,22 @@ export class Children {
     if (!parent || mode === "none" || !this.sessions.accepting()) return;
     const title = titleOf(session.metadata);
     const how = result.outcome === "completed" ? "finished" : result.outcome === "cancelled" ? "stopped" : "failed";
-    const answer = result.outcome === "completed" ? session.lastReply() : undefined;
+    const exact = result.childResult;
+    const answer = mode === "notice" ? exact?.answer : result.outcome === "completed" ? session.lastReply() : undefined;
     const body = answer ? (answer.length > 8192 ? `${answer.slice(0, 8192)}…\n(cut; read shows all of it)` : answer) : `It ${how} without an answer.`;
-    const data = session.resultData;
-    const report = { session: session.id, title, how, mode, text: body, ...(data !== undefined ? { data } : {}) };
+    const data = mode === "notice" ? exact?.data : session.resultData;
+    const report = { session: session.id, title, how, mode, text: body, ...(exact ? { runId: exact.id } : {}), ...(data !== undefined ? { data } : {}) };
     if (mode === "status")
       return void this.statusLine(parent, report).catch((error: unknown) => {
         this.sessions.logger.event("wake.failure", { sessionId: parent.id, outcome: "failed", code: runtimeError(error, "execution").code });
       });
     void this.sessions.deliver(parent.id, {
       source: { kind: "session", id: session.id, label: `${title} · ${how}` },
-      text: `The session "${title}" you started ${how}:\n\n${body}${dataText(data, 56 * 1024 - body.length)}`,
+      text: mode === "notice"
+        ? exact
+          ? `The session "${title}" you started ${how} (run_id: ${exact.id}). To fetch this result, use pispark_session read with id ${session.id} and run_id ${exact.id}.`
+          : `The session "${title}" you started ${how}${result.error ? ` (${result.error})` : ""}. No run result was saved.`
+        : `The session "${title}" you started ${how}:\n\n${body}${dataText(data, 56 * 1024 - body.length)}`,
       due: this.due(),
       policy: "queue",
       report,
@@ -139,6 +150,7 @@ export class Children {
     void session.start(request.prompt, this.from(parent)).completion.catch(() => {});
     const how = {
       result: "its answer arrives here as a message when it finishes.",
+      notice: "a short notice arrives with a run_id to read its exact result.",
       status: "a line here says when it ends, and it raises anything that needs you.",
       none: "it does not report back (read shows its answer).",
     }[report];

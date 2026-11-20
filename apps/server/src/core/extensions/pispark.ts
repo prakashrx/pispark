@@ -119,12 +119,13 @@ export default function pispark(pi: ExtensionAPI): void {
         title: Type.Optional(Type.String({ maxLength: 200, description: "start: a short title for the new session." })),
         agent: Type.Optional(Type.String({ maxLength: 64, description: "start: an agent id; this session's agent when left out." })),
         report: Type.Optional(
-          Type.Union([Type.Literal("result"), Type.Literal("status"), Type.Literal("none")], {
+          Type.Union([Type.Literal("result"), Type.Literal("status"), Type.Literal("notice"), Type.Literal("none")], {
             description:
-              "start: how it tells this session it ended. 'result' (default): its answer arrives here; 'status': only a line saying it ended, and it can raise what needs attention; 'none': nothing.",
+              "start: 'result' (default) sends its answer; 'notice' wakes you with a run_id, not the answer; 'status' adds a line without waking you, and the child can raise things; 'none' says nothing.",
           }),
         ),
         id: Type.Optional(Type.String({ maxLength: 64, description: "send, stop, read: the session (list shows them)." })),
+        run_id: Type.Optional(Type.String({ maxLength: 64, description: "read: fetch the exact run from a notice; omit to read the latest answer." })),
         text: Type.Optional(Type.String({ maxLength: 65536, description: "send: the message." })),
       },
       { additionalProperties: false },
@@ -148,7 +149,8 @@ export default function pispark(pi: ExtensionAPI): void {
         if (action === "send") {
           if (!parameters.text?.trim()) throw new Error("Give the message to send");
           request = { action, id: parameters.id, text: parameters.text };
-        } else request = { action, id: parameters.id };
+        } else if (action === "read") request = { action, id: parameters.id, ...(parameters.run_id !== undefined ? { runId: parameters.run_id } : {}) };
+        else request = { action, id: parameters.id };
       }
       const answer = await new Promise<{ ok: boolean; text: string }>((reply) => {
         const message: SessionMessage = { request, reply };

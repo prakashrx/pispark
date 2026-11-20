@@ -3,13 +3,12 @@ import { join } from "node:path";
 import {
   MAX_RECORDS_KEPT,
   MAX_WAITING_PER_SOURCE,
-  validReportMode,
-  type ReportMode,
+  validChildReportMode,
   type WakeRecord,
   type WakeSource,
   type WokenDetails,
 } from "../../contract/wake-protocol.js";
-import { validResultData } from "./session-tool.js";
+import { validResultData, type ChildEnded } from "./session-tool.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { writeAtomic } from "../agents/store.js";
 import { RuntimeError, runtimeError } from "./errors.js";
@@ -31,7 +30,7 @@ export interface Wake {
    * A child's report: what the session's extensions are offered before its agent hears of it (see
    * `CHILD_ENDED_CHANNEL`), with the data an extension in the child set.
    */
-  report?: { session: string; title: string; how: string; mode: ReportMode; text: string; data?: unknown };
+  report?: Omit<ChildEnded, "reply">;
 }
 
 /** What delivery needs from the runtime that holds the sessions. */
@@ -83,7 +82,8 @@ function validReport(value: unknown): boolean {
     UUID.test(value.session) &&
     shortString(value.title, 200) &&
     shortString(value.how, 40) &&
-    validReportMode(value.mode) &&
+    validChildReportMode(value.mode) &&
+    (value.runId === undefined || shortString(value.runId, 64)) &&
     typeof value.text === "string" &&
     value.text.length <= MAX_TEXT &&
     (value.data === undefined || validResultData(value.data))

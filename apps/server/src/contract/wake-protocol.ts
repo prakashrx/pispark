@@ -55,6 +55,10 @@ export const REPORT_MODES = ["result", "status", "none"] as const;
 export type ReportMode = (typeof REPORT_MODES)[number];
 export const validReportMode = (value: unknown): value is ReportMode => REPORT_MODES.includes(value as ReportMode);
 
+/** Only child completions support sending a reference to an exact result. */
+export type ChildReportMode = ReportMode | "notice";
+export const validChildReportMode = (value: unknown): value is ChildReportMode => value === "notice" || validReportMode(value);
+
 /**
  * A status line: a custom message of this type in the parent's Pi session, stored without starting
  * a turn (the agent reads it the next time it runs). `details` are `StatusDetails`.

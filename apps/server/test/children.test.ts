@@ -92,6 +92,53 @@ test("the tool lists, sends to, reads and stops its own children only; a child c
   }
 });
 
+test("notice names the exact child run, omits its answer, and keeps a later failure distinct after restart", async () => {
+  const f = await fixture();
+  let restarted: SessionRuntime | undefined;
+  try {
+    const parent = await f.runtime.create({ folder: f.folder });
+    const tool = async (args: object, runtime = f.runtime, id = parent.id) => {
+      await runtime.start(id, call(args)).completion;
+      return text(runtime.items(id, {}).items.filter((item) => item.role === "toolResult").at(-1)!);
+    };
+    const notices = () => {
+      const items = f.runtime.items(parent.id, {}).items;
+      return items.flatMap((item, i) => item.customType === WOKEN_ENTRY ? [text(items[i + 1]!)] : []);
+    };
+    const idleWithNotices = (count: number) => eventually(() => {
+      const seen = notices();
+      return seen.length === count && seen.every((notice) => !!notice) && f.runtime.list().find((s) => s.id === parent.id)?.status === "idle";
+    });
+    await tool({ action: "start", prompt: "first exact finding", title: "Reporter", report: "notice" });
+    const [child] = f.children(parent.id);
+    assert.ok(child);
+    await idleWithNotices(1);
+    const first = notices()[0]!;
+    const firstId = first.match(/finished \(run_id: ([^)]+)\)/)?.[1];
+    assert.ok(firstId);
+    assert.doesNotMatch(first, /first exact finding|local:/);
+    assert.equal(await tool({ action: "send", id: child.id, text: "provider-error" }), "Sent.");
+    await idleWithNotices(2);
+    const second = notices()[1]!;
+    const secondId = second.match(/failed \(run_id: ([^)]+)\)/)?.[1];
+    assert.ok(secondId);
+    assert.notEqual(firstId, secondId);
+    assert.doesNotMatch(second, /first exact finding|local:/);
+
+    await f.runtime.shutdown();
+    restarted = new SessionRuntime({ ...f.configuration, wakeTickMs: 0 });
+    await restarted.ensure(parent.id);
+    assert.equal(await tool({ action: "read", id: child.id, run_id: firstId }, restarted), `Run ${firstId} finished.\n\nlocal:first exact finding`);
+    assert.match(await tool({ action: "read", id: child.id, run_id: secondId }, restarted), /^Run \S+ failed(?: \([\w-]+\))?\.\n\nNo answer for this run\.$/);
+    assert.match(await tool({ action: "read", id: child.id, run_id: "unknown" }, restarted), /No such completed run/);
+    const other = await restarted.create({ folder: f.folder });
+    assert.match(await tool({ action: "read", id: child.id, run_id: firstId }, restarted, other.id), /did not start a session/);
+  } finally {
+    await restarted?.shutdown();
+    await f.cleanup();
+  }
+});
+
 test("archiving a parent takes its children along; restore brings them back; delete removes them", async () => {
   const f = await fixture();
   try {

@@ -18,7 +18,7 @@ import { validChoice } from "./provider-storage.js";
 import type { ModelChoice } from "../../contract/provider-protocol.js";
 import { validSessionTitle } from "../../contract/session-title.js";
 import { validAgentId } from "../agents/format.js";
-import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";
+import { validChildReportMode, type ChildReportMode } from "../../contract/wake-protocol.js";
 
 /** `session.json`: what PiSpark knows about a session. Pi's JSONL beside it is the transcript. */
 export interface SessionMetadata {
@@ -49,7 +49,7 @@ export interface SessionMetadata {
   /** The session that started this one (a child session); its runs report back to it. */
   parent?: string;
   /** How it tells its parent when a run ends; `result` when not given. */
-  report?: ReportMode;
+  report?: ChildReportMode;
   /** The schedule or app routine this session is one run of, and when that run was due. */
   schedule?: { id: string; due: string };
   /** An extension keeps it loaded while no one watches (`pispark:hold`), and why. */
@@ -115,7 +115,7 @@ export class SessionStorage {
         (value.queued !== undefined && (typeof value.queued !== "string" || value.queued.length > 64 * 1024)) ||
         (value.archived !== undefined && value.archived !== true) ||
         (value.parent !== undefined && (typeof value.parent !== "string" || !UUID.test(value.parent))) ||
-        (value.report !== undefined && (value.report as unknown) !== false && !validReportMode(value.report)) ||
+        (value.report !== undefined && (value.report as unknown) !== false && !validChildReportMode(value.report)) ||
         (value.schedule !== undefined &&
           (!value.schedule ||
             typeof value.schedule.id !== "string" ||

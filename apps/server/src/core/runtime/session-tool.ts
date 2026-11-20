@@ -1,4 +1,4 @@
-import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";
+import { validChildReportMode, type ChildReportMode } from "../../contract/wake-protocol.js";
 
 /** The built-in extension's tool for starting and following child sessions. */
 export const SESSION_TOOL = "pispark_session";
@@ -24,13 +24,13 @@ export const CHILD_ENDED_CHANNEL = "pispark:child-ended";
 
 export type SessionRequest =
   /** Start a child session with a first message; `report` says how it tells this one when it ends. */
-  | { action: "start"; prompt: string; agent?: string; title?: string; report?: ReportMode }
+  | { action: "start"; prompt: string; agent?: string; title?: string; report?: ChildReportMode }
   | { action: "list" }
   /** Send one of its children another message. */
   | { action: "send"; id: string; text: string }
   | { action: "stop"; id: string }
-  /** A child's last answer. */
-  | { action: "read"; id: string }
+  /** A child's last answer, or the exact completion identified in a notice. */
+  | { action: "read"; id: string; runId?: string }
   /** From a child in status mode: wake its parent with this. */
   | { action: "report"; text: string };
 /** What the bus carries: the request, and where its answer goes (text for the agent). */
@@ -46,7 +46,8 @@ export interface ChildEnded {
   session: string;
   title: string;
   how: string;
-  mode: ReportMode;
+  mode: ChildReportMode;
+  runId?: string;
   /** Its last answer (or what it raised), and the data an extension in it set. */
   text: string;
   data?: unknown;
@@ -68,15 +69,16 @@ export function validSessionMessage(value: unknown): value is SessionMessage {
         text(request.prompt, 64 * 1024) &&
         (request.agent === undefined || text(request.agent, 64)) &&
         (request.title === undefined || text(request.title, 4096)) &&
-        (request.report === undefined || validReportMode(request.report))
+        (request.report === undefined || validChildReportMode(request.report))
       );
     case "send":
       return text(request.id, 64) && text(request.text, 64 * 1024);
     case "report":
       return text(request.text, 64 * 1024);
     case "stop":
-    case "read":
       return text(request.id, 64);
+    case "read":
+      return text(request.id, 64) && (request.runId === undefined || text(request.runId, 64));
     default:
       return false;
   }

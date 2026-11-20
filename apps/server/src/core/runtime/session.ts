@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { basename, dirname, join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
-import type { AgentSession, EventBus } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, EventBus, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Provider } from "@earendil-works/pi-ai";
 import { HOLD_CHANNEL, NOTICE_ENTRY, type HoldRequest, type ReadOnlyReason, type ItemsPage, type LiveDoc, type PartPage, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
 import { ExtensionUI } from "../extensions/extension-ui.js";
@@ -90,6 +90,22 @@ export interface SessionSummary {
 export interface RunResult {
   outcome: "completed" | "cancelled" | "failed";
   error?: RuntimeErrorCode;
+  /** Set only for child runs using notice delivery. */
+  childResult?: ChildRunResult & { id: string; answer?: string };
+}
+
+const CHILD_RESULT_ENTRY = "pispark:child-result";
+interface ChildRunResult {
+  outcome: RunResult["outcome"];
+  error?: RuntimeErrorCode;
+  answerId?: string;
+  data?: unknown;
+}
+
+function answerOf(entry: SessionEntry | undefined): string | undefined {
+  if (entry?.type !== "message" || entry.message.role !== "assistant") return undefined;
+  if (entry.message.stopReason !== "stop" && entry.message.stopReason !== "length") return undefined;
+  return entry.message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim() || undefined;
 }
 export interface RunHandle {
   completion: Promise<RunResult>;
@@ -734,6 +750,18 @@ export class Session {
     return undefined;
   }
 
+  /** Read a notice result from the transcript, even after reopening or changing the active branch. */
+  childRunResult(id: string): (ChildRunResult & { answer?: string }) | undefined {
+    const transcript = this.pi ? undefined : this.host.storage.validateHistory(this.metadata);
+    const manager = this.pi?.sessionManager ?? (transcript ? SessionManager.open(transcript, this.host.storage.directory(this.id), this.metadata.cwd) : undefined);
+    const entry = manager?.getEntry(id);
+    if (!manager || entry?.type !== "custom" || entry.customType !== CHILD_RESULT_ENTRY) return undefined;
+    const result = entry.data as ChildRunResult | undefined;
+    if (!result || !["completed", "cancelled", "failed"].includes(result.outcome)) return undefined;
+    const answer = result.answerId ? answerOf(manager.getEntry(result.answerId)) : undefined;
+    return { ...result, ...(answer ? { answer } : {}) };
+  }
+
   /** The built-in schedule tool: list, remove, or add after the person says yes. */
   private scheduleRequest(value: unknown): void {
     if (!validMessage(value)) return;
@@ -988,6 +1016,9 @@ export class Session {
   private mark(text?: string): { run: Run; settle: () => RunResult } {
     const { host } = this;
     const started = Date.now();
+    const manager = this.metadata.parent && this.metadata.report === "notice" ? this.pi?.sessionManager : undefined;
+    const entryCount = manager?.getEntries().length ?? 0;
+    this.resultData = undefined;
     this.runStartedAt = started;
     const { queued: _queued, ...current } = this.metadata;
     const metadata = { ...current, active: true, interrupted: false };
@@ -1008,10 +1039,27 @@ export class Session {
     const settle = (): RunResult => {
       run.settled = true;
       clearTimeout(timer);
+      let childResult: RunResult["childResult"];
       this.metadata.active = !!this.error;
       this.metadata.interrupted ||= !!this.error;
       try {
         host.storage.write(this.metadata);
+        if (manager) {
+          const entries = manager.getEntries();
+          // Pi only creates a persistent transcript after the first user or assistant message.
+          if (entries.some((entry) => entry.type === "message" && (entry.message.role === "user" || entry.message.role === "assistant"))) {
+            const answerEntry = !this.error && !run.cancelled ? entries.slice(entryCount).findLast((entry) => answerOf(entry)) : undefined;
+            const data: ChildRunResult = {
+              outcome: this.error ? "failed" : run.cancelled ? "cancelled" : "completed",
+              ...(this.error ? { error: this.error } : {}),
+              ...(answerEntry ? { answerId: answerEntry.id } : {}),
+              ...(this.resultData !== undefined ? { data: this.resultData } : {}),
+            };
+            const id = manager.appendCustomEntry(CHILD_RESULT_ENTRY, data);
+            const answer = answerOf(answerEntry);
+            childResult = { ...data, id, ...(answer ? { answer } : {}) };
+          }
+        }
       } catch {
         this.error = "storage";
         this.metadata.active = true;
@@ -1028,7 +1076,10 @@ export class Session {
         code: this.error,
       });
       this.changed();
-      const result: RunResult = this.error ? { outcome: "failed", error: this.error } : { outcome: run.cancelled ? "cancelled" : "completed" };
+      const result: RunResult = {
+        ...(this.error ? { outcome: "failed", error: this.error } : { outcome: run.cancelled ? "cancelled" : "completed" }),
+        ...(childResult ? { childResult } : {}),
+      };
       setImmediate(() => {
         this.reportTools();
         host.ended?.(this, result);
@@ -1041,8 +1092,6 @@ export class Session {
   private begin(text: string, marker?: WokenDetails): Promise<RunResult> {
     const session = this.loaded().session;
     const { settle } = this.mark(text);
-    // Result data belongs to the run that sets it.
-    this.resultData = undefined;
     if (marker) session.sessionManager.appendCustomEntry(WOKEN_ENTRY, marker);
     this.runDone = (async (): Promise<RunResult> => {
       try {
