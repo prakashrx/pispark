@@ -1,3 +1,4 @@
+import { DependencyPreparationError } from "./extension-dependencies.js";
 import type { ThinkingLevel } from "../../contract/agent-protocol.js";
 import { sessionTitle } from "../../contract/session-title.js";
 import { randomUUID } from "node:crypto";
@@ -525,21 +526,35 @@ export class SessionRuntime {
     const { id, extensionRevisions: revisions } = session;
     const revision = this.extensionReloads.get(id);
     if (!revision || this.live.get(id) !== session || !session.settled) return;
-    this.extensionReloads.delete(id);
     const before = revisions.read();
     const change = before.staged;
     const report = (state: typeof before, outcome: string, failed: boolean) => {
       revisions.write({ ...state, outcome });
       this.live.get(id)?.extensionReloadNotice(outcome, failed);
     };
-    if (change?.revision !== revision || this.wakes.waiting(id) || session.metadata.queued !== undefined || session.extensionReloadCancelled) {
-      report(before, `Reload ${revision} skipped: the run did not complete, work is waiting, or the staged revision changed.`, true);
+    const superseded = () => this.live.get(id) !== session || !this.accepting || this.wakes.waiting(id) || session.metadata.queued !== undefined || session.extensionReloadCancelled;
+    if (change?.revision !== revision || superseded()) {
+      this.extensionReloads.delete(id);
+      report(before, "The extension change was skipped because the session or the staged revision changed.", true);
+      return;
+    }
+    try {
+      revisions.verify(change);
+      await revisions.prepare(change);
+    } catch (error) {
+      this.extensionReloads.delete(id);
+      const reason = error instanceof DependencyPreparationError ? error.message : "The staged files could not be prepared.";
+      report(before, "Could not apply " + change.name + ". " + reason, true);
+      return;
+    }
+    this.extensionReloads.delete(id);
+    if (superseded() || revisions.read().staged?.revision !== revision) {
+      report(before, "The extension change was skipped because the session or the staged revision changed during preparation.", true);
       return;
     }
     const prior = before.active.find((item) => item.name === change.name);
     const next = { active: [...before.active.filter((item) => item.name !== change.name), ...(change.snapshot ? [change] : [])] };
     try {
-      revisions.verify(change);
       this.extensionCandidates.set(id, { revision, ...next });
       const doc = await this.reloadCurrent(id, undefined, revision);
       if (doc.status !== "idle") throw new RuntimeError("extension");

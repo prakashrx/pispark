@@ -93,6 +93,7 @@ export class ExtensionViews {
   private readonly roots: string[];
   private readonly points: ReadonlySet<string>;
   private closed = false;
+  private initial?: { root: string; compiling: Set<Promise<string>> };
 
   constructor(
     extensionFolders: string[],
@@ -104,9 +105,11 @@ export class ExtensionViews {
       callTimeoutMs?: number;
       /** The points the client draws, besides the items of the history. */
       points?: readonly string[];
+      activationFolder?: string;
     },
   ) {
     this.points = new Set(host.points);
+    if (host.activationFolder) this.initial = { root: realpathSync.native(host.activationFolder), compiling: new Set() };
     this.roots = extensionFolders.flatMap((folder) => {
       try {
         return [realpathSync.native(folder)];
@@ -114,6 +117,13 @@ export class ExtensionViews {
         return [];
       }
     });
+  }
+
+  /** Validate only the views offered by the candidate while Pi loads it. */
+  async finishActivation(): Promise<void> {
+    const initial = this.initial;
+    this.initial = undefined;
+    if (initial) await Promise.all(initial.compiling);
   }
 
   /** Listens on the session's bus; called before extensions load, so none of their events are missed. */
@@ -212,6 +222,7 @@ export class ExtensionViews {
     // Each file compiles once per session; a reopened session compiles it again, so edits show.
     let compiling = this.compiled.get(file);
     if (!compiling) this.compiled.set(file, (compiling = compileView(file, root)));
+    if (this.initial?.root === root) this.initial.compiling.add(compiling);
     compiling.then(
       (hash) => {
         if (this.closed || this.placed.get(id) !== entry) return;

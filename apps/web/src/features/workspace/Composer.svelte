@@ -160,8 +160,8 @@
     data-empty={!text.trim() || undefined}
     aria-label={mode === "ask" ? "New session" : "Reply to session"}
     onpointerdown={(event) => {
-      // Keep the dock still until the native click submits or stops the turn.
-      if (event.pointerType === "touch" && event.target instanceof Element && event.target.closest(".send-btn")) event.preventDefault();
+      // Keep the dock still until the native click sends, stops, or opens the picker.
+      if (event.pointerType === "touch" && event.target instanceof Element && event.target.closest(".send-btn, .attach-btn")) event.preventDefault();
     }}
     onsubmit={(event) => {
       event.preventDefault();

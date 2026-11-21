@@ -137,6 +137,13 @@ test("accepted receipt polling loss is settlement uncertainty, not acceptance fa
   expect(origin.error).toBe(
     "receipt connection lost (session origin)",
   );
+  // Foreground/reconnect checks this same receipt, then clears only its warning.
+  calls.mockImplementation(async () => new Response(JSON.stringify({
+    commandId: "accepted-command", sessionId: "origin", state: "settled", outcome: "completed",
+  })));
+  await origin.recheckCommand();
+  expect(origin.error).toBe("");
+  expect(calls.mock.calls.at(-1)?.[0]).toBe("/api/receipts/accepted-command");
   expect(
     calls.mock.calls.filter(([url]) => url === "/api/commands"),
   ).toHaveLength(1);

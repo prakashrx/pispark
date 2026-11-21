@@ -1,5 +1,5 @@
 import DOMPurify from "dompurify";
-import { marked, type Token, type Tokens } from "marked";
+import { Renderer, marked, type Token, type Tokens } from "marked";
 
 marked.setOptions({
   gfm: true,
@@ -14,8 +14,24 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   }
 });
 
-function sanitize(html: string): string {
-  return DOMPurify.sanitize(html, {
+export interface MarkdownImages {
+  scope: string;
+  source(href: string): string | undefined;
+}
+
+function rendererFor(images: MarkdownImages | undefined): Renderer | undefined {
+  if (!images) return undefined;
+  const renderer = new Renderer();
+  renderer.image = ({ href, text }) => {
+    const source = images.source(href);
+    const label = text.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]!);
+    return source ? '<a data-session-image href="' + source + '">' + label + "</a>" : label;
+  };
+  return renderer;
+}
+
+function sanitize(html: string, images?: MarkdownImages): string {
+  const options = {
     ALLOWED_TAGS: [
       "p",
       "br",
@@ -46,12 +62,27 @@ function sanitize(html: string): string {
     ALLOWED_ATTR: ["href", "title", "start"],
     ALLOW_DATA_ATTR: false,
     ALLOW_ARIA_ATTR: false,
-  });
+  };
+  if (!images || !html.includes("data-session-image")) return DOMPurify.sanitize(html, options);
+  const fragment = DOMPurify.sanitize(html, { ...options, ADD_ATTR: ["data-session-image"], RETURN_DOM_FRAGMENT: true });
+  for (const link of fragment.querySelectorAll("a[data-session-image]")) {
+    link.removeAttribute("data-session-image");
+    const source = images.source(link.getAttribute("href") ?? "");
+    if (!source) continue;
+    const img = document.createElement("img");
+    img.alt = link.textContent ?? "";
+    img.loading = "lazy";
+    img.src = source;
+    link.replaceChildren(img);
+  }
+  const wrapper = document.createElement("div");
+  wrapper.append(fragment);
+  return wrapper.innerHTML;
 }
 
-export function renderMarkdown(text: string): string {
+export function renderMarkdown(text: string, images?: MarkdownImages): string {
   if (!text?.trim()) return "";
-  return sanitize(marked.parse(text, { async: false }));
+  return sanitize(marked.parse(text, { async: false, renderer: rendererFor(images) }), images);
 }
 
 /**
@@ -87,24 +118,27 @@ const FINISHED_LIMIT = 500;
  * block can still change: it is repaired and re-rendered each time, and every earlier block comes
  * from the cache. A finished reply renders without repairs.
  */
-export function markdownBlocks(text: string, streaming = false): string[] {
+export function markdownBlocks(text: string, streaming = false, images?: MarkdownImages): string[] {
   if (!text?.trim()) return [];
   const tokens = marked.lexer(text);
   const last = tokens.findLastIndex((token) => token.type !== "space");
   const blocks: string[] = [];
+  const renderer = rendererFor(images);
   tokens.forEach((token: Token, index) => {
     if (token.type === "space") return;
     if (streaming && index === last) {
-      blocks.push(renderMarkdown(repairOpenBlock(token.raw)));
+      blocks.push(renderMarkdown(repairOpenBlock(token.raw), images));
       return;
     }
-    let html = finished.get(token.raw);
+    const key = images ? images.scope + "\0" + token.raw : token.raw;
+    let html = finished.get(key);
     if (html === undefined) {
       html = sanitize(
-        marked.parser(Object.assign([token], { links: tokens.links }) as Tokens.Generic[] & { links: typeof tokens.links }),
+        marked.parser(Object.assign([token], { links: tokens.links }) as Tokens.Generic[] & { links: typeof tokens.links }, { renderer }),
+        images,
       );
       if (finished.size >= FINISHED_LIMIT) finished.clear();
-      finished.set(token.raw, html);
+      finished.set(key, html);
     }
     blocks.push(html);
   });

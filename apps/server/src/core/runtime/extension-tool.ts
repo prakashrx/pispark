@@ -3,7 +3,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export const EXTENSION_TOOL = "pispark_extension";
 export const EXTENSION_CHANNEL = "pispark:extension-request";
+const name = Type.String({ maxLength: 64 });
 const parameters = Type.Union([
+  Type.Object({ action: Type.Literal("apply"), name }, { additionalProperties: false }),
+  Type.Object({ action: Type.Literal("unload"), name }, { additionalProperties: false }),
   Type.Object({ action: Type.Literal("stage"), name: Type.String({ maxLength: 64 }), source: Type.String({ minLength: 1, maxLength: 1024 }), scope: Type.Optional(Type.Union([Type.Literal("session"), Type.Literal("project")])) }, { additionalProperties: false }),
   Type.Object({ action: Type.Literal("remove"), name: Type.String({ maxLength: 64 }) }, { additionalProperties: false }),
   Type.Object({ action: Type.Literal("reload"), revision: Type.String({ pattern: "^[a-f0-9]{64}$" }) }, { additionalProperties: false }),
@@ -20,7 +23,7 @@ export function registerExtensionTool(pi: ExtensionAPI): void {
     name: EXTENSION_TOOL,
     label: "Develop session extensions",
     parameters,
-    description: "Stage or replace a session-only Pi extension snapshot from a relative path in this session's extension-drafts folder (scope: session) or checkout (scope: project, the default), or stage removal of a previously installed local extension. Neither takes effect until reload with the exact staged revision and user approval. Use pispark_session inspect to check the outcome.",
+    description: "Apply the authorized draft in this session's extension-drafts/<name>, or unload an active local extension. The change takes effect after this turn. Use pispark_session inspect to check the outcome. For project sources, stage and reload the exact staged revision after approval.",
     async execute(_id, request, signal) {
       signal?.throwIfAborted();
       const text = await new Promise<string>((resolve, reject) => {

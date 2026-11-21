@@ -65,11 +65,11 @@ const unpacked = join(out, ".stage", "node");
 mkdirSync(unpacked, { recursive: true });
 run(tar, ["-xf", cached, "-C", unpacked]);
 renameSync(join(unpacked, readdirSync(unpacked)[0]), join(stage, "node"));
-// npm and corepack are not needed to run PiSpark.
-for (const extra of ["node_modules", "npm", "npm.cmd", "npm.ps1", "npx", "npx.cmd", "npx.ps1", "corepack", "corepack.cmd", "install_tools.bat", "nodevars.bat", "include", "share", "CHANGELOG.md", "README.md"])
+// Keep the bundled npm CLI for locked dependencies in session extension drafts.
+for (const extra of ["node_modules/corepack", "npm", "npm.cmd", "npm.ps1", "npx", "npx.cmd", "npx.ps1", "corepack", "corepack.cmd", "install_tools.bat", "nodevars.bat", "include", "share", "CHANGELOG.md", "README.md"])
   rmSync(join(stage, "node", extra), { recursive: true, force: true });
 for (const extra of ["npm", "npx", "corepack"]) rmSync(join(stage, "node", "bin", extra), { force: true });
-rmSync(join(stage, "node", "lib", "node_modules"), { recursive: true, force: true });
+rmSync(join(stage, "node", "lib", "node_modules", "corepack"), { recursive: true, force: true });
 
 // 2. The app: production dependencies of the server for the target platform, from the lockfile.
 const app = join(stage, "app");

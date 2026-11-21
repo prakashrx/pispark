@@ -113,7 +113,7 @@
     <NudgeHost />
     <ToastHost />
   </div>
-  {#if dock}<div class="dock"><div class="column">{@render dock()}</div></div>{/if}
+  {#if dock}<div class="dock" class:flush><div class="column">{@render dock()}</div></div>{/if}
 </div>
 
 <style>
@@ -244,6 +244,7 @@
   }
   main {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -268,6 +269,8 @@
     flex-shrink: 0;
     padding: 0 1rem calc(0.5rem + env(safe-area-inset-bottom));
   }
+  .dock.flush { padding-inline: var(--conversation-gutter); }
+  .dock.flush .column { max-width: var(--conversation-width); }
   @media (max-width: 599.98px) {
     .topbar {
       padding-left: 0.25rem;

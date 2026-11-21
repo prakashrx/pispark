@@ -87,11 +87,12 @@
   // Anything that makes the conversation taller (a reply, a late image, a diff, a question) keeps
   // the end in view while following.
   $effect(() => {
-    if (!column) return;
+    if (!column || !scroller) return;
     const watcher = new ResizeObserver(() => {
       if (following) toBottom();
     });
     watcher.observe(column);
+    watcher.observe(scroller);
     return () => watcher.disconnect();
   });
   function jumpToLatest() {
@@ -102,8 +103,8 @@
   const button = "conversation-action";
 </script>
 
-<div class="conversation px-4 pt-4 pb-4 sm:px-6 flex flex-col items-center">
-  <div class="w-full max-w-[68rem] min-w-0 flex flex-col gap-6" bind:this={column}>
+<div class="conversation py-4 flex flex-col items-center">
+  <div class="conversation-content w-full min-w-0 flex flex-col gap-6" bind:this={column}>
     {#if doc}
       <div bind:this={top} aria-hidden="true"></div>
       {#if loadingEarlier}<p role="status" class="text-sm text-muted-foreground">Loading earlier messages…</p>
@@ -137,10 +138,11 @@
   /* Prepending older items must not move what you are reading; the position is restored by hand. */
   .conversation {
     overflow-anchor: none;
+    padding-inline: var(--conversation-gutter);
   }
+  .conversation-content { max-width: var(--conversation-width); }
   .queued-turn {
-    width: min(100%, 48rem);
-    margin-inline: auto;
+    width: min(100%, var(--conversation-reading-width));
     display: flex;
     flex-direction: column;
     align-items: flex-end;

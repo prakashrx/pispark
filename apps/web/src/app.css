@@ -241,3 +241,12 @@ button[aria-disabled="true"] {
 .prose table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.9375em; }
 .prose th { text-align: left; padding: 0.55em 0.8em; border-bottom: 1px solid var(--input); font-weight: 600; background: var(--code-surface); }
 .prose td { padding: 0.55em 0.8em; border-bottom: 1px solid var(--border); }
+
+:root {
+  --conversation-width: 68rem;
+  --conversation-reading-width: 48rem;
+  --conversation-gutter: 1rem;
+}
+@media (min-width: 640px) {
+  :root { --conversation-gutter: 1.5rem; }
+}

@@ -1,5 +1,6 @@
+import { prepareDependencies } from "./extension-dependencies.js";
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 const NAME = /^[a-z][a-z0-9-]{0,63}$/;
@@ -11,7 +12,7 @@ export const extensionNameValid = (value: unknown): value is string => typeof va
 const hashValid = (value: unknown): value is string => typeof value === "string" && HASH.test(value);
 
 type Snapshot = { entry: string; files: Map<string, Buffer>; hash: string };
-export type ExtensionChange = { name: string; revision: string; snapshot?: string; entry?: string; source?: string };
+export type ExtensionChange = { name: string; revision: string; snapshot?: string; entry?: string; source?: string; scope?: "session" };
 export type ExtensionState = { active: ExtensionChange[]; staged?: ExtensionChange; outcome?: string };
 
 function snapshot(source: string, savedEntry?: string): Snapshot {
@@ -70,6 +71,7 @@ export class ExtensionRevisions {
     try {
       const state = JSON.parse(readFileSync(join(this.root, "state.json"), "utf8")) as ExtensionState;
       const valid = (change: ExtensionChange) => extensionNameValid(change.name) && hashValid(change.revision) &&
+        (change.scope === undefined || change.scope === "session") &&
         (change.snapshot === undefined ? change.entry === undefined : hashValid(change.snapshot) && typeof change.entry === "string" && FILE.test(change.entry) && ENTRY.test(change.entry));
       if (!Array.isArray(state.active) || state.active.length > 16 || !state.active.every((change) => valid(change) && change.snapshot) || (state.staged && !valid(state.staged)))
         throw new Error("Invalid session extension state.");
@@ -89,6 +91,14 @@ export class ExtensionRevisions {
   }
   path(change: ExtensionChange): string {
     return join(this.root, change.snapshot!, change.entry!);
+  }
+  loadPath(change: ExtensionChange): string {
+    const prepared = join(this.root, "prepared", change.snapshot!, change.entry!);
+    return existsSync(prepared) ? prepared : this.path(change);
+  }
+  async prepare(change: ExtensionChange): Promise<void> {
+    if (!change.snapshot) return;
+    await prepareDependencies(dirname(this.path(change)), join(this.root, "prepared", change.snapshot));
   }
   stage(cwd: string, name: string, source?: string, sessionRoot?: string): ExtensionChange {
     const state = this.read();
@@ -122,7 +132,7 @@ export class ExtensionRevisions {
           if (snapshot(destination, copy.entry).hash !== copy.hash) throw error;
         }
       } finally { rmSync(temp, { recursive: true, force: true }); }
-      change = { name, source: sessionRoot ? `extension-drafts/${source}` : source, entry: copy.entry, snapshot: copy.hash, revision: randomRevision(name, copy.hash) };
+      change = { name, ...(sessionRoot ? { scope: "session" } : {}), source: sessionRoot ? `extension-drafts/${source}` : source, entry: copy.entry, snapshot: copy.hash, revision: randomRevision(name, copy.hash) };
     } else change = { name, revision: randomRevision(name, prior!.snapshot!) };
     this.write({ ...state, staged: change });
     this.prune(state.staged?.snapshot);
@@ -137,7 +147,9 @@ export class ExtensionRevisions {
     if (!hash) return;
     const state = this.read();
     if (state.staged?.snapshot !== hash && !state.active.some((change) => change.snapshot === hash)) {
-      try { rmSync(join(this.root, hash), { recursive: true, force: true }); } catch { /* A retained snapshot is harmless. */ }
+      for (const folder of [join(this.root, hash), join(this.root, "prepared", hash)]) {
+        try { rmSync(folder, { recursive: true, force: true }); } catch { /* A retained snapshot is harmless. */ }
+      }
     }
   }
 }

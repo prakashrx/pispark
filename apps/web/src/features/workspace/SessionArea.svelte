@@ -33,8 +33,8 @@
 
 {#if view}
   <!-- An extension's view has the whole area under the session's header. -->
-  <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
-    <div class="session-view" aria-label={view.title} role="region"><ContributionPoint point="session.view" only={view.key} /></div>
+  <div class="session-view" aria-label={view.title} role="region">
+    <ContributionPoint point="session.view" only={view.key} />
   </div>
 {:else}
   <Conversation />
@@ -44,7 +44,9 @@
   .session-view {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     width: 100%;
+    container-type: inline-size;
     overflow: auto;
     display: flex;
     flex-direction: column;

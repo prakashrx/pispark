@@ -142,6 +142,13 @@ test("an extension offers whole views of the session: the person switches, the c
   await expect(page.getByRole("region", { name: "Fixture page", exact: true }).first()).toBeVisible();
   const main = (await page.getByRole("main").boundingBox())!;
   expect((await area.boundingBox())!.width).toBeGreaterThan(main.width - 2);
+  for (const width of [1920, 390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(async () => {
+      const [canvas, frame] = await Promise.all([area.boundingBox(), page.getByRole("main").boundingBox()]);
+      return canvas && frame ? Math.abs(canvas.width - frame.width) : Infinity;
+    }).toBeLessThan(2);
+  }
   await expect(page.locator('[data-point="session.title"]')).toHaveText("fixture chip");
   // A file the component imported, and a data file from the folder its offer named.
   const mark = area.getByRole("img", { name: "Fixture mark" });

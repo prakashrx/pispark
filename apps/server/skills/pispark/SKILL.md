@@ -16,7 +16,7 @@ Carry authorized work through verification and delivery. Fix routine failures an
 The server owns the session; closing the browser does not stop it. Reloading a session applies changed resources when idle and keeps the transcript. Starting a fresh session uses the selected agent's resolved resources without the old conversation.
 
 - Save reports, images and other deliverables in the session files directory named in the system prompt. Leave source changes and project files in the project. Uploads are in the session's files, too; look under **Details → Artifacts** to open or preview them.
-- Write Markdown, not raw HTML. Tool image results can appear inline (for example, `read` on a supported image). PiSpark can preview SVG from a successful `write` to an `.svg` file. Saving a file makes it an artifact, not a guarantee that a Markdown image URL will render. Name the saved file in the reply. Edits and tool results have their own displays, so summarize what matters rather than repeating them.
+- Write Markdown, not raw HTML. Tool image results can appear inline (for example, `read` on a supported image). PiSpark can preview SVG from a successful `write` to an `.svg` file. Saving a file makes it an artifact, not a guarantee that a Markdown image URL will render. Use Markdown image syntax with a path such as `files/screenshot.png` for a saved image in this session, and give it useful alt text. Edits and tool results have their own displays, so summarize what matters rather than repeating them.
 
 ## Settings: choose the scope before changing it
 
@@ -50,7 +50,7 @@ Use APIs only against the intended host. From the server shell, use the known lo
 
 ## Built-in tools
 
-- **Inspect and trial extensions:** use `pispark_session inspect` for the calling session. Create session-only drafts under its `extension-drafts` folder and use `pispark_extension` to stage and request activation. Read `pispark-extensions` for the full workflow. Don't move session prototypes into a project to activate them.
+- **Inspect and trial extensions:** use `pispark_session inspect` for the calling session. Create session-only drafts under its `extension-drafts` folder and use `pispark_extension apply` to schedule an authorized local revision. Check its outcome and use the resulting tool or view before reporting completion. Read `pispark-extensions` for the full workflow. Don't move session prototypes into a project to activate them.
 
 Check which tools are active.
 

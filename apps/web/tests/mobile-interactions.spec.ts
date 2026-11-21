@@ -49,3 +49,22 @@ test("a draft upload has a tappable removal control and stays out of Artifacts",
   const response = await page.request.get(`/api/sessions/${id}/attachments`);
   expect((await response.json()).files).not.toContainEqual(expect.objectContaining({ name: "draft.txt" }));
 });
+
+test("a focused Ask or Reply opens Attach on the first touch and preserves the draft", async ({ page }) => {
+  await page.goto("/#/new");
+  const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
+  const check = async (box: typeof ask, draft: string) => {
+    await box.fill(draft);
+    await expect(box).toBeFocused();
+    const [chooser] = await Promise.all([
+      page.waitForEvent("filechooser"),
+      page.getByRole("button", { name: "Attach files" }).tap(),
+    ]);
+    await chooser.setFiles([]);
+    await expect(box).toHaveText(draft);
+  };
+  await check(ask, "Keep the Ask draft");
+  await page.getByRole("button", { name: "Start session" }).tap();
+  await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+  await check(page.getByRole("textbox", { name: "Reply to session", exact: true }), "Keep the Reply draft");
+});

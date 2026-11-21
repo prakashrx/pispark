@@ -6,6 +6,8 @@ export class CommandUncertainty extends Error {
   constructor(
     readonly kind: CommandUncertaintyKind,
     detail: string,
+    readonly receipt?: Receipt,
+    readonly longRunning = false,
   ) {
     super(detail);
   }
@@ -87,6 +89,8 @@ export class Transport {
         throw new CommandUncertainty(
           "settlement-unknown",
           `${(error as Error).message}${receipt.sessionId ? ` (session ${receipt.sessionId})` : ""}`,
+          receipt,
+          longRunning,
         );
       }
     }

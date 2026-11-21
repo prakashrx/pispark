@@ -36,9 +36,12 @@
   // Looking at it reads it (L-17): when it is on screen and the page is in view.
   let visible = $state(typeof document === "undefined" || document.visibilityState === "visible");
   $effect(() => {
-    const update = () => (visible = document.visibilityState === "visible");
-    document.addEventListener("visibilitychange", update);
-    return () => document.removeEventListener("visibilitychange", update);
+    function foreground() {
+      visible = document.visibilityState === "visible";
+      if (visible) void session.recheckCommand();
+    }
+    document.addEventListener("visibilitychange", foreground);
+    return () => document.removeEventListener("visibilitychange", foreground);
   });
   $effect(() => {
     if (session.info?.unread && visible) void client.seen(session.id);
@@ -78,6 +81,15 @@
 </script>
 
 {#snippet tabs()}<SessionTabs />{/snippet}
+{#snippet replyDock()}
+  <div class="reply-dock">
+    <Shelf />
+    {#if session.doc?.readOnly}<ReadOnlyReply />{:else}<Composer mode="reply" />{/if}
+    <ContributionPoint point="session.input.below" />
+    <StatusLine />
+  </div>
+{/snippet}
+
 {#snippet detailsMenu()}{#if detailsActions.length}<Menu label="Details actions" items={detailsActions} />{/if}{/snippet}
 
 {#if compact && panelRoute}
@@ -89,19 +101,11 @@
     <SessionDetails view={panelRoute} focus={details.focus(session.id)} />
   </Screen>
 {:else}
-  <Screen title={name} rename={session.info ? (title) => session.rename(title) : undefined} bind:renaming flush scroll={!view} below={compact && session.views.length ? tabs : undefined}>
+  <Screen title={name} rename={session.info ? (title) => session.rename(title) : undefined} bind:renaming flush scroll={!view} dock={view ? undefined : replyDock} below={compact && session.views.length ? tabs : undefined}>
     {#snippet actions()}<SessionBar tabs={!compact} onrename={() => (renaming = true)} />{/snippet}
     {#snippet notices()}<SessionNotices />{/snippet}
     <SessionArea {session} />
-    {#snippet dock()}
-      <!-- An extension's view has the screen; the reply box steps aside. -->
-      {#if !view}
-        <Shelf />
-        {#if session.doc?.readOnly}<ReadOnlyReply />{:else}<Composer mode="reply" />{/if}
-        <ContributionPoint point="session.input.below" />
-        <StatusLine />
-      {/if}
-    {/snippet}
+
   </Screen>
   {#if side}
     <SidePanel
@@ -121,3 +125,7 @@
     </SidePanel>
   {/if}
 {/if}
+
+<style>
+  .reply-dock { max-width: var(--conversation-reading-width); }
+</style>

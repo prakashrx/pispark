@@ -254,6 +254,8 @@ export class Session {
   /** The last draft an extension set that this session applied, so each fills the reply box once. */
   private extensionDraft?: string;
   private source?: AbortController;
+  private unsettled?: CommandUncertainty;
+  private checking?: CommandUncertainty;
   private shown = false;
   private showing = 0;
 
@@ -305,12 +307,28 @@ export class Session {
   fail(error: unknown) {
     this.error = (error as Error).message;
     this.errorKind = error instanceof CommandUncertainty ? error.kind : undefined;
+    this.unsettled = error instanceof CommandUncertainty && error.receipt ? error : undefined;
     this.errorCode = error instanceof CommandFailed ? error.code : undefined;
   }
   private clearError() {
+    this.unsettled = undefined;
     this.error = "";
     this.errorKind = undefined;
     this.errorCode = undefined;
+  }
+  /** Re-observe the original receipt after reconnect. The command itself is never replayed. */
+  async recheckCommand(): Promise<void> {
+    const pending = this.unsettled;
+    if (!pending?.receipt || this.checking === pending || this.transport.closed) return;
+    this.checking = pending;
+    try {
+      await this.transport.settled(pending.receipt, pending.longRunning);
+      if (this.unsettled === pending) this.clearError();
+    } catch (error) {
+      if (this.unsettled === pending && error instanceof CommandFailed) this.fail(error);
+    } finally {
+      if (this.checking === pending) this.checking = undefined;
+    }
   }
   private async command(command: Parameters<Transport["run"]>[0]) {
     try {
@@ -356,6 +374,7 @@ export class Session {
             this.applyAttention();
             this.opening = false;
             this.connection = "Live";
+            if (event.type === "snapshot") void this.recheckCommand();
             this.host.changed(session);
           }
           // The server ends every live stream after a while on purpose: follow on at once, still Live.

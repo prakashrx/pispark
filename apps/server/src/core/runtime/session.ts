@@ -513,13 +513,19 @@ export class Session {
       },
     }));
     const revisions = this.extensionRevisions;
-    const active = host.extensionCandidate?.(this.id) ?? revisions.read().active;
+    const candidates = host.extensionCandidate?.(this.id);
+    const active = candidates ?? revisions.read().active;
+    const activating = candidates?.find((change) => change.revision === host.extensionPending?.(this.id));
     for (const change of active) revisions.verify(change);
-    const extensionPaths = [...setup.extensionPaths, ...active.map((change) => revisions.path(change))];
+    const extensionPaths = [...setup.extensionPaths, ...active.map((change) => revisions.loadPath(change))];
     const development = !setup.toolsOff.includes(EXTENSION_TOOL);
     const views = (this.views = new ExtensionViews(
       extensionPaths.map((path) => dirname(path)),
-      { changed: () => this.changed(), failed: (message) => ui.failed(message), callTimeoutMs: host.callTimeout, points: host.points },
+      {
+        changed: () => this.changed(), failed: (message) => ui.failed(message),
+        callTimeoutMs: host.callTimeout, points: host.points,
+        ...(activating ? { activationFolder: dirname(revisions.loadPath(activating)) } : {}),
+      },
     ));
     const services = await createSessionServices({
       // A session started by another session cannot start sessions: one level only. Only one in
@@ -637,6 +643,7 @@ export class Session {
         this.changed();
       },
     });
+    await views.finishActivation().catch(() => { throw new RuntimeError("extension"); });
     if (this.error) throw new RuntimeError(this.error);
     if (this.closed) throw new RuntimeError("timeout");
     this.extensionPaths = setup.extensionPaths;
@@ -779,30 +786,50 @@ export class Session {
     try {
       if (signal?.aborted || this.closed || !this.published || this.status !== "running") throw new Error("No active run.");
       if (this.host.extensionPending?.(this.id)) throw new Error("A reload is already pending.");
-      if (request.action === "stage" || request.action === "remove") {
-        if (!extensionNameValid(request.name) || (request.action === "stage" && (typeof request.source !== "string" || !request.source))) throw new Error("Invalid extension name or source.");
-        if (this.extensionApproval) throw new Error("A revision is awaiting approval.");
-        const sessionSource = request.action === "stage" && request.scope === "session";
-        const folder = this.host.storage.directory(this.id);
-        const sourceRoot = sessionSource ? join(folder, "extension-drafts") : this.metadata.cwd;
-        const change = revisions.stage(sourceRoot, request.name, request.action === "stage" ? request.source : undefined, sessionSource ? folder : undefined);
+      if (this.extensionApproval) throw new Error("A revision is awaiting approval.");
+      const folder = this.host.storage.directory(this.id);
+      const draftRoot = join(folder, "extension-drafts");
+      const assertQueue = () => {
+        if (signal?.aborted || this.closed || this.run?.cancelled || this.input || this.pi?.getSteeringMessages().length || this.pi?.getFollowUpMessages().length)
+          throw new Error("The extension change cannot be scheduled while other work is waiting or this turn is stopping.");
+      };
+      let change = revisions.read().staged;
+      if (request.action === "apply" || request.action === "unload") {
+        assertQueue();
+        if (!extensionNameValid(request.name)) throw new Error("Invalid extension name.");
+        const active = revisions.read().active.find((item) => item.name === request.name);
+        if (request.action === "unload" && !active) return reply("That extension is already unloaded.");
+        change = request.action === "apply"
+          ? revisions.stage(draftRoot, request.name, request.name, folder)
+          : revisions.stage(this.metadata.cwd, request.name);
+        if (active && change.snapshot === active.snapshot) {
+          const { staged, ...state } = revisions.read();
+          revisions.write(state);
+          return reply(`${change.name} is already active at revision ${active.revision}.`);
+        }
+      } else if (request.action === "stage" || request.action === "remove") {
+        if (!extensionNameValid(request.name) || (request.action === "stage" && !request.source)) throw new Error("Invalid extension name or source.");
+        const local = request.action === "stage" && request.scope === "session";
+        change = revisions.stage(local ? draftRoot : this.metadata.cwd, request.name, request.action === "stage" ? request.source : undefined, local ? folder : undefined);
         return reply(`Staged ${change.name} at revision ${change.revision}. Active code has not changed.`);
       }
-      const change = revisions.read().staged;
-      if (request.action !== "reload" || !change || change.revision !== request.revision) throw new Error("Give the exact currently staged revision.");
-      if (this.extensionApproval) throw new Error("A revision is awaiting approval.");
+      if (!change || (request.action === "reload" && change.revision !== request.revision))
+        throw new Error("Give the exact currently staged revision.");
       revisions.verify(change);
-      this.extensionApproval = true;
-      try {
-        const yes = await this.ui?.context.confirm("Reload this session with the staged change?", [
-          `${change.snapshot ? "Load" : "Remove"} ${change.name} (${change.source ?? "session only"})`,
-          `Revision: ${change.revision}`, ...(change.snapshot ? [`Snapshot: ${change.snapshot}`, "Extension code runs with the host user's permissions. This is not a sandbox."] : []),
-        ].join("\n"));
-        if (!yes || signal?.aborted || this.closed || this.run?.cancelled) return reply("Reload not approved or cancelled. No active code changed.");
-        if (this.input || this.pi?.getSteeringMessages().length || this.pi?.getFollowUpMessages().length || !this.host.extensionReload?.(this, change.revision))
-          throw new Error("Reload cannot be scheduled while other work is waiting.");
-        reply("Reload scheduled after this run settles. Check the session notice or inspect for the outcome.");
-      } finally { this.extensionApproval = false; }
+      if (change.snapshot && change.scope !== "session") {
+        this.extensionApproval = true;
+        try {
+          const yes = await this.ui?.context.confirm("Activate this project extension in the session?", [
+            `${change.name} (${change.source})`,
+            `Revision: ${change.revision}`,
+            "Extension code runs with the host user's permissions.",
+          ].join("\n"));
+          if (!yes) return reply("Activation declined. The active revision is unchanged.");
+        } finally { this.extensionApproval = false; }
+      }
+      assertQueue();
+      if (!this.host.extensionReload?.(this, change.revision)) throw new Error("A reload is already pending.");
+      reply(`Scheduled ${change.snapshot ? "activation" : "unload"} of ${change.name} after this turn. Check the session notice or inspect for the outcome.`);
     } catch (error) { reply((error as Error).message.slice(0, 500), true); }
   }
   private extensionApproval = false;

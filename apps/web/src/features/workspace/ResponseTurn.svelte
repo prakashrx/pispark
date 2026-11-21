@@ -74,8 +74,7 @@
     min-width: 0;
   }
   .turn > :global(:not(.response)), .response > :global(:not(.segment)) {
-    width: min(100%, 48rem);
-    margin-inline: auto;
+    width: min(100%, var(--conversation-reading-width));
   }
   .foot {
     display: flex;

@@ -1,10 +1,14 @@
 <script lang="ts">
   import { markdownBlocks } from "../../lib/markdown";
+  import { sessionImageUrl } from "../files/file-kinds";
   import { attention } from "../../shell/attention.svelte";
 
   /** A reply as Markdown. While it streams only its last block is re-rendered; the rest never change. */
-  let { text, streaming = false }: { text: string; streaming?: boolean } = $props();
-  const blocks = $derived(markdownBlocks(text, streaming));
+  let { text, streaming = false, sessionId }: { text: string; streaming?: boolean; sessionId?: string } = $props();
+  const blocks = $derived(markdownBlocks(text, streaming, sessionId
+    ? { scope: sessionId, source: (href) => sessionImageUrl(sessionId!, href) }
+    : undefined));
+
   let root = $state<HTMLElement>();
   // Each code block gets a Copy button (C-20) once it is complete.
   $effect(() => {
@@ -42,9 +46,14 @@
 
 <style>
   .reading-block {
-    max-width: 48rem;
-    margin-inline: auto;
+    max-width: var(--conversation-reading-width);
     display: flow-root;
+  }
+  .prose :global(img) {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-md);
   }
   .table-scroll {
     overflow-x: auto;

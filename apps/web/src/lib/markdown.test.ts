@@ -1,3 +1,4 @@
+import { sessionImageUrl } from "../features/files/file-kinds";
 import { expect, test } from "vitest";
 import { renderMarkdown } from "./markdown";
 
@@ -58,4 +59,25 @@ test("half-written Markdown reads as intended: open fences, spans, emphasis and 
 test("blocks stay sanitized however they are split", () => {
   const html = markdownBlocks('<img src=x onerror="alert(1)">\n\n[x](javascript:alert(1))', false).join("");
   expect(html).not.toMatch(/onerror|javascript:/);
+});
+
+test("only current session artifact images become clickable images in Markdown", () => {
+  const root = document.createElement("div");
+  const images = { scope: "a", source: (href: string) => sessionImageUrl("a", href) };
+  root.innerHTML = renderMarkdown([
+    "![A & B](files/preview%20one.png)",
+    "![Remote](https://example.org/secret.png)",
+    "![Other](/api/sessions/b/attachments/other.png)",
+    "![Escape](files/../escape.png)",
+    '<img src="/api/sessions/a/attachments/raw.png" onerror="alert(1)">',
+  ].join("\n\n"), images);
+  const [img] = root.querySelectorAll("img");
+  expect(root.querySelectorAll("img")).toHaveLength(1);
+  expect(img?.alt).toBe("A & B");
+  expect(img?.getAttribute("src")).toBe("/api/sessions/a/attachments/preview%20one.png");
+  expect(img?.closest("a")?.getAttribute("href")).toBe(img?.getAttribute("src"));
+  expect(markdownBlocks("![Preview](files/preview.png)", false, images)[0]).toContain("/sessions/a/");
+  expect(markdownBlocks("![Preview](files/preview.png)", false, {
+    scope: "b", source: (href) => sessionImageUrl("b", href),
+  })[0]).toContain("/sessions/b/");
 });
