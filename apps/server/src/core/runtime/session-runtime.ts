@@ -2,8 +2,10 @@ import type { ThinkingLevel } from "../../contract/agent-protocol.js";
 import { sessionTitle } from "../../contract/session-title.js";
 import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
-import { mkdirSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { constants, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { copyFile } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { Provider } from "@earendil-works/pi-ai";
 import type { HostSettings, ItemsPage, LiveDoc, PartPage, SessionDoc, SessionFile } from "../../contract/protocol.js";
 import type { SessionAgent, AgentSummary, AgentTarget } from "../../contract/agent-protocol.js";
@@ -24,7 +26,7 @@ import type { ProviderSettings } from "./provider-settings.js";
 import { validChoice } from "./provider-storage.js";
 import { RunSlots } from "./run-slots.js";
 import { SessionStorage, validateId, type SessionMetadata } from "./storage.js";
-import { attachmentPath, filesFolder, placeAttachments, saveAttachment, uploadedNames, validAttachmentName } from "./attachments.js";
+import { attachmentPath, filesFolder, forkAttachmentTags, placeAttachments, saveAttachment, sentAttachmentNames, uploadedNames, validAttachmentName } from "./attachments.js";
 import { Schedules } from "./schedules.js";
 import { ToolDiscovery } from "./tool-discovery.js";
 import { Wakes } from "./wakes.js";
@@ -113,8 +115,7 @@ export class SessionRuntime {
     this.slots = new RunSlots(configuration.maxRunning ?? stored.maxRunning);
     this.unattendedPaused = stored.unattendedPaused;
     this.timeout = configuration.operationTimeoutMs ?? 10_000;
-    const runTimeout = configuration.runTimeoutMs ?? 300_000;
-    if (![this.maxLive, this.timeout, runTimeout].every((value) => Number.isSafeInteger(value) && value > 0))
+    if (![this.maxLive, this.timeout].every((value) => Number.isSafeInteger(value) && value > 0))
       throw new RuntimeError("configuration");
     this.storage = new SessionStorage(paths.sessions);
     this.agents = new AgentStore(paths.agents, paths.sessions, (sessionId) => this.storage.read(sessionId).agent, logger);
@@ -134,7 +135,7 @@ export class SessionRuntime {
       get: (id) => this.get(id),
       ensure: (id) => this.ensure(id),
       stop: (id) => this.stop(id),
-      cancel: (id) => this.cancel(id),
+      cancel: (id) => this.get(id).cancel("parent-request"),
       archive: (id) => this.archive(id),
       create: (request, origin) => this.createSession(request, origin),
       deliver: (id, wake) => this.wakes.deliver(id, wake),
@@ -149,7 +150,6 @@ export class SessionRuntime {
       slots: this.slots,
       logger,
       timeout: this.timeout,
-      runTimeout,
       callTimeout: configuration.callTimeoutMs,
       points: configuration.points,
       accepting: () => this.accepting,
@@ -317,7 +317,8 @@ export class SessionRuntime {
       ...(metadata.seenAt && this.storage.lastActivity(metadata) > metadata.seenAt ? { unread: true } : {}),
       ...(session?.workingSince ? { workingSince: new Date(session.workingSince).toISOString() } : {}),
       ...(session?.waitingForSlot || (!session && metadata.queued !== undefined) ? { queued: true } : {}),
-      ...(metadata.parent ? { parent: metadata.parent } : {}),
+      ...(metadata.forkOf ? { parent: metadata.forkOf, forkOf: metadata.forkOf }
+        : metadata.parent ? { parent: metadata.parent } : {}),
       ...(metadata.schedule ? { schedule: { ...metadata.schedule } } : {}),
       ...(metadata.held ? { held: { ...metadata.held } } : {}),
       ...(this.processes?.runningIn(metadata.id) ? { processes: this.processes.runningIn(metadata.id) } : {}),
@@ -539,6 +540,56 @@ export class SessionRuntime {
     if (!session) throw new RuntimeError("not-found");
     await session.configure(change);
     return session.doc();
+  }
+  /** Snapshot history through Pi. A fork has navigation ancestry but no parent result routing. */
+  async fork(sourceId: string): Promise<string> {
+    validateId(sourceId);
+    this.admit();
+    const source = this.storage.read(sourceId);
+    const session = this.live.get(sourceId);
+    if (source.archived || source.queued !== undefined || (session && !session.settled)) throw new RuntimeError("busy");
+    const transcript = this.storage.validateHistory(source);
+    if (!transcript) throw new RuntimeError("not-found");
+    const id = randomUUID();
+    const destination = this.storage.prepare(id);
+    try {
+      const fork = SessionManager.forkFrom(transcript, source.cwd, destination, { id });
+      const movedUploads = new Map<string, string>();
+      const files = this.files(sourceId);
+      if (files.length) mkdirSync(filesFolder(destination), { mode: 0o700 });
+      for (const file of files) {
+        const from = this.attachment(sourceId, file.name);
+        const to = join(filesFolder(destination), file.name);
+        await copyFile(from, to, constants.COPYFILE_FICLONE);
+        if (file.by === "you") {
+          movedUploads.set(from, to);
+          const markers = join(destination, "uploads");
+          mkdirSync(markers, { recursive: true, mode: 0o700 });
+          writeFileSync(join(markers, file.name), "", { mode: 0o600 });
+        }
+      }
+      if (movedUploads.size) {
+        const entries = [fork.getHeader(), ...fork.getEntries().map((entry) => forkAttachmentTags(entry, movedUploads))];
+        writeFileSync(fork.getSessionFile()!, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n", { mode: 0o600 });
+      }
+      this.admit();
+      const createdAt = new Date().toISOString();
+      this.storage.write({
+        version: 2, id, cwd: source.cwd, agent: source.agent, model: source.model,
+        thinking: source.thinking, title: sessionTitle(`Fork of ${source.title ?? "conversation"}`),
+        createdAt, seenAt: createdAt, active: false, interrupted: false,
+        tracksUploads: true, forkOf: sourceId,
+      });
+      return id;
+    } catch (error) {
+      this.storage.remove(id);
+      throw runtimeError(error, "storage");
+    }
+  }
+  async compact(id: string): Promise<void> {
+    validateId(id);
+    await this.ensure(id);
+    await this.get(id).compact();
   }
   /** A person looked at a session (on any device): it's read. */
   seen(id: string): void {
@@ -788,9 +839,19 @@ export class SessionRuntime {
     const directory = this.storage.directory(id);
     const folder = filesFolder(directory);
     const uploads = uploadedNames(directory);
-    if (!metadata.tracksUploads) {
+    let sent: Set<string> | undefined;
+    if (uploads.size || !metadata.tracksUploads) {
       const session = this.live.get(id);
-      if (session?.ready) for (const name of session.uploads()) uploads.add(name);
+      if (session?.ready && !session.readOnly) sent = session.sentFiles();
+      else {
+        // A damaged transcript cannot establish which uploads were sent. Still list agent files.
+        try {
+          const transcript = this.storage.validateHistory(metadata);
+          if (transcript) sent = sentAttachmentNames(directory, SessionManager.open(transcript, directory).getEntries());
+        } catch {
+          // Leave the uploads hidden until a valid transcript can confirm them.
+        }
+      }
     }
     let names: string[];
     try {
@@ -799,12 +860,12 @@ export class SessionRuntime {
       return [];
     }
     return names
-      .filter((name) => validAttachmentName(name))
+      .filter((name) => validAttachmentName(name) && (!uploads.has(name) || sent?.has(name)))
       .flatMap((name) => {
         try {
           const stats = statSync(join(folder, name));
           if (!stats.isFile()) return [];
-          return [{ name, size: stats.size, modified: stats.mtime.toISOString(), by: uploads.has(name) ? "you" as const : metadata.tracksUploads ? "agent" as const : undefined }];
+          return [{ name, size: stats.size, modified: stats.mtime.toISOString(), by: sent?.has(name) ? "you" as const : metadata.tracksUploads ? "agent" as const : undefined }];
         } catch {
           return [];
         }

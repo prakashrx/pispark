@@ -103,7 +103,7 @@ test("an extension offers whole views of the session: the person switches, the c
   await commands.focus();
   await page.keyboard.press("Enter");
   const menu = page.getByRole("menu", { name: "Session actions" });
-  await expect(menu.getByRole("menuitem")).toHaveText(["Rename", "Details", "Commands…", "Copy link", "Archive"]);
+  await expect(menu.getByRole("menuitem")).toHaveText(["Rename", "Details", "Commands…", "Fork session", "Copy link", "Archive"]);
   await expect(menu.getByRole("menuitem").first()).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);

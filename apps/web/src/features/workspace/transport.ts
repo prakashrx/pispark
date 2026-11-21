@@ -75,13 +75,13 @@ export class Transport {
     }
   }
   /** Waits for an accepted command to settle. */
-  async settled(receipt: Receipt): Promise<Receipt> {
-    const until = Date.now() + 310_000;
+  async settled(receipt: Receipt, longRunning = false): Promise<Receipt> {
+    const started = Date.now();
     while (receipt.state === "accepted") {
       try {
         if (this.closed) throw new Error("Client closed");
-        if (Date.now() > until) throw new Error(`Settlement unknown for ${receipt.commandId}; do not automatically retry.`);
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        if (!longRunning && Date.now() - started > 310_000) throw new Error(`Settlement unknown for ${receipt.commandId}; do not automatically retry.`);
+        await new Promise((resolve) => setTimeout(resolve, longRunning && Date.now() - started > 5_000 ? 2_000 : 250));
         receipt = await this.json<Receipt>(`/api/receipts/${receipt.commandId}`);
       } catch (error) {
         throw new CommandUncertainty(
@@ -95,7 +95,7 @@ export class Transport {
   }
   /** A command sent and settled. */
   async run(command: InputCommand): Promise<Receipt> {
-    return this.settled(await this.submit(command));
+    return this.settled(await this.submit(command), command.type === "compact");
   }
   close() {
     this.closed = true;

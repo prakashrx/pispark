@@ -185,7 +185,7 @@ export class Children {
         due: this.due(),
         policy: "queue",
       });
-    session.addStatus(`The session "${report.title}" you started ${report.how}.`, { session: report.session, title: report.title, how: report.how });
+    await session.addStatus(`The session "${report.title}" you started ${report.how}.`, { session: report.session, title: report.title, how: report.how });
   }
 
   /** A child in status mode raises something: its text wakes its parent, whose extensions see it first. */

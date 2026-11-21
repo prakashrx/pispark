@@ -69,8 +69,10 @@
     if (!sessions.askFolder) sessions.askFolder = sessions.catalog.recentFolders[0] ?? sessions.catalog.home;
   });
   const unavailable = $derived(
-    sessions.busy
-      ? "Please wait…"
+    mode === "reply" && session?.doc?.compacting
+      ? "Context is being compacted."
+      : sessions.busy
+        ? "Please wait…"
       : attachments?.blocked && (mode === "reply" || !attachments.blocked.startsWith("Waiting"))
         ? attachments.blocked
       : mode === "ask"

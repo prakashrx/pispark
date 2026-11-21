@@ -64,3 +64,20 @@ fresh("the agent editor lists PiSpark's own tools, found in its built-in extensi
   await expect(core.getByRole("switch", { name: "Allow Set session title" })).toBeChecked();
   await expect(core.getByText("pispark_schedule")).toBeVisible();
 });
+
+fresh("manual forks appear beneath their source and are listed separately from sessions started by the agent", async ({ page }) => {
+  await page.goto("/");
+  const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
+  await ask.fill("Original context");
+  await ask.press("Enter");
+  await expect(page.getByText("local:Original context", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Session actions" }).click();
+  await page.getByRole("menuitem", { name: "Fork session" }).click();
+  const details = page.getByRole("complementary", { name: "Details" });
+  await expect(details.getByText("Forked from", { exact: true })).toBeVisible();
+  await expect(page.getByText("local:Original context", { exact: true })).toBeVisible();
+  await details.getByRole("button", { name: "Original context", exact: true }).click();
+  await expect(details.getByRole("list", { name: "Forks", exact: true })).toContainText("Fork of Original context");
+  await expect(details.getByRole("list", { name: "Sessions it started" })).toHaveCount(0);
+  await expect(details.getByText("Each tells this session when it ends.")).toHaveCount(0);
+});

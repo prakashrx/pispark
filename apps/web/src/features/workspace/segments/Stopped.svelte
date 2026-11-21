@@ -23,6 +23,11 @@
 
 {#if segment.reason === "aborted"}
   <p class="text-sm text-subtle italic">Cancelled</p>
+{:else if segment.reason === "usage-limit"}
+  <div role="alert" class="failed">
+    <p>OpenAI reported a usage limit for this connection. Check your ChatGPT usage and connected app limits.</p>
+    <a class="ui-button" href="https://chatgpt.com/#settings/Usage" target="_blank" rel="noopener noreferrer">Check usage</a>
+  </div>
 {:else}
   <div role="alert" class="failed">
     <p>The run failed: the model couldn’t finish. Check the provider or choose another model.</p>

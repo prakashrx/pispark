@@ -14,11 +14,11 @@ import type { SessionAgent, ThinkingLevel } from "../../contract/agent-protocol.
 import type { ModelChoice } from "../../contract/provider-protocol.js";
 import { sessionTitle } from "../../contract/session-title.js";
 import { toolSessionTitle } from "./session-title.js";
-import { attachedImages, namingFiles } from "./attachments.js";
+import { attachedImages, sentAttachmentNames, namingFiles } from "./attachments.js";
 import { validItemName } from "../agents/format.js";
 import { PROCESS_CHANNEL, validProcessMessage, type ProcessRequest } from "./process-tool.js";
 import { createSessionServices, resolveFolder } from "./configuration.js";
-import { deadline, RuntimeError, runtimeError, unsupported } from "./errors.js";
+import { providerUsageLimited, deadline, RuntimeError, runtimeError, unsupported } from "./errors.js";
 import type { RuntimeErrorCode } from "./errors.js";
 import { ItemProjector, progressOf } from "./items.js";
 import { LiveView } from "./live-view.js";
@@ -118,7 +118,6 @@ export interface SessionHost {
   readonly slots: RunSlots;
   readonly logger: SafeLogger;
   readonly timeout: number;
-  readonly runTimeout: number;
   readonly callTimeout?: number;
   /** The contribution points the client draws, besides the items of a session's history. */
   readonly points?: readonly string[];
@@ -162,6 +161,7 @@ export interface SessionHost {
 
 /** One run's identity: whether it was cancelled, settled, and whether it may still take input. */
 interface Run {
+  providerError?: "execution" | "usage-limit";
   cancelled: boolean;
   settled: boolean;
   /** Settling: no new steer or follow-up may join this run. */
@@ -244,6 +244,7 @@ export class Session {
   private input?: Promise<unknown>;
   // configure() saves its model and thinking choice together after Pi has applied both.
   private configuringModel = false;
+  private compacting = false;
   private cancelling?: Promise<void>;
   /** Running tool calls and what they reported last (Pi's partial result), by call id. References only. */
   private readonly running = new Map<string, unknown>();
@@ -364,6 +365,7 @@ export class Session {
       model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined,
       thinking: { level: session.thinkingLevel as ThinkingLevel, levels: session.getAvailableThinkingLevels() as ThinkingLevel[] },
       ...contextOf(session),
+      ...(this.compacting ? { compacting: true } : {}),
       queue: { steering: session.getSteeringMessages().length, followUp: session.getFollowUpMessages().length },
       ...(this.status === "queued" && this.metadata.queued !== undefined ? { queuedText: this.metadata.queued } : {}),
       ...(this.status === "queued" && this.restored ? { restored: true as const } : {}),
@@ -615,7 +617,7 @@ export class Session {
         switchSession: unsupported,
         reload: unsupported,
       },
-      abortHandler: () => void this.cancel().catch(() => {}),
+      abortHandler: () => void this.cancel("extension-abort").catch(() => {}),
       shutdownHandler: () => setImmediate(() => void this.stop().catch(() => {})),
       onError: (failure) => {
         this.extensionErrors++;
@@ -716,11 +718,12 @@ export class Session {
     return answer;
   }
   /** Adds a status line to the conversation without starting a turn; the agent reads it next time. */
-  addStatus(text: string, details: StatusDetails): void {
-    if (!this.pi || this.closed) throw new RuntimeError("not-found");
-    this.pi
-      .sendCustomMessage({ customType: STATUS_ENTRY, content: text, display: true, details }, { triggerTurn: false })
-      .catch(() => this.ui?.failed("A status line could not be added to this session."));
+  async addStatus(text: string, details: StatusDetails): Promise<void> {
+    const session = this.pi;
+    if (!session || this.closed) throw new RuntimeError("not-found");
+    await session.sendCustomMessage({ customType: STATUS_ENTRY, content: text, display: true, details }, { triggerTurn: false });
+    this.host.storage.persistStatusHistory(session.sessionManager);
+    this.host.storage.active(this.id);
     this.changed();
   }
   /** The extension files the session loaded, for naming where a tool came from. */
@@ -827,8 +830,11 @@ export class Session {
     // (Pi records an error message for a run aborted before it reached the provider).
     // Each finished message is in the history now: the session did something.
     if (event.type === "message_end") this.host.storage.active(this.id);
-    if (event.type === "message_end" && event.message.role === "assistant" && event.message.stopReason === "error" && !this.run?.cancelled)
-      this.error ??= "execution";
+    if (event.type === "message_end" && event.message.role === "assistant" && this.run && !this.run.cancelled) {
+      const { stopReason, provider, errorMessage } = event.message;
+      this.run.providerError = stopReason !== "error" ? undefined
+        : providerUsageLimited(provider, errorMessage) ? "usage-limit" : "execution";
+    }
     this.changed();
   }
 
@@ -904,13 +910,35 @@ export class Session {
     this.metadata = metadata;
     this.changed();
   }
-  /** The names of files the person attached to their messages (the rest of the files folder the agent made). */
-  uploads(): Set<string> {
-    if (!this.items) return new Set();
-    const names = new Set<string>();
-    for (const text of this.items.userTexts())
-      for (const match of text.matchAll(/<file name="([^"]+)"><\/file>/g)) names.add(match[1]!.split(/[\\/]/).pop()!);
-    return names;
+  /** Manual compaction uses Pi's own model, hooks, and transcript. */
+  async compact(): Promise<void> {
+    const { session } = this.loaded();
+    if (!this.settled || !session.isIdle || !this.host.slots.take(this.id)) throw new RuntimeError("busy");
+    this.compacting = true;
+    this.touch();
+    this.input = session.compact();
+    this.changed();
+    try {
+      await this.input;
+      this.host.storage.active(this.id);
+    } catch (error) {
+      if (error instanceof Error && /^(Already compacted|Nothing to compact)/.test(error.message))
+        throw new RuntimeError("nothing-to-compact");
+      if (error instanceof Error && error.message === "Compaction cancelled")
+        throw new RuntimeError("compaction-cancelled");
+      if (error instanceof Error && providerUsageLimited(session.model?.provider, error.message))
+        throw new RuntimeError("usage-limit");
+      throw new RuntimeError("execution");
+    } finally {
+      this.input = undefined;
+      this.compacting = false;
+      this.host.slots.release(this.id);
+      this.changed();
+    }
+  }
+  /** Files which reached the transcript, including earlier branches. */
+  sentFiles(): Set<string> {
+    return sentAttachmentNames(this.host.storage.directory(this.id), this.pi?.sessionManager.getEntries() ?? []);
   }
   /** A person looked at the session. */
   seen(at: string): void {
@@ -929,7 +957,7 @@ export class Session {
   }
   /** An empty, never-started session is named after its first message until the agent names it. */
   private firstTitle(metadata: SessionMetadata, text: string): void {
-    if (!metadata.title && !this.host.storage.hasHistory(metadata.id) && !this.pi!.messages.length)
+    if (!metadata.title && !this.pi!.messages.some((message) => message.role === "user" || message.role === "assistant"))
       metadata.title = sessionTitle(namingFiles(text)) || "New session";
   }
 
@@ -1032,13 +1060,9 @@ export class Session {
     this.run = run;
     this.touch();
     this.changed();
-    const timer = setTimeout(() => {
-      this.error = "timeout";
-      void this.cancel().catch(() => {});
-    }, host.runTimeout);
     const settle = (): RunResult => {
       run.settled = true;
-      clearTimeout(timer);
+      if (!run.cancelled) this.error ??= run.providerError;
       let childResult: RunResult["childResult"];
       this.metadata.active = !!this.error;
       this.metadata.interrupted ||= !!this.error;
@@ -1195,7 +1219,7 @@ export class Session {
     } catch (error) {
       if (error instanceof RuntimeError && error.code === "busy") throw error;
       this.error = runtimeError(error, "extension").code;
-      void this.cancel().catch(() => {});
+      void this.cancel("input-failure").catch(() => {});
       throw runtimeError(error, "extension");
     } finally {
       void input
@@ -1208,13 +1232,13 @@ export class Session {
   }
 
   /** Cancel the running agent, or take a queued prompt off the queue. Cooperative; cannot undo tool effects. */
-  async cancel(): Promise<void> {
+  async cancel(source: "command" | "extension-abort" | "input-failure" | "parent-request" = "command"): Promise<void> {
     const { session } = this.loaded();
     if (this.loading) throw new RuntimeError("busy");
     // A prompt that has not started yet simply leaves the queue.
     if (this.status === "queued") return this.unqueue(false);
     if (!this.cancelling) {
-      this.host.logger.event("session.cancel", { sessionId: this.id, outcome: "completed" });
+      this.host.logger.event("session.cancel", { sessionId: this.id, outcome: "completed", code: source });
       if (this.run) this.run.cancelled = true;
       // Questions an extension is waiting on, or an answered one waiting for a slot, would hold the run open.
       this.ui?.dismissAll();

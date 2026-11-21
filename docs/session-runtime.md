@@ -81,6 +81,8 @@ A schedule belongs to one session and wakes it (`runtime/schedules.ts`, the cloc
 
 An agent (typically an app) can offer routines in its `agent.json`: `routines: [{id, name, cron, prompt}]`, inherited like its folder (the nearest layer's list). Each is off until the person switches it on with an ordinary agent switch, `routine:<id>` (VISION §6: unattended work is off unless a user turns it on for an agent). `runtime/routines.ts` checks them with the schedules: each run is a new top-level session of the agent (in its folder, or an app's own place), titled "‹name› · ‹day›", sent the prompt as a wake labelled "‹name› · ‹when›". Nothing is stored for the clock: when a routine last ran is read from its newest run session (`session.json` `schedule: {id: "‹agent›/‹routine›", due}`); a routine never run, or just switched on, counts from then. A run missed while PiSpark was off is caught up within a day; paused, runs are skipped. The newest 10 runs stay in use, as for schedules. HTTP: `GET /api/routines`, `POST /api/routines/:agent/:id {on}` (writes the switch into the agent), `POST /api/routines/:agent/:id/run`.
 
+A turn can run until it finishes, is stopped, or fails. Transport, setup, shutdown, and tool-specific deadlines still apply to their respective operations.
+
 ## Child sessions
 
 A session can hand work to another session and carry on (VISION §6: sessions "have child sessions"). A child is an ordinary session whose `session.json` names its `parent` (`runtime/children.ts`); Pi's header records it too (`parentSession`). It is listed, opened, answered, stopped and scheduled like any session, and runs whether or not anyone watches.
@@ -94,6 +96,8 @@ A session can hand work to another session and carry on (VISION §6: sessions "h
   - `none`: nothing.
 - **The parent's extensions see it first:** before a report or status line reaches the parent's agent, PiSpark emits `pispark:child-ended {session, title, how, mode, text, data, runId?, reply}` on the parent's bus. An extension may reply synchronously `{action: "skip"}` (it handled it: no turn, no line; the wake is recorded `handled`) or `{action: "send", text}` (what the agent gets instead).
 - **Archive and delete:** archiving a parent archives its children (refused while any of them works); restoring restores them; deleting deletes them. A child can be archived alone.
+
+Manual forks use Pi’s transcript fork operation and inherit the source session’s saved agent and model. The source appears as their parent in navigation. A fork runs, archives, and restores independently, without sending completion reports to the source.
 
 ## Hold
 

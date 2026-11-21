@@ -365,7 +365,7 @@ export class SessionClient {
       if (receipt.error) throw new CommandFailed(receipt.error);
       this.askAttachments.sent(placed);
       const session = this.session(id);
-      void this.transport.settled(receipt).catch((error) => {
+      void this.transport.settled(receipt, true).catch((error) => {
         if (!this.disposed) session.fail(error);
       });
       if (revision === this.askRevision) this.askDraft = "";

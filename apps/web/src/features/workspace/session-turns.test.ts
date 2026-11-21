@@ -287,3 +287,13 @@ test("a turn knows when it started and when its last response ended", () => {
   expect([first!.startedAt, first!.endedAt]).toEqual([1_000, 102_600]);
   expect([second!.startedAt, second!.endedAt]).toEqual([undefined, undefined]);
 });
+
+test("a usage-limit card describes the terminal failure and disappears after a successful retry", () => {
+  const user = item("user", [text("answer")]);
+  const limit = item("assistant", [], { stopReason: "error", failure: "usage-limit" });
+  const done = item("assistant", [text("complete")], { stopReason: "stop" });
+  expect(buildTurns([user, limit], { running: false })[0]?.segments)
+    .toContainEqual({ kind: "stopped", key: `${limit.key}.stop`, reason: "usage-limit" });
+  expect(buildTurns([user, limit, done], { running: false })[0]?.segments.map((segment) => segment.kind))
+    .toEqual(["text"]);
+});

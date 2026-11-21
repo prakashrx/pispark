@@ -55,7 +55,7 @@
   const since = $derived(current === "working" ? session.items.findLast((item) => item.role === "user")?.at : undefined);
   const clock = useNow(() => since !== undefined);
   // A command runs as if it were typed in the reply box and sent, so it needs what a reply needs.
-  const ready = $derived(doc?.status === "idle" && session.connection === "Live" && !client.busy);
+  const ready = $derived(doc?.status === "idle" && !doc.compacting && session.connection === "Live" && !client.busy);
   let picking = $state(false);
   async function copyLink() {
     const link = new URL(href({ name: "session", id: session.id }), location.href).href;
@@ -66,11 +66,28 @@
       attention.say("Couldn’t copy the link");
     }
   }
+  let forking = $state(false);
+  async function fork() {
+    forking = true;
+    try {
+      const id = await session.fork();
+      if (id) {
+        await client.refresh();
+        client.open(id);
+      }
+    } catch (error) {
+      attention.say((error as Error).message);
+    } finally {
+      forking = false;
+    }
+  }
   // The session ⋯ menu (design set 7/3).
   const actions = $derived([
     ...(onrename && info ? [{ id: "rename", label: "Rename", onselect: onrename }] : []),
     { id: "details", label: "Details", onselect: () => details.show(session.id) },
     ...(doc?.commands?.length ? [{ id: "commands", label: "Commands…", onselect: () => (picking = true) }] : []),
+    ...(info?.hasHistory && !forking && !doc?.compacting && ["idle", "error", "read-only"].includes(info.status)
+      ? [{ id: "fork", label: "Fork session", onselect: () => void fork() }] : []),
     { id: "copy-link", label: "Copy link", onselect: () => void copyLink() },
     ...(info && canArchive(info) ? [{ id: "archive", label: "Archive", onselect: () => void client.archive(session.id) }] : []),
   ]);

@@ -1,7 +1,7 @@
 import { createWriteStream, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync, readdirSync } from "node:fs";
 import { basename, extname, join, relative, isAbsolute, resolve, sep } from "node:path";
 import type { Readable } from "node:stream";
-import { detectSupportedImageMimeTypeFromFile, resizeImage } from "@earendil-works/pi-coding-agent";
+import { detectSupportedImageMimeTypeFromFile, resizeImage, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { RuntimeError } from "./errors.js";
 
@@ -110,6 +110,40 @@ export function attachmentPath(sessionFolder: string, name: string): string | un
 
 const tag = (path: string) => `<file name="${path}"></file>`;
 const TAG = /<file name="([^"]+)"><\/file>/g;
+
+/** A fresh fork owns its copied uploads. Rebase their tags without changing the source transcript. */
+export function forkAttachmentTags(entry: SessionEntry, paths: ReadonlyMap<string, string>): SessionEntry {
+  if (entry.type !== "message" || entry.message.role !== "user") return entry;
+  const move = (text: string) => text.replace(TAG, (whole, path: string) => {
+    const moved = paths.get(path);
+    return moved ? tag(moved) : whole;
+  });
+  const { content } = entry.message;
+  return {
+    ...entry,
+    message: {
+      ...entry.message,
+      content: typeof content === "string" ? move(content)
+        : content.map((part) => part.type === "text" ? { ...part, text: move(part.text) } : part),
+    },
+  };
+}
+
+/** Only a recorded user message referring to a file in this session makes an upload an artifact. */
+export function sentAttachmentNames(sessionFolder: string, entries: readonly SessionEntry[]): Set<string> {
+  const folder = filesFolder(sessionFolder);
+  const names = new Set<string>();
+  for (const entry of entries) {
+    if (entry.type !== "message" || entry.message.role !== "user") continue;
+    const { content } = entry.message;
+    const text = typeof content === "string" ? content : content.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n");
+    for (const [, path] of text.matchAll(TAG)) {
+      const name = path && isAbsolute(path) ? relative(folder, path) : "";
+      if (validAttachmentName(name) && name !== "..") names.add(name);
+    }
+  }
+  return names;
+}
 
 /**
  * The text a message sends: each `<file name="<attachment name>"></file>` the person placed becomes the

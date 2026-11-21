@@ -61,7 +61,6 @@ export interface RuntimeConfiguration {
   /** How long an extension component's call may take (default 30 s). */
   callTimeoutMs?: number;
   operationTimeoutMs?: number;
-  runTimeoutMs?: number;
   /** How often schedules and waiting wakes are looked at (default a minute); 0 looks only when asked (tests). */
   wakeTickMs?: number;
   /** Tests only: the clock schedules and wakes go by. */

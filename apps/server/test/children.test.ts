@@ -238,3 +238,24 @@ test("the parent's extensions see a child's end first: they may take it or rewor
     await f.cleanup();
   }
 });
+
+test("a manual fork inherits history and runs independently from its source", async () => {
+  const f = await fixture();
+  try {
+    const source = await f.runtime.create({ folder: f.folder });
+    await f.runtime.start(source.id, "shared history").completion;
+    const fork = await f.runtime.fork(source.id);
+    await f.runtime.open(fork);
+    assert.equal(f.runtime.session(fork).forkOf, source.id);
+    assert.deepEqual(f.runtime.items(fork, {}).items.map(text), f.runtime.items(source.id, {}).items.map(text));
+    await f.runtime.archive(source.id);
+    await f.runtime.start(fork, "only in the fork").completion;
+    assert.equal(f.runtime.items(fork, {}).items.findLast((item) => item.role === "assistant")?.parts[0]?.type, "text");
+    f.runtime.restore(source.id);
+    await f.runtime.open(source.id);
+    const items = f.runtime.items(source.id, {}).items;
+    assert.ok(!items.some((item) => item.customType === WOKEN_ENTRY || text(item).includes("only in the fork")));
+  } finally {
+    await f.cleanup();
+  }
+});

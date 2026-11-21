@@ -29,7 +29,7 @@ test("Return adds a line, one tap sends, and Details preserves the reading posit
   await expect.poll(() => main.evaluate(el => el.scrollTop)).toBe(240);
 });
 
-test("a draft upload has a tappable removal control and keeps its origin after removal", async ({ page }) => {
+test("a draft upload has a tappable removal control and stays out of Artifacts", async ({ page }) => {
   await page.goto("/#/new");
   await page.getByRole("textbox", { name: "Ask anything", exact: true }).fill("Draft attachment test");
   await page.getByRole("button", { name: "Start session" }).tap();
@@ -47,5 +47,5 @@ test("a draft upload has a tappable removal control and keeps its origin after r
   await expect(chip).toHaveCount(0);
   const id = new URL(page.url()).hash.split("/")[2];
   const response = await page.request.get(`/api/sessions/${id}/attachments`);
-  expect((await response.json()).files).toContainEqual(expect.objectContaining({ name: "draft.txt", by: "you" }));
+  expect((await response.json()).files).not.toContainEqual(expect.objectContaining({ name: "draft.txt" }));
 });

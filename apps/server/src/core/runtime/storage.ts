@@ -1,3 +1,4 @@
+import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "../../contract/agent-protocol.js";
 import { randomUUID } from "node:crypto";
 import {
@@ -48,6 +49,8 @@ export interface SessionMetadata {
   tracksUploads?: true;
   /** The session that started this one (a child session); its runs report back to it. */
   parent?: string;
+  /** Source of a manual fork, for navigation only. */
+  forkOf?: string;
   /** How it tells its parent when a run ends; `result` when not given. */
   report?: ChildReportMode;
   /** The schedule or app routine this session is one run of, and when that run was due. */
@@ -114,6 +117,7 @@ export class SessionStorage {
         (value.setup !== undefined && !/^[a-f0-9]{64}$/.test(value.setup)) ||
         (value.queued !== undefined && (typeof value.queued !== "string" || value.queued.length > 64 * 1024)) ||
         (value.archived !== undefined && value.archived !== true) ||
+        (value.forkOf !== undefined && (typeof value.forkOf !== "string" || !UUID.test(value.forkOf) || value.forkOf === id)) ||
         (value.parent !== undefined && (typeof value.parent !== "string" || !UUID.test(value.parent))) ||
         (value.report !== undefined && (value.report as unknown) !== false && !validChildReportMode(value.report)) ||
         (value.schedule !== undefined &&
@@ -207,6 +211,22 @@ export class SessionStorage {
     const dir = this.directory(id);
     if (!existsSync(join(dir, "session.json")))
       rmSync(dir, { recursive: true, force: true });
+  }
+  /** Materialize Pi's buffered entries when a host status must outlive an empty conversation. */
+  persistStatusHistory(manager: SessionManager): void {
+    const file = manager.getSessionFile();
+    const header = manager.getHeader();
+    if (!file || !header) throw new RuntimeError("storage");
+    if (existsSync(file)) return;
+    const temp = `${file}.${randomUUID()}.tmp`;
+    try {
+      const entries = [header, ...manager.getEntries()];
+      writeFileSync(temp, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n", { mode: 0o600, flag: "wx" });
+      renameSync(temp, file);
+      manager.setSessionFile(file);
+    } finally {
+      rmSync(temp, { force: true });
+    }
   }
   /** Pi names the transcript `<time>_<id>.jsonl`; it's the only such file in the folder. */
   transcript(id: string): string | undefined {

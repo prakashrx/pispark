@@ -47,6 +47,8 @@ export interface SessionInfo {
   queued?: boolean;
   /** The session that started this one (a child session). */
   parent?: string;
+  /** Present when the parent is the source of an independently managed manual fork. */
+  forkOf?: string;
   /** The schedule or app routine this session is one run of. */
   schedule?: { id: string; due: string };
   /** Kept loaded while no one watches, by one of its extensions, and why (see `HoldRequest`). */
@@ -101,6 +103,7 @@ export interface Item {
   pos?: number;
   parts: ItemPart[];
   stopReason?: string;
+  failure?: "usage-limit";
   toolName?: string;
   callId?: string;
   isError?: boolean;
@@ -208,6 +211,8 @@ export interface SessionDoc extends SessionInfo {
    * `tokens` and `percent` are null right after a summary, until the next reply measures it.
    */
   context?: { tokens: number | null; window: number; percent: number | null };
+  /** Native manual compaction is active. */
+  compacting?: true;
   /** The prompt waiting for a run slot, while the session is `queued`. */
   queuedText?: string;
   /** That prompt was waiting when PiSpark stopped, and was queued again when the session opened. */
@@ -265,7 +270,7 @@ export type Command = { commandId: string } & (
       /** Agent ID; Default when omitted. */
       agent?: string;
     }
-  | { type: "open" | "cancel" | "stop" | "archive" | "restore" | "delete"; sessionId: string }
+  | { type: "open" | "cancel" | "stop" | "archive" | "restore" | "delete" | "compact" | "fork"; sessionId: string }
   /** Start the session again from its history; with `model`, it runs that model from now on. */
   | { type: "reload"; sessionId: string; model?: { provider: string; id: string } }
   /** A person names the session; it keeps that name. */

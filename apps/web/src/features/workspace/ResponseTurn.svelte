@@ -73,6 +73,10 @@
     gap: 0.75rem;
     min-width: 0;
   }
+  .turn > :global(:not(.response)), .response > :global(:not(.segment)) {
+    width: min(100%, 48rem);
+    margin-inline: auto;
+  }
   .foot {
     display: flex;
     align-items: center;

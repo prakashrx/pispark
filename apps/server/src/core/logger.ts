@@ -51,6 +51,11 @@ const codes = [
   "shutdown",
   "timeout",
   "cancelled",
+  "usage-limit",
+  "command",
+  "extension-abort",
+  "input-failure",
+  "parent-request",
 ] as const;
 interface Correlation {
   requestId?: string;

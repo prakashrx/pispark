@@ -1,3 +1,4 @@
+import { providerUsageLimited } from "../src/core/runtime/errors.js";
 import { SafeLogger } from "../src/core/logger.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -745,20 +746,18 @@ test("SessionRuntime: timed-out setup stays owned even if shutdown is requested 
   }
 });
 
-test("SessionRuntime: cooperative run deadline fails truthfully and aborts the real SDK request", async () => {
+test("SessionRuntime: a streaming turn remains active until explicitly cancelled", async () => {
   const f = await fixture();
-  const bounded = new SessionRuntime({ ...f.configuration, runTimeoutMs: 40 });
   try {
-    const a = await f.create("a", bounded);
-    const run = bounded.start(a.id, "deadline");
-    assert.deepEqual(await run.completion, {
-      outcome: "failed",
-      error: "timeout",
-    });
+    const a = await f.create("a");
+    const run = f.runtime.start(a.id, "wait for Stop");
+    await eventually(() => f.provider.requests.length === 1);
+    assert.equal(f.runtime.session(a.id).status, "running");
+    await f.runtime.cancel(a.id);
+    assert.deepEqual(await run.completion, { outcome: "cancelled" });
     assert.equal(f.provider.requests[0]?.aborted, true);
-    await eventually(() => bounded.session(a.id).status === "error");
+    assert.equal(f.runtime.session(a.id).status, "idle");
   } finally {
-    await bounded.shutdown();
     await f.cleanup();
   }
 });
@@ -1209,4 +1208,37 @@ test("SessionRuntime: accepted invisible-only input keeps its fallback title aft
   } finally {
     await f.cleanup();
   }
+});
+
+test("SessionRuntime: manual compaction uses Pi and refuses concurrent work", async () => {
+  const f = await fixture();
+  try {
+    const a = await f.create("a");
+    await assert.rejects(f.runtime.compact(a.id), hasCode("nothing-to-compact"));
+    f.provider.automatic = true;
+    for (let i = 0; i < 3; i++)
+      await f.runtime.start(a.id, "The old conversation has useful context. ".repeat(1200)).completion;
+    const requests = f.provider.requests.length;
+    f.provider.automatic = false;
+    const compacted = f.runtime.compact(a.id);
+    await eventually(() => f.runtime.session(a.id).compacting === true);
+    assert.throws(() => f.runtime.start(a.id, "busy"), hasCode("busy"));
+    await assert.rejects(f.runtime.compact(a.id), hasCode("busy"));
+    await eventually(() => f.provider.requests.length === requests + 1);
+    f.provider.automatic = true;
+    f.provider.requests.at(-1)!.release();
+    await compacted;
+    assert.ok((await f.history(a.id)).some((entry) => entry.type === "compaction"));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("OpenAI provider allowance failures are distinct from overload, generic 429s, and aborts", () => {
+  assert.equal(providerUsageLimited("openai", "The ChatGPT user has reached their Subscription Sharing usage limit."), true);
+  assert.equal(providerUsageLimited("openai-codex", "Codex error: The usage limit has been reached"), true);
+  assert.equal(providerUsageLimited("openai", "429: subscription_sharing_usage_limit_exceeded"), true);
+  assert.equal(providerUsageLimited("openai", "Our servers are currently overloaded."), false);
+  assert.equal(providerUsageLimited("openai-codex", "429 Too Many Requests"), false);
+  assert.equal(providerUsageLimited("openai", "Request was aborted"), false);
 });

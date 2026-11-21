@@ -176,6 +176,6 @@ export class SessionProcesses {
   /** A status line in a session's conversation, loading it if needed. */
   private async statusIn(sessionId: string, text: string, details: StatusDetails): Promise<void> {
     await this.sessions.ensure(sessionId);
-    this.sessions.get(sessionId).addStatus(text, details);
+    await this.sessions.get(sessionId).addStatus(text, details);
   }
 }

@@ -7,7 +7,7 @@ import { PROCESS_TOOL, validProcessMessage } from "../src/core/runtime/process-t
 import { gitPs } from "../src/core/runtime/processes.js";
 import { STATUS_ENTRY, WOKEN_ENTRY } from "../src/contract/wake-protocol.js";
 import { eventually } from "./fixtures/local-provider.js";
-import { testHome } from "./fixtures/home.js";
+import { testHome, writeAgent } from "./fixtures/home.js";
 
 const call = (args: object) => `tool:${PROCESS_TOOL}:${JSON.stringify(args)}`;
 const text = (item: { parts: { type: string; text?: string }[] }) => item.parts.map((part) => part.text ?? "").join("");
@@ -190,4 +190,36 @@ test("Windows: Stop finds Git's ps.exe from either Git Bash, and none for anothe
   assert.equal(gitPs(join(GIT, "bin", "bash.exe")), ps);
   assert.equal(gitPs(join(GIT, "usr", "bin", "bash.exe")), ps);
   assert.equal(gitPs(String.raw`C:\Windows\System32\bash.exe`), undefined);
+});
+
+test("a status-only process result survives reload and restart without invoking a model", async () => {
+  const f = await fixture();
+  try {
+    const name = "status-only";
+    await writeAgent(f.home, name, { name: "Status only" }, {
+      "extensions/status.mjs": `export default (pi) => {
+        let started = false;
+        pi.on("session_start", (event) => {
+          if (started || event.reason !== "new") return;
+          started = true;
+          setTimeout(() => pi.events.emit("pispark:process-request", {
+            request: { action: "start", command: "node --version", title: "Version", report: "status" },
+            reply: () => {}
+          }), 50);
+        });
+      }`,
+    });
+    const session = await f.runtime.create({ folder: f.folder, agent: name });
+    const statuses = (r: SessionRuntime) => r.items(session.id, {}).items.filter((item) => item.customType === STATUS_ENTRY);
+    await eventually(() => statuses(f.runtime).length === 1, 10_000);
+    await f.runtime.shutdown();
+    const reopened = f.make();
+    await reopened.open(session.id);
+    const items = reopened.items(session.id, {}).items;
+    assert.equal(statuses(reopened).length, 1);
+    assert.ok(items.every((item) => item.role !== "user" && item.role !== "assistant"));
+    assert.equal(f.provider.requests.length, 0);
+  } finally {
+    await f.cleanup();
+  }
 });

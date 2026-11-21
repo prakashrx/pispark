@@ -167,11 +167,50 @@ test("a session's files list what the person attached and what the agent made th
     [
       { name: "photo.png", by: "you", size: 9 },
       { name: "report.md", by: "agent", size: 8 },
-      { name: "unsent.txt", by: "you", size: 5 },
     ],
   );
   // Each opens as inert data from the same place as an attachment.
   const report = await fetch(`${f.base}/api/sessions/${f.id}/attachments/report.md`);
   assert.equal(await report.text(), "# Report");
   assert.equal((await fetch(`${f.base}/api/sessions/${randomUUID()}/attachments`)).status, 400);
+});
+
+test("an uploaded image enters Artifacts only when recorded in a user message", async (t) => {
+  const f = await fixture(t);
+  f.provider.automatic = true;
+  await f.upload("draft.png", "image bytes");
+  const files = () => fetch(`${f.base}/api/sessions/${f.id}/attachments`).then((response) => response.json());
+  assert.deepEqual(await files(), { files: [] });
+  const failed = await f.post({ type: "start", sessionId: f.id, text: "send", attachments: ["draft.png", "missing.png"] });
+  assert.equal((await f.settle(failed.receipt)).outcome, "failed");
+  assert.deepEqual(await files(), { files: [] });
+  const sent = await f.post({ type: "start", sessionId: f.id, text: "send", attachments: ["draft.png"] });
+  assert.equal((await f.settle(sent.receipt)).outcome, "completed");
+  const listed = await files() as { files: { name: string; by?: string }[] };
+  assert.deepEqual(listed.files.map(({ name, by }) => ({ name, by })), [{ name: "draft.png", by: "you" }]);
+});
+
+test("a fork's sent attachments link to its own files after the source is deleted", async (t) => {
+  const f = await fixture(t);
+  f.provider.automatic = true;
+  await f.upload("sent.txt", "shared notes");
+  await f.upload("draft.txt", "unsent");
+  const sent = await f.post({ type: "start", sessionId: f.id, text: "read later", attachments: ["sent.txt"] });
+  await f.settle(sent.receipt);
+  const forked = await f.settle((await f.post({ type: "fork", sessionId: f.id })).receipt);
+  assert.equal(forked.outcome, "completed");
+  const fork = forked.sessionId!;
+  await f.settle((await f.post({ type: "archive", sessionId: f.id })).receipt);
+  await f.settle((await f.post({ type: "delete", sessionId: f.id })).receipt);
+  await f.settle((await f.post({ type: "open", sessionId: fork })).receipt);
+  const page = await fetch(`${f.base}/api/sessions/${fork}/items`).then((response) => response.json());
+  const user = page.items.find((item: { role: string }) => item.role === "user");
+  assert.ok(user);
+  const reference = user.parts.find((part: { type: string }) => part.type === "text").text;
+  assert.ok(reference.includes(fork));
+  assert.ok(!reference.includes(f.id));
+  const files = await fetch(`${f.base}/api/sessions/${fork}/attachments`).then((response) => response.json());
+  assert.deepEqual(files.files.map(({ name, by }: { name: string; by?: string }) => ({ name, by })), [{ name: "sent.txt", by: "you" }]);
+  const file = await fetch(`${f.base}/api/sessions/${fork}/attachments/sent.txt`);
+  assert.equal(await file.text(), "shared notes");
 });

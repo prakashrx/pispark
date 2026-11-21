@@ -10,8 +10,9 @@
   $effect(() => {
     void blocks;
     if (!root) return;
-    for (const pre of root.querySelectorAll("pre")) {
-      if (pre.querySelector(".code-copy") || (streaming && pre === root.querySelector("pre:last-of-type"))) continue;
+    const code = [...root.querySelectorAll("pre")];
+    for (const pre of code) {
+      if (pre.querySelector(".code-copy") || (streaming && pre === code.at(-1))) continue;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "code-copy";
@@ -30,9 +31,29 @@
   });
 </script>
 
-<div class="prose max-w-none" bind:this={root}>{#each blocks as html, index (index)}{@html html}{/each}</div>
+<div class="prose max-w-none" bind:this={root}>{#each blocks as html, index (index)}
+  {#if html.startsWith("<table>")}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users can scroll wide tables.) -->
+    <div class="table-scroll" role="region" aria-label="Table" tabindex="0">{@html html}</div>
+  {:else}
+    <div class="reading-block">{@html html}</div>
+  {/if}
+{/each}</div>
 
 <style>
+  .reading-block {
+    max-width: 48rem;
+    margin-inline: auto;
+    display: flow-root;
+  }
+  .table-scroll {
+    overflow-x: auto;
+    overflow-wrap: normal;
+  }
+  .table-scroll:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+  }
   .prose :global(pre) {
     position: relative;
   }

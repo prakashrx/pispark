@@ -95,7 +95,7 @@ function validate(value: unknown): Command {
         ]
       : c.type === "reload"
         ? ["sessionId", ...(c.model === undefined ? [] : ["model"])]
-      : ["open", "cancel", "stop", "archive", "restore", "delete", "allow-hold", "deny-hold", "release-hold"].includes(String(c.type))
+      : ["open", "cancel", "stop", "archive", "restore", "delete", "compact", "fork", "allow-hold", "deny-hold", "release-hold"].includes(String(c.type))
         ? ["sessionId"]
         : c.type === "rename"
           ? ["sessionId", "title"]
@@ -420,6 +420,12 @@ export class SessionHttp {
             command.type,
             command.attachments,
           );
+          break;
+        case "compact":
+          await this.runtime.compact(command.sessionId);
+          break;
+        case "fork":
+          receipt.sessionId = await this.runtime.fork(command.sessionId);
           break;
         case "cancel":
           await this.runtime.cancel(command.sessionId);

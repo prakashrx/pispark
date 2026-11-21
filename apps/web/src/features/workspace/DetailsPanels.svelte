@@ -7,12 +7,13 @@
    * longer work (a schedule's form, a process's output, editing the agent) opens as a view in the
    * same panel, with Back to here.
    */
+  import Button from "../../lib/ui/Button.svelte";
   import Fold from "../../lib/ui/Fold.svelte";
   import Selector from "../../lib/ui/Selector.svelte";
   import type { ThinkingLevel } from "../../../../server/src/contract/agent-protocol";
   import { contributionsFor } from "./extension-views";
   import { useNow } from "./clock.svelte";
-  import type { SessionFile } from "../../../../server/src/contract/protocol";
+  import type { SessionFile, SessionInfo } from "../../../../server/src/contract/protocol";
   import { fileKind, fileSize, fileUrl } from "../files/file-kinds";
   import Icon from "../../lib/ui/Icon.svelte";
   import Toggle from "../../lib/ui/Toggle.svelte";
@@ -38,11 +39,13 @@
   const tasks = $derived(info ? client.processes.running.filter((p) => p.sessionId === info.id) : []);
   // "Running · 4 min" keeps counting while a task runs.
   const clock = useNow(() => tasks.length > 0);
-  const started = $derived(info ? client.sessions.filter((each) => each.parent === info.id) : []);
+  const related = $derived(info ? client.sessions.filter((each) => each.parent === info.id) : []);
+  const started = $derived(related.filter((each) => !each.forkOf));
+  const forks = $derived(related.filter((each) => each.forkOf));
   const routines = $derived(info ? client.routines.of(info.agent.id) : []);
   const doc = $derived(session.doc);
   // Model and thinking change between replies (Pi switches from the next one on).
-  const between = $derived((doc?.status === "idle" || doc?.status === "error") && !doc.readOnly);
+  const between = $derived((doc?.status === "idle" || doc?.status === "error") && !doc.readOnly && !doc.compacting);
   const models = $derived(
     client.providers.catalog.providers.flatMap((p) =>
       p.models.filter((m) => m.available).map((m) => ({ value: JSON.stringify({ provider: p.id, id: m.id }), label: `${m.name} · ${p.name}` })),
@@ -57,6 +60,20 @@
       await session.configure(change);
     } catch (failure) {
       configureError = (failure as Error).message;
+    }
+  }
+  let compactResult = $state("");
+  let requestingCompaction = $state(false);
+  async function compactContext() {
+    compactResult = "";
+    requestingCompaction = true;
+    try {
+      await session.compact();
+      compactResult = "Context compacted.";
+    } catch (failure) {
+      compactResult = (failure as Error).message;
+    } finally {
+      requestingCompaction = false;
     }
   }
   // Artifacts (design set 4/2): the files you attached and the ones the agent made for you, read
@@ -131,7 +148,7 @@
           <dd>{sessionStarted(info)}</dd>
         </div>
         {#if parent}<div>
-            <dt>Started by</dt>
+            <dt>{info?.forkOf ? "Forked from" : "Started by"}</dt>
             <dd><button type="button" class="link" onclick={() => client.open(parent.id)}>{sessionName(parent)}</button></dd>
           </div>{/if}
       </dl>
@@ -155,6 +172,11 @@
         <p class="note">
           {context.percent === null ? "Measured again after the next reply. " : ""}Earlier messages are summarized when it’s nearly full.
         </p>
+        <Button size="compact" variant="ghost"
+          unavailable={!between || requestingCompaction ? "The session is busy" : undefined}
+          onclick={compactContext}>{requestingCompaction || doc.compacting ? "Compacting…" : "Compact context"}</Button>
+        {#if doc.compacting}<Button size="compact" variant="ghost" onclick={() => void session.stop()}>Cancel compaction</Button>{/if}
+        {#if compactResult}<p role="status">{compactResult}</p>{/if}
       </Fold>{/if}
 
     {#if files.length}<Fold title="Artifacts" count={String(files.length)}>
@@ -234,27 +256,11 @@
       </Fold>{/if}
 
     {#if started.length}<Fold title="Sessions it started" count={String(started.length)}>
-        <ul class="rows" aria-label="Sessions it started">
-          {#each started as child (child.id)}
-            {@const state = sessionState(child)}
-            <li class="row">
-              <button type="button" class="grow link line" onclick={() => client.open(child.id)}>{sessionName(child)}</button>
-              {#if state}<StatusMark
-                  kind={state === "needs-you" ? "attention" : state === "failed" ? "error" : state === "queued" ? "waiting" : "busy"}
-                  label={sessionStatus(child)}
-                  words
-                />{:else}<span class="sub">Finished</span>{/if}
-              {#if state === "working" || state === "queued"}<button
-                  type="button"
-                  class="icon"
-                  aria-label={`Stop ${sessionName(child)}`}
-                  title="Stop"
-                  onclick={() => void client.stop(child.id)}><Icon name="stop" class="h-4 w-4" /></button
-                >{/if}
-            </li>
-          {/each}
-        </ul>
+        {@render relatedRows("Sessions it started", started)}
         <p class="note">Each tells this session when it ends.</p>
+      </Fold>{/if}
+    {#if forks.length}<Fold title="Forks" count={String(forks.length)}>
+        {@render relatedRows("Forks", forks)}
       </Fold>{/if}
 
     {#if routines.length}<Fold title={`Routines of ${info.agent.name}`}>
@@ -298,6 +304,29 @@
 {/if}
 
 {#if editing}<ScheduleDialog sessionId={session.id} schedule={editing === true ? undefined : editing} onclose={() => (editing = undefined)} />{/if}
+
+{#snippet relatedRows(label: string, sessions: SessionInfo[])}
+  <ul class="rows" aria-label={label}>
+    {#each sessions as child (child.id)}
+      {@const state = sessionState(child)}
+      <li class="row">
+        <button type="button" class="grow link line" onclick={() => client.open(child.id)}>{sessionName(child)}</button>
+        {#if state}<StatusMark
+            kind={state === "needs-you" ? "attention" : state === "failed" ? "error" : state === "queued" ? "waiting" : "busy"}
+            label={sessionStatus(child)}
+            words
+          />{:else}<span class="sub">Finished</span>{/if}
+        {#if state === "working" || state === "queued"}<button
+            type="button"
+            class="icon"
+            aria-label={`Stop ${sessionName(child)}`}
+            title="Stop"
+            onclick={() => void client.stop(child.id)}><Icon name="stop" class="h-4 w-4" /></button
+          >{/if}
+      </li>
+    {/each}
+  </ul>
+{/snippet}
 
 <style>
   .panels {

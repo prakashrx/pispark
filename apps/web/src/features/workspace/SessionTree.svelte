@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "../../lib/ui/Icon.svelte";
+  import SessionTree from "./SessionTree.svelte";
   import SessionRow from "./SessionRow.svelte";
   import { useSessions } from "./session-client.svelte";
   import { foremostState, sessionName, sessionState } from "./session-presentation";
@@ -17,9 +18,19 @@
   const client = useSessions();
   const id = $props.id();
   const started = $derived(client.sessions.filter((each) => each.parent === session.id));
+  const hasFork = $derived(started.some((each) => each.forkOf));
+  const byId = $derived(new Map(client.sessions.map((each) => [each.id, each])));
+  function isUnder(id: string, ancestor: string) {
+    const seen = new Set<string>();
+    for (let parent = byId.get(id)?.parent; parent && !seen.has(parent); parent = byId.get(parent)?.parent) {
+      if (parent === ancestor) return true;
+      seen.add(parent);
+    }
+    return false;
+  }
   let toggled = $state<boolean>();
   const open = $derived(
-    started.length > 0 && (toggled ?? started.some((each) => each.id === client.selected || ["working", "needs-you", "queued"].includes(sessionState(each)))),
+    started.length > 0 && (toggled ?? ((client.selected && isUnder(client.selected, session.id)) || started.some((each) => ["working", "needs-you", "queued"].includes(sessionState(each))))),
   );
 </script>
 
@@ -30,15 +41,15 @@
         class="tree-toggle"
         aria-expanded={open}
         aria-controls={id}
-        aria-label={`Sessions started by ${name}`}
+        aria-label={hasFork ? `Sessions under ${name}` : `Sessions started by ${name}`}
         onclick={() => (toggled = !open)}><Icon name={open ? "chevronDown" : "chevronRight"} class="h-3.5 w-3.5" /></button
       >{/if}
   {/snippet}
 </SessionRow>
 {#if open}
-  <div {id} class="started space-y-px" role="group" aria-label={`Started by ${name}`}>
+  <div {id} class="started space-y-px" role="group" aria-label={hasFork ? `Under ${name}` : `Started by ${name}`}>
     {#each started as child (child.id)}
-      <SessionRow session={child} name={sessionName(child)} class="child-session" />
+      <SessionTree session={child} name={sessionName(child)} class="child-session" />
     {/each}
   </div>
 {/if}

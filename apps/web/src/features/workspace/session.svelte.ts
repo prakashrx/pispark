@@ -92,7 +92,7 @@ export class Session {
     const message = text ?? this.draft;
     const revision = this.draftRevision;
     // After a failed reply the next message goes too: the server starts the session again first.
-    if (this.sending || !message.trim() || !["idle", "error"].includes(this.doc?.status ?? "")) return false;
+    if (this.sending || this.doc?.compacting || !message.trim() || !["idle", "error"].includes(this.doc?.status ?? "")) return false;
     // The draft's attachments go with it, each named where it sits; a given text carries none.
     const placed = text === undefined ? this.attachments.placed(message) : [];
     if (placed.length && this.attachments.blocked) {
@@ -165,6 +165,12 @@ export class Session {
   /** Between replies: another model or thinking level from the next reply on. Throws so the picker can say why. */
   async configure(change: { model?: { provider: string; id: string }; thinking?: ThinkingLevel }) {
     await this.transport.run({ type: "configure", sessionId: this.id, ...change });
+  }
+  async compact() {
+    await this.transport.run({ type: "compact", sessionId: this.id });
+  }
+  async fork() {
+    return (await this.transport.run({ type: "fork", sessionId: this.id })).sessionId;
   }
   /** The session's files: what the person attached and what the agent made (its artifacts). */
   async files(): Promise<SessionFile[]> {
@@ -314,7 +320,7 @@ export class Session {
     }
   }
   private watch(receipt: Receipt) {
-    void this.transport.settled(receipt).catch((error) => {
+    void this.transport.settled(receipt, true).catch((error) => {
       if (!this.transport.closed) this.fail(error);
     });
   }

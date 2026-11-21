@@ -103,7 +103,7 @@
 </script>
 
 <div class="conversation px-4 pt-4 pb-4 sm:px-6 flex flex-col items-center">
-  <div class="w-full max-w-3xl flex flex-col gap-6" bind:this={column}>
+  <div class="w-full max-w-[68rem] min-w-0 flex flex-col gap-6" bind:this={column}>
     {#if doc}
       <div bind:this={top} aria-hidden="true"></div>
       {#if loadingEarlier}<p role="status" class="text-sm text-muted-foreground">Loading earlier messages…</p>
@@ -139,6 +139,8 @@
     overflow-anchor: none;
   }
   .queued-turn {
+    width: min(100%, 48rem);
+    margin-inline: auto;
     display: flex;
     flex-direction: column;
     align-items: flex-end;

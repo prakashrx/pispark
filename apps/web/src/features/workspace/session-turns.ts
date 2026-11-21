@@ -44,7 +44,7 @@ export type Segment =
   | { kind: "notice"; key: string; notice: Pick<Notice, "kind" | "lines"> }
   /** A tool call drawn by the component its extension placed at `item.tool:<name>`. */
   | { kind: "view"; key: string; point: string; call: ToolCall }
-  | { kind: "stopped"; key: string; reason: "aborted" | "error" }
+  | { kind: "stopped"; key: string; reason: "aborted" | "error" | "usage-limit" }
   /** A session this one started, shown with its live state. */
   | { kind: "session"; key: string; sessionId: string; title: string }
   /** A process this one started, shown with its live state. */
@@ -127,6 +127,15 @@ export function buildTurns(
   },
 ): Turn[] {
   const results = new Map<string, Item>();
+  const terminal = new Set<Item>();
+  let laterAssistant = false;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]!;
+    if (item.role === "user") laterAssistant = false;
+    if (item.role !== "assistant" || laterAssistant) continue;
+    terminal.add(item);
+    laterAssistant = true;
+  }
   for (const item of items) if (item.role === "toolResult" && item.callId) results.set(item.callId, item);
   const notices = [...(options.notices ?? [])].sort((a, b) => a.after - b.after || a.at - b.at);
   const turns: Turn[] = [];
@@ -222,8 +231,8 @@ export function buildTurns(
           for (const artifact of artifacts) emit(turn, artifact);
         }
       });
-      if (item.stopReason === "aborted" || item.stopReason === "error")
-        emit(turn, { kind: "stopped", key: `${item.key}.stop`, reason: item.stopReason });
+      if (terminal.has(item) && (item.stopReason === "aborted" || item.stopReason === "error"))
+        emit(turn, { kind: "stopped", key: `${item.key}.stop`, reason: item.failure ?? item.stopReason });
     } else if (item.role === "custom" && item.customType === STATUS_ENTRY) {
       const d = (item.details ?? {}) as { title?: unknown; how?: unknown; session?: unknown; process?: unknown };
       emit(turn, {
