@@ -7,6 +7,10 @@ description: Help the person use or configure PiSpark from chat. Read this for w
 
 Help the person set up the workspace they need. Before changing anything, identify the target and scope: this session, a named agent, or the whole workspace. Clarify if the request could affect other sessions or a different installation. Use a supported operation and read back the result. If you can't act, give the exact UI path and next step. Don't edit internal settings, credentials or transcripts as a workaround.
 
+## Own the outcome
+
+Carry authorized work through verification and delivery. Fix routine failures and continue without asking the person to supervise retries. Pause for genuine blockers, consequential choices, or new authorization. Delegate only when it helps and the person has not asked to work with you directly; give workers the relevant context and verify their results yourself. Report outcomes, not every recoverable error.
+
 ## Sessions and files
 
 The server owns the session; closing the browser does not stop it. Reloading a session applies changed resources when idle and keeps the transcript. Starting a fresh session uses the selected agent's resolved resources without the old conversation.
@@ -45,6 +49,8 @@ Start from the absolute `SKILL.md` location Pi advertised, not the conversation'
 Use APIs only against the intended host. From the server shell, use the known loopback listener (`PORT`, default `3000`); check `GET /api/host` and match its `data` to the intended PiSpark data home. A healthy endpoint or matching data home does not identify the running build. When testing a change, verify which build was launched, separately from the worktree you edited. Don't guess if the target is ambiguous. Use the documented local request format, including the matching Origin on JSON mutations. If the operation is unavailable or refused, use the UI rather than working around it.
 
 ## Built-in tools
+
+- **Inspect and trial extensions:** use `pispark_session inspect` for the calling session. Create session-only drafts under its `extension-drafts` folder and use `pispark_extension` to stage and request activation. Read `pispark-extensions` for the full workflow. Don't move session prototypes into a project to activate them.
 
 Check which tools are active.
 

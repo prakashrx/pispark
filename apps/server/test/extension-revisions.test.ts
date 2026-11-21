@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { ExtensionRevisions } from "../src/core/runtime/extension-revisions.js";
@@ -20,17 +20,21 @@ test("stage, deny, reload, replace, recover and remove without changing a siblin
   const h = await testHome();
   h.provider.automatic = true;
   await h.agent("default", { name: "Default" });
-  await h.agent("extension-dev", { name: "Extension Dev", on: ["tool:pispark_extension"] });
+  await h.agent("no-extension-dev", { name: "No Extension Dev", off: ["tool:pispark_extension"] });
   const folder = await h.folder("checkout", { "probe/index.mjs": probe("one"), "probe/Probe.svelte": "<p>Revision probe</p>" });
   const runtime = new SessionRuntime(h.configuration);
   try {
-    const { id } = await runtime.create({ folder, agent: "extension-dev" });
-    const sibling = await runtime.create({ folder, agent: "extension-dev" });
-    const plain = await runtime.create({ folder });
+    const { id } = await runtime.create({ folder });
+    const sibling = await runtime.create({ folder });
+    const plain = await runtime.create({ folder, agent: "no-extension-dev" });
+    const draft = join(h.home, "sessions", id, "extension-drafts", "probe");
+    await mkdir(draft, { recursive: true });
+    await writeFile(join(draft, "index.mjs"), probe("one"));
+    await writeFile(join(draft, "Probe.svelte"), "<p>Revision probe</p>");
     const revisions = new ExtensionRevisions(join(h.home, "sessions", id, "extension-revisions"));
     const invoke = (tool: string, args: object, session = id) => runtime.start(session, `tool:${tool}:${JSON.stringify(args)}`).completion;
     const stage = async () => {
-      await invoke("pispark_extension", { action: "stage", name: "probe", source: "probe" });
+      await invoke("pispark_extension", { action: "stage", name: "probe", source: "probe", scope: "session" });
       assert.ok(revisions.read().staged, sessionText(runtime, id).slice(-3000));
       return revisions.read().staged!.revision;
     };
@@ -49,7 +53,7 @@ test("stage, deny, reload, replace, recover and remove without changing a siblin
     assert.deepEqual(runtime.session(id).extensions.views, []);
     await reload(one, false);
     assert.deepEqual(revisions.read().active, []);
-    await writeFile(join(folder, "probe", "index.mjs"), probe("two"));
+    await writeFile(join(draft, "index.mjs"), probe("two"));
     await reload(one, true);
     await eventually(() => revisions.read().active[0]?.revision === one);
     await eventually(() => runtime.session(id).extensions.views[0]?.key === "revision-probe");
@@ -62,7 +66,7 @@ test("stage, deny, reload, replace, recover and remove without changing a siblin
     await eventually(() => revisions.read().active[0]?.revision === two);
     await invoke("revision_probe", {});
     assert.match(sessionText(runtime, id), /probe-two/);
-    await writeFile(join(folder, "probe", "index.mjs"), "throw new Error('fixture import failure')");
+    await writeFile(join(draft, "index.mjs"), "throw new Error('fixture import failure')");
     const broken = await stage();
     await reload(broken, true);
     await eventually(() => revisions.read().outcome?.includes(`Reload ${broken} failed`) === true);

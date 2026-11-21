@@ -10,7 +10,7 @@ Use an ordinary Pi extension for executable behavior. Register tools with Pi for
 ## Choose where it loads before writing
 
 - **Named agent:** put the extension under `<PiSpark data folder>/agents/<id>/extensions/<name>/index.ts`. All sessions that resolve that resource can load it on start or reload, including agents that inherit it. For an isolated dev agent, use its own folder and select it in a separate dev workspace; don't add trials to Default. Agent layering controls where code loads, not what it can access. Extensions run with the host user's permissions; their components run in the PiSpark page.
-- **One session:** use that session's existing agent layer (`sessions/<id>/agent/extensions/<name>/`). This changes what that session loads, not the base agent. Session extension **code** goes under `agent/extensions`; session extension **data** does not. There is no built-in promotion action that saves trial code to a named agent.
+- **One session:** write the editable source under `sessions/<id>/extension-drafts/<name>/`. This folder never auto-loads. Use `pispark_extension` to stage with `scope: "session"` and `source: "<name>"`, then request reload for the returned revision. Don't copy a session prototype into the project or edit the host's revision storage. Use `agent/extensions` only for explicitly configured, normally loaded resources; there is no built-in promotion action to a named agent.
 - A component needs a folder extension: keep its `.svelte` file and helpers beside the entry point. Resolve paths with `new URL('./…', import.meta.url)`, not the person's project folder. Confirm the target and what the code will do before editing. Work on the agent in its intended data home; use work records for plans and evidence, not as a second source tree.
 
 ## Tools, components, and state
@@ -50,8 +50,8 @@ export default function (pi: ExtensionAPI) {
 
 ## Reload and verify the real path
 
-- After editing resources, use **Reload session** when idle (or start a fresh session). Reopening a browser page alone is not a reload of the agent. Pi extension command-context `reload()` is not supported in PiSpark; don't promise that writing a file makes new code active.
-- Check the resolved agent and its tools, then actually call the tool or open the panel in the browser. Read any startup or compile notice. If you still see old behavior after a session reload, verify the checkout/build, data home and extension path before changing code again. Reproduce against the intended dev host, not the installation serving the conversation.
+- For a staged trial, use the native tool. PiSpark asks before activating an executable snapshot, then reloads after the current run settles. Staging, inspecting, and an ordinary idle **Reload session** do not activate the draft or need that approval. For normal agent resources, use the ordinary reload. Reopening a browser page does not reload the agent.
+- Own verification: use `pispark_session inspect` to check the active revision, tools, contributions, and errors. Then actually call the tool or open and exercise the panel in a real browser; a contribution is not proof of a render. Fix routine failures yourself within the agreed scope. When someone wants to build the extension with you, do it in their session; don't hand it to a background agent. Read any startup or compile notice. If you still see old behavior after a session reload, verify the checkout/build, data home and extension path before changing code again. Reproduce against the intended dev host, not the installation serving the conversation.
 - For state, change it using the tool or control, reload or reopen, and confirm the expected value. Open a second session of the same agent to check isolation. Saving files is not evidence that a tool executed or a view rendered. Report what you checked and what's still unverified.
 
 ## References

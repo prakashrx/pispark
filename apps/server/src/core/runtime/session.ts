@@ -516,7 +516,7 @@ export class Session {
     const active = host.extensionCandidate?.(this.id) ?? revisions.read().active;
     for (const change of active) revisions.verify(change);
     const extensionPaths = [...setup.extensionPaths, ...active.map((change) => revisions.path(change))];
-    const development = setup.tools.some((tool) => tool.name === EXTENSION_TOOL && tool.on) && !setup.toolsOff.includes(EXTENSION_TOOL);
+    const development = !setup.toolsOff.includes(EXTENSION_TOOL);
     const views = (this.views = new ExtensionViews(
       extensionPaths.map((path) => dirname(path)),
       { changed: () => this.changed(), failed: (message) => ui.failed(message), callTimeoutMs: host.callTimeout, points: host.points },
@@ -529,7 +529,6 @@ export class Session {
         extensionPaths,
         toolsOff: [
           ...setup.toolsOff,
-          ...(!development ? [EXTENSION_TOOL] : []),
           ...(metadata.parent && metadata.report === "status" ? [] : [REPORT_TOOL]),
         ],
       },
@@ -783,7 +782,10 @@ export class Session {
       if (request.action === "stage" || request.action === "remove") {
         if (!extensionNameValid(request.name) || (request.action === "stage" && (typeof request.source !== "string" || !request.source))) throw new Error("Invalid extension name or source.");
         if (this.extensionApproval) throw new Error("A revision is awaiting approval.");
-        const change = revisions.stage(this.metadata.cwd, request.name, request.action === "stage" ? request.source : undefined);
+        const sessionSource = request.action === "stage" && request.scope === "session";
+        const folder = this.host.storage.directory(this.id);
+        const sourceRoot = sessionSource ? join(folder, "extension-drafts") : this.metadata.cwd;
+        const change = revisions.stage(sourceRoot, request.name, request.action === "stage" ? request.source : undefined, sessionSource ? folder : undefined);
         return reply(`Staged ${change.name} at revision ${change.revision}. Active code has not changed.`);
       }
       const change = revisions.read().staged;

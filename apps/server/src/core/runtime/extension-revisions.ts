@@ -90,7 +90,7 @@ export class ExtensionRevisions {
   path(change: ExtensionChange): string {
     return join(this.root, change.snapshot!, change.entry!);
   }
-  stage(cwd: string, name: string, source?: string): ExtensionChange {
+  stage(cwd: string, name: string, source?: string, sessionRoot?: string): ExtensionChange {
     const state = this.read();
     if (!extensionNameValid(name)) throw new Error("Give a lowercase extension name (letters, digits and hyphens).");
     const prior = state.active.find((change) => change.name === name);
@@ -102,6 +102,8 @@ export class ExtensionRevisions {
       if (source.length > 1024 || isAbsolute(source) || !parts.every((part) => FILE.test(part) && !part.endsWith(".")))
         throw new Error("Give a relative path inside the session checkout, without dot segments.");
       const root = realpathSync(cwd);
+      if (sessionRoot && root !== join(realpathSync(sessionRoot), "extension-drafts"))
+        throw new Error("Use the session's own extension-drafts directory without links.");
       const path = join(root, ...parts);
       if (relative(root, path).startsWith(`..${sep}`) || realpathSync(path) !== path)
         throw new Error("Source must be inside the session checkout and must not traverse links.");
@@ -120,7 +122,7 @@ export class ExtensionRevisions {
           if (snapshot(destination, copy.entry).hash !== copy.hash) throw error;
         }
       } finally { rmSync(temp, { recursive: true, force: true }); }
-      change = { name, source, entry: copy.entry, snapshot: copy.hash, revision: randomRevision(name, copy.hash) };
+      change = { name, source: sessionRoot ? `extension-drafts/${source}` : source, entry: copy.entry, snapshot: copy.hash, revision: randomRevision(name, copy.hash) };
     } else change = { name, revision: randomRevision(name, prior!.snapshot!) };
     this.write({ ...state, staged: change });
     this.prune(state.staged?.snapshot);

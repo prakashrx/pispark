@@ -175,9 +175,9 @@ Copy some of Pi's own examples (`node_modules/@earendil-works/pi-coding-agent/ex
 
 Use `pispark_session` with `action: "inspect"` to list this session's loaded resources, registered extension tools and commands, active tools, offered views, and recent errors. Offered views are not evidence that a browser mounted them.
 
-For development, opt into `tool:pispark_extension` in the session's agent configuration. In a session whose working folder is the intended checkout:
+`pispark_extension` is available by default unless the agent disables it. Keep session-only source in `sessions/<id>/extension-drafts/<name>/`, outside the project and any automatically loaded resource folders.
 
-1. Call `pispark_extension` with `action: "stage"`, a lowercase `name`, and a relative `source` path. Use a single Pi entry file or a folder with one `index.ts`, `index.js`, `index.mjs`, or `index.mts` and its companion files. PiSpark snapshots at most 128 regular files and 2 MiB; links, dependency folders and hidden files are not supported. Stage the same name to replace it. Only one change is staged at a time.
+1. Call `pispark_extension` with `action: "stage"`, a lowercase `name`, `scope: "session"`, and a `source` relative to that session's `extension-drafts` folder. For repository-owned sources, use `scope: "project"` (the compatibility default). Use a single Pi entry file or a folder with one `index.ts`, `index.js`, `index.mjs`, or `index.mts` and its companion files. PiSpark snapshots at most 128 regular files and 2 MiB; links, dependency folders and hidden files are not supported. Stage the same name to replace it. Only one change is staged at a time.
 2. Call `action: "reload"` with the exact returned `revision`, then review and approve the confirmation. A regular Reload session does not activate staged files. The approved reload runs after the current run settles, and is skipped if work is waiting. Look for the outcome notice or inspect the session. If the new code fails to load, PiSpark attempts to reopen with the previous selection.
 3. To remove an extension installed this way, call `action: "remove"` with its `name`, then approve a reload of the new revision. This does not remove code from the checkout, a named agent or the session's manually configured agent layer. A sibling or fork does not inherit the trial.
 

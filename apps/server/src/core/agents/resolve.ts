@@ -21,7 +21,6 @@ import {
   parseSwitch,
   AgentError,
 } from "./format.js";
-import { EXTENSION_TOOL } from "../runtime/extension-tool.js";
 import type { LayerItem, AgentStore } from "./store.js";
 
 const MAX_LAYERS = 16;
@@ -198,7 +197,6 @@ function fold(store: AgentStore, layers: Layer[]) {
   }
   for (const name of BUILTIN_TOOLS)
     if (!tools.has(name)) tools.set(name, { name, on: false, builtIn: true });
-  if (!tools.has(EXTENSION_TOOL)) tools.set(EXTENSION_TOOL, { name: EXTENSION_TOOL, on: false, builtIn: false });
   return { entries, tools, settings };
 }
 

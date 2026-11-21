@@ -1,3 +1,4 @@
+import { EXTENSION_TOOL } from "../src/core/runtime/extension-tool.js";
 import { viewAgent } from "../src/core/agents/resolve.js";
 import { BUILT_IN_SKILLS } from "../src/core/runtime/configuration.js";
 import { PROCESS_TOOL } from "../src/core/runtime/process-tool.js";
@@ -63,7 +64,7 @@ test("a fresh data root needs no setup: Default gives every session Pi's built-i
     await f.runtime.start(session.id, "read:value.txt").completion;
     assert.deepEqual(
       toolsOf(f.provider.requests[0]!).sort(),
-      [...DEFAULT_TOOLS, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL, PROCESS_TOOL].sort(),
+      [...DEFAULT_TOOLS, EXTENSION_TOOL, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL, PROCESS_TOOL].sort(),
     );
     assert.match(sessionText(f.runtime, session.id), /WORK-FILE/);
   } finally {

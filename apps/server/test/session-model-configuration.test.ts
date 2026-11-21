@@ -132,11 +132,16 @@ for (const kind of ["modelOverrides", "models"] as const)
     await assert.rejects(
       sessions.create({ folder: root }),
     );
-    await sessions.start(a.id, "admitted despite broken file").completion;
-    assert.equal(
-      f.control.requests.at(-1)?.headers?.["x-route"],
-      "PRIVATE_CHANGED_ROUTE",
-    );
+    const message = "admitted despite broken file";
+    const requestCount = f.control.requests.length;
+    assert.equal((await sessions.start(a.id, message).completion).outcome, "completed");
+    const admitted = f.control.requests.slice(requestCount).find(({ context }) => {
+      const user = context.messages.findLast((entry) => entry.role === "user");
+      return user?.content === message || (Array.isArray(user?.content) &&
+        user.content.some((part) => part.type === "text" && part.text === message));
+    });
+    assert.ok(admitted, "the already admitted session dispatched the requested turn");
+    assert.equal(admitted.headers?.["x-route"], "PRIVATE_CHANGED_ROUTE");
     await sessions.stop(a.id);
     await assert.rejects(sessions.open(a.id));
     const publicValues = JSON.stringify([
