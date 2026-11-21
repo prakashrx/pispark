@@ -12,6 +12,7 @@ import { HostHttp } from "./http/host-http.js";
 import { HostLink } from "./core/host-link.js";
 import { RemoteAccess } from "./core/remote/remote-access.js";
 
+const configuration = hostConfiguration();
 const host = process.env.HOST ?? "127.0.0.1";
 if (!["127.0.0.1", "::1"].includes(host))
   throw new Error(
@@ -23,7 +24,6 @@ if (!/^\d+$/.test(portInput) || Number(portInput) > 65535) {
   process.exit(1);
 }
 const webRoot = fileURLToPath(new URL("../../web/dist/", import.meta.url));
-const configuration = hostConfiguration();
 // First start creates the folders (and the Default agent, via the runtime).
 const paths = prepareHome(configuration.home);
 const releaseHome = lockHome(paths);

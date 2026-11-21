@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,6 +46,7 @@ test("startup: transport gate, first-start Default agent, public bind refusal", 
   });
   assert.notEqual(bind.status, 0);
   assert.match(bind.stderr, /HOST must be literal loopback/);
+  await writeFile(join(root, ".env"), "PISPARK_TEST_FROM_FILE=loaded\nPORT=41\nPISPARK_HOME=unused\n");
   const source = new URL("../src/http/host-configuration.ts", import.meta.url).href;
   const probe = spawnSync(
     process.execPath,
@@ -54,13 +55,15 @@ test("startup: transport gate, first-start Default agent, public bind refusal", 
       "tsx",
       "--input-type=module",
       "-e",
-      `import {hostConfiguration} from ${JSON.stringify(source)}; console.log(JSON.stringify(hostConfiguration()))`,
+      `import {hostConfiguration} from ${JSON.stringify(source)}; const config=hostConfiguration(); console.log(JSON.stringify({ ...config, fromFile: process.env.PISPARK_TEST_FROM_FILE, port: process.env.PORT }))`,
     ],
-    { env: { ...process.env, PISPARK_HOME: root }, encoding: "utf8" },
+    { env: { ...process.env, PISPARK_HOME: root, PISPARK_TEST_FROM_FILE: undefined, PORT: "0" }, encoding: "utf8" },
   );
   if (bundledTransportPatched(process.versions.undici)) {
     assert.equal(probe.status, 0, probe.stderr);
-    assert.deepEqual(JSON.parse(probe.stdout), { home: root, points: [...WORKSPACE_POINTS] });
+    assert.deepEqual(JSON.parse(probe.stdout), {
+      home: root, points: [...WORKSPACE_POINTS], fromFile: "loaded", port: "0",
+    });
   } else {
     assert.notEqual(probe.status, 0);
     assert.match(probe.stderr, /Native providers disabled/);
