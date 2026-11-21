@@ -60,7 +60,7 @@ fresh("the agent editor lists PiSpark's own tools, found in its built-in extensi
   await openAgent(page, "Default");
   const core = page.getByRole("list", { name: "PiSpark tools" });
   await expect(core.getByRole("switch", { name: "Allow read" })).toBeVisible();
-  await expect(core.getByRole("switch", { name: "Allow Start other sessions" })).toBeChecked();
+  await expect(core.getByRole("switch", { name: "Allow Session tools" })).toBeChecked();
   await expect(core.getByRole("switch", { name: "Allow Set session title" })).toBeChecked();
   await expect(core.getByText("pispark_schedule")).toBeVisible();
 });

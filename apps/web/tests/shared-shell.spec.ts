@@ -108,16 +108,19 @@ test("the New session composer stays typeable and its controls inside it at ever
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/#/new");
     const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
-    await ask.fill(`Question at ${width}`);
-    expect((await ask.boundingBox())!.width).toBeGreaterThan(200);
-    // A resize can move the composer between the middle and the dock: measure once it has settled.
+    const question = `Question at ${width}`;
+    await ask.fill(question);
+    // Responsive placement can briefly remount the composer. Check the preserved draft and geometry.
+    await expect(ask).toHaveText(question);
+    await expect.poll(async () => (await ask.boundingBox())?.width ?? 0).toBeGreaterThan(200);
     const form = page.getByRole("form", { name: "New session" });
     const start = page.getByRole("button", { name: "Start session", exact: true });
-    await expect.poll(async () => !!(await form.boundingBox()) && !!(await start.boundingBox())).toBe(true);
-    const surface = (await form.boundingBox())!;
-    const run = (await start.boundingBox())!;
-    expect(run.x + run.width).toBeLessThanOrEqual(surface.x + surface.width);
-    expect(run.y + run.height).toBeLessThanOrEqual(surface.y + surface.height);
+    await expect.poll(async () => {
+      const surface = await form.boundingBox();
+      const run = await start.boundingBox();
+      return !!surface && !!run && run.x + run.width <= surface.x + surface.width &&
+        run.y + run.height <= surface.y + surface.height;
+    }).toBe(true);
     // The choices are reachable and their picker returns focus.
     await folderButton(page).click();
     await expect(page.getByRole("combobox", { name: "Search Working folder" })).toBeFocused();
