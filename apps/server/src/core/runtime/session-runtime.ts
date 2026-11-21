@@ -158,7 +158,10 @@ export class SessionRuntime {
       model: (metadata, setup) => this.model(metadata, setup),
       summary: (session) => this.summary(session.metadata, session),
       released: (session) => {
-        if (this.live.get(session.id) === session) this.live.delete(session.id);
+        if (this.live.get(session.id) === session) {
+          this.live.delete(session.id);
+          this.extensionReloads.delete(session.id);
+        }
         this.layered.delete(session.id);
         if (!session.published) this.storage.discardUnpublished(session.id);
       },
@@ -168,8 +171,16 @@ export class SessionRuntime {
       processes: { request: (sessionId, request, signal) => this.sessionProcesses.request(sessionId, request, signal) },
       sessions: { request: (parentId, request) => this.children.request(parentId, request) },
       // A waiting wake goes as soon as its session is free; the minute check catches anything missed.
-      freed: () => {
-        if (this.accepting) void this.wakes.drain();
+      extensionPending: (id) => this.extensionReloads.get(id) ?? this.extensionCandidates.get(id)?.revision,
+      extensionCandidate: (id) => this.extensionCandidates.get(id)?.active,
+      extensionReload: (session, revision) => {
+        if (!this.accepting || this.live.get(session.id) !== session || this.wakes.waiting(session.id)) return false;
+        this.extensionReloads.set(session.id, revision);
+        return true;
+      },
+      freed: (session) => {
+        if (!this.accepting) return;
+        void this.applyExtensionReload(session).finally(() => this.wakes.drain()).catch(() => {});
       },
       touched: () => {
         for (const listener of this.touchedListeners) listener();
@@ -190,7 +201,7 @@ export class SessionRuntime {
         ...sessions,
         free: (id) => {
           const session = this.live.get(id);
-          return !session || (session.ready && session.settled);
+          return !this.extensionReloads.has(id) && !this.extensionCandidates.has(id) && (!session || (session.ready && session.settled));
         },
         run: async (id, wake, details) => {
           this.admit();
@@ -452,7 +463,12 @@ export class SessionRuntime {
     return dir;
   }
   async open(id: string): Promise<SessionDoc> {
+    return this.openCurrent(id);
+  }
+  private async openCurrent(id: string, extensionRevision?: string): Promise<SessionDoc> {
     validateId(id);
+    const candidate = this.extensionCandidates.get(id);
+    if (candidate && candidate.revision !== extensionRevision) throw new RuntimeError("busy");
     if (this.live.has(id)) throw new RuntimeError("owned");
     this.admit();
     if (this.live.size >= this.maxLive) {
@@ -484,7 +500,12 @@ export class SessionRuntime {
    * session runs that one from now on (how a read-only session whose model is gone goes on).
    */
   async reload(id: string, model?: ModelChoice): Promise<SessionDoc> {
+    return this.reloadCurrent(id, model);
+  }
+  private async reloadCurrent(id: string, model?: ModelChoice, extensionRevision?: string): Promise<SessionDoc> {
     validateId(id);
+    if (this.extensionReloads.has(id) || this.extensionCandidates.get(id)?.revision !== extensionRevision)
+      throw new RuntimeError("busy");
     if (model !== undefined && !validChoice(model)) throw new RuntimeError("invalid-input");
     const session = this.live.get(id);
     if (session) {
@@ -496,7 +517,44 @@ export class SessionRuntime {
       if (metadata.archived) throw new RuntimeError("not-found");
       this.storage.write({ ...metadata, model: { provider: model.provider, id: model.id } });
     }
-    return this.open(id);
+    return this.openCurrent(id, extensionRevision);
+  }
+  private readonly extensionReloads = new Map<string, string>();
+  private readonly extensionCandidates = new Map<string, { revision: string; active: import("./extension-revisions.js").ExtensionChange[] }>();
+  private async applyExtensionReload(session: Session): Promise<void> {
+    const { id, extensionRevisions: revisions } = session;
+    const revision = this.extensionReloads.get(id);
+    if (!revision || this.live.get(id) !== session || !session.settled) return;
+    this.extensionReloads.delete(id);
+    const before = revisions.read();
+    const change = before.staged;
+    const report = (state: typeof before, outcome: string, failed: boolean) => {
+      revisions.write({ ...state, outcome });
+      this.live.get(id)?.extensionReloadNotice(outcome, failed);
+    };
+    if (change?.revision !== revision || this.wakes.waiting(id) || session.metadata.queued !== undefined || session.extensionReloadCancelled) {
+      report(before, `Reload ${revision} skipped: the run did not complete, work is waiting, or the staged revision changed.`, true);
+      return;
+    }
+    const prior = before.active.find((item) => item.name === change.name);
+    const next = { active: [...before.active.filter((item) => item.name !== change.name), ...(change.snapshot ? [change] : [])] };
+    try {
+      revisions.verify(change);
+      this.extensionCandidates.set(id, { revision, ...next });
+      const doc = await this.reloadCurrent(id, undefined, revision);
+      if (doc.status !== "idle") throw new RuntimeError("extension");
+      report(next, `Reloaded revision ${revision}: ${change.snapshot ? `loaded ${change.name}` : `removed ${change.name}`}.`, false);
+    } catch (error) {
+      this.extensionCandidates.delete(id);
+      const outcome = `Reload ${revision} failed (${runtimeError(error, "extension").code}); previous selection restored.`;
+      report(before, outcome, true);
+      if (this.accepting) {
+        try { await this.reload(id); this.live.get(id)?.extensionReloadNotice(outcome, true); }
+        catch { report(before, `${outcome} Could not reopen the session.`, true); }
+      }
+      return;
+    } finally { this.extensionCandidates.delete(id); }
+    revisions.prune(prior?.snapshot);
   }
   async stop(id: string): Promise<void> {
     validateId(id);

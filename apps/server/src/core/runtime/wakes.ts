@@ -295,8 +295,8 @@ export class Wakes {
   records(sessionId: string, sourceId: string): WakeRecord[] {
     return structuredClone(this.states.get(sessionId)?.records[sourceId] ?? []);
   }
-  waiting(sessionId: string, sourceId: string): boolean {
-    return !!this.states.get(sessionId)?.waiting.some((w) => w.source.id === sourceId);
+  waiting(sessionId: string, sourceId?: string): boolean {
+    return !!this.states.get(sessionId)?.waiting.some((w) => sourceId === undefined || w.source.id === sourceId);
   }
   /** Whether the source has a wake waiting or running. */
   active(sessionId: string, sourceId: string): boolean {

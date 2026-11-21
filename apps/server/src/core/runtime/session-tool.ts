@@ -26,6 +26,7 @@ export type SessionRequest =
   /** Start a child session with a first message; `report` says how it tells this one when it ends. */
   | { action: "start"; prompt: string; agent?: string; title?: string; report?: ChildReportMode }
   | { action: "list" }
+  | { action: "inspect" }
   /** Send one of its children another message. */
   | { action: "send"; id: string; text: string }
   | { action: "stop"; id: string }
@@ -62,6 +63,7 @@ export function validSessionMessage(value: unknown): value is SessionMessage {
   const request = message.request as Record<string, unknown> | undefined;
   if (!request || typeof request !== "object") return false;
   switch (request.action) {
+    case "inspect":
     case "list":
       return true;
     case "start":

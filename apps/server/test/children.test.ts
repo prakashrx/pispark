@@ -49,8 +49,8 @@ test("a session starts a child; the child's answer comes back to the parent as a
     const parentTitle = f.runtime.list().find((s) => s.id === parent.id)!.title;
     assert.deepEqual((sent.details as { source: unknown }).source, { kind: "session", id: parent.id, label: parentTitle });
     assert.ok(childItems.some((item) => item.role === "assistant" && text(item) === "local:research zustand"));
-    const childRequest = f.provider.requests.find((request) => JSON.stringify(request.context.messages).includes("research zustand") && !toolsOf(request).includes(SESSION_TOOL));
-    assert.ok(childRequest, "the child's model call has no session tool");
+    const childRequest = f.provider.requests.find((request) => JSON.stringify(request.context.messages).includes("research zustand") && toolsOf(request).includes(SESSION_TOOL));
+    assert.ok(childRequest, "the child has the session tool for self-inspection");
 
     // Its answer wakes the parent as soon as the parent is free.
     await eventually(() => f.runtime.items(parent.id, {}).items.some((item) => item.customType === WOKEN_ENTRY));
@@ -86,7 +86,7 @@ test("the tool lists, sends to, reads and stops its own children only; a child c
     const other = await f.runtime.create({ folder: f.folder });
     assert.match(await answer(other.id, { action: "read", id: child!.id }), /did not start a session with that id/);
     // In the child, the request is refused even if something sends it.
-    assert.match(await answer(child!.id, { action: "list" }), /Tool pispark_session not found|not found|not available/i);
+    assert.match(await answer(child!.id, { action: "list" }), /Child sessions cannot manage other sessions/i);
   } finally {
     await f.cleanup();
   }
@@ -173,7 +173,7 @@ test("status mode: a line in the parent without a turn; the child can raise some
     assert.deepEqual(line.details, { session: quiet!.id, title: "Quiet", how: "finished" });
     // No turn: nothing woke the parent's agent.
     assert.ok(!f.runtime.items(parent.id, {}).items.some((item) => item.customType === WOKEN_ENTRY));
-    const childRequest = f.provider.requests.find((request) => JSON.stringify(request.context.messages).includes("all green") && !toolsOf(request).includes(SESSION_TOOL));
+    const childRequest = f.provider.requests.find((request) => JSON.stringify(request.context.messages).includes("all green") && toolsOf(request).includes(REPORT_TOOL));
     assert.ok(toolsOf(childRequest!).includes(REPORT_TOOL), "a child in status mode can raise things");
 
     // The child raises something: its text wakes the parent.

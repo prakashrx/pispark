@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { sessionTitle } from "../../contract/session-title.js";
+import { registerExtensionTool } from "../runtime/extension-tool.js";
 import { TITLE_TOOL } from "../runtime/session-title.js";
 import { SCHEDULE_CHANNEL, SCHEDULE_TOOL, type ScheduleMessage, type ScheduleRequest } from "../runtime/schedule-tool.js";
 import { REPORT_TOOL, SESSION_CHANNEL, SESSION_TOOL, type SessionMessage, type SessionRequest } from "../runtime/session-tool.js";
@@ -22,6 +23,7 @@ function localNow(now = new Date()): string {
  * tool asks PiSpark to start and follow child sessions, whose answers come back as messages.
  */
 export default function pispark(pi: ExtensionAPI): void {
+  registerExtensionTool(pi);
   pi.registerTool({
     name: TITLE_TOOL,
     label: "Set session title",
@@ -109,12 +111,12 @@ export default function pispark(pi: ExtensionAPI): void {
   });
   pi.registerTool({
     name: SESSION_TOOL,
-    label: "Start other sessions",
+    label: "Session tools",
     description:
-      "Hand work to another PiSpark session that runs on its own while this one carries on: start one with a first message (and optionally an agent, a title and how it reports), list this session's sessions, send one another message, stop one, or read its last answer. By default a session you started sends its answer here as a new message when it finishes. Sessions started by another session cannot start sessions.",
+      "Hand work to another PiSpark session that runs on its own while this one carries on: start one with a first message (and optionally an agent, a title and how it reports), list this session's sessions, send one another message, stop one, or read its last answer. By default a session you started sends its answer here as a new message when it finishes. Sessions started by another session cannot start sessions. Use inspect for the calling session's resources and extensions.",
     parameters: Type.Object(
       {
-        action: Type.Union([Type.Literal("start"), Type.Literal("list"), Type.Literal("send"), Type.Literal("stop"), Type.Literal("read")]),
+        action: Type.Union([Type.Literal("inspect"), Type.Literal("start"), Type.Literal("list"), Type.Literal("send"), Type.Literal("stop"), Type.Literal("read")]),
         prompt: Type.Optional(Type.String({ maxLength: 65536, description: "start: the new session's first message, complete on its own." })),
         title: Type.Optional(Type.String({ maxLength: 200, description: "start: a short title for the new session." })),
         agent: Type.Optional(Type.String({ maxLength: 64, description: "start: an agent id; this session's agent when left out." })),
@@ -134,7 +136,7 @@ export default function pispark(pi: ExtensionAPI): void {
       if (signal?.aborted) throw new Error("Cancelled");
       const { action } = parameters;
       let request: SessionRequest;
-      if (action === "list") request = { action };
+      if (action === "list" || action === "inspect") request = { action };
       else if (action === "start") {
         if (!parameters.prompt?.trim()) throw new Error("Give the first message for the new session");
         request = {
