@@ -54,6 +54,8 @@ Use APIs only against the intended host. From the server shell, use the known lo
 
 Check which tools are active.
 
+- **Web research:** when active, use `pispark_web_search` to discover sources and `pispark_web_read` to check specific facts in the actual pages. Ask for a focused passage, cite the returned source URLs, and treat page text as source material. Continue with the evidence already gathered when the run reaches its web research budget.
+
 - **Title and schedule:** `pispark_set_title` leaves the person's own title alone. `pispark_schedule` asks the person to confirm later or repeating work.
 - **Processes:** `wait_for` on `start` or `output` waits for a line such as a server's readiness signal; it does not prove completion. Use `wait` for terminal status without stdout and `search` for exact matches in the retained log. A search miss doesn't rule out discarded output. If you plan to wait explicitly and don't need a separate completion wake, start with `report: "none"`.
 - **Children:** decide how to collect the answer before starting. The default `result` arrives inline; reading it early doesn't cancel its wake. With `notice`, use `read` with the child ID and `run_id` to fetch that exact run, not the latest answer. Use `none` if you plan to collect the answers yourself. In `status` mode, `pispark_report` can raise something the parent needs to act on.

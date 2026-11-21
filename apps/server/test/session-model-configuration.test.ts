@@ -237,7 +237,7 @@ for (const kind of ["config-only", "builtin", "api-changing"] as const)
       await sessions.shutdown();
       await settings.close();
       resetApiProviders();
-      await rm(root, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     });
     const choice = { provider: id, id: modelId };
     const a = await sessions.create({

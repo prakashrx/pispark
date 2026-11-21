@@ -53,6 +53,12 @@ Install [Tailscale](https://tailscale.com/download) on the computer running PiSp
 
 Press **Pair a device** and scan the QR code with the phone (or open the address on it and type the 6-digit code), name the device and press Pair. In the phone's browser menu, choose Add to Home screen to use PiSpark like an app. Remove a device on the same page; [security](../SECURITY.md) has the details.
 
+## Web research
+
+To enable the built-in search and page-reading tools, set `PISPARK_TAVILY_API_KEY` in the PiSpark server's environment and restart PiSpark. For an auto-start install, set it for the account or service that starts the launcher. Search query text, selected public URLs, and page-reading questions are sent to [Tavily](https://docs.tavily.com/documentation/api-reference/introduction). The key is separate from the chat model's credentials and stays on the server.
+
+Search returns up to five sources with short previews. Page reading pulls passages relevant to a specific question from the selected page. Both tools share a limit of six requests and 8 KiB of source evidence per agent run. Citation URLs are included so the reply can link back to its sources.
+
 ## The program folder
 
 ```text

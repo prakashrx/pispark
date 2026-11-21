@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { sessionTitle } from "../../contract/session-title.js";
 import { registerExtensionTool } from "../runtime/extension-tool.js";
+import { registerWebResearch } from "./web-research.js";
 import { TITLE_TOOL } from "../runtime/session-title.js";
 import { SCHEDULE_CHANNEL, SCHEDULE_TOOL, type ScheduleMessage, type ScheduleRequest } from "../runtime/schedule-tool.js";
 import { REPORT_TOOL, SESSION_CHANNEL, SESSION_TOOL, type SessionMessage, type SessionRequest } from "../runtime/session-tool.js";
@@ -24,6 +25,7 @@ function localNow(now = new Date()): string {
  */
 export default function pispark(pi: ExtensionAPI): void {
   registerExtensionTool(pi);
+  registerWebResearch(pi);
   pi.registerTool({
     name: TITLE_TOOL,
     label: "Set session title",
