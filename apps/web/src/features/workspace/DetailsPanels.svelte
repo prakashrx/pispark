@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * A session's Details (design language §1.5a): a stack of foldable panels. Session (agent, model
-   * and thinking, which change between replies, folder, when and by whom it started), its context,
+   * and thinking, which apply from the next reply, folder, when and by whom it started), its context,
    * the panels its extensions add (`session.details`), its schedules, its background tasks, the
    * sessions it started, its agent's routines and what keeps it running. Each row acts with a small icon; the
    * longer work (a schedule's form, a process's output, editing the agent) opens as a view in the
@@ -44,14 +44,18 @@
   const forks = $derived(related.filter((each) => each.forkOf));
   const routines = $derived(info ? client.routines.of(info.agent.id) : []);
   const doc = $derived(session.doc);
-  // Model and thinking change between replies (Pi switches from the next one on).
+  // Compacting needs the session free; model and thinking can be chosen any time and apply from the
+  // next reply (chosen while it works, they wait for the reply to finish).
   const between = $derived((doc?.status === "idle" || doc?.status === "error") && !doc.readOnly && !doc.compacting);
+  const changeable = $derived(!!doc && !doc.readOnly && !doc.compacting && doc.status !== "starting" && doc.status !== "stopping");
   const models = $derived(
     client.providers.catalog.providers.flatMap((p) =>
       p.models.filter((m) => m.available).map((m) => ({ value: JSON.stringify({ provider: p.id, id: m.id }), label: `${m.name} · ${p.name}` })),
     ),
   );
-  const modelValue = $derived(doc?.model ? JSON.stringify({ provider: doc.model.provider, id: doc.model.id }) : "");
+  const shownModel = $derived(doc?.pending?.model ?? doc?.model);
+  const modelValue = $derived(shownModel ? JSON.stringify({ provider: shownModel.provider, id: shownModel.id }) : "");
+  const thinkingValue = $derived(doc?.pending?.thinking ?? doc?.thinking?.level);
   const levels = $derived((doc?.thinking?.levels ?? []).map((level) => ({ value: level, label: THINKING_WORDS[level] ?? level })));
   let configureError = $state("");
   async function configure(change: { model?: { provider: string; id: string }; thinking?: ThinkingLevel }) {
@@ -123,7 +127,7 @@
                 label="Model"
                 options={models}
                 searchable
-                disabled={!between}
+                disabled={!changeable}
                 bind:value={() => modelValue, (value) => void (value && value !== modelValue && configure({ model: JSON.parse(value) }))}
               />{:else}{model ?? "Not available"}{/if}
           </dd>
@@ -134,8 +138,8 @@
               <Selector
                 label="Thinking"
                 options={levels}
-                disabled={!between}
-                bind:value={() => doc.thinking!.level, (value) => void (value && value !== doc.thinking!.level && configure({ thinking: value as ThinkingLevel }))}
+                disabled={!changeable}
+                bind:value={() => thinkingValue, (value) => void (value && value !== thinkingValue && configure({ thinking: value as ThinkingLevel }))}
               />
             </dd>
           </div>{/if}
@@ -152,7 +156,7 @@
             <dd><button type="button" class="link" onclick={() => client.open(parent.id)}>{sessionName(parent)}</button></dd>
           </div>{/if}
       </dl>
-      {#if doc && !between && !doc.readOnly}<p class="note">Model and thinking change between replies.</p>{/if}
+      {#if doc?.pending?.model || doc?.pending?.thinking}<p class="note" role="status">Applies when this reply finishes.</p>{/if}
       {#if configureError}<p role="alert" class="note danger">{configureError}</p>{/if}
       <!-- An extension's title chips sit beside the name on wide screens, and here otherwise. -->
       {#if layout.size !== "expanded" && session.doc}<div class="chips"><ContributionPoint point="session.title" /></div>{/if}

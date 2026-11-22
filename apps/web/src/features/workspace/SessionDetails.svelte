@@ -36,14 +36,14 @@
   const info = $derived(session.info);
 
   // Leaving the agent editor: the Agents page shares it, so it gets its own list back; and a
-  // changed agent is put to work by reloading the session while nothing runs.
+  // changed agent is put to work by reloading the session (once the reply is done, if one runs).
   $effect(() => {
     if (view === "agent") return leaveAgent;
   });
   function leaveAgent() {
     client.agents.collection();
     const doc = session.doc;
-    if (doc?.agentChanged && doc.status === "idle" && client.current?.id === session.id) void session.reload();
+    if (doc?.agentChanged && !doc.pending?.reload && !doc.readOnly && client.current?.id === session.id) void session.reload();
   }
 </script>
 

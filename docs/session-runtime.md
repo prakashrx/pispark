@@ -21,7 +21,8 @@ Every session gets a separate `ModelRuntime`, `SettingsManager`, `ResourceLoader
 | `create({ folder, model?, agent? })` | Load a new session (above the backstop an idle session unloads first), check the absolute folder exists, resolve the agent (Default when omitted), choose the model, initialize/bind native extensions, return the session document. Unknown request fields are rejected. |
 | `ensure(id)` | Load a session that is not loaded, or wait for one that is loading; the HTTP layer calls it before every `start`. |
 | `open(id)` | Reopen a known session's native history (or an empty session) with its agent resolved now. Never accepts a session-file path. Never prompts/replays tools. |
-| `reload(id, model?)` | Stop an idle (or read-only) session and open it again, so agent changes apply; with a model, the session runs that one from now on. Busy while running. |
+| `reload(id, model?)` | Stop the session and open it again from its transcript, so agent changes apply; with a model, the session runs that one from now on. While it works, the reload [waits until it is free](#setup-changes). |
+| `configure(id, {model?, thinking?})` | Another model or thinking level from the next reply on, through Pi's `setModel` and `setThinkingLevel`. While the session works, the change [waits until it is free](#setup-changes). |
 | `list()` | Stored metadata summaries, including empty/unloaded sessions, interrupted status and `lastActivity`. |
 | `session(id)` | The session document: status, model, queue, safe error and what extensions show; no history. |
 | `items(id, {before?, after?, limit?})` / `image(id, itemId, part)` / `text(id, itemId, part, offset)` | Finalized items on Pi's active branch read straight from the session, bounded by count and bytes; an image's bytes; a chunk of a clipped text part. Pi's entry ids are the cursors. |
@@ -52,6 +53,18 @@ Opening a session first resolves its folder, its agent and its model (signed in,
 A session's `lastActivity` is when it last did something: Pi writes every entry (message, tool result, notice) to the transcript as it happens, so the transcript's last write, or when it started if it has none. It is read once and kept until the catalog's next rescan (30 s); a loaded session updates it as each message ends. Opening or reading a session doesn't change it. The session list is grouped and ordered by it.
 
 Nobody opens or stops sessions by hand. A session loads when a client shows it (`open`) or sends to it (`ensure` before `start`). A loaded session that is idle, not shown by any client, has no open question, nothing queued and no [hold](#hold) unloads after `idleUnloadMs` (15 minutes); above `maxLiveSessions` (32) the least recently used such session unloads first, and if none can, the new session loads anyway. Extensions keep their state in Pi's session, so an unloaded session comes back as it was. A client whose session was unloaded under it (its live stream sends an `unloaded` event) opens it again by itself.
+
+## Setup changes
+
+A change to what a session runs is applied only while the session is free (settled: nothing runs, waits for a slot, or waits for an answer). One asked for while it works waits, and its document carries `pending {model?, thinking?, reload?}` until it applies. Changes merge: the latest model and thinking win, and one staged extension revision waits at a time. They come from three places, all through `SetupChanges`:
+
+- **The person:** `configure` (Details → Model or Thinking) and `reload` (the session ⋯ menu, the "agent changed" notice, or closing the agent editor inside the session).
+- **The agent:** `pispark_session` with `{action:"reload"}` asks for a reload of its own session, for example after editing its agent; `pispark_extension apply` and `unload` stage an extension revision and ask for a reload with it.
+- **An extension:** the same requests on the session's bus (`pispark:session-request` with `{action:"reload"}`).
+
+When the session becomes free, what waited is applied before any waiting wake. Model and thinking alone go through Pi without a reload. Anything else is one reload: the session stops and opens again from its transcript with its agent resolved now, the waiting model and thinking, and the staged extension revision if there is one. If that revision fails to load, the session opens again with the previous selection. A failure is said in the session as a notice. A reload asked for from inside the session wakes it afterwards with the outcome (a wake from source `reload`, shown as a collapsed line in the conversation), so the agent carries on and verifies; the person's own changes are quiet. If the turn was stopped (or failed), what its agent or extensions asked for is dropped (a staged revision is recorded as skipped); the person's own changes still apply. Pending changes live in memory: a session that stops, or a PiSpark restart, forgets them.
+
+PiSpark reopens the session rather than calling Pi's in-place `AgentSession.reload()`, because the agent's resolved setup (instructions, tool switches, extension paths and model) is given when the Pi session is created.
 
 ## Run slots
 
@@ -165,7 +178,7 @@ The tool names the session with Pi's own `pi.setSessionName`, so there is no PiS
 
 Its second tool, `pispark_schedule`, lists, removes or adds schedules of its own session only: once (`in_minutes` or a local `at`) or repeating (`cron`). The tool sends the request to the host on the session's event bus (`pispark:schedule-request`). The host asks the person with Pi's own confirm dialog ("Schedule this in this session?", with the schedule in words and its prompt) and adds the schedule only on yes. While the tool is active, the system prompt gets one line of guidance with the server's local time and offset. An agent can switch the tool off.
 
-Its third tool, `pispark_session`, starts, lists, sends to, stops and reads the session's own [child sessions](#child-sessions), each with how it reports. While it is active the system prompt says that work which can run on its own may be handed to another session, and that a report arriving while others still run needs only a one-line acknowledgement. `pispark_report` is active only in a child in status mode; the system prompt then says to raise what the parent needs to know and otherwise just finish.
+Its third tool, `pispark_session`, starts, lists, sends to, stops and reads the session's own [child sessions](#child-sessions), each with how it reports; `inspect` describes the calling session and `reload` asks for its [reload](#setup-changes) when the turn ends. While it is active the system prompt says that work which can run on its own may be handed to another session, and that a report arriving while others still run needs only a one-line acknowledgement. `pispark_report` is active only in a child in status mode; the system prompt then says to raise what the parent needs to know and otherwise just finish.
 
 Its `pispark_process` tool runs commands in the background ([processes](#processes)); while it is active the system prompt says to use it instead of bash for commands that run long or never end on their own, and to rely on the end-of-process wake or a blocking wait rather than checking output repeatedly.
 

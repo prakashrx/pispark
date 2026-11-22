@@ -18,9 +18,10 @@
   const known = $derived(from?.kind === "session" && client.sessions.some((session) => session.id === from.id));
 </script>
 
-{#if from?.kind === "process"}
+{#if from?.kind === "process" || from?.kind === "reload"}
+  {@const what = from.kind === "process" ? "output" : "details"}
   <details class="process-report" data-purpose="session-turn">
-    <summary class="woken">{from.label} <span class="disclosure"><span class="closed">▸ Show output</span><span class="opened">▾ Hide output</span></span></summary>
+    <summary class="woken">{from.label} <span class="disclosure"><span class="closed">▸ Show {what}</span><span class="opened">▾ Hide {what}</span></span></summary>
     <div class="report output">{reportBody(text)}</div>
   </details>
 {:else if from}

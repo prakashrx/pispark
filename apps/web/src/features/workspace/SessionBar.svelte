@@ -88,6 +88,9 @@
     ...(doc?.commands?.length ? [{ id: "commands", label: "Commands…", onselect: () => (picking = true) }] : []),
     ...(info?.hasHistory && !forking && !doc?.compacting && ["idle", "error", "read-only"].includes(info.status)
       ? [{ id: "fork", label: "Fork session", onselect: () => void fork() }] : []),
+    // Starts the session again from its transcript with its agent as it is now; while it works, once it's done.
+    ...(doc && !doc.readOnly && !doc.pending?.reload && !["starting", "stopping"].includes(doc.status)
+      ? [{ id: "reload", label: "Reload session", onselect: () => void session.reload() }] : []),
     { id: "copy-link", label: "Copy link", onselect: () => void copyLink() },
     ...(info && canArchive(info) ? [{ id: "archive", label: "Archive", onselect: () => void client.archive(session.id) }] : []),
   ]);

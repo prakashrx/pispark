@@ -16,6 +16,7 @@
   const info = $derived(session.info);
   const connection = $derived(client.connection);
   let all = $state(false);
+  const working = $derived(doc?.status === "running" || doc?.status === "cancelling" || doc?.status === "queued");
   const saidInConversation = $derived(session.items.findLast((item) => item.role === "assistant")?.stopReason === "error");
 
   const notices = $derived(
@@ -30,7 +31,7 @@
       doc?.error && !(doc.error === "execution" && saidInConversation) ? failed : undefined,
       doc?.interrupted && !saidInConversation ? interrupted : undefined,
       session.shownView && info?.waiting ? waiting : undefined,
-      doc?.agentChanged ? agentChanged : undefined,
+      doc?.agentChanged ? agentChanged : doc?.pending?.reload ? reloading : undefined,
       doc?.holdAsked ? holdAsked : undefined,
     ].filter((notice): notice is Snippet => !!notice),
   );
@@ -70,12 +71,12 @@
 {/snippet}
 {#snippet agentChanged()}
   <p role="status" class="notice flex flex-wrap items-center gap-3">
-    <span class="flex-1">The agent changed. Reload to apply it; your messages stay.</span>
-    <Button size="compact" unavailable={doc?.status === "idle" ? undefined : "Wait for the reply to finish"} onclick={() => session.reload()}
-      >Reload session</Button
-    >
+    {#if doc?.pending?.reload}<span class="flex-1">The agent changed. The session reloads with it when this reply finishes; your messages stay.</span>
+    {:else}<span class="flex-1">The agent changed. Reload to apply it; your messages stay.</span>
+      <Button size="compact" onclick={() => session.reload()}>{working ? "Reload after this reply" : "Reload session"}</Button>{/if}
   </p>
 {/snippet}
+{#snippet reloading()}<p role="status" class="notice">The session reloads when this reply finishes; your messages stay.</p>{/snippet}
 {#snippet holdAsked()}
   <div role="status" class="notice flex flex-wrap items-center gap-3">
     <span class="min-w-0 flex-[1_1_20rem]"

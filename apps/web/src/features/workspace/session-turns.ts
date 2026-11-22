@@ -59,7 +59,7 @@ export interface Turn {
   /** The message was sent by something other than the person (a wake): how it reads ("Scheduled · Every day at 9:00 am · Fri 13 Nov"). */
   woken?: string;
   /** Sent by another session (which one, so the turn can link to it) or by a process it started. */
-  from?: { id: string; label: string; kind: "session" | "process" };
+  from?: { id: string; label: string; kind: "session" | "process" | "reload" };
   segments: Segment[];
   /** The agent is still working on this turn. */
   running: boolean;
@@ -83,7 +83,7 @@ export function clippedPart(item: Item): PartRef | undefined {
 }
 
 /** The word for each source of a wake. */
-const WOKEN_BY: Record<WakeSource["kind"], string> = { schedule: "Scheduled", session: "From", process: "From" };
+const WOKEN_BY: Record<WakeSource["kind"], string> = { schedule: "Scheduled", session: "From", process: "From", reload: "From" };
 /** How a turn something other than the person sent is labelled, from its `WOKEN_ENTRY` details. */
 export function wokenLabel(details: unknown): string {
   const { source } = (details ?? {}) as { source?: { kind?: unknown; label?: unknown } };
@@ -92,10 +92,10 @@ export function wokenLabel(details: unknown): string {
   if (kind === "From") return label ? `From ${label}` : "From another session";
   return [kind, label].filter(Boolean).join(" · ");
 }
-/** The session (or process) a turn came from, when it was not the person or a schedule. */
+/** The session, process or reload a turn came from, when it was not the person or a schedule. */
 export function wokenFrom(details: unknown): Turn["from"] {
   const { source } = (details ?? {}) as { source?: { kind?: unknown; id?: unknown; label?: unknown } };
-  return (source?.kind === "session" || source?.kind === "process") && typeof source.id === "string" && typeof source.label === "string"
+  return (source?.kind === "session" || source?.kind === "process" || source?.kind === "reload") && typeof source.id === "string" && typeof source.label === "string"
     ? { id: source.id, label: source.label, kind: source.kind }
     : undefined;
 }

@@ -226,6 +226,17 @@ export interface SessionDoc extends SessionInfo {
   prompts?: SessionCommand[];
   /** An extension asked to keep this session loaded and the agent does not allow it yet. */
   holdAsked?: { extension: string; reason: string };
+  /** Changes asked for while the session works, applied together once it is free (see `PendingSetup`). */
+  pending?: PendingSetup;
+}
+/**
+ * What a session will run once it is free: another model or thinking level, from the next reply on,
+ * and whether it reloads (starts again from its transcript with its agent as it is then).
+ */
+export interface PendingSetup {
+  model?: { provider: string; id: string };
+  thinking?: ThinkingLevel;
+  reload?: true;
 }
 export interface SessionCommand {
   name: string;
@@ -271,13 +282,16 @@ export type Command = { commandId: string } & (
       agent?: string;
     }
   | { type: "open" | "cancel" | "stop" | "archive" | "restore" | "delete" | "compact" | "fork"; sessionId: string }
-  /** Start the session again from its history; with `model`, it runs that model from now on. */
+  /**
+   * Start the session again from its history, picking up agent changes; with `model`, it runs that
+   * model from now on. While the session works it reloads once it is free (outcome `queued`).
+   */
   | { type: "reload"; sessionId: string; model?: { provider: string; id: string } }
   /** A person names the session; it keeps that name. */
   | { type: "rename"; sessionId: string; title: string }
   /** A person looked at the session: it's read (on every device). */
   | { type: "seen"; sessionId: string }
-  /** Between replies: run another model, or think more or less, from the next reply on. */
+  /** Run another model, or think more or less, from the next reply on (outcome `queued` while the session works). */
   | { type: "configure"; sessionId: string; model?: { provider: string; id: string }; thinking?: ThinkingLevel }
   /** The person answers an extension's hold request, or lets go of a hold. */
   | { type: "allow-hold" | "deny-hold" | "release-hold"; sessionId: string }

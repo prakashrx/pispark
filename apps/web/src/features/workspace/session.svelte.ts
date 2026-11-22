@@ -148,10 +148,20 @@ export class Session {
   }
   /**
    * Restarts the session's Pi session so agent changes apply; with a model, it runs that one from now
-   * on (a read-only session whose model is gone goes on this way). The transcript is kept.
+   * on (a read-only session whose model is gone goes on this way). The transcript is kept. While the
+   * session works the reload waits for it (its document says so), and the conversation stays live.
    */
   async reload(model?: { provider: string; id: string }) {
     this.clearError();
+    const status = this.doc?.status;
+    if (status === "running" || status === "cancelling" || status === "queued") {
+      try {
+        await this.transport.run({ type: "reload", sessionId: this.id, ...(model ? { model } : {}) });
+      } catch (error) {
+        this.fail(error);
+      }
+      return;
+    }
     this.source?.abort();
     this.connection = "Connecting";
     try {
@@ -162,7 +172,7 @@ export class Session {
     }
     if (this.shown && !this.transport.closed) this.observe();
   }
-  /** Between replies: another model or thinking level from the next reply on. Throws so the picker can say why. */
+  /** Another model or thinking level from the next reply on (waiting while one runs). Throws so the picker can say why. */
   async configure(change: { model?: { provider: string; id: string }; thinking?: ThinkingLevel }) {
     await this.transport.run({ type: "configure", sessionId: this.id, ...change });
   }

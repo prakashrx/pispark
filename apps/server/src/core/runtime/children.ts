@@ -33,7 +33,7 @@ export class Children {
   async request(parentId: string, request: SessionRequest): Promise<{ ok: boolean; text: string }> {
     const { storage, admit, ensure, get, live, cancel } = this.sessions;
     const parent = storage.read(parentId);
-    if (request.action === "inspect") return { ok: false, text: "Inspection is handled by the calling session." };
+    if (request.action === "inspect" || request.action === "reload") return { ok: false, text: "The calling session handles this itself." };
     if (request.action === "report") return this.raise(parent, request.text);
     if (request.action === "start") return this.start(parent, request);
     if (request.action === "list") {

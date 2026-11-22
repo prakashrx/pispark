@@ -6,8 +6,11 @@
 
 /** What woke a session. `kind` and `label` are for showing; the host reads no meaning into them. */
 export interface WakeSource {
-  /** A schedule, another session (a parent sending its child work, a child reporting back), or a process the session started. */
-  kind: "schedule" | "session" | "process";
+  /**
+   * A schedule, another session (a parent sending its child work, a child reporting back), a process
+   * the session started, or the session's own reload that its agent or an extension asked for.
+   */
+  kind: "schedule" | "session" | "process" | "reload";
   /** The source's own id, such as a schedule's. Records and waiting runs are kept by it. */
   id: string;
   /** How this wake reads, written by its source when it woke the session: "Every weekday at 9:00 am · Fri 13 Nov". */

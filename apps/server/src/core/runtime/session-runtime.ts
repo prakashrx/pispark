@@ -19,7 +19,7 @@ import { DEFAULT_AGENT, validAgentId } from "../agents/format.js";
 import type { Json } from "../../contract/stream-ops.js";
 import { Session, validateText, type SessionHost, type RunHandle, type SessionSummary } from "./session.js";
 import type { RuntimeConfiguration } from "./configuration.js";
-import { deadline, RuntimeError, runtimeError } from "./errors.js";
+import { deadline, RuntimeError, runtimeError, type RuntimeErrorCode } from "./errors.js";
 import { readSettings, validSettings, writeSettings } from "./host-settings.js";
 import type { LiveView } from "./live-view.js";
 import type { SessionChange } from "./observation.js";
@@ -31,6 +31,7 @@ import { attachmentPath, filesFolder, forkAttachmentTags, placeAttachments, save
 import { Schedules } from "./schedules.js";
 import { ToolDiscovery } from "./tool-discovery.js";
 import { Wakes } from "./wakes.js";
+import { reloads, SetupChanges, type SetupChange, type Waiting } from "./setup-changes.js";
 import type { Routine, RoutineList, ScheduleInput, ScheduleList } from "../../contract/schedule-protocol.js";
 import { switchName } from "../../contract/agent-protocol.js";
 import { Routines } from "./routines.js";
@@ -161,7 +162,7 @@ export class SessionRuntime {
       released: (session) => {
         if (this.live.get(session.id) === session) {
           this.live.delete(session.id);
-          this.extensionReloads.delete(session.id);
+          this.setup.forget(session.id);
         }
         this.layered.delete(session.id);
         if (!session.published) this.storage.discardUnpublished(session.id);
@@ -172,17 +173,17 @@ export class SessionRuntime {
       processes: { request: (sessionId, request, signal) => this.sessionProcesses.request(sessionId, request, signal) },
       sessions: { request: (parentId, request) => this.children.request(parentId, request) },
       // A waiting wake goes as soon as its session is free; the minute check catches anything missed.
-      extensionPending: (id) => this.extensionReloads.get(id) ?? this.extensionCandidates.get(id)?.revision,
+      extensionPending: (id) => this.setup.extension(id) ?? this.extensionCandidates.get(id)?.revision,
       extensionCandidate: (id) => this.extensionCandidates.get(id)?.active,
-      extensionReload: (session, revision) => {
-        if (!this.accepting || this.live.get(session.id) !== session || this.wakes.waiting(session.id)) return false;
-        this.extensionReloads.set(session.id, revision);
+      requestSetup: (session, change) => {
+        if (!this.accepting || this.live.get(session.id) !== session || !this.setup.add(session.id, change)) return false;
+        session.changed();
+        // Asked while nothing runs (from an extension's command or view): apply it now.
+        if (session.settled) setImmediate(() => this.freedSession(session));
         return true;
       },
-      freed: (session) => {
-        if (!this.accepting) return;
-        void this.applyExtensionReload(session).finally(() => this.wakes.drain()).catch(() => {});
-      },
+      pendingSetup: (id) => this.setup.view(id),
+      freed: (session) => this.freedSession(session),
       touched: () => {
         for (const listener of this.touchedListeners) listener();
       },
@@ -202,7 +203,7 @@ export class SessionRuntime {
         ...sessions,
         free: (id) => {
           const session = this.live.get(id);
-          return !this.extensionReloads.has(id) && !this.extensionCandidates.has(id) && (!session || (session.ready && session.settled));
+          return !this.setup.has(id) && !this.extensionCandidates.has(id) && (!session || (session.ready && session.settled));
         },
         run: async (id, wake, details) => {
           this.admit();
@@ -498,78 +499,156 @@ export class SessionRuntime {
   }
   /**
    * Restart a session's Pi session from its transcript, picking up agent changes. With a model, the
-   * session runs that one from now on (how a read-only session whose model is gone goes on).
+   * session runs that one from now on (how a read-only session whose model is gone goes on). While
+   * the session works, the reload waits until it is free (`pending` in its document).
    */
   async reload(id: string, model?: ModelChoice): Promise<SessionDoc> {
-    return this.reloadCurrent(id, model);
-  }
-  private async reloadCurrent(id: string, model?: ModelChoice, extensionRevision?: string): Promise<SessionDoc> {
     validateId(id);
-    if (this.extensionReloads.has(id) || this.extensionCandidates.get(id)?.revision !== extensionRevision)
-      throw new RuntimeError("busy");
     if (model !== undefined && !validChoice(model)) throw new RuntimeError("invalid-input");
+    const session = this.live.get(id);
+    if (!session) return this.reloadCurrent(id, model);
+    if (session.loading || session.stopping) throw new RuntimeError("busy");
+    this.setup.add(id, { reload: true, ...(model ? { model } : {}) });
+    if (!session.settled) {
+      session.changed();
+      return session.doc();
+    }
+    const failure = await this.applySetup(session);
+    if (failure) throw new RuntimeError(failure);
+    return this.get(id).doc();
+  }
+  private async reloadCurrent(id: string, model?: ModelChoice, extensionRevision?: string, thinking?: ThinkingLevel): Promise<SessionDoc> {
+    if (this.extensionCandidates.get(id)?.revision !== extensionRevision) throw new RuntimeError("busy");
     const session = this.live.get(id);
     if (session) {
       if (session.loading || !["idle", "error", "read-only"].includes(session.status)) throw new RuntimeError("busy");
       await this.stop(id);
     }
-    if (model) {
+    if (model || thinking) {
       const metadata = this.storage.read(id);
       if (metadata.archived) throw new RuntimeError("not-found");
-      this.storage.write({ ...metadata, model: { provider: model.provider, id: model.id } });
+      this.storage.write({ ...metadata, ...(model ? { model: { provider: model.provider, id: model.id } } : {}), ...(thinking ? { thinking } : {}) });
     }
     return this.openCurrent(id, extensionRevision);
   }
-  private readonly extensionReloads = new Map<string, string>();
+  /** Changes to what each session runs, waiting until it is free. */
+  private readonly setup = new SetupChanges();
+  /** An extension revision a reload is loading, by session: what the session opens with meanwhile. */
   private readonly extensionCandidates = new Map<string, { revision: string; active: import("./extension-revisions.js").ExtensionChange[] }>();
-  private async applyExtensionReload(session: Session): Promise<void> {
+  /** A session became free: what waited for it is applied, then waiting wakes may go. */
+  private freedSession(session: Session): void {
+    if (!this.accepting) return;
+    void this.applySetup(session).catch(() => undefined).finally(() => void this.wakes.drain());
+  }
+  /**
+   * Applies what waited for the session (`SetupChanges`) now that it is free: another model or
+   * thinking level through Pi, or one reload that takes them along with the agent as it is now and
+   * any staged extension revision. Whoever asked from inside the session is woken with the outcome;
+   * the person's own changes are quiet unless they fail. Returns the failure's code.
+   */
+  private async applySetup(session: Session): Promise<RuntimeErrorCode | undefined> {
+    const { id } = session;
+    if (this.live.get(id) !== session || !session.settled || !this.accepting) return undefined;
+    const waiting = this.setup.take(id);
+    if (!waiting) return undefined;
+    // The person stopped the turn: what was asked for from inside it is not carried out.
+    if (session.lastRunStopped && !waiting.reload) {
+      if (waiting.extension) this.extensionOutcome(session, "The extension change was skipped because the turn was stopped.");
+      waiting.extension = undefined;
+      waiting.asked = [];
+    }
+    if (!reloads(waiting)) {
+      if (!waiting.model && !waiting.thinking) return undefined;
+      try {
+        await session.configure({ ...(waiting.model ? { model: waiting.model } : {}), ...(waiting.thinking ? { thinking: waiting.thinking } : {}) });
+        return undefined;
+      } catch (error) {
+        const code = runtimeError(error, "configuration").code;
+        this.live.get(id)?.setupNotice(`The model or thinking change could not be applied (${code}).`);
+        return code;
+      }
+    }
+    const outcome = await this.reloadWith(session, waiting);
+    if (!outcome) return undefined;
+    if (outcome.failed) this.live.get(id)?.setupNotice(outcome.text);
+    if (waiting.asked.length)
+      void this.wakes
+        .deliver(id, {
+          source: { kind: "reload", id: "reload", label: outcome.failed ? "Reload failed" : "Session reloaded" },
+          text: `${outcome.text}\n\nThis reload was asked for by ${waiting.asked.join("; ")}. Carry on from here and check that the change works.`,
+          due: new Date().toISOString(),
+          policy: "queue",
+        })
+        .catch(() => {});
+    return outcome.failed ? outcome.code : undefined;
+  }
+  /**
+   * Reloads the session, with the staged extension revision that waited if there is one. If that
+   * revision fails to load, the session opens again with the previous selection. Nothing when the
+   * session got busy again while the revision was prepared: it waits again.
+   */
+  private async reloadWith(session: Session, waiting: Waiting): Promise<{ text: string; failed: boolean; code?: RuntimeErrorCode } | undefined> {
     const { id, extensionRevisions: revisions } = session;
-    const revision = this.extensionReloads.get(id);
-    if (!revision || this.live.get(id) !== session || !session.settled) return;
     const before = revisions.read();
-    const change = before.staged;
-    const report = (state: typeof before, outcome: string, failed: boolean) => {
-      revisions.write({ ...state, outcome });
-      this.live.get(id)?.extensionReloadNotice(outcome, failed);
-    };
-    const superseded = () => this.live.get(id) !== session || !this.accepting || this.wakes.waiting(id) || session.metadata.queued !== undefined || session.extensionReloadCancelled;
-    if (change?.revision !== revision || superseded()) {
-      this.extensionReloads.delete(id);
-      report(before, "The extension change was skipped because the session or the staged revision changed.", true);
-      return;
+    let change = waiting.extension ? before.staged : undefined;
+    if (waiting.extension && change?.revision !== waiting.extension) {
+      this.extensionOutcome(session, "The extension change was skipped because the staged revision changed.");
+      change = undefined;
     }
-    try {
-      revisions.verify(change);
-      await revisions.prepare(change);
-    } catch (error) {
-      this.extensionReloads.delete(id);
-      const reason = error instanceof DependencyPreparationError ? error.message : "The staged files could not be prepared.";
-      report(before, "Could not apply " + change.name + ". " + reason, true);
-      return;
+    if (change) {
+      try {
+        revisions.verify(change);
+        await revisions.prepare(change);
+      } catch (error) {
+        const reason = error instanceof DependencyPreparationError ? error.message : "The staged files could not be prepared.";
+        this.extensionOutcome(session, `Could not apply ${change.name}. ${reason}`);
+        change = undefined;
+      }
+      if (this.live.get(id) !== session || !this.accepting) return undefined;
+      if (!session.settled) {
+        this.setup.restore(id, { ...waiting, extension: change?.revision });
+        session.changed();
+        return undefined;
+      }
+      if (change && revisions.read().staged?.revision !== change.revision) {
+        this.extensionOutcome(session, "The extension change was skipped because the staged revision changed during preparation.");
+        change = undefined;
+      }
     }
-    this.extensionReloads.delete(id);
-    if (superseded() || revisions.read().staged?.revision !== revision) {
-      report(before, "The extension change was skipped because the session or the staged revision changed during preparation.", true);
-      return;
+    if (!change) {
+      try {
+        await this.reloadCurrent(id, waiting.model, undefined, waiting.thinking);
+        return { text: "The session reloaded with its agent's current setup.", failed: false };
+      } catch (error) {
+        const code = runtimeError(error, "configuration").code;
+        return { text: `The session could not reload (${code}).`, failed: true, code };
+      }
     }
     const prior = before.active.find((item) => item.name === change.name);
     const next = { active: [...before.active.filter((item) => item.name !== change.name), ...(change.snapshot ? [change] : [])] };
     try {
-      this.extensionCandidates.set(id, { revision, ...next });
-      const doc = await this.reloadCurrent(id, undefined, revision);
+      this.extensionCandidates.set(id, { revision: change.revision, ...next });
+      const doc = await this.reloadCurrent(id, waiting.model, change.revision, waiting.thinking);
       if (doc.status !== "idle") throw new RuntimeError("extension");
-      report(next, `Reloaded revision ${revision}: ${change.snapshot ? `loaded ${change.name}` : `removed ${change.name}`}.`, false);
     } catch (error) {
       this.extensionCandidates.delete(id);
-      const outcome = `Reload ${revision} failed (${runtimeError(error, "extension").code}); previous selection restored.`;
-      report(before, outcome, true);
-      if (this.accepting) {
-        try { await this.reload(id); this.live.get(id)?.extensionReloadNotice(outcome, true); }
-        catch { report(before, `${outcome} Could not reopen the session.`, true); }
-      }
-      return;
-    } finally { this.extensionCandidates.delete(id); }
+      const code = runtimeError(error, "extension").code;
+      let text = `The session could not reload with ${change.name} revision ${change.revision} (${code}); the previous extension selection is restored.`;
+      revisions.write({ ...before, outcome: text });
+      if (this.accepting) await this.reloadCurrent(id).catch(() => (text += " The session could not be reopened."));
+      return { text, failed: true, code };
+    } finally {
+      this.extensionCandidates.delete(id);
+    }
+    const text = `The session reloaded and ${change.snapshot ? `loaded ${change.name}` : `removed ${change.name}`} (revision ${change.revision}).`;
+    revisions.write({ ...next, outcome: text });
     revisions.prune(prior?.snapshot);
+    return { text, failed: false };
+  }
+  /** Records how a staged extension change went, for `inspect`, and says so in the session. */
+  private extensionOutcome(session: Session, text: string): void {
+    session.extensionRevisions.write({ ...session.extensionRevisions.read(), outcome: text });
+    this.live.get(session.id)?.setupNotice(text);
   }
   async stop(id: string): Promise<void> {
     validateId(id);
@@ -602,7 +681,10 @@ export class SessionRuntime {
     }
   }
   /** Brings a session back, with its children. */
-  /** Between replies: another model or thinking level for this session, from its next reply on. */
+  /**
+   * Another model or thinking level for this session, from its next reply on. While the session
+   * works, the change waits until it is free (`pending` in its document).
+   */
   async configure(id: string, change: { model?: ModelChoice; thinking?: ThinkingLevel }): Promise<SessionDoc> {
     validateId(id);
     if (change.model !== undefined && !validChoice(change.model)) throw new RuntimeError("invalid-input");
@@ -611,7 +693,10 @@ export class SessionRuntime {
     await this.ensure(id);
     const session = this.live.get(id);
     if (!session) throw new RuntimeError("not-found");
-    await session.configure(change);
+    if (!session.settled && !session.loading && !session.stopping && !session.readOnly) {
+      this.setup.add(id, change);
+      session.changed();
+    } else await session.configure(change);
     return session.doc();
   }
   /** Snapshot history through Pi. A fork has navigation ancestry but no parent result routing. */

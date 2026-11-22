@@ -113,10 +113,10 @@ export default function pispark(pi: ExtensionAPI): void {
     name: SESSION_TOOL,
     label: "Session tools",
     description:
-      "Hand work to another PiSpark session that runs on its own while this one carries on: start one with a first message (and optionally an agent, a title and how it reports), list this session's sessions, send one another message, stop one, or read its last answer. By default a session you started sends its answer here as a new message when it finishes. Sessions started by another session cannot start sessions. Use inspect for the calling session's resources and extensions.",
+      "Hand work to another PiSpark session that runs on its own while this one carries on: start one with a first message (and optionally an agent, a title and how it reports), list this session's sessions, send one another message, stop one, or read its last answer. By default a session you started sends its answer here as a new message when it finishes. Sessions started by another session cannot start sessions. Use inspect for the calling session's resources and extensions, and reload to restart the calling session with its agent's current setup after you change that agent: it happens when this turn ends and you get the outcome as a new message.",
     parameters: Type.Object(
       {
-        action: Type.Union([Type.Literal("inspect"), Type.Literal("start"), Type.Literal("list"), Type.Literal("send"), Type.Literal("stop"), Type.Literal("read")]),
+        action: Type.Union([Type.Literal("inspect"), Type.Literal("reload"), Type.Literal("start"), Type.Literal("list"), Type.Literal("send"), Type.Literal("stop"), Type.Literal("read")]),
         prompt: Type.Optional(Type.String({ maxLength: 65536, description: "start: the new session's first message, complete on its own." })),
         title: Type.Optional(Type.String({ maxLength: 200, description: "start: a short title for the new session." })),
         agent: Type.Optional(Type.String({ maxLength: 64, description: "start: an agent id; this session's agent when left out." })),
@@ -136,7 +136,7 @@ export default function pispark(pi: ExtensionAPI): void {
       if (signal?.aborted) throw new Error("Cancelled");
       const { action } = parameters;
       let request: SessionRequest;
-      if (action === "list" || action === "inspect") request = { action };
+      if (action === "list" || action === "inspect" || action === "reload") request = { action };
       else if (action === "start") {
         if (!parameters.prompt?.trim()) throw new Error("Give the first message for the new session");
         request = {

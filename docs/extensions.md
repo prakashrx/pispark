@@ -179,8 +179,8 @@ Use `pispark_session` with `action: "inspect"` to list this session's loaded res
 `pispark_extension` is available by default unless the agent disables it. Keep session-only source in `sessions/<id>/extension-drafts/<name>/`, outside the project and any automatically loaded resource folders.
 
 1. Put an ordinary Pi extension with a single index entry and its companion files in the draft folder. For registry dependencies include package.json and a matching npm package-lock.json. PiSpark prepares the locked runtime packages without running install scripts.
-2. Use `pispark_extension` with `{action:"apply",name}`. PiSpark snapshots the draft and applies the revision after the current run settles. Use the completion notice or inspect to confirm the revision before testing it. Preparation or load failure keeps the old selection.
-3. Use `{action:"unload",name}` to remove the active trial after the run settles. The draft stays available for editing. Ordinary Reload session reopens the active selection. For project sources, stage the source explicitly and use the returned revision with reload and its activation approval.
+2. Use `pispark_extension` with `{action:"apply",name}`. PiSpark snapshots the draft, and when the current turn ends the session reloads with the revision and wakes the agent with the outcome, so end the turn after applying. Preparation or load failure keeps the old selection; stopping the turn skips the change.
+3. Use `{action:"unload",name}` to remove the active trial when the turn ends, the same way. The draft stays available for editing. Ordinary Reload session reopens the active selection. For project sources, stage the source explicitly and use the returned revision with reload and its activation approval.
 
 The snapshot covers the copied files, not arbitrary modules or files the extension may access at runtime. Use only code you trust. There is no sandbox and no bundled skill or prompt discovery in this workflow.
 

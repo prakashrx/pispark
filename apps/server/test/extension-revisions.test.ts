@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { ExtensionRevisions } from "../src/core/runtime/extension-revisions.js";
+import { RuntimeError } from "../src/core/runtime/errors.js";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { testHome } from "./fixtures/home.js";
 import { eventually } from "./fixtures/local-provider.js";
@@ -32,7 +33,18 @@ test("stage, deny, reload, replace, recover and remove without changing a siblin
     await writeFile(join(draft, "index.mjs"), probe("one"));
     await writeFile(join(draft, "Probe.svelte"), "<p>Revision probe</p>");
     const revisions = new ExtensionRevisions(join(h.home, "sessions", id, "extension-revisions"));
-    const invoke = (tool: string, args: object, session = id) => runtime.start(session, `tool:${tool}:${JSON.stringify(args)}`).completion;
+    // A reload the agent asked for wakes the session afterwards; a message sent meanwhile waits for that run.
+    const invoke = async (tool: string, args: object, session = id) => {
+      for (;;) {
+        try {
+          await runtime.ensure(session);
+          return await runtime.start(session, `tool:${tool}:${JSON.stringify(args)}`).completion;
+        } catch (error) {
+          if (!(error instanceof RuntimeError && ["busy", "not-found", "owned"].includes(error.code))) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+    };
     const stage = async () => {
       await invoke("pispark_extension", { action: "stage", name: "probe", source: "probe", scope: "session" });
       assert.ok(revisions.read().staged, sessionText(runtime, id).slice(-3000));
@@ -66,6 +78,8 @@ test("stage, deny, reload, replace, recover and remove without changing a siblin
     await apply();
     await eventually(() => !!revisions.read().active[0] && revisions.read().active[0]?.revision !== one);
     const two = revisions.read().active[0]!.revision;
+    // The agent that asked is woken with the outcome.
+    await eventually(() => /reloaded and loaded probe[\s\S]*asked for by pispark_extension/.test(sessionText(runtime, id)));
     await apply();
     assert.equal(revisions.read().active[0]?.revision, two);
     assert.equal(revisions.read().staged, undefined);
@@ -74,7 +88,7 @@ test("stage, deny, reload, replace, recover and remove without changing a siblin
     assert.match(sessionText(runtime, id), /probe-two/);
     await writeFile(join(draft, "index.mjs"), "throw new Error('fixture import failure')");
     await apply();
-    await eventually(() => revisions.read().outcome?.includes("failed (extension)") === true);
+    await eventually(() => /could not reload .*\(extension\)/.test(revisions.read().outcome ?? ""));
     await eventually(() => runtime.list().some((s) => s.id === id && s.status === "idle"));
     assert.equal(revisions.read().active[0]?.revision, two);
     await writeFile(join(draft, "index.mjs"), probe("bad-view"));
@@ -83,7 +97,7 @@ test("stage, deny, reload, replace, recover and remove without changing a siblin
     await apply();
     await eventually(() => {
       const outcome = revisions.read().outcome;
-      return outcome !== previousFailure && outcome?.includes("failed (extension)") === true;
+      return outcome !== previousFailure && /could not reload .*\(extension\)/.test(outcome ?? "");
     });
     await eventually(() => runtime.list().some((s) => s.id === id && s.status === "idle"));
     assert.equal(revisions.read().active[0]?.revision, two);

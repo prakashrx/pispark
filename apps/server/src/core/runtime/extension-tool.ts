@@ -23,7 +23,7 @@ export function registerExtensionTool(pi: ExtensionAPI): void {
     name: EXTENSION_TOOL,
     label: "Develop session extensions",
     parameters,
-    description: "Apply the authorized draft in this session's extension-drafts/<name>, or unload an active local extension. The change takes effect after this turn. Use pispark_session inspect to check the outcome. For project sources, stage and reload the exact staged revision after approval.",
+    description: "Apply the authorized draft in this session's extension-drafts/<name>, or unload an active local extension. The session reloads with the change when this turn ends and you get the outcome as a new message, so end your turn after applying. For project sources, stage and reload the exact staged revision after approval.",
     async execute(_id, request, signal) {
       signal?.throwIfAborted();
       const text = await new Promise<string>((resolve, reject) => {

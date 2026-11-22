@@ -73,7 +73,7 @@ const shortString = (value: unknown, max: number): value is string => typeof val
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
 function validSource(value: unknown): value is WakeSource {
-  return object(value) && (value.kind === "schedule" || value.kind === "session" || value.kind === "process") && shortString(value.id, 200) && shortString(value.label, 200);
+  return object(value) && ["schedule", "session", "process", "reload"].includes(value.kind as string) && shortString(value.id, 200) && shortString(value.label, 200);
 }
 function validReport(value: unknown): boolean {
   return (

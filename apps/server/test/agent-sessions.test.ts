@@ -37,6 +37,14 @@ const currentTools = (request: LocalRequest) => {
     }
   return [...on];
 };
+/** Whether a condition holds now; false while the session is briefly not loaded (as it reloads). */
+const now = (condition: () => boolean) => () => {
+  try {
+    return condition();
+  } catch {
+    return false;
+  }
+};
 const systemText = (request: LocalRequest) =>
   JSON.stringify(request.context.messages.filter((m) => m.role === "system"));
 
@@ -138,19 +146,78 @@ test("agent edits flag open sessions as changed; reload applies them from the sa
     f.runtime.agents.writeFile({ agent: "dev" }, "instructions/a.md", file.revision, "SECOND-VERSION");
     assert.equal(f.runtime.session(session.id).agentChanged, true);
     assert.equal(f.runtime.session(other.id).agentChanged, undefined, "Default sessions are unaffected");
+    // Asked for while a reply runs, the reload waits for it, then applies the change.
     f.provider.automatic = false;
     const run = f.runtime.start(session.id, "busy");
     await eventually(() => f.provider.active === 1);
-    await assert.rejects(f.runtime.reload(session.id), (e) => e instanceof RuntimeError && e.code === "busy");
+    assert.deepEqual((await f.runtime.reload(session.id)).pending, { reload: true });
+    assert.equal(f.runtime.session(session.id).agentChanged, true);
     f.provider.requests.at(-1)!.release();
     await run.completion;
     f.provider.automatic = true;
+    await eventually(now(() => f.runtime.session(session.id).status === "idle" && !f.runtime.session(session.id).agentChanged));
     const reloaded = await f.runtime.reload(session.id);
     assert.equal(reloaded.agentChanged, undefined);
+    assert.equal(reloaded.pending, undefined);
     await f.runtime.start(session.id, "after reload").completion;
     const last = f.provider.requests.at(-1)!;
     assert.match(systemText(last), /SECOND-VERSION/);
     assert.match(JSON.stringify(last.context.messages), /hello/, "same transcript");
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("the agent asks for a reload: it waits for the turn to end, then wakes the agent with the outcome", async () => {
+  const f = await fixture();
+  try {
+    await f.agent("dev", { name: "Dev" }, { "instructions/a.md": "FIRST-VERSION" });
+    const session = await f.runtime.create({ folder: f.folder, agent: "dev" });
+    await f.runtime.start(session.id, "hello").completion;
+    const file = f.runtime.agents.readFile({ agent: "dev" }, "instructions/a.md");
+    f.runtime.agents.writeFile({ agent: "dev" }, "instructions/a.md", file.revision, "SECOND-VERSION");
+    f.provider.automatic = false;
+    const run = f.runtime.start(session.id, `tool:${SESSION_TOOL}:${JSON.stringify({ action: "reload" })}`);
+    await eventually(() => f.provider.active === 1);
+    f.provider.requests.at(-1)!.release();
+    await eventually(() => f.runtime.session(session.id).pending?.reload === true);
+    assert.match(sessionText(f.runtime, session.id), /reloads when this turn ends/);
+    f.provider.automatic = true;
+    f.provider.requests.at(-1)!.release();
+    await run.completion;
+    await eventually(now(() => /This reload was asked for by pispark_session/.test(sessionText(f.runtime, session.id))));
+    await eventually(now(() => f.runtime.session(session.id).status === "idle"));
+    const woken = f.provider.requests.at(-1)!;
+    assert.match(systemText(woken), /SECOND-VERSION/);
+    assert.match(JSON.stringify(woken.context.messages), /reloaded with its agent's current setup/);
+    assert.match(JSON.stringify(woken.context.messages), /hello/, "same transcript");
+    assert.equal(f.runtime.session(session.id).agentChanged, undefined);
+    assert.equal(f.runtime.session(session.id).pending, undefined);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("stopping the turn drops the reload its agent asked for", async () => {
+  const f = await fixture();
+  try {
+    await f.agent("dev", { name: "Dev" }, { "instructions/a.md": "FIRST-VERSION" });
+    const session = await f.runtime.create({ folder: f.folder, agent: "dev" });
+    const file = f.runtime.agents.readFile({ agent: "dev" }, "instructions/a.md");
+    f.runtime.agents.writeFile({ agent: "dev" }, "instructions/a.md", file.revision, "SECOND-VERSION");
+    f.provider.automatic = false;
+    const run = f.runtime.start(session.id, `tool:${SESSION_TOOL}:${JSON.stringify({ action: "reload" })}`);
+    await eventually(() => f.provider.active === 1);
+    f.provider.requests.at(-1)!.release();
+    await eventually(() => f.runtime.session(session.id).pending?.reload === true);
+    await f.runtime.cancel(session.id);
+    await run.completion;
+    f.provider.automatic = true;
+    await eventually(() => f.runtime.session(session.id).pending === undefined);
+    const requests = f.provider.requests.length;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(f.provider.requests.length, requests, "nothing woke the agent");
+    assert.equal(f.runtime.session(session.id).agentChanged, true, "not reloaded");
   } finally {
     await f.cleanup();
   }
@@ -354,7 +421,7 @@ test("every session is told it runs in PiSpark and gets PiSpark's own skills, wh
   }
 });
 
-test("between replies a session's thinking level and model can change; the choice stays on reopen; never mid-reply", async () => {
+test("a session's thinking level and model can change; the choice stays on reopen; one asked for mid-reply waits for the reply", async () => {
   const f = await fixture();
   try {
     const session = await f.runtime.create({ folder: f.folder });
@@ -374,13 +441,17 @@ test("between replies a session's thinking level and model can change; the choic
     const model = f.runtime.session(session.id).model;
     await assert.rejects(f.runtime.configure(session.id, { model: { provider: model!.provider, id: "no-such-model" } }), (e) => e instanceof RuntimeError && e.code === "model-unavailable");
     assert.deepEqual(f.runtime.session(session.id).model, model);
-    // Not while a reply runs.
+    // Asked for while a reply runs, it waits, and applies once the reply is done.
     f.provider.automatic = false;
     const run = f.runtime.start(session.id, "slow");
     await eventually(() => f.provider.active === 1);
-    await assert.rejects(f.runtime.configure(session.id, { thinking: "off" }), (e) => e instanceof RuntimeError && e.code === "busy");
+    const waiting = await f.runtime.configure(session.id, { thinking: "off" });
+    assert.deepEqual(waiting.pending, { thinking: "off" });
+    assert.equal(waiting.thinking!.level, chosen, "the running reply keeps its level");
     f.provider.requests.at(-1)!.release();
     await run.completion;
+    await eventually(() => f.runtime.session(session.id).pending === undefined);
+    assert.equal(f.runtime.session(session.id).thinking!.level, "off");
     await assert.rejects(f.runtime.configure(session.id, {}), (e) => e instanceof RuntimeError && e.code === "invalid-input");
   } finally {
     await f.cleanup();

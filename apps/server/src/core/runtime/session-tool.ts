@@ -27,6 +27,8 @@ export type SessionRequest =
   | { action: "start"; prompt: string; agent?: string; title?: string; report?: ChildReportMode }
   | { action: "list" }
   | { action: "inspect" }
+  /** Reload the calling session when its turn ends; it is woken with the outcome. */
+  | { action: "reload" }
   /** Send one of its children another message. */
   | { action: "send"; id: string; text: string }
   | { action: "stop"; id: string }
@@ -65,6 +67,7 @@ export function validSessionMessage(value: unknown): value is SessionMessage {
   switch (request.action) {
     case "inspect":
     case "list":
+    case "reload":
       return true;
     case "start":
       return (

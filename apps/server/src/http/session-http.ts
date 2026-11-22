@@ -394,7 +394,7 @@ export class SessionHttp {
           await this.runtime.open(command.sessionId);
           break;
         case "reload":
-          await this.runtime.reload(command.sessionId, command.model);
+          if ((await this.runtime.reload(command.sessionId, command.model)).pending?.reload) receipt.outcome = "queued";
           break;
         case "start": {
           // A session is loaded when it is used; nobody opens or stops sessions by hand.
@@ -442,12 +442,14 @@ export class SessionHttp {
         case "seen":
           this.runtime.seen(command.sessionId);
           break;
-        case "configure":
-          await this.runtime.configure(command.sessionId, {
+        case "configure": {
+          const doc = await this.runtime.configure(command.sessionId, {
             ...(command.model ? { model: command.model } : {}),
             ...(command.thinking ? { thinking: command.thinking } : {}),
           });
+          if (doc.pending?.model || doc.pending?.thinking) receipt.outcome = "queued";
           break;
+        }
         case "restore":
           this.runtime.restore(command.sessionId);
           break;

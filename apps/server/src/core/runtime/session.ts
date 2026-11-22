@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, EventBus, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Provider } from "@earendil-works/pi-ai";
-import { HOLD_CHANNEL, NOTICE_ENTRY, type HoldRequest, type ReadOnlyReason, type ItemsPage, type LiveDoc, type PartPage, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
+import { HOLD_CHANNEL, NOTICE_ENTRY, type HoldRequest, type ReadOnlyReason, type ItemsPage, type LiveDoc, type PartPage, type PendingSetup, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
 import { ExtensionUI } from "../extensions/extension-ui.js";
 import { ExtensionRendering } from "../extensions/extension-render.js";
 import { ExtensionViews } from "../extensions/views.js";
@@ -18,6 +18,7 @@ import { attachedImages, sentAttachmentNames, namingFiles } from "./attachments.
 import { validItemName } from "../agents/format.js";
 import { PROCESS_CHANNEL, validProcessMessage, type ProcessRequest } from "./process-tool.js";
 import { ExtensionRevisions, extensionNameValid, type ExtensionChange } from "./extension-revisions.js";
+import type { SetupChange } from "./setup-changes.js";
 import { EXTENSION_CHANNEL, EXTENSION_TOOL, type ExtensionMessage } from "./extension-tool.js";
 import { createSessionServices, resolveFolder } from "./configuration.js";
 import { providerUsageLimited, deadline, RuntimeError, runtimeError, unsupported } from "./errors.js";
@@ -148,7 +149,14 @@ export interface SessionHost {
   hold?(session: Session, request: { extension: string; hold: boolean; reason: string }): { state: "held" | "asked" | "released" | "refused"; text: string };
   /** One of the session's runs ended (a child reports back). Called outside Pi's listeners. */
   ended?(session: Session, result: RunResult): void;
-  extensionReload?(session: Session, revision: string): boolean;
+  /**
+   * A change to what the session runs, asked for from inside it (its agent or an extension), or an
+   * extension revision to activate: applied once the session is free. False when refused.
+   */
+  requestSetup?(session: Session, change: SetupChange): boolean;
+  /** What waits to change once the session is free. */
+  pendingSetup?(id: string): PendingSetup | undefined;
+  /** The staged extension revision a reload will activate, or is activating. */
   extensionPending?(id: string): string | undefined;
   extensionCandidate?(id: string): ExtensionChange[] | undefined;
   /** The sessions a session starts and follows, for its agent (`pispark_session`). */
@@ -193,6 +201,9 @@ function promptsOf(session: AgentSession): SessionCommand[] {
     return text ? { name, description: text } : { name };
   });
 }
+
+/** What waits to change, for the session's document; nothing when nothing waits. */
+const pendingOf = (pending: PendingSetup | undefined) => (pending && Object.keys(pending).length ? { pending } : {});
 
 /** "extensions/notes.ts" and "extensions/notes/index.ts" are both "notes". */
 export function extensionName(path: string): string {
@@ -381,6 +392,7 @@ export class Session {
       commands: commandsOf(session),
       prompts: promptsOf(session),
       ...(this.holdAsked ? { holdAsked: { ...this.holdAsked } } : {}),
+      ...pendingOf(this.host.pendingSetup?.(this.id)),
     };
   }
   /** The live document: session state, the items in flight and what running tools reported. */
@@ -724,6 +736,13 @@ export class Session {
       catch { value.reply({ ok: false, text: "Cannot read this session's extension state." }); }
       return;
     }
+    if (value.request.action === "reload") {
+      const scheduled = !this.closed && this.published && !!this.host.requestSetup?.(this, { asked: "pispark_session (reload)" });
+      value.reply(scheduled
+        ? { ok: true, text: "The session reloads when this turn ends, picking up its agent's current setup, and you get the outcome as a new message. End your turn now rather than checking." }
+        : { ok: false, text: "This session cannot reload now." });
+      return;
+    }
     if (this.metadata.parent && value.request.action !== "report") {
       value.reply({ ok: false, text: "Child sessions cannot manage other sessions." });
       return;
@@ -770,7 +789,7 @@ export class Session {
     return JSON.stringify({
       session: this.id, agent: this.metadata.agent, cwd: this.metadata.cwd, status: this.status,
       setupChanged: this.setupChanged, resources: this.resources, activeTools: this.pi?.getActiveToolNames(),
-      local: this.extensionRevisions.read(), pendingReload: this.host.extensionPending?.(this.id) ?? null,
+      local: this.extensionRevisions.read(), pending: this.host.pendingSetup?.(this.id) ?? null,
       offeredViews: this.views?.view().map(({ point, key, title }) => ({ point, key, title })),
       extensionErrors: this.extensionErrors,
       recentErrors: this.ui?.view().notices.filter(({ kind }) => kind === "error").slice(-5).map(({ lines }) => lines),
@@ -790,8 +809,7 @@ export class Session {
       const folder = this.host.storage.directory(this.id);
       const draftRoot = join(folder, "extension-drafts");
       const assertQueue = () => {
-        if (signal?.aborted || this.closed || this.run?.cancelled || this.input || this.pi?.getSteeringMessages().length || this.pi?.getFollowUpMessages().length)
-          throw new Error("The extension change cannot be scheduled while other work is waiting or this turn is stopping.");
+        if (signal?.aborted || this.closed || this.run?.cancelled) throw new Error("The extension change cannot be scheduled while this turn is stopping.");
       };
       let change = revisions.read().staged;
       if (request.action === "apply" || request.action === "unload") {
@@ -828,16 +846,19 @@ export class Session {
         } finally { this.extensionApproval = false; }
       }
       assertQueue();
-      if (!this.host.extensionReload?.(this, change.revision)) throw new Error("A reload is already pending.");
-      reply(`Scheduled ${change.snapshot ? "activation" : "unload"} of ${change.name} after this turn. Check the session notice or inspect for the outcome.`);
+      const what = `${change.snapshot ? "activation" : "unload"} of ${change.name}`;
+      if (!this.host.requestSetup?.(this, { extension: change.revision, asked: `pispark_extension (${what} at revision ${change.revision})` }))
+        throw new Error("A reload is already pending.");
+      reply(`Scheduled ${what} when this turn ends. The session then reloads and you get the outcome as a new message; end your turn now rather than checking.`);
     } catch (error) { reply((error as Error).message.slice(0, 500), true); }
   }
   private extensionApproval = false;
-  get extensionReloadCancelled(): boolean { return this.lastRunCancelled; }
+  /** The last run was cancelled or failed: what was asked for from inside it is not carried out. */
+  get lastRunStopped(): boolean { return this.lastRunCancelled; }
   private lastRunCancelled = false;
-  extensionReloadNotice(text: string, failed: boolean): void {
-    if (failed) this.ui?.failed(text);
-    else this.ui?.context.notify(text, "info");
+  /** A change to the session's setup failed: said in the session, as an extension's failure is. */
+  setupNotice(text: string): void {
+    this.ui?.failed(text);
   }
   /** The extension files the session loaded, for naming where a tool came from. */
   private extensionPaths: string[] = [];
@@ -987,6 +1008,8 @@ export class Session {
       throw error;
     } finally {
       this.input = undefined;
+      // Free again: anything that waited for this change can go now.
+      this.changed();
     }
   }
 
@@ -1081,7 +1104,6 @@ export class Session {
    * prompt is saved with the session, so a restart keeps it.
    */
   start(text: string, marker?: WokenDetails): RunHandle {
-    if (this.host.extensionPending?.(this.id)) throw new RuntimeError("busy");
     validateText(text);
     if (!this.host.accepting()) throw new RuntimeError("closed");
     this.loaded();
@@ -1310,7 +1332,6 @@ export class Session {
 
   /** Steer or follow up the running agent, as Pi queues them. */
   async queue(text: string, kind: "steer" | "follow-up"): Promise<"queued" | "handled"> {
-    if (this.host.extensionPending?.(this.id)) throw new RuntimeError("busy");
     validateText(text);
     if (kind !== "steer" && kind !== "follow-up") throw new RuntimeError("invalid-input");
     const { session } = this.loaded();

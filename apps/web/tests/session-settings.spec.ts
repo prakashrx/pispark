@@ -34,6 +34,36 @@ hostedTest("Details changes the session's model between replies, shows its conte
   await expect(page.locator(".status-line")).toContainText("Second local model");
 });
 
+hostedTest("a model chosen or a reload asked for while a reply runs waits for the reply, then applies", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  // The test host's model holds a prompt that says "hold" until it is stopped.
+  await ask(page, "hold on");
+  await expect(page.getByRole("button", { name: "Stop response" })).toBeVisible();
+
+  await details(page).getByRole("button", { name: /^Model/ }).click();
+  await page.getByRole("option", { name: /^Second local model/ }).click();
+  await expect(details(page).getByRole("status").filter({ hasText: "Applies when this reply finishes." })).toBeVisible();
+  await expect(page.locator(".status-line")).not.toContainText("Second local model");
+
+  await page.getByRole("button", { name: "Session actions" }).click();
+  await page.getByRole("menuitem", { name: "Reload session" }).click();
+  const reloading = page.getByText("The session reloads when this reply finishes; your messages stay.");
+  await expect(reloading).toBeVisible();
+  await page.getByRole("button", { name: "Session actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Reload session" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Stop response" }).click();
+  await expect(reloading).toHaveCount(0);
+  await expect(page.locator(".status-line")).toContainText("Second local model");
+  await expect(details(page).getByText("Applies when this reply finishes.")).toHaveCount(0);
+  const reply = page.getByRole("textbox", { name: "Reply to session" });
+  await reply.fill("after the change");
+  await reply.press("Enter");
+  await expect(page.getByText("local:after the change", { exact: true })).toBeVisible();
+});
+
 hostedTest("a failed reply's card opens Details on the model", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");

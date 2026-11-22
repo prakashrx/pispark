@@ -598,7 +598,8 @@ test("a refreshed catalog is available to open, new and reopened sessions withou
   const pending = sessions.configure(warm.id, { model: selected });
   await reached;
   try {
-    await assert.rejects(sessions.configure(warm.id, { thinking: "low" }), /busy/);
+    // A second change asked for while the first is applied waits for it.
+    assert.deepEqual((await sessions.configure(warm.id, { thinking: "low" })).pending, { thinking: "low" });
     assert.throws(() => sessions.start(warm.id, "while switching"), /busy/);
     sessions.rename(warm.id, "Renamed while switching");
   } finally {
@@ -606,6 +607,8 @@ test("a refreshed catalog is available to open, new and reopened sessions withou
     resume = undefined;
   }
   assert.equal((await pending).model?.id, selected.id);
+  await eventually(() => sessions.session(warm.id).pending === undefined);
+  assert.equal(sessions.session(warm.id).model?.id, selected.id);
   assert.equal(sessions.session(warm.id).title, "Renamed while switching");
   assert.equal((await sessions.create({ folder: root, model: selected })).model?.id, selected.id);
   await sessions.stop(warm.id);
