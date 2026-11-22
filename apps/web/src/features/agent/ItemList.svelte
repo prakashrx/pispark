@@ -14,11 +14,13 @@
   import type { AgentClient } from "./agent-client.svelte";
   import type {
     ItemType,
+    AvailableResource,
     ResolvedItem,
   } from "../../../../server/src/contract/agent-protocol";
   import {
     ITEM_LABELS,
     originLabel,
+    resourceSource,
     switchLabel,
     template,
   } from "./agent-presentation";
@@ -40,7 +42,7 @@
   const items = $derived(
     (client.view?.items ?? []).filter((item) => item.type === type),
   );
-  // Text items can be read, edited and added here; extensions and MCP servers are listed only.
+  // Text resources can also be edited in the agent that owns the file.
   const editable = $derived(["instructions", "skills", "prompts"].includes(type));
   let open = $state<string>();
   let text = $state("");
@@ -48,6 +50,10 @@
   let revision = $state<string | null>(null);
   let loading = $state(false);
   let adding = $state(false);
+  let choices = $state<AvailableResource[]>([]);
+  let pickerError = $state("");
+  let loadingChoices = $state(false);
+  let pickerRequest = 0;
   /** The description under the title, shown by ?. */
   let helping = $state(false);
   /** The item whose removal waits to be confirmed. */
@@ -98,6 +104,26 @@
       revision = file?.revision ?? revision;
     }
   }
+  async function openPicker() {
+    const request = ++pickerRequest;
+    adding = true;
+    loadingChoices = true;
+    choices = [];
+    pickerError = "";
+    newName = "";
+    newText = template(type, "");
+    try {
+      const available = await client.availableResources(type);
+      if (request === pickerRequest) choices = available.resources;
+    } catch (error) {
+      if (request === pickerRequest) pickerError = (error as Error).message;
+    } finally {
+      if (request === pickerRequest) loadingChoices = false;
+    }
+  }
+  async function choose(resource: AvailableResource) {
+    if (await client.selectResource(type, resource.reference, true)) adding = false;
+  }
   async function add() {
     const name = newName.trim();
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(name)) {
@@ -122,17 +148,13 @@
       title={description}
       onclick={() => (helping = !helping)}>?</button
     >
-    {#if editable}<button
+    <button
         type="button"
         class="icon"
         aria-label={`Add ${labels.one}`}
         title={`Add ${labels.one}`}
-        onclick={() => {
-          adding = true;
-          newName = "";
-          newText = template(type, "");
-        }}><Icon name="plus" class="h-4 w-4" /></button
-      >{/if}
+        onclick={() => void openPicker()}><Icon name="plus" class="h-4 w-4" /></button
+      >
   {/snippet}
   {#if helping}<p class="note">{description}{help ? ` ${help}` : ""}</p>{/if}
   {#if items.length}
@@ -143,17 +165,23 @@
             {#if editable && item.path}<button type="button" class="name" aria-haspopup="dialog" onclick={() => void show(item)}>{item.name}</button>
             {:else}<span class="name">{item.name}</span>{/if}
             {#if item.description}<span class="sub clamp" title={item.description}>{item.description}</span>{/if}
-            {#if type === "mcp"}<span class="sub">Saved in the agent; not connected to sessions yet.</span>{/if}
+            {#if item.unavailable}<span class="sub">Resource unavailable.</span>{/if}
+            {#if type === "mcp"}<span class="sub">MCP connections are not available yet.</span>{/if}
           </span>
           <span class="origin"
-            >{originLabel(item.origin, viewing)}{#if switchLabel(item, viewing)}{" · "}{switchLabel(item, viewing)}{/if}{#if !item.on}{" · "}Off{/if}</span
+            >{originLabel(item.origin, viewing)}{#if item.reference}{" · "}{resourceSource(item.reference)}{/if}{#if switchLabel(item, viewing)}{" · "}{switchLabel(item, viewing)}{/if}{#if !item.on}{" · "}Off{/if}</span
           >
-          {#if type !== "mcp"}<Toggle
+          <Toggle
               label={`Use ${labels.one} ${item.name}`}
               checked={item.on}
               disabled={client.busy}
               onchange={(event: Event) => void client.toggle(type, item.name, (event.currentTarget as HTMLInputElement).checked)}
-            />{/if}
+            />
+          {#if item.reference && client.local(item)}
+            <button type="button" class="icon" aria-label={`Remove selection ${item.name}`}
+              title="Remove selection" disabled={client.busy}
+              onclick={() => void client.selectResource(type, item.reference!, false)}>×</button>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -204,9 +232,29 @@
 
 {#if adding}
   <Modal label={`Add ${labels.one}`} title={`Add ${labels.one}`} size="wide" dismiss={false} onclose={() => (adding = false)}>
-    {#snippet primary()}<Button variant="primary" type="submit" form="add-item" unavailable={client.busy ? "Saving…" : undefined}
+    {#snippet primary()}{#if editable}<Button variant="primary" type="submit" form="add-item" unavailable={client.busy ? "Saving…" : undefined}
         >Add {labels.one}</Button
-      >{/snippet}
+      >{/if}{/snippet}
+    {#if loadingChoices}
+      <p role="status" class="sub">Loading resources…</p>
+    {:else if pickerError}
+      <p role="alert" class="sub">{pickerError}</p>
+    {:else if choices.length}
+      <ul class="choices" aria-label="Available resources">
+        {#each choices as choice (choice.reference)}
+          <li>
+            <button type="button" class="choice" disabled={client.busy || items.some(item => item.on && item.reference === choice.reference)}
+              onclick={() => void choose(choice)}>
+              <span>{choice.name} · {resourceSource(choice.reference)}</span>
+              {#if choice.description}<span class="sub">{choice.description}</span>{/if}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {:else if !editable}
+      <p class="sub">No resources of this type are available.</p>
+    {/if}
+    {#if editable}
     <form
       id="add-item"
       class="space-y-3"
@@ -216,6 +264,7 @@
         void add();
       }}
     >
+      {#if choices.length}<p class="sub">Create an agent-owned {labels.one}</p>{/if}
       <Input
         label="Name"
         placeholder={type === "prompts" ? "review" : "my-" + labels.one}
@@ -225,12 +274,26 @@
         }}
       />
       <Textarea label="Text" monospace rows={10} bind:value={newText} />
-      {#if client.editorError}<p role="alert" class="text-sm text-[var(--danger-foreground)]">{client.editorError}</p>{/if}
     </form>
+    {/if}
+    {#if client.editorError}<p role="alert" class="text-sm text-[var(--danger-foreground)]">{client.editorError}</p>{/if}
   </Modal>
 {/if}
 
 <style>
+  .choices {
+    max-height: 14rem;
+    overflow: auto;
+    margin-bottom: 0.75rem;
+  }
+  .choice {
+    width: 100%;
+    padding: 0.5rem;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .choice:hover:not(:disabled) { background: var(--accent); }
+  .choice:disabled { color: var(--muted-foreground); }
   .note {
     padding: 0.5rem 1rem;
     font-size: var(--text-xs);

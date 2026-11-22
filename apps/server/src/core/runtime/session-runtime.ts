@@ -119,7 +119,7 @@ export class SessionRuntime {
     if (![this.maxLive, this.timeout].every((value) => Number.isSafeInteger(value) && value > 0))
       throw new RuntimeError("configuration");
     this.storage = new SessionStorage(paths.sessions);
-    this.agents = new AgentStore(paths.agents, paths.sessions, (sessionId) => this.storage.read(sessionId).agent, logger);
+    this.agents = new AgentStore(paths.agents, paths.sessions, (sessionId) => this.storage.read(sessionId).agent, logger, configuration.bundledResources);
     this.unwatchAgents = this.agents.onChange(() => {
       this.known = undefined;
       this.layered.clear();

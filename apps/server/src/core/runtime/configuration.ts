@@ -40,6 +40,8 @@ export const BUILT_IN_SKILLS = ["pispark", "pispark-extensions"].map((name) =>
 export interface RuntimeConfiguration {
   /** Data root: sessions, agents, providers and logs live under it. */
   home: string;
+  /** Optional catalog root override for isolated hosts and tests. */
+  bundledResources?: string;
   logging?: { directory?: string; console?: boolean };
   providerSettings?: {
     modelsPath?: string | null;

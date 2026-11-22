@@ -174,3 +174,28 @@ fresh("a project agent: the editor sets its working folder, Ask shows it locked,
     await rm(project, { recursive: true, force: true });
   }
 });
+
+fresh("bundled resources are selectable by reference and remain available after removal", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/#/agents/review");
+  await expect(page.getByRole("heading", { name: "Review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Use extension web-research" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Add extension", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "Add extension" });
+  await picker.getByRole("button", { name: "web-research · Bundled", exact: true }).click();
+  const selected = page.getByRole("switch", { name: "Use extension web-research" });
+  await expect(selected).toBeChecked();
+  const response = await page.request.post("/api/agents/read", {
+    headers: { Origin: new URL(page.url()).origin },
+    data: { target: { agent: "review" } },
+  });
+  expect(response.ok()).toBe(true);
+  expect((await response.json()).definition.resources.extensions).toContain("bundled:web-research");
+  await page.reload();
+  await expect(selected).toBeChecked();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole("button", { name: "Remove selection web-research" }).click();
+  await expect(selected).toHaveCount(0);
+  await page.getByRole("button", { name: "Add extension", exact: true }).click();
+  await expect(picker.getByRole("button", { name: "web-research · Bundled", exact: true })).toBeEnabled();
+});

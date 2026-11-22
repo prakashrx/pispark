@@ -6,6 +6,8 @@ import {
   type AgentSummary,
   type AgentTarget,
   type AgentView,
+  type AvailableResource,
+  type ResourceReference,
   type ResolvedItem,
 } from "../../../../server/src/contract/agent-protocol";
 import { agentError } from "./agent-presentation";
@@ -184,6 +186,18 @@ export class AgentClient {
       ...d,
       [on ? "on" : "off"]: [...((on ? d.on : d.off) ?? []), key],
     }));
+  }
+  availableResources(type: ItemType) {
+    return agentRequest<{ resources: AvailableResource[] }>("resources", { target: this.target, type });
+  }
+  selectResource(type: ItemType, reference: ResourceReference, on: boolean) {
+    return this.change(() => agentRequest("resource/select", {
+      target: this.target,
+      expectedRevision: this.view?.revision ?? "",
+      type,
+      reference,
+      on,
+    }), on ? "Added" : "Removed");
   }
   readFile(path: string, target = this.target) {
     return agentRequest<ItemFile>("file/read", { target, path });

@@ -26,12 +26,40 @@
 ```
 
 - The **ID** is a readable slug chosen at creation (`dev`, `dev-2`) and never changes; it is also the folder name. The name can change.
-- **Items** are named by their file or folder name. Adding an item means putting the file in the folder (the editor does this).
+- **Items** are named by their file or folder name. The `resources` object explicitly selects the resources included in this layer. The editor saves a reference when you select an existing resource and creates a local file and reference when you add an owned resource.
 - **Switches** use `type:name`: `instruction:`, `skill:`, `prompt:`, `extension:`, `mcp:` and `tool:`. `off` turns an inherited item or a tool off; `on` turns one back on (or turns a tool on).
 - **Customizing** an inherited item means adding one with the same name; the later layer wins.
 - `agent.json` is strict: unknown keys, malformed switches and `"default"` in `base` are refused, so typos never silently do nothing.
 - `"folder"` makes it a [project agent](#project-agents); `"home"` makes it an [app agent](#app-agents).
 - **MCP servers** are part of the format and resolution, but are **not connected to sessions yet**; the editor says so.
+
+## Resource sources
+
+The editor's **+** picker lists available resources. A file becomes active through a selection or an inherited selection.
+
+- `bundled:<name>` refers to a resource shipped in the running app's `plugins/` directory, for example `plugins/extensions/web-research/`. An app update supplies the new copy. A newly bundled plugin is available to select.
+- `shared:<name>` refers to a resource you install under `<data folder>/resources/`. Several agents can use one copy.
+- `local:<name>` refers to a resource in the declaring agent or session layer. An inherited local reference still points to its owner.
+
+Resource groups in JSON are `instructions`, `skills`, `prompts`, `extensions`, and `mcp`, which also name the directories used in each source. MCP entries are JSON files, or existing definitions inside an agent's `mcpServers` field. For example:
+
+```json
+{
+  "name": "Web Dev",
+  "resources": {
+    "skills": ["shared:review-code", "local:ui-review"],
+    "extensions": ["bundled:web-research"]
+  }
+}
+```
+
+An extension folder with an index entry can carry its own skills under `skills/<name>/SKILL.md`. These skills follow the extension when the session loads or reloads. Tool and resource changes use the current session reload flow.
+
+### Migrating an existing installation
+
+The server continues to read older definitions without a `resources` field. To convert them, stop the server and run `node apps/server/dist/core/agents/migrate-cli.js` with the same `PISPARK_HOME`. This previews the number of conversions. Run it again with `--apply` to back up the original definitions and convert discovered resources to local references. The report names the backup directory relative to the data folder. Repeat runs skip converted definitions.
+
+Older app versions that predate explicit references need their original definitions. To go back after migration, stop PiSpark and restore the backed-up definitions before starting the older app. Keep the backup private, like the original config. Files owned by existing agents stay in their directories.
 
 ## Default and layering
 
@@ -84,7 +112,7 @@ Model choice for a new session: the one chosen under the New session composer, e
 Agents lists every agent, Default first. The editor shows, for one layer:
 
 - **Builds on:** Default (always) and the parents, in order; add or remove parents.
-- **Instructions, Skills, Prompts, Extensions:** every resolved item with where it comes from ("Added here", "From Writer"), whether a layer switched it, and an on/off switch. Items in this layer can be edited or removed; inherited ones can be viewed and **customized here** (copied into this layer). New instructions, skills and prompts start from a template; a prompt runs by typing `/name`.
+- **Instructions, Skills, Prompts, Extensions, MCP:** every resolved item with where it comes from ("Added here", "From Writer"), whether a layer switched it, and an on/off switch. Items in this layer can be edited or removed; inherited ones can be viewed and **customized here** (copied into this layer). New instructions, skills and prompts start from a template; a prompt runs by typing `/name`.
 - **Routines:** `routines: [{id, name, cron, prompt}]` in `agent.json` offers runs on a schedule, each a new session of the agent; inherited like the folder. Each is off until switched on with `routine:<id>` (on Background, or in Details of one of its sessions). `hold:<extension>` allows that extension to keep the agent's sessions loaded while no one watches ([hold](session-runtime.md#hold)). Both are ordinary `on`/`off` switches and are off unless switched on.
 - **Tools:** every tool the agent has, found by loading its extensions without starting a session (Pi allows it; cached by the setup's fingerprint), with on/off switches and which layer set them. Grouped: **PiSpark** first (Pi's built-in tools and those of PiSpark's own built-in extension), then each extension, then switches naming tools nothing provides now. MCP tools appear once PiSpark connects MCP servers (not yet).
 - **Model:** a preferred model and thinking level.
@@ -102,6 +130,8 @@ All endpoints use the shared loopback Host/Origin/Fetch Metadata guard and exact
 | --- | --- |
 | `GET /api/agents` | → `{agents: AgentSummary[]}`, Default first; each has `folder` when it is a project agent and `home` when it is an app agent |
 | `POST /api/agents/read` | `{target}` → `AgentView` (definition, revision, layers, resolved items and tools, settings, folder and home; `error` when unresolvable) |
+| `POST /api/agents/resources` | `{target, type}` → `{resources}`, the eligible local, shared, and bundled resources |
+| `POST /api/agents/resource/select` | `{target, type, reference, on, expectedRevision}` → `{revision}`. Saves or removes the direct selection |
 | `POST /api/agents/create` | `{name, description?, base?}` → `{id, revision}` |
 | `POST /api/agents/save` | `{target, expectedRevision, definition}` → `{revision}`; `""` creates a session's layer |
 | `POST /api/agents/delete` | `{id}` |

@@ -2,6 +2,14 @@
 /** The agent every PiSpark has, used when none is chosen. */
 export const DEFAULT_AGENT = "default";
 export type ItemType = "instructions" | "skills" | "prompts" | "extensions" | "mcp";
+export type ResourceSource = "bundled" | "shared" | "local";
+export type ResourceReference = `${ResourceSource}:${string}`;
+export type AgentResources = Partial<Record<ItemType, ResourceReference[]>>;
+export interface AvailableResource {
+  name: string;
+  reference: ResourceReference;
+  description?: string;
+}
 export type ThinkingLevel =
   | "off"
   | "minimal"
@@ -54,6 +62,8 @@ export interface AgentDefinition {
   off?: string[];
   /** Pi `mcp.json` server entries. Resolved, not yet connected. */
   mcpServers?: Record<string, Record<string, unknown>>;
+  /** Explicit direct selections. Missing on legacy definitions until converted. */
+  resources?: AgentResources;
   settings?: { model?: string; thinking?: ThinkingLevel };
   /**
    * The folder on the backend host this agent always works in, which makes it a project agent.
@@ -104,6 +114,8 @@ export interface ResolvedItem {
   /** The last layer that switched it on or off, when not simply added. */
   switchedBy?: LayerRef;
   description?: string;
+  reference?: ResourceReference;
+  unavailable?: true;
   /** File path inside the origin layer, for instructions, prompts and skills. */
   path?: string;
 }

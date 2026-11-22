@@ -3,7 +3,6 @@ import {
   type FSWatcher,
   watch,
   existsSync,
-  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -14,9 +13,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { SWITCH_PREFIX } from "../../contract/agent-protocol.js";
 import type {
   ItemFile,
   ItemType,
+  AgentResources,
+  AvailableResource,
+  ResourceReference,
+  ResourceSource,
   AgentDefinition,
   AgentSummary,
   AgentTarget,
@@ -27,33 +32,20 @@ import {
   DEFAULT_TOOLS,
   digest,
   fail,
-  frontmatter,
+  ITEM_TYPES,
+  parseResource,
   itemPath,
   AgentError,
   slug,
   validateDefinition,
-  validItemName,
   validAgentId,
 } from "./format.js";
+import { inventory, readText, resource, type LayerItem } from "./resources.js";
+export type { LayerItem } from "./resources.js";
 
 const UUID =
   /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const MAX_FILE = 256 * 1024;
-const MAX_ITEMS = 64;
-
-/** An item a layer's folder (or agent.json) provides. */
-export interface LayerItem {
-  type: ItemType;
-  name: string;
-  /** Absolute path: file for instructions/prompts/extensions, folder for skills. */
-  location?: string;
-  /** Relative path the UI can read and edit. */
-  path?: string;
-  description?: string;
-  /** MCP server entry. */
-  config?: Record<string, unknown>;
-}
-
 export function writeAtomic(path: string, content: string): void {
   const temporary = join(dirname(path), `.${randomUUID()}.tmp`);
   try {
@@ -68,13 +60,6 @@ export function writeAtomic(path: string, content: string): void {
     throw error;
   }
 }
-
-const readText = (path: string): string => {
-  if (lstatSync(path).isSymbolicLink()) fail("invalid-path");
-  const buffer = readFileSync(path);
-  if (buffer.length > MAX_FILE) fail("limit");
-  return buffer.toString("utf8");
-};
 
 /** What a layer's agent.json may hold: Default and a session's own layer name no folder and no home view. */
 const rules = (target: AgentTarget) => ({
@@ -95,7 +80,8 @@ const isFolder = (path: string): boolean => {
  */
 export class AgentStore {
   private listeners = new Set<(target: AgentTarget) => void>();
-  private watcher?: FSWatcher;
+  private readonly watchers: FSWatcher[] = [];
+  private readonly sharedDir: string;
   private readonly pending = new Set<string>();
   private timer?: ReturnType<typeof setTimeout>;
   constructor(
@@ -104,21 +90,25 @@ export class AgentStore {
     /** The agent a session started with; the base of its layer. */
     private readonly sessionAgent: (sessionId: string) => string,
     readonly logger: SafeLogger = silentLogger,
+    private readonly bundledDir = fileURLToPath(new URL("../../../../../plugins/", import.meta.url)),
   ) {
     mkdirSync(agentsDir, { recursive: true, mode: 0o700 });
+    this.sharedDir = join(dirname(agentsDir), "resources");
+    mkdirSync(this.sharedDir, { recursive: true, mode: 0o700 });
     this.ensureDefault();
-    this.watch();
+    this.watch(agentsDir, (path) => path.split(/[\\/]/)[0]);
+    this.watch(this.sharedDir, () => DEFAULT_AGENT);
   }
 
   /**
    * Edits made outside PiSpark (an extension's code or component, an instruction in an editor)
    * count as changes too, so open sessions can offer to reload. A burst is reported once.
    */
-  private watch(): void {
+  private watch(directory: string, changedAgent: (path: string) => string | undefined): void {
     try {
-      this.watcher = watch(this.agentsDir, { recursive: true }, (_event, file) => {
+      const watcher = watch(directory, { recursive: true }, (_event, file) => {
         const path = file ? String(file) : "";
-        const id = path.split(/[\\/]/)[0];
+        const id = changedAgent(path);
         if (!id || !validAgentId(id) || /\.tmp$/.test(path)) return;
         this.pending.add(id);
         clearTimeout(this.timer);
@@ -128,8 +118,9 @@ export class AgentStore {
           for (const agent of ids) this.changed({ agent });
         }, 300);
       });
-      this.watcher.on("error", () => this.watcher?.close());
-      this.watcher.unref();
+      watcher.on("error", () => watcher.close());
+      watcher.unref();
+      this.watchers.push(watcher);
     } catch {
       /* Without file watching, edits made in PiSpark are still noticed. */
     }
@@ -152,6 +143,7 @@ export class AgentStore {
       name: "Default",
       description: "The base of every agent.",
       on: DEFAULT_TOOLS.map((tool) => `tool:${tool}`),
+      resources: {},
     };
     writeAtomic(
       join(dir, "agent.json"),
@@ -246,6 +238,7 @@ export class AgentStore {
   }): { id: string; revision: string } {
     const definition = validateDefinition({
       name: input.name,
+      resources: {},
       ...(input.description ? { description: input.description } : {}),
       ...(input.base?.length ? { base: input.base } : {}),
     });
@@ -285,6 +278,7 @@ export class AgentStore {
       fail("invalid-definition", 400, "base");
     const current = this.exists(target) ? this.read(target) : undefined;
     if ((current?.revision ?? "") !== expectedRevision) fail("revision-conflict", 409);
+    definition.resources ??= current ? current.definition.resources : {};
     // Checked when it is set. One that has since gone is found when a session starts there.
     if (definition.folder && definition.folder !== current?.definition.folder && !isFolder(definition.folder))
       fail("folder");
@@ -336,7 +330,7 @@ export class AgentStore {
     expectedRevision: string | null,
     text: string,
   ): ItemFile {
-    itemPath(path);
+    const item = itemPath(path);
     if (typeof text !== "string" || text.includes("\0")) fail("invalid-input");
     if (Buffer.byteLength(text) > MAX_FILE) fail("limit");
     if (!this.exists(target)) {
@@ -348,7 +342,15 @@ export class AgentStore {
     if (current !== expectedRevision) fail("revision-conflict", 409);
     mkdirSync(dirname(full), { recursive: true, mode: 0o700 });
     writeAtomic(full, text);
-    this.changed(target);
+    const { definition, revision } = this.read(target);
+    if (current === null && definition.resources) {
+      try {
+        this.select(target, item.type, `local:${item.name}`, true, revision);
+      } catch (error) {
+        unlinkSync(full);
+        throw error;
+      }
+    } else this.changed(target);
     return { text, revision: digest(text) };
   }
 
@@ -358,6 +360,9 @@ export class AgentStore {
     if (!existsSync(full)) fail("not-found", 404);
     if (digest(readText(full)) !== expectedRevision)
       fail("revision-conflict", 409);
+    const { definition, revision } = this.read(target);
+    if (definition.resources?.[item.type]?.includes(`local:${item.name}`))
+      this.select(target, item.type, `local:${item.name}`, false, revision);
     // A skill is its whole folder (scripts, references).
     if (item.type === "skills")
       rmSync(dirname(full), { recursive: true, force: true });
@@ -365,76 +370,78 @@ export class AgentStore {
     this.changed(target);
   }
 
-  /** Items a layer folder provides, plus its MCP servers. */
+  private root(target: AgentTarget, source: ResourceSource): string | undefined {
+    if (source === "local") return this.dir(target);
+    return source === "bundled" ? this.bundledDir : this.sharedDir;
+  }
+
+  private inlineMcp(definition: AgentDefinition, name: string): LayerItem | undefined {
+    const servers = definition.mcpServers;
+    return servers && Object.hasOwn(servers, name) ? { type: "mcp", name, config: servers[name] } : undefined;
+  }
+
+  private find(target: AgentTarget, definition: AgentDefinition, type: ItemType, reference: ResourceReference): LayerItem {
+    const { source, name } = parseResource(reference)!;
+    const root = this.root(target, source);
+    const inline = source === "local" && type === "mcp" ? this.inlineMcp(definition, name) : undefined;
+    const item = inline ?? (root && resource(root, type, name));
+    if (!item) return { type, name, reference, unavailable: true };
+    return { ...item, path: source === "local" ? item.path : undefined, reference };
+  }
+
+  /** Each layer declares its selections. Folder discovery still reads unconverted definitions. */
   items(target: AgentTarget, definition: AgentDefinition): LayerItem[] {
-    const dir = this.dir(target);
-    const found: LayerItem[] = [];
-    const entries = (name: string) => {
-      const folder = join(dir, name);
-      if (!existsSync(folder) || lstatSync(folder).isSymbolicLink()) return [];
-      return readdirSync(folder, { withFileTypes: true })
-        .filter((entry) => !entry.name.startsWith("."))
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .slice(0, MAX_ITEMS);
-    };
-    for (const type of ["instructions", "prompts"] as const)
-      for (const entry of entries(type)) {
-        const name = entry.name.replace(/\.md$/i, "");
-        if (!entry.isFile() || name === entry.name || !validItemName(name))
-          continue;
-        const location = join(dir, type, entry.name);
-        let description: string | undefined;
-        if (type === "prompts") {
-          const { data, body } = frontmatter(readText(location));
-          description =
-            data.description ||
-            body.split(/\r?\n/).find((line) => line.trim())?.trim().slice(0, 200);
-        }
-        found.push({
-          type,
-          name,
-          location,
-          path: `${type}/${entry.name}`,
-          ...(description ? { description } : {}),
-        });
-      }
-    for (const entry of entries("skills")) {
-      const location = join(dir, "skills", entry.name);
-      const skill = join(location, "SKILL.md");
-      if (!entry.isDirectory() || !validItemName(entry.name) || !existsSync(skill))
-        continue;
-      const description = frontmatter(readText(skill)).data.description;
-      found.push({
-        type: "skills",
-        name: entry.name,
-        location,
-        path: `skills/${entry.name}/SKILL.md`,
-        ...(description ? { description: description.slice(0, 300) } : {}),
-      });
-    }
-    for (const entry of entries("extensions")) {
-      let name: string | undefined;
-      let location: string | undefined;
-      if (entry.isFile() && /\.(ts|js|mjs)$/.test(entry.name)) {
-        name = entry.name.replace(/\.(ts|js|mjs)$/, "");
-        location = join(dir, "extensions", entry.name);
-      } else if (entry.isDirectory()) {
-        const index = ["index.ts", "index.js", "index.mjs"]
-          .map((file) => join(dir, "extensions", entry.name, file))
-          .find((file) => existsSync(file));
-        if (index) [name, location] = [entry.name, index];
-      }
-      if (name && location && validItemName(name))
-        found.push({ type: "extensions", name, location });
-    }
-    for (const [name, config] of Object.entries(definition.mcpServers ?? {}))
-      found.push({ type: "mcp", name, config });
-    return found;
+    if (definition.resources)
+      return ITEM_TYPES.flatMap((type) =>
+        (definition.resources![type] ?? []).map((reference) => this.find(target, definition, type, reference)));
+    return ITEM_TYPES.flatMap((type) =>
+      type === "mcp"
+        ? Object.entries(definition.mcpServers ?? {}).map(([name, config]) => ({ type, name, config }))
+        : inventory(this.dir(target), type));
+  }
+
+  declarations(target: AgentTarget, definition: AgentDefinition): AgentResources {
+    if (definition.resources) return structuredClone(definition.resources);
+    const resources: AgentResources = {};
+    for (const item of this.items(target, definition))
+      (resources[item.type] ??= []).push(`local:${item.name}`);
+    return resources;
+  }
+
+  available(target: AgentTarget, type: ItemType): AvailableResource[] {
+    const { definition } = this.read(target);
+    return (["bundled", "shared", "local"] as const).flatMap((source) => {
+      const root = this.root(target, source);
+      const entries = root ? inventory(root, type) : [];
+      const byName = new Map(entries.map((item) => [item.name, item]));
+      if (source === "local" && type === "mcp")
+        for (const name of Object.keys(definition.mcpServers ?? {}))
+          byName.set(name, this.inlineMcp(definition, name)!);
+      return [...byName.values()].map(({ name, description }) => ({ name, description, reference: `${source}:${name}` }));
+    });
+  }
+
+  select(target: AgentTarget, type: ItemType, reference: ResourceReference, on: boolean, expectedRevision: string) {
+    const parsed = parseResource(reference);
+    if (!parsed) return fail("invalid-input");
+    const { definition, revision } = this.read(target);
+    if (revision !== expectedRevision) return fail("revision-conflict", 409);
+    const resources = this.declarations(target, definition);
+    const before = resources[type] ?? [];
+    if (on) {
+      if (this.find(target, definition, type, reference).unavailable) return fail("missing-resource", 404, reference);
+      const next = before.filter((item) => parseResource(item)!.name !== parsed.name);
+      resources[type] = [...next, reference];
+      const key = SWITCH_PREFIX[type] + ":" + parsed.name;
+      if (definition.off?.includes(key)) definition.off = definition.off.filter((item) => item !== key);
+    } else resources[type] = before.filter((item) => item !== reference);
+    if (!resources[type]?.length) delete resources[type];
+    return this.save(target, revision, { ...definition, resources });
   }
 
   async shutdown(): Promise<void> {
     this.listeners.clear();
     clearTimeout(this.timer);
-    this.watcher?.close();
+    for (const watcher of this.watchers) watcher.close();
   }
 }

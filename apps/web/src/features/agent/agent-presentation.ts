@@ -3,6 +3,7 @@ import type {
   LayerRef,
   ResolvedItem,
   ResolvedTool,
+  ResourceReference,
 } from "../../../../server/src/contract/agent-protocol";
 
 const messages: Record<string, string> = {
@@ -10,6 +11,7 @@ const messages: Record<string, string> = {
   "invalid-path": "That file name isn’t allowed.",
   "invalid-definition": "That agent setting isn’t valid.",
   "revision-conflict": "This changed somewhere else. The latest version is shown; try again.",
+  "missing-resource": "That resource is no longer available.",
   "missing-parent": "An agent this one builds on is missing",
   cycle: "Agents can’t build on each other in a loop",
   "in-use": "Another agent builds on this one",
@@ -35,6 +37,12 @@ export const ITEM_LABELS: Record<ItemType, { title: string; one: string }> = {
   extensions: { title: "Extensions", one: "extension" },
   mcp: { title: "MCP servers", one: "MCP server" },
 };
+
+export function resourceSource(reference: ResourceReference): string {
+  if (reference.startsWith("bundled:")) return "Bundled";
+  if (reference.startsWith("shared:")) return "Shared";
+  return "Agent-owned";
+}
 
 /** Where an item comes from, relative to the layer being edited. */
 export function originLabel(origin: LayerRef, viewing: string): string {

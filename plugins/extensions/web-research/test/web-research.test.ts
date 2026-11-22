@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import webResearch from "../extensions/web-research/index.js";
+import webResearch from "../index.js";
 
 function session(key = "test-search-key") {
   const tools = new Map<string, {

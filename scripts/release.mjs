@@ -92,6 +92,8 @@ for (const [from, to] of [
   ["apps/server/skills", "apps/server/skills"],
   // Keep the workspace skill's references local and matched to the running build.
   ["docs", "docs"],
+  // Optional resources belong to this release and are selected by agent references.
+  ["plugins", "plugins"],
   ["apps/web/dist", "apps/web/dist"],
   ["apps/launcher/dist", "apps/launcher/dist"],
 ])

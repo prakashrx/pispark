@@ -2,14 +2,18 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { body, sendJson } from "./session-http.js";
 import { correlated } from "../core/logger.js";
-import type { DiscoveredTool, AgentTarget } from "../contract/agent-protocol.js";
+import type { DiscoveredTool, AgentTarget, ItemType, ResourceReference } from "../contract/agent-protocol.js";
 import type { AgentStore } from "../core/agents/store.js";
-import { AgentError } from "../core/agents/format.js";
+import { AgentError, ITEM_TYPES, parseResource } from "../core/agents/format.js";
 import { checkCycles, listAgents, viewAgent } from "../core/agents/resolve.js";
 import { RuntimeError } from "../core/runtime/errors.js";
 
 const MAXIMUM = 512 * 1024;
 const REVISION = /^[a-f0-9]{64}$/;
+function itemType(value: unknown): ItemType {
+  if (!ITEM_TYPES.includes(value as ItemType)) throw new AgentError("invalid-input");
+  return value as ItemType;
+}
 
 const plain = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -69,6 +73,17 @@ export class AgentHttp {
               // Listing an agent's tools loads its extensions; a failure leaves the list as switched.
               const discovered = await this.tools?.(viewed).catch(() => undefined);
               result = viewAgent(this.store, viewed, discovered);
+              break;
+            }
+            case "resources": {
+              const i = input(value, ["target", "type"]);
+              result = { resources: this.store.available(target(i.target), itemType(i.type)) };
+              break;
+            }
+            case "resource/select": {
+              const i = input(value, ["target", "type", "reference", "on", "expectedRevision"]);
+              if (typeof i.on !== "boolean" || !parseResource(i.reference)) throw new AgentError("invalid-input");
+              result = this.store.select(target(i.target), itemType(i.type), i.reference as ResourceReference, i.on, revision(i.expectedRevision, true));
               break;
             }
             case "create": {

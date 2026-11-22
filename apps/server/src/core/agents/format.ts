@@ -3,6 +3,7 @@ import { isAbsolute } from "node:path";
 import { DEFAULT_AGENT, SWITCH_PREFIX } from "../../contract/agent-protocol.js";
 import type {
   ItemType,
+  ResourceSource,
   AgentDefinition,
   SwitchType,
   ThinkingLevel,
@@ -93,6 +94,13 @@ export function parseSwitch(
   return { type, name };
 }
 
+export function parseResource(value: unknown): {source: ResourceSource; name: string} | undefined {
+  if (typeof value !== "string") return;
+  const [source, name, extra] = value.split(":");
+  if (extra !== undefined || !validItemName(name)) return;
+  if (source === "bundled" || source === "shared" || source === "local") return { source, name };
+}
+
 const plainObject = (value: unknown): value is Record<string, unknown> =>
   !!value &&
   typeof value === "object" &&
@@ -129,6 +137,7 @@ export function validateDefinition(
     "on",
     "off",
     "mcpServers",
+    "resources",
     "settings",
     ...(binds ? ["folder", "home", "routines"] : []),
   ];
@@ -164,6 +173,19 @@ export function validateDefinition(
   const on = new Set((value.on as string[] | undefined) ?? []);
   if (((value.off as string[] | undefined) ?? []).some((s) => on.has(s)))
     fail("invalid-definition", 400, "on-and-off");
+  if (value.resources !== undefined) {
+    if (!plainObject(value.resources)) return fail("invalid-definition", 400, "resources");
+    for (const [type, references] of Object.entries(value.resources)) {
+      if (!ITEM_TYPES.includes(type as ItemType) || !Array.isArray(references) || references.length > 64)
+        return fail("invalid-definition", 400, "resources");
+      const names = new Set<string>();
+      for (const reference of references) {
+        const resource = parseResource(reference);
+        if (!resource || names.has(resource.name)) return fail("invalid-definition", 400, "resources");
+        names.add(resource.name);
+      }
+    }
+  }
   if (value.mcpServers !== undefined) {
     if (
       !plainObject(value.mcpServers) ||

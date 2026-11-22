@@ -166,6 +166,8 @@ function fold(store: AgentStore, layers: Layer[]) {
             : [],
           ...(item.description ? { description: item.description } : {}),
           ...(item.path ? { path: item.path } : {}),
+          ...(item.reference ? { reference: item.reference } : {}),
+          ...(item.unavailable ? { unavailable: true as const } : {}),
         },
       });
     }
@@ -262,7 +264,8 @@ export function resolveSetup(
   const { entries, tools, settings } = fold(store, layers);
   const { folder, home } = bound(layers);
   const { routines, holds } = unattended(layers);
-  const active = [...entries.values()].filter((e) => e.resolved.on);
+  const selected = [...entries.values()].filter((e) => e.resolved.on);
+  const active = selected.filter((e) => !e.item.unavailable);
   const of = (type: ItemType) => active.filter((e) => e.item.type === type);
   const instructions = of("instructions").map((e) => ({
     name: e.item.name,
@@ -278,7 +281,7 @@ export function resolveSetup(
       filePath: e.item.location!,
     };
   });
-  const skillDirs = of("skills").map((e) => e.item.location!);
+  const skillDirs = [...of("skills").map((e) => e.item.location!), ...of("extensions").flatMap((e) => e.item.companions ?? [])];
   const extensionPaths = of("extensions").map((e) => e.item.location!);
   const mcpServers = Object.fromEntries(
     of("mcp").map((e) => [e.item.name, e.item.config!]),
@@ -300,6 +303,7 @@ export function resolveSetup(
       skills: of("skills").map((e) => [e.item.name, treeIdentity(e.item.location!, join(e.item.location!, "SKILL.md"))]),
       extensions: of("extensions").map((e) => [e.item.name, extensionIdentity(e.item.location!)]),
       mcpServers,
+      sources: selected.map(({ item, resolved }) => [item.type, item.reference ?? "local:" + item.name, item.location, resolved.origin.id]),
       toolsOn,
       toolsOff,
       settings,
