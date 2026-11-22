@@ -198,6 +198,43 @@ test("the agent asks for a reload: it waits for the turn to end, then wakes the 
   }
 });
 
+test("an extension command's ctx.reload() is the session's reload; extensions see Pi's reload reasons and the agent is not woken", async () => {
+  const f = await fixture();
+  const reasons: string[] = [];
+  (globalThis as { reloadReasons?: string[] }).reloadReasons = reasons;
+  try {
+    await f.agent("dev", { name: "Dev" }, {
+      "instructions/a.md": "FIRST-VERSION",
+      "extensions/refresh.js": `export default pi => {
+        pi.on("session_start", (event) => globalThis.reloadReasons.push("start:" + event.reason));
+        pi.on("session_shutdown", (event) => globalThis.reloadReasons.push("shutdown:" + event.reason));
+        pi.registerCommand("refresh", { description: "Reload this session", handler: async (_, ctx) => { await ctx.reload(); } });
+      }`,
+    });
+    const session = await f.runtime.create({ folder: f.folder, agent: "dev" });
+    await f.runtime.start(session.id, "hello").completion;
+    const file = f.runtime.agents.readFile({ agent: "dev" }, "instructions/a.md");
+    f.runtime.agents.writeFile({ agent: "dev" }, "instructions/a.md", file.revision, "SECOND-VERSION");
+    const requests = f.provider.requests.length;
+    reasons.length = 0;
+    assert.equal((await f.runtime.start(session.id, "/refresh").completion).outcome, "completed");
+    await eventually(now(() => reasons.includes("start:reload") && f.runtime.session(session.id).status === "idle"));
+    assert.deepEqual(reasons, ["shutdown:reload", "start:reload"]);
+    assert.equal(f.runtime.session(session.id).agentChanged, undefined);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(f.provider.requests.length, requests, "nothing woke the agent");
+    await f.runtime.start(session.id, "after").completion;
+    assert.match(systemText(f.provider.requests.at(-1)!), /SECOND-VERSION/);
+    // A plain stop is still a quit.
+    reasons.length = 0;
+    await f.runtime.stop(session.id);
+    assert.deepEqual(reasons, ["shutdown:quit"]);
+  } finally {
+    delete (globalThis as { reloadReasons?: string[] }).reloadReasons;
+    await f.cleanup();
+  }
+});
+
 test("stopping the turn drops the reload its agent asked for", async () => {
   const f = await fixture();
   try {

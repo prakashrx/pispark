@@ -165,7 +165,7 @@ Earlier builds used slot names (`tool:<name>`, `session.page`, `reply.*` and the
 
 - `ctx.ui.custom()` returns `undefined`, and `onTerminalInput`, `setEditorComponent` and theme switching are quiet no-ops, exactly as in Pi's own RPC mode. Extensions that need `custom()` check `ctx.mode === "tui"` and fall back (Pi's `custom-header` example only sets its header in `tui` mode, so it shows nothing here).
 - `getEditorText` returns `""`, and autocomplete providers are not used yet.
-- Session actions from commands (`newSession`, `fork`, `navigateTree`, `switchSession`, `reload`) fail visibly.
+- Session actions from commands (`newSession`, `fork`, `navigateTree`, `switchSession`) fail visibly. `ctx.reload()` works: it asks for the session's [reload](session-runtime.md#setup-changes), which happens once the command is done, so it returns before the reload. As in Pi, don't use `ctx` or `pi` after it. Extensions see `session_shutdown` and `session_start` with reason `reload`.
 - Shortcuts and flags, expanded tool output, and completion of a command's arguments in the reply box. (Typing `/` in a reply offers the session's prompt templates and commands by name.)
 
 ## Trying it

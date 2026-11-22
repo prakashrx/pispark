@@ -398,8 +398,8 @@ export class SessionRuntime {
       await this.stop(idle[0]!.id).catch(() => {});
     }
   }
-  private load(metadata: SessionMetadata, reopening: boolean): Promise<SessionDoc> {
-    const session = new Session(this.host, metadata, reopening);
+  private load(metadata: SessionMetadata, reopening: boolean, reloading = false): Promise<SessionDoc> {
+    const session = new Session(this.host, metadata, reopening, reloading);
     this.live.set(metadata.id, session); // Reserve the session before any async setup.
     return session.load();
   }
@@ -467,7 +467,7 @@ export class SessionRuntime {
   async open(id: string): Promise<SessionDoc> {
     return this.openCurrent(id);
   }
-  private async openCurrent(id: string, extensionRevision?: string): Promise<SessionDoc> {
+  private async openCurrent(id: string, extensionRevision?: string, reloading = false): Promise<SessionDoc> {
     validateId(id);
     const candidate = this.extensionCandidates.get(id);
     if (candidate && candidate.revision !== extensionRevision) throw new RuntimeError("busy");
@@ -481,7 +481,7 @@ export class SessionRuntime {
     const metadata = this.storage.read(id);
     // An archived session is not opened until it is restored.
     if (metadata.archived) throw new RuntimeError("not-found");
-    return this.load(metadata, true);
+    return this.load(metadata, true, reloading);
   }
   /** Loads a session that is not loaded (or waits for one that is loading), so it can be sent to. */
   async ensure(id: string): Promise<void> {
@@ -522,14 +522,14 @@ export class SessionRuntime {
     const session = this.live.get(id);
     if (session) {
       if (session.loading || !["idle", "error", "read-only"].includes(session.status)) throw new RuntimeError("busy");
-      await this.stop(id);
+      await this.stop(id, "reload");
     }
     if (model || thinking) {
       const metadata = this.storage.read(id);
       if (metadata.archived) throw new RuntimeError("not-found");
       this.storage.write({ ...metadata, ...(model ? { model: { provider: model.provider, id: model.id } } : {}), ...(thinking ? { thinking } : {}) });
     }
-    return this.openCurrent(id, extensionRevision);
+    return this.openCurrent(id, extensionRevision, true);
   }
   /** Changes to what each session runs, waiting until it is free. */
   private readonly setup = new SetupChanges();
@@ -650,7 +650,7 @@ export class SessionRuntime {
     session.extensionRevisions.write({ ...session.extensionRevisions.read(), outcome: text });
     this.live.get(session.id)?.setupNotice(text);
   }
-  async stop(id: string): Promise<void> {
+  async stop(id: string, reason: "quit" | "reload" = "quit"): Promise<void> {
     validateId(id);
     const session = this.live.get(id);
     if (!session) throw new RuntimeError("not-found");
@@ -660,7 +660,7 @@ export class SessionRuntime {
       });
       if (!this.live.has(id)) return;
     }
-    await session.stop();
+    await session.stop(reason);
   }
   /**
    * Puts a session away: it unloads and leaves the list. Refused while it runs, waits for an answer

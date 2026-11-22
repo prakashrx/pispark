@@ -282,6 +282,8 @@ export class Session {
     private readonly host: SessionHost,
     metadata: SessionMetadata,
     reopening: boolean,
+    /** Opened again by a reload: extensions are told `session_start` with reason `reload`, as Pi's own reload does. */
+    private readonly reloading = false,
   ) {
     this.metadata = metadata;
     this.published = reopening;
@@ -620,7 +622,7 @@ export class Session {
         excludeTools: services.excludedTools,
         thinkingLevel,
         scopedModels: [{ model: services.model, thinkingLevel }],
-        sessionStartEvent: { type: "session_start", reason: reopening ? "resume" : "new" },
+        sessionStartEvent: { type: "session_start", reason: this.reloading ? "reload" : reopening ? "resume" : "new" },
       }));
     } catch (error) {
       services.resourceLoader.getExtensions().runtime.invalidate("Session creation failed");
@@ -643,7 +645,10 @@ export class Session {
         fork: unsupported,
         navigateTree: unsupported,
         switchSession: unsupported,
-        reload: unsupported,
+        // Pi's own reload from an extension's command: the session's one reload, once the command is done.
+        reload: async () => {
+          if (this.closed || !this.host.requestSetup?.(this, { reload: true })) throw new Error("This session cannot reload now.");
+        },
       },
       abortHandler: () => void this.cancel("extension-abort").catch(() => {}),
       shutdownHandler: () => setImmediate(() => void this.stop().catch(() => {})),
@@ -1409,8 +1414,9 @@ export class Session {
   // ---- Stopping -------------------------------------------------------------------------------
 
   /** Stop the session: end any run, let extensions shut down, release it. History stays. */
-  stop(): Promise<void> {
+  stop(reason: "quit" | "reload" = "quit"): Promise<void> {
     if (!this.stopping) {
+      this.shutdownReason = reason;
       this.status = "stopping";
       if (this.run) this.run.cancelled = true;
       this.changed();
@@ -1418,6 +1424,8 @@ export class Session {
     }
     return deadline(this.stopping, this.host.timeout);
   }
+  /** Why extensions are told the session shuts down: it quits, or it stops to open again (`reload`). */
+  private shutdownReason: "quit" | "reload" = "quit";
   private async dispose(): Promise<void> {
     if (this.queuedRun) this.unqueue(true);
     if (this.run) this.run.cancelled = true;
@@ -1434,7 +1442,7 @@ export class Session {
       await this.runDone;
       await this.cancelling;
       const beforeShutdown = this.extensionErrors;
-      await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+      await session.extensionRunner.emit({ type: "session_shutdown", reason: this.shutdownReason });
       if (this.extensionErrors !== beforeShutdown) cleanupError = "extension";
       await session.settingsManager.flush();
       if (session.settingsManager.drainErrors().length) cleanupError = "storage";
