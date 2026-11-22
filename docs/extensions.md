@@ -60,12 +60,13 @@ export default function (pi) {
 
 **One rule:** a contribution point is the name of something an extension can contribute to. Points are named for what they belong to, not for where a screen puts them: an item of a session's history (`item.*`) or the session itself (`session.*`). Components contributed to a point are drawn there instead of PiSpark's default, in the order they were contributed; with none, the default shows. Show or update by emitting again; remove by leaving out `component`.
 
-**One component shape:** every component gets `session` (the session it is part of, see [the session](#the-session-a-component-is-given)), `data` (what that point draws, when it has something), `host` and the props the extension sent. `host.call(name, data)` runs a function its own contribution gave it and resolves with the result, or rejects with the extension's error. `host.file(path)` is the address of a file in the folder its contribution named.
+**One component shape:** every component gets `session` (the session it is part of, see [the session](#the-session-a-component-is-given)), `data` (what that point draws, when it has something), `host` and the props the extension sent. `host.call(name, data)` runs a function its own contribution gave it and resolves with the result, or rejects with the extension's error. `host.file(path)` is the address of a file in the folder its contribution named. `host.Markdown` is the component PiSpark draws Markdown with, for an extension's own text: `<host.Markdown text={notes} />`.
 
 | Point | Where the workspace shows it | `data` | Pi's terminal equivalent |
 | --- | --- | --- | --- |
 | `item.tool:<name>` | Each call of that tool (the component is the whole call: PiSpark draws no activity line, opened row, diff or pictures for it) | the call: args, status, progress, result with Pi's `details` | `renderResult`, `registerToolRenderer` |
 | `item.custom:<customType>` | Custom messages and entries of that type (entries are sent with their data) | the message or entry, its data as `details` | `registerMessageRenderer`, `registerEntryRenderer` |
+| `markdown.fence:<language>` | Each fenced block of that language in the session's Markdown (replies, reports, thinking), in place of the code; without one the block shows as highlighted code. Mermaid and math are drawn by PiSpark itself | `{language, code}` | — |
 | `session.title` | Small things beside the session's name in the top bar (chips) on wide screens; in Details' Session panel otherwise | — | — |
 | `session.header` | Under the session's notices, in every view | — | `setHeader` |
 | `session.status` | In the status line under the reply box, after the model | — | `setFooter` |

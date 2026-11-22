@@ -198,8 +198,9 @@ export class ItemProjector {
   private readonly keys = new WeakMap<object, string>();
   private counter = 0;
   /**
-   * Key of the message that was streaming at the last tick. Pi hands over a different object when
-   * it finishes, so the last assistant message to arrive takes this key over; the UI never remounts.
+   * Key of the message that was streaming at the last tick. Pi hands over a different object as it
+   * streams and when it finishes, so the message keeps this key throughout and the last assistant
+   * message to arrive takes it over; the UI never remounts.
    */
   private streamKey?: string;
   private cache?: { leaf: string | null; projection: SessionProjection; starts: Map<string, number> };
@@ -407,6 +408,7 @@ export class ItemProjector {
     });
     const streaming = this.session.state.streamingMessage as unknown as Raw | undefined;
     if (streaming && !messages.includes(streaming)) {
+      if (this.streamKey && !this.keys.has(streaming)) this.keys.set(streaming, this.streamKey);
       const item = this.message(streaming, undefined, committed + messages.length);
       if (item) {
         this.streamKey = item.key;

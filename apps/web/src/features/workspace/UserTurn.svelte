@@ -3,7 +3,7 @@
   import { reportBody, type Turn } from "./session-turns";
   import { useSession, useSessions } from "./session-client.svelte";
   import { namedFiles } from "./attachments.svelte";
-  import StreamingMarkdown from "./StreamingMarkdown.svelte";
+  import SessionMarkdown from "./SessionMarkdown.svelte";
   /**
    * Your message, or (`woken`) one something else sent, labelled as such. One another session sent
    * (`from`: its report, or a parent's message to its child) is not yours, so it is not your bubble.
@@ -30,13 +30,13 @@
         >From {#if known}<button type="button" class="link" onclick={() => client.open(from.id)}>{title}</button>{:else}{title}{/if}{rest}</span
       >
     </p>
-    <div class="report markdown"><StreamingMarkdown text={reportBody(text)} /></div>
+    <div class="report markdown"><SessionMarkdown text={reportBody(text)} /></div>
   </div>
 {:else}
   <div class="flex flex-col items-end gap-1.5" data-purpose="user-turn">
     {#if woken}<p class="woken"><Icon name="clock" class="h-3.5 w-3.5" /><span>{woken}</span></p>{/if}
     <div class="user-bubble">
-      {#each namedFiles(text, session?.id) as piece}{#if typeof piece === "string"}{piece}{:else if piece.image && piece.url}<a
+      {#each namedFiles(text, session?.id) as piece}{#if typeof piece === "string"}<SessionMarkdown text={piece} flavor="typed" />{:else if piece.image && piece.url}<a
             class="named-image"
             href={piece.url}
             target="_blank"
@@ -59,7 +59,6 @@
     font-family: var(--font-reading);
     font-size: 1rem;
     line-height: 1.6;
-    white-space: pre-wrap;
     overflow-wrap: anywhere;
     color: var(--foreground);
   }
@@ -120,9 +119,6 @@
     border-left: 2px solid var(--border);
     border-radius: 0;
   }
-  .report.markdown {
-    white-space: normal;
-  }
   .process-report > summary {
     display: block;
     list-style: none;
@@ -134,6 +130,7 @@
   .opened, .process-report[open] .closed { display: none; }
   .process-report[open] .opened { display: inline; }
   .report.output {
+    white-space: pre-wrap;
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 0.8125rem;
     line-height: 1.55;

@@ -69,7 +69,12 @@
     font-size: 0.9375rem;
     color: var(--muted-foreground);
     line-height: 1.7;
-    white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+  /* Thinking reads quieter than the reply it leads to. */
+  .thought-body :global(.prose) {
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
   }
 </style>

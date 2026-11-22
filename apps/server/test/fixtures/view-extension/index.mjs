@@ -64,6 +64,9 @@ export default function (pi) {
       placeOutside: () => show(pi, { point: "session.input.below", component: file("../Outside.svelte") }),
       placeBroken: () => show(pi, { point: "session.input.below", key: "broken", component: file("./Broken.svelte") }),
       placeNowhere: () => show(pi, { point: "side.panel", component: file("./Chip.svelte") }),
+      // A renderer for one language of fenced Markdown blocks; a family point needs a language.
+      placeFence: () => show(pi, { point: "markdown.fence:chart", component: file("./Chip.svelte") }),
+      placeFenceWithoutLanguage: () => show(pi, { point: "markdown.fence:", component: file("./Chip.svelte") }),
       // The extension has the agent work: a user message, or a custom message that starts a turn.
       ask: (text) => {
         pi.sendUserMessage(text);

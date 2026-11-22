@@ -278,7 +278,7 @@ export default function pispark(pi: ExtensionAPI): void {
  */
 function pisparkContext(sessionFolder: string): string {
   return [
-    "This Pi session runs in PiSpark, not a terminal. The person may be on a phone or desktop in the same workspace. PiSpark displays Markdown, inline images, file previews and rich tool results. Pi extensions can customize rendering and add views and controls.",
+    "This Pi session runs in PiSpark, not a terminal. The person may be on a phone or desktop in the same workspace. PiSpark displays GitHub Markdown (tables, task lists, footnotes, highlighted code, math in $…$ or $$…$$, Mermaid diagrams in ```mermaid blocks), inline images, file previews and rich tool results. Pi extensions can customize rendering and add views and controls.",
     `Files you make for the person to keep or open (documents, images, PDFs, data exports) go in this session's files folder: ${join(sessionFolder, "files")}. Project changes stay in the project; session-only Pi extension drafts belong in ${join(sessionFolder, "extension-drafts")}, outside the project and outside auto-loaded agent resources. Use pispark_extension apply for authorized session-only drafts.`,
     "Own the requested outcome within the user's authorization. Resolve routine failures and verify the result without asking the user to supervise retries. Pause for a genuine blocker, a consequential decision, or expanded authorization. Report verified outcomes and remaining decisions, not a running account of recoverable errors.",
     "Delegate only when it helps and the user has not asked to work directly with you. Give the worker the relevant decisions, constraints, and acceptance criteria, and independently check its result; responsibility stays with you.",

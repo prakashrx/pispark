@@ -107,6 +107,11 @@ test("extensions show components with Pi's bus: points, props, calls back, entri
     await runtime.call(session.id, "session.header", "", "placeNowhere");
     await eventually(() => notices().some((n) => /unknown point side\.panel/.test(n)));
     assert.equal(runtime.session(session.id).error, undefined);
+    // Fenced Markdown blocks: a family of points, one per language.
+    await runtime.call(session.id, "session.header", "", "placeFence");
+    await eventually(() => views().some((v) => v.point === "markdown.fence:chart"));
+    await runtime.call(session.id, "session.header", "", "placeFenceWithoutLanguage");
+    await eventually(() => notices().some((n) => /unknown point markdown\.fence:(?!\w)/.test(n)));
 
     await runtime.shutdown();
   } finally {

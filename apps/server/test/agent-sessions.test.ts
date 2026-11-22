@@ -338,7 +338,7 @@ test("every session is told it runs in PiSpark and gets PiSpark's own skills, wh
     await f.runtime.start(session.id, "hello").completion;
     const system = systemText(f.provider.requests.at(-1)!);
     assert.match(system, /This Pi session runs in PiSpark, not a terminal/);
-    assert.match(system, /Markdown, inline images, file previews and rich tool results/);
+    assert.match(system, /GitHub Markdown .*inline images, file previews and rich tool results/);
     assert.match(system, /extensions can customize rendering and add views and controls/);
     assert.doesNotMatch(system, /Turn the request into the smallest useful definition/, "the workspace skill body is loaded on demand");
     assert.doesNotMatch(system, /project-location/, "the extension skill example is loaded on demand");

@@ -5,8 +5,8 @@
    * can be downloaded. Read-only: the file as it is now.
    */
   import Icon from "../../lib/ui/Icon.svelte";
-  import { markdownBlocks } from "../../lib/markdown";
-  import { fileKind, fileUrl } from "./file-kinds";
+  import { Markdown } from "../../lib/markdown";
+  import { fileKind, fileUrl, sessionImageUrl } from "./file-kinds";
 
   let { sessionId, name }: { sessionId: string; name: string } = $props();
   const url = $derived(fileUrl(sessionId, name));
@@ -44,7 +44,7 @@
   {:else if kind === "markdown" || kind === "text"}
     {#if error}<p role="alert" class="note danger">{error}</p>
     {:else if text === undefined}<p class="note">Reading…</p>
-    {:else if kind === "markdown"}<div class="prose max-w-none">{#each markdownBlocks(text) as html, index (index)}{@html html}{/each}</div>
+    {:else if kind === "markdown"}{#key name}<Markdown {text} options={{ images: (href) => sessionImageUrl(sessionId, href) }} />{/key}
     {:else}<!-- svelte-ignore a11y_no_noninteractive_tabindex --><pre class="text" tabindex="0" aria-label={`Contents of ${name}`}>{text}</pre>{/if}
   {:else}<p class="note">No preview for this kind of file. Download it to open it.</p>{/if}
 </div>

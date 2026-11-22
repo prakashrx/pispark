@@ -11,6 +11,8 @@
   import Button from "../../lib/ui/Button.svelte";
   import Input from "../../lib/ui/Input.svelte";
   import Textarea from "../../lib/ui/Textarea.svelte";
+  import Segmented from "../../lib/ui/Segmented.svelte";
+  import { Markdown } from "../../lib/markdown";
   import type { AgentClient } from "./agent-client.svelte";
   import type {
     ItemType,
@@ -49,6 +51,10 @@
   let baseline = $state("");
   let revision = $state<string | null>(null);
   let loading = $state(false);
+  /** A Markdown item can be read as it will be shown: "text" or "preview". */
+  let mode = $state("text");
+  // Front matter is for Pi, not for reading.
+  const readable = (source: string) => source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
   let adding = $state(false);
   let choices = $state<AvailableResource[]>([]);
   let pickerError = $state("");
@@ -74,6 +80,7 @@
     }
     if (open && text !== baseline && !confirm("Discard unsaved changes?")) return;
     open = key(item);
+    mode = "text";
     loading = true;
     try {
       const local = client.local(item);
@@ -195,7 +202,9 @@
     {#if loading}<p role="status" class="text-sm text-muted-foreground">Loading…</p>
     {:else}
       <p class="text-xs text-muted-foreground">{originLabel(item.origin, viewing)}{local ? "" : ". Customize to make your own copy here; the original stays unchanged."}</p>
-      <Textarea label={`${item.name} text`} monospace rows={14} readonly={!local} bind:value={text} />
+      {#if item.path?.endsWith(".md")}<Segmented label="Show" options={[{ value: "text", label: "Text" }, { value: "preview", label: "Preview" }]} bind:value={mode} />{/if}
+      {#if mode === "preview" && item.path?.endsWith(".md")}<div class="preview"><Markdown text={readable(text)} /></div>
+      {:else}<Textarea label={`${item.name} text`} monospace rows={14} readonly={!local} bind:value={text} />{/if}
     {/if}
     {#snippet footer()}
       {#if local}
@@ -281,6 +290,13 @@
 {/if}
 
 <style>
+  .preview {
+    max-height: 24rem;
+    overflow-y: auto;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
   .choices {
     max-height: 14rem;
     overflow: auto;

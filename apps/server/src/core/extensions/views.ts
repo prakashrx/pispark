@@ -103,7 +103,10 @@ export class ExtensionViews {
       failed: (message: string) => void;
       /** How long a call may take. */
       callTimeoutMs?: number;
-      /** The points the client draws, besides the items of the history. */
+      /**
+       * The points the client draws, besides the items of the history. One ending in `:*` is a
+       * family: `markdown.fence:*` takes `markdown.fence:mermaid`, `markdown.fence:chart`…
+       */
       points?: readonly string[];
       activationFolder?: string;
     },
@@ -182,7 +185,7 @@ export class ExtensionViews {
       throw new Error("expected { point, component, props?, calls?, files?, key?, title?, attention? }");
     const { point, key = "", title, attention, component, props, calls: given, files, ...rest } = data as Record<string, unknown>;
     if (Object.keys(rest).length) throw new Error(`unknown field ${Object.keys(rest)[0]}`);
-    if (typeof point !== "string" || !(ITEM_POINT.test(point) || this.points.has(point))) throw new Error(`unknown point ${String(point)}`);
+    if (typeof point !== "string" || !(ITEM_POINT.test(point) || this.drawn(point))) throw new Error(`unknown point ${String(point)}`);
     if (typeof key !== "string" || !KEY.test(key)) throw new Error("key must be a short name");
     const view = point === VIEW_POINT;
     if (view && !key) throw new Error(`${point} needs a key`);
@@ -237,6 +240,12 @@ export class ExtensionViews {
         this.host.changed();
       },
     );
+  }
+
+  private drawn(point: string): boolean {
+    if (this.points.has(point)) return true;
+    const family = point.slice(0, point.lastIndexOf(":") + 1);
+    return family !== "" && this.points.has(family + "*") && NAME.test(point.slice(family.length));
   }
 
   /** Whether any component is placed at a point; custom entries with one are sent to the browser. */

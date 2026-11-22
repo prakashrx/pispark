@@ -1,6 +1,6 @@
 <script lang="ts">
   import ExtensionBlock from "../ExtensionBlock.svelte";
-  import StreamingMarkdown from "../StreamingMarkdown.svelte";
+  import SessionMarkdown from "../SessionMarkdown.svelte";
   import { itemText, type Segment } from "../session-turns";
 
   /** A custom message or entry: the extension's own terminal rendering when it has one, else its text. */
@@ -10,5 +10,5 @@
 {#if segment.item.rendered?.body}
   <ExtensionBlock lines={segment.item.rendered.body} />
 {:else}
-  <StreamingMarkdown text={itemText(segment.item)} />
+  <SessionMarkdown text={itemText(segment.item)} />
 {/if}

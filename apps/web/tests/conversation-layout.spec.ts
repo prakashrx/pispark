@@ -8,8 +8,10 @@ hostedTest("wide tables, prose and the expanding reply dock share one leading ed
   await ask.fill("A short overview.\n\n| Item | Description |\n| --- | --- |\n| First | A short table with room to grow |\n\nThe last line stays reachable.");
   await page.getByRole("button", { name: "Start session" }).click();
   const main = page.getByRole("main");
-  const table = main.getByRole("table");
-  const prose = main.locator(".reading-block").first();
+  // The reply (your message renders its Markdown too, inside its bubble).
+  const answer = main.locator("[data-purpose=assistant-turn-stream]");
+  const table = answer.getByRole("table");
+  const prose = answer.locator(".reading-block").first();
   const composer = page.getByRole("form", { name: "Reply to session" });
   await expect(table).toBeVisible();
   const aligned = async () => {

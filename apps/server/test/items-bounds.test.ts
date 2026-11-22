@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Item } from "../src/contract/protocol.js";
-import { boundTail } from "../src/core/runtime/items.js";
+import { boundTail, ItemProjector, type ItemSource } from "../src/core/runtime/items.js";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { testHome } from "./fixtures/home.js";
 
@@ -84,4 +84,28 @@ test("what is in flight stays inside a frame however much of it there is", () =>
     const part = item.parts[0]!;
     assert(part.type === "text" && part.size === 150 * 1024 && part.text.length === 16 * 1024);
   }
+});
+
+test("a message keeps one key while Pi replaces its object as it streams, and after it lands", () => {
+  const answer = (text: string) => ({ role: "assistant", content: [{ type: "text", text }] });
+  const source = {
+    sessionManager: {
+      getLeafId: () => null,
+      getBranch: () => [],
+      getEntry: () => undefined,
+      buildSessionProjection: () => ({ messages: [], entries: [] }),
+    },
+    messages: [] as unknown[],
+    state: { streamingMessage: answer("Wind") as unknown },
+  };
+  const items = new ItemProjector(source as unknown as ItemSource);
+  const key = items.tail()[0]!.key;
+  source.state.streamingMessage = answer("Wind is");
+  assert.equal(items.tail()[0]!.key, key);
+  source.state.streamingMessage = answer("Wind is air");
+  assert.equal(items.tail()[0]!.key, key);
+  // Finished: Pi's final message is a new object too, and takes the key over.
+  source.state.streamingMessage = undefined;
+  source.messages = [answer("Wind is air in motion.")];
+  assert.equal(items.tail()[0]!.key, key);
 });

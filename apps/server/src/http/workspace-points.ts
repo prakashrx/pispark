@@ -14,4 +14,6 @@ export const WORKSPACE_POINTS = [
   "session.input.above",
   "session.input.below",
   "session.input.actions",
+  // A fenced block in Markdown, by its language: `markdown.fence:mermaid` draws ```mermaid blocks.
+  "markdown.fence:*",
 ] as const;

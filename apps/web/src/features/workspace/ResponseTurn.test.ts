@@ -94,12 +94,15 @@ test("the element drawn while streaming is the one that stays after the commit",
   const user = item("user", [{ type: "text", text: "hi" }]);
   const streaming = buildTurns([user, live("Hel")], { running: true })[0]!;
   const { container, rerender } = render(ResponseTurn, { turn: streaming, sessionId: "s1" });
-  const prose = container.querySelector(".prose")!;
+  const reply = () => container.querySelector("[data-purpose=assistant-turn-stream] .prose");
+  const prose = reply()!;
   const thought = container.querySelector(".thought")!;
   await rerender({ turn: buildTurns([user, live("Hello")], { running: true })[0]!, sessionId: "s1" });
   // Committed: Pi's entry id arrives, the key does not change, so nothing is drawn anew.
   await rerender({ turn: buildTurns([user, live("Hello, world", { id: "e99" })], { running: false })[0]!, sessionId: "s1" });
-  expect(container.querySelector(".prose")).toBe(prose);
+  // Markdown draws once per animation frame.
+  await new Promise(requestAnimationFrame);
+  expect(reply()).toBe(prose);
   expect(prose.isConnected).toBe(true);
   expect(prose.textContent).toContain("Hello, world");
   expect(container.querySelector(".thought")).toBe(thought);
