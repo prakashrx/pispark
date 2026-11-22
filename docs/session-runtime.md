@@ -167,7 +167,7 @@ Its second tool, `pispark_schedule`, lists, removes or adds schedules of its own
 
 Its third tool, `pispark_session`, starts, lists, sends to, stops and reads the session's own [child sessions](#child-sessions), each with how it reports. While it is active the system prompt says that work which can run on its own may be handed to another session, and that a report arriving while others still run needs only a one-line acknowledgement. `pispark_report` is active only in a child in status mode; the system prompt then says to raise what the parent needs to know and otherwise just finish.
 
-Its `pispark_process` tool runs commands in the background ([processes](#processes)); while it is active the system prompt says to use it instead of bash for commands that run long or never end on their own.
+Its `pispark_process` tool runs commands in the background ([processes](#processes)); while it is active the system prompt says to use it instead of bash for commands that run long or never end on their own, and to rely on the end-of-process wake or a blocking wait rather than checking output repeatedly.
 
 The agent's tool switches go to Pi in its own terms, not as an allowlist: tools switched off are `excludeTools` (never registered, so no transcript brings them back), and tools switched on are `+name` modifiers applied on top of the loadout a reopened transcript recorded. A tool an extension registers once the session runs (in `session_start`, say) is offered like any other. Tools a running session has that loading the agent did not show are remembered for the agent editor (`ToolDiscovery.remember`).
 

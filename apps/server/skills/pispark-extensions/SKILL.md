@@ -7,6 +7,35 @@ description: Design, write, or troubleshoot ordinary Pi extensions hosted by PiS
 
 Use an ordinary Pi extension for executable behavior. Register tools with Pi for things the session's agent needs to do. Add a browser component only when the person needs a display or control. A tool does not need a component, and a read-only panel does not need a model turn. PiSpark hosts both; the extension owns its behavior and state. There is no separate manifest or runtime.
 
+## Pi essentials
+
+This covers most extensions. Don't read Pi's whole extension guide first.
+
+```ts
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { Type } from 'typebox';
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool({
+    name: 'board_move',
+    label: 'Move',
+    description: 'Play a move on the board',
+    parameters: Type.Object({ cell: Type.Integer({ minimum: 0, maximum: 8 }) }),
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      return { content: [{ type: 'text', text: `Played ${params.cell}` }], details: { cell: params.cell } };
+    },
+  });
+  pi.on('session_start', async (_event, ctx) => {
+    // Restore state from ctx.sessionManager.getBranch(); offer views (below).
+  });
+}
+```
+
+- `execute` returns `content` for the model and `details` for renderers and state; throw for errors.
+- State that follows the conversation branch: rebuild it in `session_start` from `ctx.sessionManager.getBranch()`, either from your tool results' `details` or from `pi.appendEntry('<name>-state', data)` entries.
+- A slash command for the person: `pi.registerCommand(name, { description, handler: async (args, ctx) => {} })`.
+- Start from the closest example in Pi's `examples/extensions/`: `hello.ts` (smallest tool), `todo.ts` (tool state in result details), `tic-tac-toe.ts` and `snake.ts` (games with saved state). Their display uses Pi's terminal UI; in PiSpark, show a browser view instead (below).
+
 ## Choose where it loads before writing
 
 - **Named agent:** put the extension under `<PiSpark data folder>/agents/<id>/extensions/<name>/index.ts`. All sessions that resolve that resource can load it on start or reload, including agents that inherit it. For an isolated dev agent, use its own folder and select it in a separate dev workspace; don't add trials to Default. Agent layering controls where code loads, not what it can access. Extensions run with the host user's permissions; their components run in the PiSpark page.
@@ -58,4 +87,4 @@ export default function (pi: ExtensionAPI) {
 
 ## References
 
-The PiSpark app root is four directories above this skill's containing directory (`apps/server/skills/pispark-extensions/`). Read its `docs/extensions.md` for the contribution contract and supported UI APIs, and `docs/agents.md` for layering. Use the Pi SDK docs and examples named in the system prompt for tool schemas, lifecycle, and persistence. An installed build may have compiled code rather than a source checkout; do not assume a nearby checkout is the running build.
+The PiSpark app root is four directories above this skill's containing directory (`apps/server/skills/pispark-extensions/`). Read its `docs/extensions.md` for the contribution contract and supported UI APIs, and `docs/agents.md` for layering. Pi's `docs/extensions.md` (in the Pi package named in the system prompt) is over 3,000 lines: don't read it whole. Search it for the heading you need, such as `pi.registerTool`, `Tool parameter schemas`, `Session Events`, `pi.appendEntry` or `ctx.sessionManager`, and read only that section. An installed build may have compiled code rather than a source checkout; do not assume a nearby checkout is the running build.

@@ -167,7 +167,7 @@ export default function pispark(pi: ExtensionAPI): void {
     name: PROCESS_TOOL,
     label: "Run in the background",
     description:
-      "Run a command in the background on this host (a dev server, a build, a test suite), owned by PiSpark so it keeps running while this session is idle or unloaded. start returns at once with its id and first output; with wait_for (a regular expression) and timeout_seconds it returns when the output shows it or the time is up. output returns what you have not read yet, optionally waiting the same way. wait returns terminal status without output. search looks for a literal string in retained output without consuming it. watch wakes this session when a line matches a pattern. When a process ends this session is told: 'result' (default) wakes it with the exit code and last output; 'status' adds a line; 'none' says nothing. Also lists and stops this session's processes and those of sessions it started.",
+      "Run a command in the background on this host (a dev server, a build, a test suite), owned by PiSpark so it keeps running while this session is idle or unloaded. start returns at once with its id and first output; with wait_for (a regular expression) and timeout_seconds it returns when the output shows it or the time is up. output returns unread output; with wait_for and timeout_seconds it first waits for a matching line, and without them it returns at once, often with nothing new. wait returns terminal status without output. search looks for a literal string in retained output without consuming it. watch wakes this session when a line matches a pattern. When a process ends this session is told: 'result' (default) wakes it with the exit code and last output; 'status' adds a line; 'none' says nothing. Also lists and stops this session's processes and those of sessions it started.",
     parameters: Type.Object(
       {
         action: Type.Union([Type.Literal("start"), Type.Literal("list"), Type.Literal("output"), Type.Literal("wait"), Type.Literal("search"), Type.Literal("watch"), Type.Literal("unwatch"), Type.Literal("stop")]),
@@ -259,7 +259,7 @@ export default function pispark(pi: ExtensionAPI): void {
         ? "For work that can run on its own (research, a long job, one of several parallel parts), you may start other sessions with pispark_session and carry on. Each session's answer arrives later as a message here; when others are still running, acknowledge it in one line."
         : "",
       active.includes(PROCESS_TOOL)
-        ? "For commands that run long or never end on their own (dev servers, watchers, long builds or test runs), use pispark_process instead of bash: it runs them in the background and tells you when they end. Wait for a server with wait_for and timeout_seconds; read new output with output."
+        ? "For commands that run long or never end on their own (dev servers, watchers, long builds or test runs), use pispark_process instead of bash: it runs them in the background, and when one ends this session is woken with its result, so don't check on it repeatedly. To block until something happens, use output with wait_for and timeout_seconds (a server's ready line) or wait (the exit). Call output without a wait only for a deliberate partial look."
         : "",
       active.includes(REPORT_TOOL)
         ? "Another session started this one and hears only that it ended. If you find something it needs to know or act on, raise it with pispark_report; otherwise just finish."
