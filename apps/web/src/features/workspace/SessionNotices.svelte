@@ -62,7 +62,12 @@
   </div>
 {/snippet}
 {#snippet failed()}<p role="alert" class="notice" data-tone="danger">Something went wrong. Reopen this session to try again.</p>{/snippet}
-{#snippet interrupted()}<p role="status" class="notice">This session was interrupted. Your saved messages are still here.</p>{/snippet}
+{#snippet interrupted()}
+  <p role="status" class="notice flex flex-wrap items-center gap-3">
+    <span class="flex-1">This session was interrupted. Your saved messages are still here.</span>
+    {#if !doc?.readOnly && (doc?.status === "idle" || doc?.status === "error")}<Button size="compact" onclick={() => void session.send("Continue")}>Continue</Button>{/if}
+  </p>
+{/snippet}
 {#snippet waiting()}
   <p role="status" class="notice flex flex-wrap items-center gap-3">
     <span class="flex-1">This session is waiting for your answer.</span>

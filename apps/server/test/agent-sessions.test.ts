@@ -495,6 +495,32 @@ test("a session's thinking level and model can change; the choice stays on reope
   }
 });
 
+test("Pi retries an overloaded provider by itself and the session says so; a failure says why, in the provider's words", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    const run = f.runtime.start(session.id, "provider-overloaded-once");
+    await eventually(() => f.runtime.session(session.id).retrying !== undefined);
+    const retrying = f.runtime.session(session.id).retrying!;
+    assert.deepEqual([retrying.attempt, retrying.of, retrying.failure], [1, 3, "unavailable"]);
+    assert.ok(Date.parse(retrying.at) > Date.now() - 1000);
+    assert.equal((await run.completion).outcome, "completed");
+    assert.equal(f.runtime.session(session.id).retrying, undefined);
+    const replies = () => f.runtime.items(session.id, {}).items.filter((item) => item.role === "assistant");
+    // The failed attempt stays in the history (Pi hides it from the model); the reply after it finished.
+    assert.equal(replies().at(-2)!.failure, "unavailable");
+    assert.equal(replies().at(-1)!.stopReason, "stop");
+
+    assert.equal((await f.runtime.start(session.id, "provider-error").completion).outcome, "failed");
+    const failed = replies().at(-1)!;
+    assert.equal(failed.failure, "failed");
+    assert.match(failed.error ?? "", /^Fixture error/);
+    assert.equal(failed.provider, "pispark-local-test");
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("after a failed reply, the next message goes: the session starts again from its transcript", async () => {
   const f = await fixture();
   try {

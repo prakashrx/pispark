@@ -1,4 +1,4 @@
-import { NOTICE_ENTRY, type ExtensionView, type Item, type ItemPart, type StyledLine, type ToolProgress } from "../../../../server/src/contract/protocol";
+import { NOTICE_ENTRY, type ExtensionView, type Item, type ItemPart, type ReplyFailure, type StyledLine, type ToolProgress } from "../../../../server/src/contract/protocol";
 import type { Json } from "../../../../server/src/contract/stream-ops";
 import { STATUS_ENTRY, WOKEN_ENTRY, type WakeSource } from "../../../../server/src/contract/wake-protocol";
 import { TITLE_TOOL } from "../../../../server/src/contract/session-title";
@@ -44,7 +44,11 @@ export type Segment =
   | { kind: "notice"; key: string; notice: Pick<Notice, "kind" | "lines"> }
   /** A tool call drawn by the component its extension placed at `item.tool:<name>`. */
   | { kind: "view"; key: string; point: string; call: ToolCall }
-  | { kind: "stopped"; key: string; reason: "aborted" | "error" | "usage-limit" }
+  /**
+   * Where a reply ended early: cancelled, or failed and why (with the provider's words). `latest`:
+   * the session's last reply, which Retry can follow.
+   */
+  | { kind: "stopped"; key: string; reason: "aborted" | ReplyFailure; error?: string; provider?: string; latest: boolean }
   /** A session this one started, shown with its live state. */
   | { kind: "session"; key: string; sessionId: string; title: string }
   /** A process this one started, shown with its live state. */
@@ -140,6 +144,9 @@ export function buildTurns(
   const notices = [...(options.notices ?? [])].sort((a, b) => a.after - b.after || a.at - b.at);
   const turns: Turn[] = [];
   const lastItem = items.at(-1);
+  // The session's last reply, when nothing was sent after it.
+  const lastAssistant = items.findLastIndex((item) => item.role === "assistant");
+  const latestReply = lastAssistant >= 0 && !items.slice(lastAssistant).some((item) => item.role === "user") ? items[lastAssistant] : undefined;
   let notice = 0;
   /** A wake's marker, waiting for the message it sent. */
   let woken: string | undefined;
@@ -231,8 +238,16 @@ export function buildTurns(
           for (const artifact of artifacts) emit(turn, artifact);
         }
       });
-      if (terminal.has(item) && (item.stopReason === "aborted" || item.stopReason === "error"))
-        emit(turn, { kind: "stopped", key: `${item.key}.stop`, reason: item.failure ?? item.stopReason });
+      // While the turn runs, a failed last reply is one Pi is retrying: the working line says so.
+      if (terminal.has(item) && (item.stopReason === "aborted" || item.stopReason === "error") && !(options.running && item === lastItem))
+        emit(turn, {
+          kind: "stopped",
+          key: `${item.key}.stop`,
+          reason: item.stopReason === "aborted" ? "aborted" : (item.failure ?? "failed"),
+          ...(item.error ? { error: item.error } : {}),
+          ...(item.provider ? { provider: item.provider } : {}),
+          latest: item === latestReply,
+        });
     } else if (item.role === "custom" && item.customType === STATUS_ENTRY) {
       const d = (item.details ?? {}) as { title?: unknown; how?: unknown; session?: unknown; process?: unknown };
       emit(turn, {

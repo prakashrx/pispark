@@ -93,6 +93,11 @@ export type ItemPart =
   /** `args` are the parsed arguments (bounded); they grow while the model writes them. */
   | { type: "toolCall"; id: string; name: string; args: Json; clipped?: true }
   | { type: "image"; mimeType: string; bytes: number };
+/**
+ * Why a model's reply failed: an exhausted usage allowance, the provider overloaded or out of reach
+ * (after Pi's own retries), a conversation too long for the model, a refused sign-in, or else.
+ */
+export type ReplyFailure = "usage-limit" | "unavailable" | "context-full" | "signed-out" | "failed";
 export interface Item {
   /** Pi's session entry id. Absent while the message is only in flight. */
   id?: string;
@@ -103,7 +108,11 @@ export interface Item {
   pos?: number;
   parts: ItemPart[];
   stopReason?: string;
-  failure?: "usage-limit";
+  /** Why a reply failed (`stopReason: "error"`), and the provider's own words for it, cleaned. */
+  failure?: ReplyFailure;
+  error?: string;
+  /** The provider of a failed reply, for naming it. */
+  provider?: string;
   toolName?: string;
   callId?: string;
   isError?: boolean;
@@ -226,6 +235,11 @@ export interface SessionDoc extends SessionInfo {
   prompts?: SessionCommand[];
   /** An extension asked to keep this session loaded and the agent does not allow it yet. */
   holdAsked?: { extension: string; reason: string };
+  /**
+   * Pi is retrying a failed reply on its own: this attempt of how many, when it goes (ISO time), and
+   * why the last one failed.
+   */
+  retrying?: { attempt: number; of: number; at: string; failure: ReplyFailure };
   /** Changes asked for while the session works, applied together once it is free (see `PendingSetup`). */
   pending?: PendingSetup;
 }

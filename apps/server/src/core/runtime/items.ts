@@ -1,4 +1,5 @@
-import { providerUsageLimited } from "./errors.js";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { providerMessage, replyFailure } from "./errors.js";
 import { createHash } from "node:crypto";
 import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import type { SessionEntry, SessionManager, SessionProjection } from "@earendil-works/pi-coding-agent";
@@ -194,6 +195,16 @@ export interface ItemSource {
  * Projects Pi's session into the session's items. Pi is the only store: history is read from its
  * entries, and the in-flight tail from the agent state that has not been persisted yet.
  */
+/** A failed reply's reason, the provider's cleaned words and which provider it was. */
+function failureOf(message: AssistantMessage): Pick<Item, "failure" | "error" | "provider"> {
+  const error = providerMessage(message.errorMessage);
+  return {
+    failure: replyFailure(message),
+    ...(error ? { error } : {}),
+    ...(typeof message.provider === "string" && message.provider.length <= 64 ? { provider: message.provider } : {}),
+  };
+}
+
 export class ItemProjector {
   private readonly keys = new WeakMap<object, string>();
   private counter = 0;
@@ -258,7 +269,7 @@ export class ItemProjector {
         role,
         parts: parts(message.content),
         ...(message.stopReason ? { stopReason: label(message.stopReason) } : {}),
-        ...(message.stopReason === "error" && providerUsageLimited(message.provider, message.errorMessage) ? { failure: "usage-limit" as const } : {}),
+        ...(message.stopReason === "error" ? failureOf(message as unknown as AssistantMessage) : {}),
         ...duration(message),
       });
     if (role === "toolResult")

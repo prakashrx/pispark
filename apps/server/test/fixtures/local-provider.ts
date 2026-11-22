@@ -23,6 +23,8 @@ export class LocalProviderControl {
   active = 0;
   peak = 0;
   automatic = false;
+  /** "provider-overloaded-once" has failed its first time. */
+  overloadedOnce = false;
   provider = (): Provider => {
     const model: Model<Api> = {
       id: "deterministic",
@@ -119,6 +121,12 @@ export class LocalProviderControl {
         if (request.aborted) {
           message.stopReason = "aborted";
           events.push({ type: "error", reason: "aborted", error: message });
+        } else if (text === "provider-overloaded-once" && !this.overloadedOnce) {
+          // Overloaded the first time it is asked, as a provider under load says it; fine after.
+          this.overloadedOnce = true;
+          message.stopReason = "error";
+          message.errorMessage = "503 Service Unavailable: the server is overloaded";
+          events.push({ type: "error", reason: "error", error: message });
         } else if (text === "provider-error") {
           message.stopReason = "error";
           message.errorMessage = `Fixture error ${options?.apiKey ?? ""}`;

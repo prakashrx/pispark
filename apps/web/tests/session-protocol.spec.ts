@@ -245,7 +245,7 @@ test("background receipt failure stays with its originating session across selec
     page.getByText("local:session B", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("alert").filter({ hasText: /The run failed/ }),
+    page.getByRole("alert").filter({ hasText: /couldn’t finish this reply/ }),
   ).toHaveCount(0);
   await page
     .getByRole("link", { name: /^provider-error/ })
@@ -253,7 +253,7 @@ test("background receipt failure stays with its originating session across selec
     .click();
   // Said once, in the conversation where it happened (design set 8/4): no notice repeats it.
   await expect(
-    page.getByRole("alert").filter({ hasText: "The run failed: the model couldn’t finish." }),
+    page.getByRole("alert").filter({ hasText: "The model couldn’t finish this reply." }),
   ).toBeVisible();
   await expect(page.getByText(/Reopen this session|was interrupted|failed on the server/)).toHaveCount(0);
 });

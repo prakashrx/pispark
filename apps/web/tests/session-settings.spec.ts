@@ -64,11 +64,26 @@ hostedTest("a model chosen or a reload asked for while a reply runs waits for th
   await expect(page.getByText("local:after the change", { exact: true })).toBeVisible();
 });
 
-hostedTest("a failed reply's card opens Details on the model", async ({ page }) => {
+hostedTest("a failed reply's card says why, shows the provider's words, opens Details on the model and retries", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   await ask(page, "provider-error");
-  const card = page.getByRole("alert").filter({ hasText: "The run failed" });
+  const card = page.getByRole("alert").filter({ hasText: "The model couldn’t finish this reply." });
+  await card.getByText("Details").click();
+  await expect(card.getByText(/^Fixture error/)).toBeVisible();
   await card.getByRole("button", { name: "Choose another model" }).click();
   await expect(details(page).locator("[data-model-picker] button").first()).toBeFocused();
+  await card.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByText("local:Retry", { exact: true })).toBeVisible();
+  // A card on an earlier reply offers nothing to press.
+  await expect(card.getByRole("button")).toHaveCount(0);
+});
+
+hostedTest("an overloaded provider is retried by Pi while the reply says so, and the reply then arrives", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await ask(page, "provider-overloaded-once");
+  await expect(page.getByRole("status").filter({ hasText: "Provider busy, retrying" })).toBeVisible();
+  await expect(page.getByText("local:provider-overloaded-once", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });

@@ -26,7 +26,7 @@ const COMMAND_ERRORS: Record<string, string> = {
   busy: "The session is busy. Try again when it has finished.",
   "not-found": "That session isn’t open on the server.",
   storage: "Couldn’t read or save on the server.",
-  "usage-limit": "OpenAI reported a usage limit for this connection.",
+  "usage-limit": "The provider reported a usage limit for this connection.",
   "compaction-cancelled": "Context compaction was cancelled.",
   "nothing-to-compact": "There are no earlier messages Pi can summarize yet.",
   execution: "The run failed on the server.",

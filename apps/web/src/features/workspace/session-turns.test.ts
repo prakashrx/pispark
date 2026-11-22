@@ -288,12 +288,25 @@ test("a turn knows when it started and when its last response ended", () => {
   expect([second!.startedAt, second!.endedAt]).toEqual([undefined, undefined]);
 });
 
+test("a failed reply says why with the provider's words; Pi retrying it shows no card; only the latest offers Retry", () => {
+  const user = item("user", [text("answer")]);
+  const failed = item("assistant", [], { stopReason: "error", failure: "unavailable", error: "529 Overloaded", provider: "anthropic" });
+  // While the turn still runs, the failure is one Pi is retrying.
+  expect(buildTurns([user, failed], { running: true })[0]?.segments.some((segment) => segment.kind === "stopped")).toBe(false);
+  expect(buildTurns([user, failed], { running: false })[0]?.segments).toContainEqual({
+    kind: "stopped", key: `${failed.key}.stop`, reason: "unavailable", error: "529 Overloaded", provider: "anthropic", latest: true,
+  });
+  const next = item("user", [text("something else")]);
+  const stopped = buildTurns([user, failed, next], { running: false })[0]?.segments.find((segment) => segment.kind === "stopped");
+  expect(stopped).toMatchObject({ reason: "unavailable", latest: false });
+});
+
 test("a usage-limit card describes the terminal failure and disappears after a successful retry", () => {
   const user = item("user", [text("answer")]);
   const limit = item("assistant", [], { stopReason: "error", failure: "usage-limit" });
   const done = item("assistant", [text("complete")], { stopReason: "stop" });
   expect(buildTurns([user, limit], { running: false })[0]?.segments)
-    .toContainEqual({ kind: "stopped", key: `${limit.key}.stop`, reason: "usage-limit" });
+    .toContainEqual({ kind: "stopped", key: `${limit.key}.stop`, reason: "usage-limit", latest: true });
   expect(buildTurns([user, limit, done], { running: false })[0]?.segments.map((segment) => segment.kind))
     .toEqual(["text"]);
 });

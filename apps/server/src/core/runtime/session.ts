@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { basename, dirname, join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, EventBus, SessionEntry } from "@earendil-works/pi-coding-agent";
-import type { Provider } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Provider } from "@earendil-works/pi-ai";
 import { HOLD_CHANNEL, NOTICE_ENTRY, type HoldRequest, type ReadOnlyReason, type ItemsPage, type LiveDoc, type PartPage, type PendingSetup, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
 import { ExtensionUI } from "../extensions/extension-ui.js";
 import { ExtensionRendering } from "../extensions/extension-render.js";
@@ -21,7 +21,7 @@ import { ExtensionRevisions, extensionNameValid, type ExtensionChange } from "./
 import type { SetupChange } from "./setup-changes.js";
 import { EXTENSION_CHANNEL, EXTENSION_TOOL, type ExtensionMessage } from "./extension-tool.js";
 import { createSessionServices, resolveFolder } from "./configuration.js";
-import { providerUsageLimited, deadline, RuntimeError, runtimeError, unsupported } from "./errors.js";
+import { providerUsageLimited, deadline, replyFailure, RuntimeError, runtimeError, unsupported } from "./errors.js";
 import type { RuntimeErrorCode } from "./errors.js";
 import { ItemProjector, progressOf } from "./items.js";
 import { LiveView } from "./live-view.js";
@@ -260,6 +260,8 @@ export class Session {
   // configure() saves its model and thinking choice together after Pi has applied both.
   private configuringModel = false;
   private compacting = false;
+  /** Pi is retrying a failed reply (`SessionDoc.retrying`). */
+  private retrying?: SessionDoc["retrying"];
   private cancelling?: Promise<void>;
   /** Running tool calls and what they reported last (Pi's partial result), by call id. References only. */
   private readonly running = new Map<string, unknown>();
@@ -383,6 +385,7 @@ export class Session {
       thinking: { level: session.thinkingLevel as ThinkingLevel, levels: session.getAvailableThinkingLevels() as ThinkingLevel[] },
       ...contextOf(session),
       ...(this.compacting ? { compacting: true } : {}),
+      ...(this.retrying ? { retrying: { ...this.retrying } } : {}),
       queue: { steering: session.getSteeringMessages().length, followUp: session.getFollowUpMessages().length },
       ...(this.status === "queued" && this.metadata.queued !== undefined ? { queuedText: this.metadata.queued } : {}),
       ...(this.status === "queued" && this.restored ? { restored: true as const } : {}),
@@ -949,6 +952,15 @@ export class Session {
       else if (tool.type === "tool_execution_end") this.running.delete(tool.toolCallId);
     }
     if (event.type === "agent_settled") this.running.clear();
+    // Pi retries a transient provider failure by itself; the session says so while it waits.
+    if (event.type === "auto_retry_start")
+      this.retrying = {
+        attempt: event.attempt,
+        of: event.maxAttempts,
+        at: new Date(Date.now() + event.delayMs).toISOString(),
+        failure: replyFailure({ stopReason: "error", errorMessage: event.errorMessage, provider: this.pi?.model?.provider } as AssistantMessage),
+      };
+    if (event.type === "auto_retry_end" || event.type === "agent_settled") this.retrying = undefined;
     if (event.type === "agent_start" && this.run) this.run.admissionClosed = false;
     if (event.type === "agent_settled" && this.run) this.run.settled = true;
     // A run Pi started by itself ends here; one PiSpark started ends where it was sent.
