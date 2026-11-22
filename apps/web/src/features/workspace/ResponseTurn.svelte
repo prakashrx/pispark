@@ -7,7 +7,7 @@
   import { resolveSegmentView } from "./views.svelte";
   import ContributionPoint from "./ContributionPoint.svelte";
   import { placedPoints, pointOf } from "./extension-views";
-  import { useSession } from "./session-client.svelte";
+  import { useSession, useSessions } from "./session-client.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   import { attention } from "../../shell/attention.svelte";
 
@@ -29,6 +29,23 @@
       .join("\n\n")
       .trim(),
   );
+  // Fork from here: a new session whose history ends with this reply, opened at once.
+  const client = useSessions();
+  let forking = $state(false);
+  async function forkHere(entryId: string) {
+    forking = true;
+    try {
+      const id = await session.fork(entryId);
+      if (id) {
+        await client.refresh();
+        client.open(id);
+      }
+    } catch (error) {
+      attention.say((error as Error).message);
+    } finally {
+      forking = false;
+    }
+  }
   async function copyReply() {
     try {
       await navigator.clipboard.writeText(replyText);
@@ -42,7 +59,7 @@
 <div class="turn" data-purpose="turn">
   {#if turn.user}
     {@const detail = clippedPart(turn.user)}
-    <UserTurn text={ellipsis(itemText(turn.user), !!detail)} woken={turn.woken} from={turn.from} />
+    <UserTurn text={ellipsis(itemText(turn.user), !!detail)} woken={turn.woken} from={turn.from} item={turn.user} />
     {#if detail}{#key detail.id}<MessageReader reference={detail} />{/key}{/if}
   {/if}
   {#if turn.segments.length}
@@ -62,6 +79,9 @@
     <TurnTime {turn} />
     {#if !turn.running && replyText}<button type="button" class="copy" aria-label="Copy reply" title="Copy reply" onclick={() => void copyReply()}
         ><Icon name="copy" class="h-3.5 w-3.5" /></button
+      >{/if}
+    {#if session && !turn.running && turn.replyId && !session.doc?.readOnly}<button type="button" class="copy" aria-label="Fork from here" title="Fork from here"
+        disabled={forking} onclick={() => void forkHere(turn.replyId!)}><Icon name="fork" class="h-3.5 w-3.5" /></button
       >{/if}
   </div>
 </div>

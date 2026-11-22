@@ -159,6 +159,8 @@ export interface SessionHost {
   /** The staged extension revision a reload will activate, or is activating. */
   extensionPending?(id: string): string | undefined;
   extensionCandidate?(id: string): ExtensionChange[] | undefined;
+  /** A new session from this one's history up to an entry (an extension command's `ctx.fork`). */
+  fork?(session: Session, entryId: string): Promise<string>;
   /** The sessions a session starts and follows, for its agent (`pispark_session`). */
   readonly sessions?: {
     request(parentId: string, request: SessionRequest): Promise<{ ok: boolean; text: string }>;
@@ -201,6 +203,9 @@ function promptsOf(session: AgentSession): SessionCommand[] {
     return text ? { name, description: text } : { name };
   });
 }
+
+/** Kept at the point the person moved the session to, so it opens there again (`Session.navigate`). */
+const BRANCH_ENTRY = "pispark:branch";
 
 /** What waits to change, for the session's document; nothing when nothing waits. */
 const pendingOf = (pending: PendingSetup | undefined) => (pending && Object.keys(pending).length ? { pending } : {});
@@ -645,8 +650,21 @@ export class Session {
       commandContextActions: {
         waitForIdle: () => session.waitForIdle(),
         newSession: unsupported,
-        fork: unsupported,
-        navigateTree: unsupported,
+        // Pi's fork replaces the terminal's session; here it is a new session of its own, next to this one.
+        fork: async (entryId, options) => {
+          if (options?.withSession) throw new Error("withSession is not available in PiSpark: the fork is a session of its own.");
+          const entry = session.sessionManager.getEntry(entryId);
+          const position = options?.position ?? "before";
+          if (!entry || (position === "before" && (entry.type !== "message" || entry.message.role !== "user"))) throw new Error("Invalid entry ID for forking");
+          const at = position === "at" ? entry.id : entry.parentId;
+          if (!at) throw new Error("There is nothing before this message to fork.");
+          if (!this.host.fork) throw new Error("Forking is not available here.");
+          await this.host.fork(this, at);
+          ui.context.notify("Forked into a new session.", "info");
+          return { cancelled: false };
+        },
+        // Pi's own tree navigation, in place.
+        navigateTree: (targetId, options) => session.navigateTree(targetId, options),
         switchSession: unsupported,
         // Pi's own reload from an extension's command: the session's one reload, once the command is done.
         reload: async () => {
@@ -1063,6 +1081,32 @@ export class Session {
     this.metadata = metadata;
     this.changed();
   }
+  /**
+   * Moves the session to another point of its history with Pi's own tree navigation (in place, in
+   * the same transcript): to just before one of the person's messages, to send it again edited, or
+   * onto another branch. Only between replies. A move that sends nothing is kept with a hidden entry
+   * at the new point, so the session opens there again.
+   */
+  async navigate(entryId: string, keep: boolean): Promise<void> {
+    const { session } = this.loaded();
+    if (!this.settled || !session.isIdle || this.compacting) throw new RuntimeError("busy");
+    if (!session.sessionManager.getEntry(entryId)) throw new RuntimeError("not-found");
+    this.touch();
+    this.input = session.navigateTree(entryId).then((result) => {
+      // An extension's session_before_tree handler can refuse the move.
+      if (result.cancelled) throw new RuntimeError("extension");
+      if (keep) session.sessionManager.appendCustomEntry(BRANCH_ENTRY, {});
+    });
+    this.changed();
+    try {
+      await this.input;
+    } catch (error) {
+      throw runtimeError(error, "execution");
+    } finally {
+      this.input = undefined;
+      this.changed();
+    }
+  }
   /** Manual compaction uses Pi's own model, hooks, and transcript. */
   async compact(): Promise<void> {
     const { session } = this.loaded();
@@ -1087,6 +1131,24 @@ export class Session {
       this.compacting = false;
       this.host.slots.release(this.id);
       this.changed();
+    }
+  }
+  /** An entry of the session's transcript, on any branch. */
+  entryOf(entryId: string): SessionEntry | undefined {
+    return this.loaded().session.sessionManager.getEntry(entryId);
+  }
+  /** The newest point under an entry: following its latest child each time, down to an entry with none. */
+  latestUnder(entryId: string): string | undefined {
+    const manager = this.loaded().session.sessionManager;
+    if (!manager.getEntry(entryId)) return undefined;
+    const children = new Map<string, SessionEntry[]>();
+    for (const entry of manager.getEntries())
+      if (entry.parentId) children.set(entry.parentId, [...(children.get(entry.parentId) ?? []), entry]);
+    let at = entryId;
+    for (;;) {
+      const next = children.get(at)?.reduce((a, b) => (a.timestamp >= b.timestamp ? a : b));
+      if (!next) return at;
+      at = next.id;
     }
   }
   /** Files which reached the transcript, including earlier branches. */

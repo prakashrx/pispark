@@ -75,6 +75,11 @@ export class Session {
   draft = $state("");
   /** A message is being handed to the server. */
   sending = $state(false);
+  /**
+   * One of the person's messages being edited in the reply box, to send again from just before it;
+   * the draft it replaced comes back if the edit is cancelled.
+   */
+  editing = $state<{ entryId: string; draft: string }>();
 
   /** Files added to the reply draft, uploaded as they are added. */
   readonly attachments = new Attachments();
@@ -83,6 +88,24 @@ export class Session {
       return this.host.notice("Draft limit: clear an existing draft before starting another.");
     this.draft = text.slice(0, 65536);
     this.draftRevision++;
+  }
+  /** Edit one of the person's messages in the reply box. */
+  edit(entryId: string, text: string) {
+    if (!this.editing) this.editing = { entryId, draft: this.draft };
+    else this.editing.entryId = entryId;
+    this.setDraft(text);
+  }
+  /** Stop editing: the reply box gets back what it had. */
+  cancelEdit() {
+    if (!this.editing) return;
+    const { draft } = this.editing;
+    this.editing = undefined;
+    this.setDraft(draft);
+  }
+  /** Show another version of one of the person's messages, and what followed it. */
+  async branch(entryId: string) {
+    this.clearError();
+    await this.command({ type: "branch", sessionId: this.id, entryId });
   }
   /**
    * Sends a message to an idle session: the given text, or the draft (cleared once it is accepted,
@@ -100,16 +123,19 @@ export class Session {
       return false;
     }
     const outgoing = placed.length ? this.attachments.outgoing(message) : { text: message, attachments: [] };
+    // The draft being an edit of one of the person's messages, it goes again from just before that one.
+    const editing = text === undefined ? this.editing : undefined;
     this.sending = true;
     this.clearError();
     try {
-      const receipt = await this.transport.submit({
-        type: "start",
-        sessionId: this.id,
-        text: outgoing.text,
-        ...(outgoing.attachments.length ? { attachments: outgoing.attachments } : {}),
-      });
+      const attachments = outgoing.attachments.length ? { attachments: outgoing.attachments } : {};
+      const receipt = await this.transport.submit(
+        editing
+          ? { type: "edit", sessionId: this.id, entryId: editing.entryId, text: outgoing.text, ...attachments }
+          : { type: "start", sessionId: this.id, text: outgoing.text, ...attachments },
+      );
       if (receipt.error) throw new CommandFailed(receipt.error);
+      if (editing && this.editing === editing) this.editing = undefined;
       if (text === undefined && this.draftRevision === revision) {
         this.draft = "";
         this.attachments.sent(placed);
@@ -179,8 +205,9 @@ export class Session {
   async compact() {
     await this.transport.run({ type: "compact", sessionId: this.id });
   }
-  async fork() {
-    return (await this.transport.run({ type: "fork", sessionId: this.id })).sessionId;
+  /** A new session from this one's history: all of it, or up to and including one entry. */
+  async fork(entryId?: string) {
+    return (await this.transport.run({ type: "fork", sessionId: this.id, ...(entryId ? { entryId } : {}) })).sessionId;
   }
   /** The session's files: what the person attached and what the agent made (its artifacts). */
   async files(): Promise<SessionFile[]> {

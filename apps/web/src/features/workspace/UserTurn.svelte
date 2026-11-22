@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "../../lib/ui/Icon.svelte";
   import { reportBody, type Turn } from "./session-turns";
+  import type { Item } from "../../../../server/src/contract/protocol";
   import { useSession, useSessions } from "./session-client.svelte";
   import { namedFiles } from "./attachments.svelte";
   import SessionMarkdown from "./SessionMarkdown.svelte";
@@ -8,7 +9,7 @@
    * Your message, or (`woken`) one something else sent, labelled as such. One another session sent
    * (`from`: its report, or a parent's message to its child) is not yours, so it is not your bubble.
    */
-  let { text, woken, from }: { text: string; woken?: string; from?: Turn["from"] } = $props();
+  let { text, woken, from, item }: { text: string; woken?: string; from?: Turn["from"]; item?: Item } = $props();
   const client = useSessions();
   const session = useSession();
   // The label is "‹title› · finished": the title is what links to the session.
@@ -16,6 +17,11 @@
   const title = $derived(from ? (cut >= 0 ? from.label.slice(0, cut) : from.label) : "");
   const rest = $derived(from && cut >= 0 ? from.label.slice(cut) : "");
   const known = $derived(from?.kind === "session" && client.sessions.some((session) => session.id === from.id));
+  // Your own saved message can be edited and sent again, between replies; its versions switch then too.
+  const free = $derived(!!session && !session.doc?.readOnly && (session.doc?.status === "idle" || session.doc?.status === "error"));
+  const editable = $derived(!woken && !!item?.id && free);
+  const editing = $derived(!!item?.id && session?.editing?.entryId === item.id);
+  const versions = $derived(item?.versions);
 </script>
 
 {#if from?.kind === "process" || from?.kind === "reload"}
@@ -48,6 +54,18 @@
           >{:else}<span class="named-file" title={piece.name}><Icon name="file" class="h-3.5 w-3.5" /><span>{piece.name}</span></span
           >{/if}{/each}
     </div>
+    {#if versions || editable}<div class="user-actions" class:editing>
+        {#if versions}<span class="versions">
+            <button type="button" aria-label="Previous version" title="Previous version" disabled={!versions.previous || !free}
+              onclick={() => versions.previous && void session.branch(versions.previous)}><Icon name="chevronRight" class="h-3.5 w-3.5 flip" /></button
+            ><span class="sr-only">Version {versions.at} of {versions.of}</span><span aria-hidden="true">{versions.at} / {versions.of}</span><button
+              type="button" aria-label="Next version" title="Next version" disabled={!versions.next || !free}
+              onclick={() => versions.next && void session.branch(versions.next)}><Icon name="chevronRight" class="h-3.5 w-3.5" /></button
+            ></span>{/if}
+        {#if editable}<button type="button" class="edit" aria-label="Edit message" title="Edit message" aria-pressed={editing}
+            onclick={() => (editing ? session.cancelEdit() : session.edit(item!.id!, text))}><Icon name="pencil" class="h-3.5 w-3.5" /></button
+          >{/if}
+      </div>{/if}
   </div>
 {/if}
 
@@ -135,6 +153,51 @@
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 0.8125rem;
     line-height: 1.55;
+  }
+  /* Under your message: its versions, and Edit (shown on hover or focus where there is a pointer). */
+  .user-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: -0.125rem;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+  }
+  .user-actions button {
+    display: inline-grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: var(--radius-sm);
+    color: var(--muted-foreground);
+  }
+  .user-actions button:not(:disabled):hover,
+  .user-actions button:focus-visible,
+  .user-actions .edit[aria-pressed="true"] {
+    background: var(--accent);
+    color: var(--foreground);
+  }
+  .user-actions button:disabled {
+    opacity: 0.35;
+  }
+  .versions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .versions :global(.flip) {
+    transform: rotate(180deg);
+  }
+  @media (hover: hover) {
+    .user-actions .edit {
+      opacity: 0;
+    }
+    [data-purpose="user-turn"]:hover .edit,
+    .user-actions .edit:focus-visible,
+    .user-actions.editing .edit {
+      opacity: 1;
+    }
   }
   .woken {
     display: inline-flex;

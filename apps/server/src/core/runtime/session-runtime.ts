@@ -175,6 +175,7 @@ export class SessionRuntime {
       // A waiting wake goes as soon as its session is free; the minute check catches anything missed.
       extensionPending: (id) => this.setup.extension(id) ?? this.extensionCandidates.get(id)?.revision,
       extensionCandidate: (id) => this.extensionCandidates.get(id)?.active,
+      fork: (session, entryId) => this.fork(session.id, entryId, true),
       requestSetup: (session, change) => {
         if (!this.accepting || this.live.get(session.id) !== session || !this.setup.add(session.id, change)) return false;
         session.changed();
@@ -699,19 +700,27 @@ export class SessionRuntime {
     } else await session.configure(change);
     return session.doc();
   }
-  /** Snapshot history through Pi. A fork has navigation ancestry but no parent result routing. */
-  async fork(sourceId: string): Promise<string> {
+  /**
+   * Snapshot history through Pi: all of it, or the path up to and including one entry. A fork has
+   * navigation ancestry but no parent result routing.
+   */
+  async fork(sourceId: string, entryId?: string, fromCommand = false): Promise<string> {
     validateId(sourceId);
+    if (entryId !== undefined && (typeof entryId !== "string" || !entryId || entryId.length > 64)) throw new RuntimeError("invalid-input");
     this.admit();
     const source = this.storage.read(sourceId);
     const session = this.live.get(sourceId);
-    if (source.archived || source.queued !== undefined || (session && !session.settled)) throw new RuntimeError("busy");
+    // An extension's command forks its own session while that command runs; what it forks is saved.
+    if (source.archived || source.queued !== undefined || (session && !session.settled && !fromCommand)) throw new RuntimeError("busy");
     const transcript = this.storage.validateHistory(source);
     if (!transcript) throw new RuntimeError("not-found");
     const id = randomUUID();
     const destination = this.storage.prepare(id);
     try {
       const fork = SessionManager.forkFrom(transcript, source.cwd, destination, { id });
+      // Forked from a point: only the path to it, as Pi's own branched session keeps.
+      const kept = entryId === undefined ? fork.getEntries() : fork.getBranch(entryId);
+      if (entryId !== undefined && kept.at(-1)?.id !== entryId) throw new RuntimeError("not-found");
       const movedUploads = new Map<string, string>();
       const files = this.files(sourceId);
       if (files.length) mkdirSync(filesFolder(destination), { mode: 0o700 });
@@ -726,8 +735,8 @@ export class SessionRuntime {
           writeFileSync(join(markers, file.name), "", { mode: 0o600 });
         }
       }
-      if (movedUploads.size) {
-        const entries = [fork.getHeader(), ...fork.getEntries().map((entry) => forkAttachmentTags(entry, movedUploads))];
+      if (movedUploads.size || entryId !== undefined) {
+        const entries = [fork.getHeader(), ...kept.map((entry) => forkAttachmentTags(entry, movedUploads))];
         writeFileSync(fork.getSessionFile()!, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n", { mode: 0o600 });
       }
       this.admit();
@@ -972,6 +981,35 @@ export class SessionRuntime {
     validateText(text);
     if (!this.accepting) throw new RuntimeError("closed");
     return this.get(id).start(this.withAttachments(id, text, attachments));
+  }
+  /**
+   * Sends one of the person's messages again, edited: Pi's tree navigation moves the session to just
+   * before it, then the new text goes as any message does. What followed stays as another version.
+   */
+  async edit(id: string, entryId: string, text: string, attachments: readonly string[] = []): Promise<RunHandle> {
+    validateText(text);
+    if (typeof entryId !== "string" || !entryId || entryId.length > 64) throw new RuntimeError("invalid-input");
+    if (!this.accepting) throw new RuntimeError("closed");
+    await this.ensure(id);
+    const session = this.get(id);
+    const entry = session.entryOf(entryId);
+    if (entry?.type !== "message" || entry.message.role !== "user") throw new RuntimeError("not-found");
+    const message = this.withAttachments(id, text, attachments);
+    await session.navigate(entryId, false);
+    return session.start(message);
+  }
+  /**
+   * Shows another version of one of the person's messages: the session moves to the newest point
+   * of what followed that version.
+   */
+  async branch(id: string, entryId: string): Promise<SessionDoc> {
+    if (typeof entryId !== "string" || !entryId || entryId.length > 64) throw new RuntimeError("invalid-input");
+    await this.ensure(id);
+    const session = this.get(id);
+    const leaf = session.latestUnder(entryId);
+    if (!leaf) throw new RuntimeError("not-found");
+    await session.navigate(leaf, true);
+    return session.doc();
   }
   /** Steer or follow up a running session. */
   async queue(id: string, text: string, kind: "steer" | "follow-up", attachments: readonly string[] = []): Promise<"queued" | "handled"> {

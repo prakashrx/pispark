@@ -95,8 +95,14 @@ function validate(value: unknown): Command {
         ]
       : c.type === "reload"
         ? ["sessionId", ...(c.model === undefined ? [] : ["model"])]
-      : ["open", "cancel", "stop", "archive", "restore", "delete", "compact", "fork", "allow-hold", "deny-hold", "release-hold"].includes(String(c.type))
+      : ["open", "cancel", "stop", "archive", "restore", "delete", "compact", "allow-hold", "deny-hold", "release-hold"].includes(String(c.type))
         ? ["sessionId"]
+      : c.type === "fork"
+        ? ["sessionId", ...(c.entryId === undefined ? [] : ["entryId"])]
+      : c.type === "branch"
+        ? ["sessionId", "entryId"]
+      : c.type === "edit"
+        ? ["sessionId", "entryId", "text", ...(c.attachments === undefined ? [] : ["attachments"])]
         : c.type === "rename"
           ? ["sessionId", "title"]
         : c.type === "seen"
@@ -425,8 +431,25 @@ export class SessionHttp {
           await this.runtime.compact(command.sessionId);
           break;
         case "fork":
-          receipt.sessionId = await this.runtime.fork(command.sessionId);
+          receipt.sessionId = await this.runtime.fork(command.sessionId, command.entryId);
           break;
+        case "branch":
+          await this.runtime.branch(command.sessionId, command.entryId);
+          break;
+        case "edit": {
+          let run;
+          try {
+            run = await this.runtime.edit(command.sessionId, command.entryId, command.text, command.attachments);
+          } catch (error) {
+            // A definite rejection before clients clear drafts, as for start.
+            receipt.state = "settled";
+            receipt.outcome = "failed";
+            receipt.error = failure(error);
+            break;
+          }
+          Object.assign(receipt, await run.completion);
+          break;
+        }
         case "cancel":
           await this.runtime.cancel(command.sessionId);
           break;

@@ -17,6 +17,7 @@ import { localProviderSettings } from "./fixtures/provider-settings.js";
 import { testHome } from "./fixtures/home.js";
 import type { LocalRequest } from "./fixtures/local-provider.js";
 import { sessionText } from "./fixtures/session.js";
+import type { Item } from "../src/contract/protocol.js";
 
 const toolsOf = (request: LocalRequest) => [
   ...new Set(
@@ -516,6 +517,92 @@ test("Pi retries an overloaded provider by itself and the session says so; a fai
     assert.equal(failed.failure, "failed");
     assert.match(failed.error ?? "", /^Fixture error/);
     assert.equal(failed.provider, "pispark-local-test");
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a message edited and sent again branches through Pi's tree; versions switch and stay chosen; a fork can start at a reply", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    await f.runtime.start(session.id, "first").completion;
+    await f.runtime.start(session.id, "second").completion;
+    const items = () => f.runtime.items(session.id, {}).items;
+    const userText = () => items().filter((item) => item.role === "user").map((item) => (item.parts[0] as { text: string }).text);
+    const second = items().filter((item) => item.role === "user")[1]!;
+    const firstReply = items().filter((item) => item.role === "assistant")[0]!;
+
+    assert.equal((await (await f.runtime.edit(session.id, second.id!, "second, edited")).completion).outcome, "completed");
+    assert.deepEqual(userText(), ["first", "second, edited"]);
+    const edited = items().filter((item) => item.role === "user")[1]!;
+    assert.deepEqual(edited.versions, { at: 2, of: 2, previous: second.id });
+    // The model saw the conversation without the message that was replaced.
+    assert.doesNotMatch(JSON.stringify(f.provider.requests.at(-1)!.context.messages), /"second"/);
+
+    await f.runtime.branch(session.id, second.id!);
+    assert.deepEqual(userText(), ["first", "second"]);
+    assert.deepEqual(items().filter((item) => item.role === "user")[1]!.versions, { at: 1, of: 2, next: edited.id });
+    // The chosen version is where the session opens again.
+    await f.runtime.stop(session.id);
+    await f.runtime.open(session.id);
+    assert.deepEqual(userText(), ["first", "second"]);
+    await assert.rejects(f.runtime.edit(session.id, firstReply.id!, "not a message of yours"), (e) => e instanceof RuntimeError && e.code === "not-found");
+
+    const forkId = await f.runtime.fork(session.id, firstReply.id!);
+    await f.runtime.open(forkId);
+    assert.deepEqual(f.runtime.items(forkId, {}).items.map((item) => item.role), ["user", "assistant"]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("the live stream carries an edited message's versions", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    await f.runtime.start(session.id, "first").completion;
+    await f.runtime.start(session.id, "second").completion;
+    const second = f.runtime.items(session.id, {}).items.filter((item) => item.role === "user")[1]!;
+    const { view, events } = f.runtime.observeLive(session.id);
+    try {
+      const committed: Item[] = [];
+      const run = await f.runtime.edit(session.id, second.id!, "second, edited");
+      const take = () => {
+        const event = view.next();
+        if (event?.type === "ops") for (const op of event.ops) if (op.op === "commit") committed.push(...(op.items ?? []));
+      };
+      take();
+      await run.completion;
+      take();
+      const edited = committed.find((item) => item.role === "user");
+      assert.deepEqual(edited?.versions, { at: 2, of: 2, previous: second.id });
+    } finally {
+      events.close();
+    }
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("an extension command's ctx.navigateTree moves in place and ctx.fork makes a session of its own", async () => {
+  const f = await fixture();
+  try {
+    await f.agent("dev", { name: "Dev" }, {
+      "extensions/tree.js": `export default pi => {
+        const firstReply = (ctx) => ctx.sessionManager.getBranch().find((e) => e.type === "message" && e.message.role === "assistant");
+        pi.registerCommand("rewind", { handler: async (_, ctx) => { await ctx.navigateTree(firstReply(ctx).id); } });
+        pi.registerCommand("split", { handler: async (_, ctx) => { await ctx.fork(firstReply(ctx).id, { position: "at" }); } });
+      }`,
+    });
+    const session = await f.runtime.create({ folder: f.folder, agent: "dev" });
+    await f.runtime.start(session.id, "first").completion;
+    await f.runtime.start(session.id, "second").completion;
+    const before = f.runtime.list().length;
+    assert.equal((await f.runtime.start(session.id, "/split").completion).outcome, "completed");
+    assert.equal(f.runtime.list().length, before + 1);
+    assert.equal((await f.runtime.start(session.id, "/rewind").completion).outcome, "completed");
+    assert.deepEqual(f.runtime.items(session.id, {}).items.filter((item) => item.role === "user").map((item) => (item.parts[0] as { text: string }).text), ["first"]);
   } finally {
     await f.cleanup();
   }

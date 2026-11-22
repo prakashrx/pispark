@@ -587,6 +587,13 @@ export const icons = {
       },
     },
   ],
+  /** A new session from this point of the conversation. */
+  fork: [
+    { tag: "circle", attrs: { cx: "6", cy: "5", r: "2", "stroke-width": "1.75" } },
+    { tag: "circle", attrs: { cx: "18", cy: "5", r: "2", "stroke-width": "1.75" } },
+    { tag: "circle", attrs: { cx: "12", cy: "19", r: "2", "stroke-width": "1.75" } },
+    { tag: "path", attrs: { d: "M6 7v2a3 3 0 003 3h6a3 3 0 003-3V7M12 12v5", "stroke-linecap": "round", "stroke-linejoin": "round", "stroke-width": "1.75" } },
+  ],
   agentSearch: [
     {
       tag: "circle",

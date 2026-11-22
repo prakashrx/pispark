@@ -140,6 +140,19 @@
     }
     return false;
   }
+  // Editing one of your messages: the reply box takes it, and Escape puts back what was there.
+  const editing = $derived(mode === "reply" ? session?.editing?.entryId : undefined);
+  $effect(() => {
+    if (editing) input?.focus();
+  });
+  function key(event: KeyboardEvent): boolean {
+    if (suggest(event)) return true;
+    if (event.key === "Escape" && editing) {
+      session?.cancelEdit();
+      return true;
+    }
+    return false;
+  }
   async function send() {
     if (unavailable) return;
     if (mode === "ask")
@@ -168,6 +181,10 @@
       void send();
     }}
   >
+    {#if editing}<div class="editing" role="status">
+        <Icon name="pencil" class="h-3.5 w-3.5" /><span class="editing-text">Editing your message. It goes again from just before it; what followed stays as another version.</span>
+        <button type="button" class="editing-cancel" onclick={() => session?.cancelEdit()}>Cancel</button>
+      </div>{/if}
     {#if attachments}<RichInput
         bind:this={input}
         class="composer-text"
@@ -182,7 +199,7 @@
         onfiles={(files) => attachments.add(files, mode === "reply" ? session?.id : undefined)}
         onremove={(id) => attachments.remove(id)}
         onsubmit={() => void send()}
-        onkey={suggest}
+        onkey={key}
         attributes={suggestions.length
           ? { "aria-controls": listId, "aria-expanded": true, "aria-activedescendant": `${listId}-${active}`, "aria-autocomplete": "list" }
           : { "aria-expanded": mode === "reply" ? false : undefined }}
@@ -317,6 +334,28 @@
   .composer :global(.ui-input::placeholder) {
     color: var(--subtle-foreground);
     opacity: 1;
+  }
+  .editing {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.375rem;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+  }
+  .editing-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .editing-cancel {
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-sm);
+    color: var(--interactive-text);
+    font-weight: 500;
+  }
+  .editing-cancel:hover,
+  .editing-cancel:focus-visible {
+    background: var(--accent);
   }
   .composer-row {
     display: flex;

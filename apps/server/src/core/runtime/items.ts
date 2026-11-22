@@ -185,7 +185,7 @@ const fit = (item: Item): Item => (size(item) > ITEM_BYTES ? shrink(item) : item
 
 /** What items are read from: Pi's running session, or only its transcript when the session is read-only. */
 export interface ItemSource {
-  readonly sessionManager: Pick<SessionManager, "getLeafId" | "getBranch" | "getEntry" | "buildSessionProjection">;
+  readonly sessionManager: Pick<SessionManager, "getLeafId" | "getBranch" | "getEntry" | "getEntries" | "buildSessionProjection">;
   /** The agent's messages, persisted or not. */
   readonly messages: readonly unknown[];
   readonly state: { readonly streamingMessage?: unknown };
@@ -195,6 +195,13 @@ export interface ItemSource {
  * Projects Pi's session into the session's items. Pi is the only store: history is read from its
  * entries, and the in-flight tail from the agent state that has not been persisted yet.
  */
+/**
+ * Whether an entry is part of the conversation, as opposed to bookkeeping kept beside it (a model
+ * or thinking change, Pi's system prompt record, a label, a hidden entry).
+ */
+const conversation = (entry: SessionEntry) =>
+  entry.type === "message" ? entry.message.role !== "system" : ["custom_message", "compaction", "branch_summary"].includes(entry.type);
+
 /** A failed reply's reason, the provider's cleaned words and which provider it was. */
 function failureOf(message: AssistantMessage): Pick<Item, "failure" | "error" | "provider"> {
   const error = providerMessage(message.errorMessage);
@@ -293,6 +300,41 @@ export class ItemProjector {
     return undefined;
   }
 
+  /**
+   * The versions of one of the person's messages: their messages that follow the same point of the
+   * conversation, oldest first, when there is more than one (it was edited and sent again). The
+   * point is the nearest earlier conversation entry; bookkeeping between doesn't count.
+   */
+  private versionsOf(entry: SessionEntry): Item["versions"] {
+    const entries = this.manager.getEntries();
+    if (this.versions?.count !== entries.length) {
+      const byId = new Map(entries.map((each) => [each.id, each]));
+      const point = (each: SessionEntry): string | null => {
+        let at = each.parentId ? byId.get(each.parentId) : undefined;
+        while (at && !conversation(at)) at = at.parentId ? byId.get(at.parentId) : undefined;
+        return at?.id ?? null;
+      };
+      const byPoint = new Map<string | null, string[]>();
+      for (const each of entries)
+        if (each.type === "message" && each.message.role === "user") {
+          const at = point(each);
+          byPoint.set(at, [...(byPoint.get(at) ?? []), each.id]);
+        }
+      this.versions = { count: entries.length, byPoint, point };
+    }
+    const siblings = this.versions!.byPoint.get(this.versions!.point(entry)) ?? [];
+    const at = siblings.indexOf(entry.id);
+    if (siblings.length < 2 || at < 0) return undefined;
+    return {
+      at: at + 1,
+      of: siblings.length,
+      ...(at > 0 ? { previous: siblings[at - 1] } : {}),
+      ...(at < siblings.length - 1 ? { next: siblings[at + 1] } : {}),
+    };
+  }
+  /** The person's messages by the point they follow, kept while the transcript has as many entries. */
+  private versions?: { count: number; byPoint: Map<string | null, string[]>; point: (entry: SessionEntry) => string | null };
+
   /** Whether an entry produces an item, without building it. */
   private shown(entry: SessionEntry): boolean {
     switch (entry.type) {
@@ -317,8 +359,11 @@ export class ItemProjector {
   private entry(entry: SessionEntry, starts: Map<string, number>, claim = false): Item | undefined {
     const pos = starts.get(entry.id);
     switch (entry.type) {
-      case "message":
-        return this.message(entry.message as unknown as Raw, entry.id, pos, claim);
+      case "message": {
+        const item = this.message(entry.message as unknown as Raw, entry.id, pos, claim);
+        const versions = item?.role === "user" ? this.versionsOf(entry) : undefined;
+        return item && versions ? { ...item, versions } : item;
+      }
       case "custom_message": {
         const [message] = sessionEntryToContextMessages(entry);
         return message && this.message(message as unknown as Raw, entry.id, pos);

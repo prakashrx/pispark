@@ -109,3 +109,33 @@ test("a message keeps one key while Pi replaces its object as it streams, and af
   source.messages = [answer("Wind is air in motion.")];
   assert.equal(items.tail()[0]!.key, key);
 });
+
+test("an edited message's versions skip bookkeeping between it and the conversation, such as Pi's system record", () => {
+  const message = (id: string, parentId: string | null, role: string, text: string) =>
+    ({ id, parentId, type: "message", timestamp: id, message: { role, content: role === "user" || role === "system" ? text : [{ type: "text", text }] } });
+  const entries = [
+    message("s1", null, "system", "prompt"),
+    message("u1", "s1", "user", "Name a fruit"),
+    message("a1", "u1", "assistant", "Apple"),
+    message("u2", "a1", "user", "Name a colour"),
+    message("a2", "u2", "assistant", "Blue"),
+    // Sent again, edited: Pi records the system prompt for the new branch first.
+    message("s2", "a1", "system", "prompt"),
+    message("u3", "s2", "user", "Name an animal"),
+    message("a3", "u3", "assistant", "Dog"),
+  ];
+  const branch = ["s1", "u1", "a1", "s2", "u3", "a3"].map((id) => entries.find((entry) => entry.id === id)!);
+  const source = {
+    sessionManager: {
+      getLeafId: () => "a3",
+      getBranch: () => branch,
+      getEntry: (id: string) => entries.find((entry) => entry.id === id),
+      getEntries: () => entries,
+      buildSessionProjection: () => ({ messages: [], entries: [] }),
+    },
+    messages: [] as unknown[],
+    state: {},
+  };
+  const users = new ItemProjector(source as unknown as ItemSource).page({}).items.filter((item) => item.role === "user");
+  assert.deepEqual(users.map((item) => item.versions), [undefined, { at: 2, of: 2, previous: "u2" }]);
+});

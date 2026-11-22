@@ -113,6 +113,11 @@ export interface Item {
   error?: string;
   /** The provider of a failed reply, for naming it. */
   provider?: string;
+  /**
+   * One of the person's messages that was edited and sent again: which version this is of how many,
+   * and the entry ids of the versions before and after it (`branch` switches to one).
+   */
+  versions?: { at: number; of: number; previous?: string; next?: string };
   toolName?: string;
   callId?: string;
   isError?: boolean;
@@ -295,7 +300,16 @@ export type Command = { commandId: string } & (
       /** Agent ID; Default when omitted. */
       agent?: string;
     }
-  | { type: "open" | "cancel" | "stop" | "archive" | "restore" | "delete" | "compact" | "fork"; sessionId: string }
+  | { type: "open" | "cancel" | "stop" | "archive" | "restore" | "delete" | "compact"; sessionId: string }
+  /** A new session from this one's history: all of it, or up to and including `entryId`. */
+  | { type: "fork"; sessionId: string; entryId?: string }
+  /**
+   * Send one of the person's messages again, edited: the conversation goes on from just before it
+   * (Pi's tree navigation); what followed stays as another version.
+   */
+  | { type: "edit"; sessionId: string; entryId: string; text: string; attachments?: string[] }
+  /** Show another version of one of the person's messages (`Item.versions`), and what followed it. */
+  | { type: "branch"; sessionId: string; entryId: string }
   /**
    * Start the session again from its history, picking up agent changes; with `model`, it runs that
    * model from now on. While the session works it reloads once it is free (outcome `queued`).

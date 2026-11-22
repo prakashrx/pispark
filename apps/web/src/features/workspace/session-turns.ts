@@ -67,6 +67,8 @@ export interface Turn {
   segments: Segment[];
   /** The agent is still working on this turn. */
   running: boolean;
+  /** Pi's entry id of the turn's last reply, saved: where a fork from this turn ends. */
+  replyId?: string;
   /** When your message was recorded (epoch ms), and when the last of the response ended. */
   startedAt?: number;
   endedAt?: number;
@@ -193,6 +195,7 @@ export function buildTurns(
       if (!turn.endedAt || ended > turn.endedAt) turn.endedAt = ended;
     }
     if (item.role === "assistant") {
+      if (item.id) turn.replyId = item.id;
       item.parts.forEach((part, index) => {
         const key = `${item.key}.${index}`;
         const streaming = live && index === item.parts.length - 1;
