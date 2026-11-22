@@ -26,7 +26,7 @@ function excerpt(value: string, bytes: number): string {
     : encoded.subarray(0, bytes - 3).toString("utf8").replace(/\uFFFD$/, "").trimEnd() + "…";
 }
 
-export function registerWebResearch(pi: ExtensionAPI, key = process.env.PISPARK_TAVILY_API_KEY?.trim()): void {
+export function registerWebResearch(pi: ExtensionAPI, key = process.env.TAVILY_API_KEY?.trim()): void {
   if (!key) return;
   const tavily = new Tavily(key);
   let requests = 0;

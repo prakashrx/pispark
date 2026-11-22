@@ -143,6 +143,15 @@ registerToolView("pispark_report", {
   summarize: () => "raised it with the starting session",
 });
 
+registerToolView("pispark_web_search", {
+  describe: () => ({ doing: "Searching the web", done: "Searched the web" }),
+  summarize: () => "searched the web",
+});
+registerToolView("pispark_web_read", {
+  describe: () => ({ doing: "Reading a web page", done: "Read a web page" }),
+  summarize: (calls) => calls.length === 1 ? "read a web page" : `read ${calls.length} web pages`,
+});
+
 /** What a call is doing, in words. */
 export const describeCall = (call: ToolCall): CallWords => resolveToolView(call.name).describe(call);
 

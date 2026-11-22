@@ -159,6 +159,15 @@ test("calls are described in words and grouped into one line", () => {
   expect(summarizeCalls([tc("bash")])).toBe("Ran 1 command");
 });
 
+test("web research activity describes the search and page reads in plain language", () => {
+  const search = tc("pispark_web_search");
+  const read = tc("pispark_web_read");
+  expect(describeCall(search)).toEqual({ doing: "Searching the web", done: "Searched the web" });
+  expect(describeCall(read)).toEqual({ doing: "Reading a web page", done: "Read a web page" });
+  expect(summarizeCalls([search, read])).toBe("Searched the web, read a web page");
+  expect(summarizeCalls([search, read, read])).toBe("Searched the web, read 2 web pages");
+});
+
 test("a running call carries what it has output so far; a finished one does not", () => {
   n = 0;
   const items = [item("user", [text("go")]), item("assistant", [call("c1", "bash", { command: "make" }), call("c2", "bash")]), result("c2")];
