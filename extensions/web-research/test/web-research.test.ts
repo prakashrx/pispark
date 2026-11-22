@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerWebResearch } from "../src/core/extensions/web-research.js";
+import webResearch from "../extensions/web-research/index.js";
 
 function session(key = "test-search-key") {
   const tools = new Map<string, {
@@ -17,12 +17,12 @@ function session(key = "test-search-key") {
       tools.set(tool.name, tool);
     },
   } as unknown as ExtensionAPI;
-  registerWebResearch(pi, key);
+  webResearch(pi, key);
   return {
     tools,
     start: () => start?.(),
     async run(name: "search" | "read", input: object, signal?: AbortSignal) {
-      const tool = tools.get("pispark_web_" + name);
+      const tool = tools.get("web_" + name);
       assert.ok(tool);
       const answer = await tool.execute("test-call", input, signal);
       return answer.content[0].text;
@@ -109,7 +109,7 @@ test("unavailable sources, bounded responses, credentials, and cancellation are 
   }
   assert.equal(request.mock.callCount(), 0);
   await assert.rejects(web.run("search", { query: "first" }), {
-    message: "Web research credentials were rejected. Check the PiSpark server’s Tavily key.",
+    message: "Web research credentials were rejected. Check TAVILY_API_KEY.",
   });
   response = Response.json({ results: [], failed_results: [{ url: "https://example.com/guide" }] });
   assert.match(await web.run("read", { url: "https://example.com/guide", focus: "contents" }), /No page passages/);

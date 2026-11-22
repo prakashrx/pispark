@@ -1,0 +1,11 @@
+{
+  "name": "web-research",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Search the public web and read focused source passages with Tavily.",
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}

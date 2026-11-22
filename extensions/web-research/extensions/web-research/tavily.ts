@@ -70,7 +70,7 @@ export class Tavily {
       if (!response.ok) {
         await response.body?.cancel();
         if (response.status === 401 || response.status === 403)
-          throw new WebServiceError("Web research credentials were rejected. Check the PiSpark server’s Tavily key.");
+          throw new WebServiceError("Web research credentials were rejected. Check TAVILY_API_KEY.");
         if (response.status === 429 || response.status === 432)
           throw new WebServiceError("The web research service is rate limited or out of quota.");
         throw new WebServiceError("The web research service returned HTTP " + response.status + ".");

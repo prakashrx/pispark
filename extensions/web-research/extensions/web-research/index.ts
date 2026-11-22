@@ -2,8 +2,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { SEARCH_RESULTS, Tavily, webUrl } from "./tavily.js";
 
-const SEARCH = "pispark_web_search";
-const READ = "pispark_web_read";
+const SEARCH = "web_search";
+const READ = "web_read";
 const MAX_EVIDENCE_BYTES = 8 * 1024;
 const MAX_REQUESTS = 6;
 const MAX_FOCUS = 400;
@@ -26,7 +26,7 @@ function excerpt(value: string, bytes: number): string {
     : encoded.subarray(0, bytes - 3).toString("utf8").replace(/\uFFFD$/, "").trimEnd() + "…";
 }
 
-export function registerWebResearch(pi: ExtensionAPI, key = process.env.TAVILY_API_KEY?.trim()): void {
+export default function webResearch(pi: ExtensionAPI, key = process.env.TAVILY_API_KEY?.trim()): void {
   if (!key) return;
   const tavily = new Tavily(key);
   let requests = 0;
