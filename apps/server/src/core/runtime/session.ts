@@ -24,7 +24,7 @@ import { createSessionServices, resolveFolder } from "./configuration.js";
 import { providerUsageLimited, deadline, replyFailure, RuntimeError, runtimeError, unsupported } from "./errors.js";
 import type { RuntimeErrorCode } from "./errors.js";
 import { ItemProjector, progressOf } from "./items.js";
-import { contextBudget } from "./context-budget.js";
+import { contextBudget, SUMMARY_FOCUS } from "./compaction.js";
 import { LiveView } from "./live-view.js";
 import { SessionChanges } from "./observation.js";
 import type { SessionChange } from "./observation.js";
@@ -1117,7 +1117,7 @@ export class Session {
     if (!this.settled || !session.isIdle || !this.host.slots.take(this.id)) throw new RuntimeError("busy");
     this.compacting = true;
     this.touch();
-    this.input = session.compact();
+    this.input = session.compact(SUMMARY_FOCUS);
     this.changed();
     try {
       await this.input;
@@ -1365,7 +1365,7 @@ export class Session {
     if (!usage?.tokens || usage.tokens <= contextBudget(usage.contextWindow, session.model?.cost)) return;
     this.compacting = true;
     this.sending = text;
-    this.input = session.compact();
+    this.input = session.compact(SUMMARY_FOCUS);
     this.changed();
     try {
       await this.input;

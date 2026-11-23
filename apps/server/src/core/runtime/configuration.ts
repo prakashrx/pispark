@@ -20,6 +20,7 @@ import type {
   Model,
   Provider,
 } from "@earendil-works/pi-ai";
+import { compactionOverrides } from "./compaction.js";
 import { loadExplicitExtensions } from "./pi-boundary.js";
 import { RuntimeError, unsupported } from "./errors.js";
 import {
@@ -213,6 +214,8 @@ export async function createSessionServices(options: {
       defaultModel: selectedModel.id,
       enabledModels: [`${provider.id}/${selectedModel.id}`],
       defaultTools: setup.toolsOn,
+      // Pi compacts; PiSpark keeps more of the recent conversation for models with larger windows.
+      compaction: { modelOverrides: compactionOverrides(modelRuntime.getModels()) },
     },
     { projectTrusted: false },
   );

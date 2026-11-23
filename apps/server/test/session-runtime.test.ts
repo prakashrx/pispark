@@ -1,4 +1,4 @@
-import { contextBudget } from "../src/core/runtime/context-budget.js";
+import { compactionOverrides, contextBudget, keepRecentTokens } from "../src/core/runtime/compaction.js";
 import { providerUsageLimited } from "../src/core/runtime/errors.js";
 import { SafeLogger } from "../src/core/logger.js";
 import assert from "node:assert/strict";
@@ -1244,6 +1244,19 @@ test("contextBudget: 70% of the window, or of the input tokens where the price r
   assert.equal(contextBudget(200_000, { ...rates, tiers: [{ ...rates, inputTokensAbove: 272_000 }] }), 140_000);
 });
 
+test("keepRecentTokens: a fifth of the usable window, never less than Pi's 20k; set per catalog model", () => {
+  const rates = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 };
+  assert.equal(keepRecentTokens(272_000), 54_400);
+  assert.equal(keepRecentTokens(128_000), 25_600);
+  assert.equal(keepRecentTokens(8_192), 20_000);
+  assert.equal(keepRecentTokens(1_050_000, { ...rates, tiers: [{ ...rates, inputTokensAbove: 272_000 }] }), 54_400);
+  const model = (provider: string, id: string, contextWindow: number) => ({ provider, id, contextWindow, cost: rates }) as never;
+  assert.deepEqual(compactionOverrides([model("openai-codex", "gpt-5.6-luna", 272_000), model("local", "small", 32_000)]), {
+    "openai-codex/gpt-5.6-luna": { keepRecentTokens: 54_400 },
+    "local/small": { keepRecentTokens: 20_000 },
+  });
+});
+
 test("SessionRuntime: a context past its budget is compacted before the person's next message, which waits; a stop sends nothing", async () => {
   const f = await fixture();
   try {
@@ -1285,6 +1298,7 @@ test("SessionRuntime: a context past its budget is compacted before the person's
     assert.equal((await sent.completion).outcome, "completed");
     const after = f.provider.requests.slice(requests);
     assert.ok(after.slice(0, -1).length > 0 && after.slice(0, -1).every(isSummary), "the summary first");
+    assert.ok(after.slice(0, -1).every((r) => JSON.stringify(r.context.messages).includes("Additional focus: Also keep the user's requests")), "with PiSpark's focus");
     assert.ok(!isSummary(after.at(-1)!) && sentText(f.provider.requests.length - 1, "after the summary"), "then the message");
     const history = await f.history(a.id);
     const compaction = history.findIndex((entry) => entry.type === "compaction");
