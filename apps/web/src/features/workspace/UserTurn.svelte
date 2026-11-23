@@ -42,7 +42,11 @@
 {:else}
   <div class="flex flex-col items-end gap-1.5" data-purpose="user-turn">
     {#if woken}<p class="woken"><Icon name="clock" class="h-3.5 w-3.5" /><span>{woken}</span></p>{/if}
-    <div class="user-bubble">
+    <div class="bubble-row">
+      {#if editable}<button type="button" class="edit" class:editing aria-label="Edit message" title="Edit message" aria-pressed={editing}
+          onclick={() => (editing ? session.cancelEdit() : session.edit(item!.id!, text))}><Icon name="pencil" class="h-3.5 w-3.5" /></button
+        >{/if}
+      <div class="user-bubble">
       {#each namedFiles(text, session?.id) as piece}{#if typeof piece === "string"}<SessionMarkdown text={piece} flavor="typed" />{:else if piece.image && piece.url}<a
             class="named-image"
             href={piece.url}
@@ -53,8 +57,9 @@
             ><Icon name="file" class="h-3.5 w-3.5" /><span>{piece.name}</span></a
           >{:else}<span class="named-file" title={piece.name}><Icon name="file" class="h-3.5 w-3.5" /><span>{piece.name}</span></span
           >{/if}{/each}
+      </div>
     </div>
-    {#if versions || editable}<div class="user-actions" class:editing>
+    {#if versions}<div class="user-actions">
         {#if versions}<span class="versions">
             <button type="button" aria-label="Previous version" title="Previous version" disabled={!versions.previous || !free}
               onclick={() => versions.previous && void session.branch(versions.previous)}><Icon name="chevronRight" class="h-3.5 w-3.5 flip" /></button
@@ -62,9 +67,6 @@
               type="button" aria-label="Next version" title="Next version" disabled={!versions.next || !free}
               onclick={() => versions.next && void session.branch(versions.next)}><Icon name="chevronRight" class="h-3.5 w-3.5" /></button
             ></span>{/if}
-        {#if editable}<button type="button" class="edit" aria-label="Edit message" title="Edit message" aria-pressed={editing}
-            onclick={() => (editing ? session.cancelEdit() : session.edit(item!.id!, text))}><Icon name="pencil" class="h-3.5 w-3.5" /></button
-          >{/if}
       </div>{/if}
   </div>
 {/if}
@@ -154,7 +156,31 @@
     font-size: 0.8125rem;
     line-height: 1.55;
   }
-  /* Under your message: its versions, and Edit (shown on hover or focus where there is a pointer). */
+  /* Edit sits by your message's top-left corner: on hover or focus where there is a pointer, always on touch. */
+  .bubble-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+    gap: 0.375rem;
+    width: 100%;
+  }
+  .edit {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin-top: 0.375rem;
+    border-radius: var(--radius-sm);
+    color: var(--muted-foreground);
+  }
+  .edit:hover,
+  .edit:focus-visible,
+  .edit.editing {
+    background: var(--accent);
+    color: var(--foreground);
+  }
+  /* Under your message: its versions. */
   .user-actions {
     display: flex;
     align-items: center;
@@ -172,8 +198,7 @@
     color: var(--muted-foreground);
   }
   .user-actions button:not(:disabled):hover,
-  .user-actions button:focus-visible,
-  .user-actions .edit[aria-pressed="true"] {
+  .user-actions button:focus-visible {
     background: var(--accent);
     color: var(--foreground);
   }
@@ -190,12 +215,12 @@
     transform: rotate(180deg);
   }
   @media (hover: hover) {
-    .user-actions .edit {
+    .edit {
       opacity: 0;
     }
     [data-purpose="user-turn"]:hover .edit,
-    .user-actions .edit:focus-visible,
-    .user-actions.editing .edit {
+    .edit:focus-visible,
+    .edit.editing {
       opacity: 1;
     }
   }
