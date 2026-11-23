@@ -225,9 +225,9 @@ export interface SessionDoc extends SessionInfo {
    * `tokens` and `percent` are null right after a summary, until the next reply measures it.
    */
   context?: { tokens: number | null; window: number; percent: number | null };
-  /** Native manual compaction is active. */
+  /** Pi is compacting the context: asked for, or before the person's next message is sent. */
   compacting?: true;
-  /** The prompt waiting for a run slot, while the session is `queued`. */
+  /** The person's message waiting to be sent: for a run slot while `queued`, or while the context is compacted first. */
   queuedText?: string;
   /** That prompt was waiting when PiSpark stopped, and was queued again when the session opened. */
   restored?: true;

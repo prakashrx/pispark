@@ -24,6 +24,7 @@ import { createSessionServices, resolveFolder } from "./configuration.js";
 import { providerUsageLimited, deadline, replyFailure, RuntimeError, runtimeError, unsupported } from "./errors.js";
 import type { RuntimeErrorCode } from "./errors.js";
 import { ItemProjector, progressOf } from "./items.js";
+import { contextBudget } from "./context-budget.js";
 import { LiveView } from "./live-view.js";
 import { SessionChanges } from "./observation.js";
 import type { SessionChange } from "./observation.js";
@@ -265,6 +266,8 @@ export class Session {
   // configure() saves its model and thinking choice together after Pi has applied both.
   private configuringModel = false;
   private compacting = false;
+  /** The person's message, held while the context is compacted before it is sent. */
+  private sending?: string;
   /** Pi is retrying a failed reply (`SessionDoc.retrying`). */
   private retrying?: SessionDoc["retrying"];
   private cancelling?: Promise<void>;
@@ -393,6 +396,7 @@ export class Session {
       ...(this.retrying ? { retrying: { ...this.retrying } } : {}),
       queue: { steering: session.getSteeringMessages().length, followUp: session.getFollowUpMessages().length },
       ...(this.status === "queued" && this.metadata.queued !== undefined ? { queuedText: this.metadata.queued } : {}),
+      ...(this.sending !== undefined ? { queuedText: this.sending } : {}),
       ...(this.status === "queued" && this.restored ? { restored: true as const } : {}),
       error: this.error,
       extensions: {
@@ -1331,10 +1335,12 @@ export class Session {
   /** Runs a prompt; the session holds a run slot. A wake says what woke it in the session first. */
   private begin(text: string, marker?: WokenDetails): Promise<RunResult> {
     const session = this.loaded().session;
-    const { settle } = this.mark(text);
+    const { run, settle } = this.mark(text);
     if (marker) session.sessionManager.appendCustomEntry(WOKEN_ENTRY, marker);
     this.runDone = (async (): Promise<RunResult> => {
       try {
+        await this.compactBeforeSending(session, text);
+        if (run.cancelled) return settle();
         // The agent's prompts work as /commands, as in terminal Pi. A cancel that arrives while Pi
         // prepares the run is caught where the provider would be called (beforeProviderDispatch).
         // Images a person attached go as content too; every attachment is also named in the text.
@@ -1347,6 +1353,30 @@ export class Session {
       return settle();
     })();
     return this.runDone;
+  }
+  /**
+   * Between the person's messages, a context past its budget (`contextBudget`) is compacted before
+   * the next message is sent, so Pi seldom has to compact in the middle of the work. The message
+   * shows as waiting meanwhile. Nothing to compact, or a failed summary, sends it as it is; Pi's own
+   * threshold stays.
+   */
+  private async compactBeforeSending(session: AgentSession, text: string): Promise<void> {
+    const usage = session.getContextUsage();
+    if (!usage?.tokens || usage.tokens <= contextBudget(usage.contextWindow, session.model?.cost)) return;
+    this.compacting = true;
+    this.sending = text;
+    this.input = session.compact();
+    this.changed();
+    try {
+      await this.input;
+    } catch {
+      /* Sent as it is. A stop during the summary cancels the run, which the caller checks. */
+    } finally {
+      this.input = undefined;
+      this.compacting = false;
+      this.sending = undefined;
+      this.changed();
+    }
   }
   /**
    * A run Pi starts by itself (an extension's `pi.sendUserMessage`, or a custom message that

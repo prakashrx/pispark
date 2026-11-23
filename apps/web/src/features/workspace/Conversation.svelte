@@ -119,10 +119,11 @@
         {#each turns as turn (turn.key)}
           <ResponseTurn {turn} sessionId={session.id} />
         {/each}
-        {#if doc.status === "queued" && doc.queuedText}<div class="queued-turn">
+        {#if doc.queuedText && (doc.status === "queued" || doc.compacting)}<div class="queued-turn">
             <UserTurn text={doc.queuedText} />
             <p role="status" class="queued-note">
-              {doc.restored ? "Queued from before PiSpark restarted." : "Queued."} Starts when another session finishes.
+              {#if doc.status !== "queued"}Compacting context… Sends when it's done.
+              {:else}{doc.restored ? "Queued from before PiSpark restarted." : "Queued."} Starts when another session finishes.{/if}
             </p>
           </div>{/if}
       </div>

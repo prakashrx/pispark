@@ -23,6 +23,8 @@ export class LocalProviderControl {
   active = 0;
   peak = 0;
   automatic = false;
+  /** Input tokens each reply reports, as a provider measures the context it was sent. */
+  inputTokens = 1;
   /** "provider-overloaded-once" has failed its first time. */
   overloadedOnce = false;
   provider = (): Provider => {
@@ -53,11 +55,11 @@ export class LocalProviderControl {
         stopReason: "stop",
         timestamp: Date.now(),
         usage: {
-          input: 1,
+          input: this.inputTokens,
           output: 1,
           cacheRead: 0,
           cacheWrite: 0,
-          totalTokens: 2,
+          totalTokens: this.inputTokens + 1,
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
         },
       };

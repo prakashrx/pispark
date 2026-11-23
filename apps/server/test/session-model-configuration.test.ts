@@ -412,8 +412,9 @@ test("SessionRuntime: managed native config cancellation before compaction dispa
     .split("\n")
     .map((line) => JSON.parse(line));
   const last = entries.findLast((entry) => entry.message?.role === "assistant");
-  last.message.usage.input = 12000;
-  last.message.usage.totalTokens = 12001;
+  // Past Pi's own threshold in an 8,192 window, under PiSpark's budget (5,734): Pi compacts inside the run.
+  last.message.usage.input = 5000;
+  last.message.usage.totalTokens = 5001;
   await writeFile(
     native,
     entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",

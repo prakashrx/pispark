@@ -1,3 +1,4 @@
+import { contextBudget } from "../src/core/runtime/context-budget.js";
 import { providerUsageLimited } from "../src/core/runtime/errors.js";
 import { SafeLogger } from "../src/core/logger.js";
 import assert from "node:assert/strict";
@@ -1054,8 +1055,9 @@ test("SessionRuntime: cancelled auth preflight cannot dispatch native history co
     const last = entries.findLast(
       (entry) => entry.message?.role === "assistant",
     );
-    last.message.usage.input = 12000;
-    last.message.usage.totalTokens = 12001;
+    // Past Pi's own threshold in an 8,192 window, under PiSpark's budget (5,734): Pi compacts inside the run.
+    last.message.usage.input = 5000;
+    last.message.usage.totalTokens = 5001;
     await writeFile(
       native,
       entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
@@ -1229,6 +1231,66 @@ test("SessionRuntime: manual compaction uses Pi and refuses concurrent work", as
     f.provider.requests.at(-1)!.release();
     await compacted;
     assert.ok((await f.history(a.id)).some((entry) => entry.type === "compaction"));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("contextBudget: 70% of the window, or of the input tokens where the price rises", () => {
+  const rates = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 };
+  assert.equal(contextBudget(272_000), 190_400);
+  assert.equal(contextBudget(128_000, rates), 89_600);
+  assert.equal(contextBudget(1_050_000, { ...rates, tiers: [{ ...rates, inputTokensAbove: 272_000 }] }), 190_400);
+  assert.equal(contextBudget(200_000, { ...rates, tiers: [{ ...rates, inputTokensAbove: 272_000 }] }), 140_000);
+});
+
+test("SessionRuntime: a context past its budget is compacted before the person's next message, which waits; a stop sends nothing", async () => {
+  const f = await fixture();
+  try {
+    const a = await f.create("a");
+    f.provider.automatic = true;
+    for (let i = 0; i < 3; i++)
+      await f.runtime.start(a.id, "The old conversation has useful context. ".repeat(1200)).completion;
+    // The fixture's window is 100k: the budget is 70k, Pi's own threshold 83,616.
+    f.provider.inputTokens = 69_000;
+    await f.runtime.start(a.id, "under budget").completion;
+    let requests = f.provider.requests.length;
+    await f.runtime.start(a.id, "still under").completion;
+    assert.equal(f.provider.requests.length, requests + 1, "no summary below the budget");
+    assert.ok(!(await f.history(a.id)).some((entry) => entry.type === "compaction"));
+
+    f.provider.inputTokens = 75_000;
+    await f.runtime.start(a.id, "over budget now").completion;
+    f.provider.automatic = false;
+    requests = f.provider.requests.length;
+    const stopped = f.runtime.start(a.id, "never sent");
+    await eventually(() => f.runtime.session(a.id).compacting === true);
+    assert.equal(f.runtime.session(a.id).queuedText, "never sent");
+    await eventually(() => f.provider.requests.length > requests);
+    await f.runtime.cancel(a.id);
+    assert.equal((await stopped.completion).outcome, "cancelled");
+    const sentText = (from: number, text: string) => f.provider.requests.slice(from).some((r) => JSON.stringify(r.context.messages.filter((m) => m.role === "user")).includes(text) && !isSummary(r));
+    const isSummary = (r: (typeof f.provider.requests)[number]) => JSON.stringify(r.context.messages[0]).includes("context summarization assistant");
+    assert.ok(f.provider.requests.slice(requests).every(isSummary), "the message is not sent after a stop");
+    assert.ok(!sentText(requests, "never sent"));
+    assert.equal(f.runtime.session(a.id).queuedText, undefined);
+
+    requests = f.provider.requests.length;
+    const sent = f.runtime.start(a.id, "after the summary");
+    await eventually(() => f.runtime.session(a.id).compacting === true);
+    await eventually(() => f.provider.requests.length > requests);
+    f.provider.inputTokens = 1;
+    f.provider.automatic = true;
+    for (const r of f.provider.requests.slice(requests)) r.release();
+    assert.equal((await sent.completion).outcome, "completed");
+    const after = f.provider.requests.slice(requests);
+    assert.ok(after.slice(0, -1).length > 0 && after.slice(0, -1).every(isSummary), "the summary first");
+    assert.ok(!isSummary(after.at(-1)!) && sentText(f.provider.requests.length - 1, "after the summary"), "then the message");
+    const history = await f.history(a.id);
+    const compaction = history.findIndex((entry) => entry.type === "compaction");
+    const message = history.findIndex((entry) => entry.message?.role === "user" && JSON.stringify(entry.message.content).includes("after the summary"));
+    assert.ok(compaction >= 0 && compaction < message, "the summary comes before the message");
+    assert.equal(f.runtime.session(a.id).compacting, undefined);
   } finally {
     await f.cleanup();
   }
