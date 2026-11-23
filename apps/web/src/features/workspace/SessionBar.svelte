@@ -48,11 +48,14 @@
   };
   // A question waiting or a queued prompt is said as it is; otherwise an extension may word it.
   const label = $derived(
-    current === "opening" ? STATE_WORDS.opening : current === "working" && working?.message ? working.message : sessionStatus(info),
+    current === "opening" ? STATE_WORDS.opening
+    : current === "working" && doc?.compacting ? "Compacting context"
+    : current === "working" && working?.message ? working.message : sessionStatus(info),
   );
 
   // How long the reply has run, from when Pi recorded the message it answers.
-  const since = $derived(current === "working" ? session.items.findLast((item) => item.role === "user")?.at : undefined);
+  // A message waiting for a summary first has no reply running yet.
+  const since = $derived(current === "working" && !(doc?.compacting && doc.queuedText) ? session.items.findLast((item) => item.role === "user")?.at : undefined);
   const clock = useNow(() => since !== undefined);
   // A command runs as if it were typed in the reply box and sent, so it needs what a reply needs.
   const ready = $derived(doc?.status === "idle" && !doc.compacting && session.connection === "Live" && !client.busy);

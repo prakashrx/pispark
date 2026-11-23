@@ -174,7 +174,7 @@
             <span style:width={`${Math.min(100, context.percent)}%`}></span>
           </div>{/if}
         <p class="note">
-          {context.percent === null ? "Measured again after the next reply. " : ""}Earlier messages are summarized when it’s nearly full.
+          {context.percent === null ? "Measured again after the next reply. " : ""}Earlier messages are summarized when it fills up, before your next message where it can.
         </p>
         <Button size="compact" variant="ghost"
           unavailable={!between || requestingCompaction ? "The session is busy" : undefined}

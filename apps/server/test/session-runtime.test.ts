@@ -1310,6 +1310,36 @@ test("SessionRuntime: a context past its budget is compacted before the person's
   }
 });
 
+test("SessionRuntime: Pi's own compaction in a run shows as compacting, and its summary says the size before", async () => {
+  const f = await fixture();
+  try {
+    const a = await f.create("a");
+    f.provider.automatic = true;
+    for (let i = 0; i < 3; i++)
+      await f.runtime.start(a.id, "The old conversation has useful context. ".repeat(1200)).completion;
+    // Past Pi's own threshold (100k less 16,384): Pi compacts after the reply, inside the run.
+    f.provider.inputTokens = 90_000;
+    f.provider.automatic = false;
+    const requests = f.provider.requests.length;
+    const run = f.runtime.start(a.id, "one more");
+    await eventually(() => f.provider.requests.length === requests + 1);
+    assert.equal(f.runtime.session(a.id).compacting, undefined, "not before Pi compacts");
+    f.provider.requests.at(-1)!.release();
+    await eventually(() => f.runtime.session(a.id).compacting === true);
+    assert.equal(f.runtime.session(a.id).status, "running");
+    assert.equal(f.runtime.session(a.id).queuedText, undefined);
+    f.provider.inputTokens = 1;
+    f.provider.automatic = true;
+    for (const r of f.provider.requests.slice(requests + 1)) r.release();
+    assert.equal((await run.completion).outcome, "completed");
+    assert.equal(f.runtime.session(a.id).compacting, undefined);
+    const summary = sessionItems(f.runtime, a.id).find((item) => item.role === "summary");
+    assert.equal(summary?.tokensBefore, 90_001);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("OpenAI provider allowance failures are distinct from overload, generic 429s, and aborts", () => {
   assert.equal(providerUsageLimited("openai", "The ChatGPT user has reached their Subscription Sharing usage limit."), true);
   assert.equal(providerUsageLimited("openai-codex", "Codex error: The usage limit has been reached"), true);

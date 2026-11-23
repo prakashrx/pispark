@@ -6,7 +6,8 @@
   import type { Turn } from "./session-turns";
   /**
    * How long a turn has run, where its reply ends (decision C-23): "Working · 12s" while it runs,
-   * "Worked 1m 42s" once done. While Pi retries a failed reply, it says that instead, and when.
+   * "Worked 1m 42s" once done. While Pi retries a failed reply, it says that instead, and when;
+   * while Pi compacts the context in the middle of the work, "Compacting context".
    * Nothing when the session has no times for it.
    */
   let { turn }: { turn: Turn } = $props();
@@ -27,7 +28,7 @@
     <StatusMark kind="busy" label={`${why}, retrying`} words detail={`· ${retrying.attempt} of ${retrying.of}${wait ? ` in ${wait}s` : ""}`} />
   </p>
 {:else if turn.running && turn.startedAt}
-  <p class="turn-time"><StatusMark kind="busy" label="Working" words detail={`· ${elapsed(clock.now - turn.startedAt)}`} /></p>
+  <p class="turn-time"><StatusMark kind="busy" label={session?.doc?.compacting ? "Compacting context" : "Working"} words detail={`· ${elapsed(clock.now - turn.startedAt)}`} /></p>
 {:else if !turn.running && took !== undefined && took >= 1000}
   <p class="turn-time">Worked {elapsed(took)}</p>
 {/if}

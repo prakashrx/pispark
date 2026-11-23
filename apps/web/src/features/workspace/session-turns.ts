@@ -34,7 +34,11 @@ export type Segment =
   | { kind: "activity"; key: string; calls: ToolCall[]; live: boolean }
   /** A custom message or entry an extension renders. */
   | { kind: "custom"; key: string; item: Item }
-  | { kind: "summary"; key: string; text: string }
+  /**
+   * Earlier messages summarized: the context's size before, and whether it happened between your
+   * messages (on its own between turns) or in the middle of the work (in its turn).
+   */
+  | { kind: "summary"; key: string; text: string; tokensBefore?: number; between: boolean }
   /** What a tool produced that is worth reading in the message itself: changes to a file ... */
   | { kind: "diff"; key: string; path?: string; patch: string; /** The patch was cut to fit. */ clipped?: boolean }
   /** ... an image a tool returned (its bytes are read by reference) ... */
@@ -116,6 +120,14 @@ export function reportBody(text: string): string {
   return process ? text.slice(process[0].length) : text;
 }
 
+const summaryOf = (item: Item, between: boolean): Segment => ({
+  kind: "summary",
+  key: item.key,
+  text: itemText(item),
+  between,
+  ...(item.tokensBefore ? { tokensBefore: item.tokensBefore } : {}),
+});
+
 /**
  * Groups the session's items into turns of ordered segments. Presentation only: tool results attach
  * to their call, consecutive calls merge into one activity, and extension notices land where they
@@ -150,6 +162,14 @@ export function buildTurns(
   const lastAssistant = items.findLastIndex((item) => item.role === "assistant");
   const latestReply = lastAssistant >= 0 && !items.slice(lastAssistant).some((item) => item.role === "user") ? items[lastAssistant] : undefined;
   let notice = 0;
+  // A summary followed by your message (or by nothing, once the work is done) happened between your
+  // messages; one followed by more of the agent's work happened in the middle of it.
+  const between = new Set<Item>();
+  items.forEach((item, index) => {
+    const next = items[index + 1];
+    if (item.role === "summary" && (next ? next.role === "user" || (next.role === "entry" && next.customType === WOKEN_ENTRY) : !options.running))
+      between.add(item);
+  });
   /** A wake's marker, waiting for the message it sent. */
   let woken: string | undefined;
   let from: Turn["from"];
@@ -184,6 +204,10 @@ export function buildTurns(
     if (item.role === "entry" && item.customType === WOKEN_ENTRY) {
       woken = wokenLabel(item.details);
       from = wokenFrom(item.details);
+      continue;
+    }
+    if (item.role === "summary" && between.has(item)) {
+      turns.push({ key: item.key, segments: [summaryOf(item, true)], running: false });
       continue;
     }
     const turn = current();
@@ -268,7 +292,7 @@ export function buildTurns(
     } else if (item.role === "custom" || item.role === "entry") {
       emit(turn, { kind: "custom", key: item.key, item });
     } else if (item.role === "summary") {
-      emit(turn, { kind: "summary", key: item.key, text: itemText(item) });
+      emit(turn, summaryOf(item, false));
     }
   }
   flush(undefined);

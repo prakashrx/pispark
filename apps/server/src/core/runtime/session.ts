@@ -983,6 +983,9 @@ export class Session {
         failure: replyFailure({ stopReason: "error", errorMessage: event.errorMessage, provider: this.pi?.model?.provider } as AssistantMessage),
       };
     if (event.type === "auto_retry_end" || event.type === "agent_settled") this.retrying = undefined;
+    // Pi compacts by itself when the context nearly fills in the middle of a run; the session says so.
+    if ((event.type === "compaction_start" || event.type === "compaction_end") && event.reason !== "manual")
+      this.compacting = event.type === "compaction_start";
     if (event.type === "agent_start" && this.run) this.run.admissionClosed = false;
     if (event.type === "agent_settled" && this.run) this.run.settled = true;
     // A run Pi started by itself ends here; one PiSpark started ends where it was sent.

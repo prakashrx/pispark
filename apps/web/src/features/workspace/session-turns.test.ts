@@ -92,11 +92,34 @@ test("extension notices land where they happened; one ahead of your message ends
   ]);
 });
 
+test("a summary between your messages stands on its own; one in the middle of the work stays in its turn", () => {
+  n = 0;
+  const summary = (tokensBefore?: number) => item("summary", [text("so far")], tokensBefore ? { tokensBefore } : {});
+  const between = buildTurns([item("user", [text("a")]), item("assistant", [text("A")]), summary(198_484), item("user", [text("b")]), item("assistant", [text("B")])], { running: false });
+  expect(between.map((t) => [t.user ? itemText(t.user) : null, t.segments.map((s) => s.kind)])).toEqual([
+    ["a", ["text"]],
+    [null, ["summary"]],
+    ["b", ["text"]],
+  ]);
+  expect(between[1]!.segments[0]).toMatchObject({ kind: "summary", between: true, tokensBefore: 198_484 });
+  const inRun = buildTurns([item("user", [text("a")]), item("assistant", [call("c1", "read")]), result("c1"), summary(), item("assistant", [text("A")])], { running: false });
+  expect(inRun).toHaveLength(1);
+  expect(inRun[0]!.segments.map((s) => s.kind)).toEqual(["activity", "summary", "text"]);
+  expect(inRun[0]!.segments[1]).toMatchObject({ kind: "summary", between: false });
+  // Just made while the work goes on: in the turn, which is still running.
+  const live = buildTurns([item("user", [text("a")]), item("assistant", [call("c1", "read")]), result("c1"), summary()], { running: true });
+  expect(live).toHaveLength(1);
+  expect(live[0]!.running).toBe(true);
+  // A manual Compact once the work is done, or before a wake's message, is between.
+  expect(buildTurns([item("user", [text("a")]), item("assistant", [text("A")]), summary()], { running: false })).toHaveLength(2);
+});
+
 test("custom entries, summaries and clipped parts keep their identity", () => {
   n = 0;
   const clipped = item("assistant", [text("start", 500)]);
   const turns = buildTurns([item("user", [text("q")]), clipped, item("entry", [], { rendered: { body: [[{ text: "note" }]] } }), item("summary", [text("earlier session")])], { running: false });
-  expect(turns[0]!.segments.map((s) => s.kind)).toEqual(["text", "custom", "summary"]);
+  expect(turns[0]!.segments.map((s) => s.kind)).toEqual(["text", "custom"]);
+  expect(turns[1]!.segments.map((s) => s.kind)).toEqual(["summary"]);
   const body = turns[0]!.segments[0]!;
   expect(body.kind === "text" && body.detail).toEqual({ id: clipped.id, part: 0 });
   expect(clippedPart(clipped)).toEqual({ id: clipped.id, part: 0 });

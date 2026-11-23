@@ -12,7 +12,8 @@
   const session = useSession();
   const doc = $derived(session.doc);
   const placed = $derived(placedPoints(doc?.extensions));
-  const running = $derived(["running", "cancelling"].includes(doc?.status ?? ""));
+  // While your message waits for a summary first, the turn before it is done; the message says so.
+  const running = $derived(["running", "cancelling"].includes(doc?.status ?? "") && !(doc?.compacting && doc.queuedText));
   // The session as turns of ordered segments; extension notices land where they happened.
   const turns = $derived(
     doc

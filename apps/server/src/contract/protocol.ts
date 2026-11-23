@@ -127,6 +127,8 @@ export interface Item {
   durationMs?: number;
   /** Pi's structured result for UIs (an edit's diff, an extension tool's payload); bounded. */
   details?: Json;
+  /** A summary of earlier messages: how many tokens the context held before it. */
+  tokensBefore?: number;
   /** `details` (or, for an oversized item, its tool arguments and text) were cut to fit. */
   clipped?: true;
   customType?: string;
@@ -225,7 +227,7 @@ export interface SessionDoc extends SessionInfo {
    * `tokens` and `percent` are null right after a summary, until the next reply measures it.
    */
   context?: { tokens: number | null; window: number; percent: number | null };
-  /** Pi is compacting the context: asked for, or before the person's next message is sent. */
+  /** Pi is compacting the context: asked for, before the person's next message is sent, or by itself in a run. */
   compacting?: true;
   /** The person's message waiting to be sent: for a run slot while `queued`, or while the context is compacted first. */
   queuedText?: string;

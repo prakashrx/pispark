@@ -38,6 +38,9 @@ const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp
 
 type Raw = Record<string, unknown>;
 
+/** A summary's context size before it, when Pi recorded a sane one. */
+const tokensBefore = (value: unknown): { tokensBefore?: number } =>
+  typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? { tokensBefore: value } : {};
 const opaque = (value: unknown): string | undefined =>
   typeof value === "string" && value
     ? createHash("sha256").update(value).digest("base64url")
@@ -296,7 +299,7 @@ export class ItemProjector {
       return fit({ ...base, role, parts: parts(message.content), customType: label(message.customType), ...details(message.details), ...extra });
     }
     if (role === "compactionSummary" || role === "branchSummary")
-      return { ...base, role: "summary", parts: parts(String(message.summary ?? "")) };
+      return { ...base, role: "summary", parts: parts(String(message.summary ?? "")), ...tokensBefore(message.tokensBefore) };
     return undefined;
   }
 
@@ -369,6 +372,7 @@ export class ItemProjector {
         return message && this.message(message as unknown as Raw, entry.id, pos);
       }
       case "compaction":
+        return { id: entry.id, key: entry.id, role: "summary", parts: parts(entry.summary), ...tokensBefore(entry.tokensBefore) };
       case "branch_summary":
         return { id: entry.id, key: entry.id, role: "summary", parts: parts(entry.summary) };
       case "custom": {
