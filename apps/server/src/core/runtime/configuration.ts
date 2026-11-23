@@ -205,10 +205,9 @@ export async function createSessionServices(options: {
   requireHealthyModels(modelRuntime);
   guardModelDispatch(modelRuntime, admission.beforeProviderDispatch);
   // In memory, never terminal Pi's settings; project trust stays off. Pi's automatic retry of
-  // transient provider failures stays on, with Pi's own limits.
+  // transient provider failures and its cache warming stay on, with Pi's own limits.
   const settingsManager = SettingsManager.inMemory(
     {
-      cacheWarming: "off",
       enableInstallTelemetry: false,
       defaultProvider: provider.id,
       defaultModel: selectedModel.id,

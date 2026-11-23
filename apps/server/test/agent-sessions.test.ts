@@ -73,7 +73,7 @@ test("a fresh data root needs no setup: Default gives every session Pi's built-i
     await f.runtime.start(session.id, "read:value.txt").completion;
     assert.deepEqual(
       toolsOf(f.provider.requests[0]!).sort(),
-      [...DEFAULT_TOOLS, EXTENSION_TOOL, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL, PROCESS_TOOL].sort(),
+      [...DEFAULT_TOOLS, "codemode", "tool_search", EXTENSION_TOOL, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL, PROCESS_TOOL].sort(),
     );
     assert.match(sessionText(f.runtime, session.id), /WORK-FILE/);
   } finally {
@@ -106,6 +106,32 @@ test("an agent's instructions, skills, /commands, extensions and tool switches r
     assert.ok(tools.includes("dev_tool"));
     assert.ok(tools.includes("read"));
     assert.ok(!tools.includes("bash") && !tools.includes("write"));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("Pi's codemode and tool search are on by default; an agent switches them off and an extension replaces them", async () => {
+  const f = await fixture();
+  try {
+    const own = `export default pi => pi.registerTool({name:'codemode',label:'Mine',description:'MY-CODEMODE',parameters:{type:'object',properties:{}},execute:async()=>({content:[{type:'text',text:'ok'}],details:undefined})});`;
+    await f.agent("plain", { name: "Plain" });
+    await f.agent("lean", { name: "Lean", off: ["tool:codemode", "tool:tool_search"] });
+    await f.agent("own", { name: "Own" }, { "extensions/own.mjs": own });
+    for (const [agent, expect] of [["plain", true], ["lean", false]] as const) {
+      const session = await f.runtime.create({ folder: f.folder, agent });
+      await f.runtime.start(session.id, "hello").completion;
+      const tools = toolsOf(f.provider.requests.at(-1)!);
+      assert.equal(tools.includes("codemode"), expect, `${agent}: codemode`);
+      assert.equal(tools.includes("tool_search"), expect, `${agent}: tool_search`);
+      assert.ok(tools.includes("read"));
+    }
+    const session = await f.runtime.create({ folder: f.folder, agent: "own" });
+    await f.runtime.start(session.id, "hello").completion;
+    const request = f.provider.requests.at(-1)!;
+    assert.ok(toolsOf(request).includes("codemode"));
+    assert.match(systemText(request), /MY-CODEMODE/, "the extension's codemode, not Pi's");
+    assert.ok(toolsOf(request).includes("tool_search"));
   } finally {
     await f.cleanup();
   }

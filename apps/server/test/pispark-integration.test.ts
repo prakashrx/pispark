@@ -1,6 +1,8 @@
 import { EXTENSION_TOOL } from "../src/core/runtime/extension-tool.js";
 import { RuntimeError } from "../src/core/runtime/errors.js";
 import { PROCESS_TOOL } from "../src/core/runtime/process-tool.js";
+/** Pi's built-in extensions every session loads; their tools are on unless switched off. */
+const PI_BUILT_IN_TOOLS = ["codemode", "tool_search"];
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SafeLogger } from "../src/core/logger.js";
@@ -88,7 +90,7 @@ test("PiSpark integration: real native title-only calls, agent/no-agent isolatio
             ? (message.toolsAdded ?? []).map((tool) => tool.name)
             : [],
         ),
-        [EXTENSION_TOOL, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL, PROCESS_TOOL],
+        [EXTENSION_TOOL, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL, PROCESS_TOOL, ...PI_BUILT_IN_TOOLS],
       );
     const prompts = JSON.stringify(
       f.control.requests.map((request) =>
@@ -116,7 +118,7 @@ test("PiSpark integration: real native title-only calls, agent/no-agent isolatio
             ? (message.toolsAdded ?? []).map((tool) => tool.name)
             : [],
         ),
-      [EXTENSION_TOOL, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL, PROCESS_TOOL],
+      [EXTENSION_TOOL, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL, PROCESS_TOOL, ...PI_BUILT_IN_TOOLS],
     );
     observer.events.close();
     other.events.close();
@@ -329,7 +331,7 @@ test("PiSpark integration: legacy unmentioned tool activates on reopen; explicit
           latest.flatMap((m) => m.toolsAdded?.map((tool) => tool.name) ?? []),
         ),
       ].sort(),
-      [EXTENSION_TOOL, PROCESS_TOOL, SCHEDULE_TOOL, SESSION_TOOL, TITLE_TOOL].sort(),
+      [EXTENSION_TOOL, PROCESS_TOOL, SCHEDULE_TOOL, SESSION_TOOL, TITLE_TOOL, ...PI_BUILT_IN_TOOLS].sort(),
     );
   } finally {
     await f.cleanup();

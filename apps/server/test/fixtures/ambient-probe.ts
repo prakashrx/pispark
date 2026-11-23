@@ -32,7 +32,8 @@ const services = await createSessionServices({
   host: { views: { bind: () => () => {} } },
 });
 await assert.rejects(services.modelRuntime.getAuth('anthropic'), /credentials/);
-assert.equal(services.settingsManager.getCacheWarmingMode(), 'off');
+// Pi's default cache warming, not terminal Pi's setting.
+assert.equal(services.settingsManager.getCacheWarmingMode(), 'idle');
 let busEvents = 0;
 services.eventBus.on('observed', () => { busEvents++; });
 services.eventBus.emit('probe', {});

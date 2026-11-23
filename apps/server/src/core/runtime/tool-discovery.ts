@@ -20,7 +20,7 @@ const extensionName = (path: string) => {
 /**
  * The tools an agent's setup provides, found by running its extensions' factories without starting
  * a session (Pi allows it: "Extension factories may run in invocations that never start a session").
- * PiSpark's built-in extension comes first and counts as core. Kept per setup fingerprint, which
+ * PiSpark's built-in extension and Pi's built-in ones (codemode, tool search) count as core. Kept per setup fingerprint, which
  * changes when the agent or its extension files change.
  */
 export class ToolDiscovery {
@@ -74,7 +74,7 @@ export class ToolDiscovery {
           name: definition.name,
           ...(definition.label ? { label: definition.label } : {}),
           ...(definition.description ? { description: definition.description } : {}),
-          source: extension.path === builtIn ? { kind: "core" } : { kind: "extension", name: extensionName(extension.path) },
+          source: extension.path === builtIn || extension.path.startsWith("builtin:") ? { kind: "core" } : { kind: "extension", name: extensionName(extension.path) },
         })),
       );
       return { tools, incomplete: loaded.errors.length > 0 };

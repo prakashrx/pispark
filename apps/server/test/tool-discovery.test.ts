@@ -27,6 +27,9 @@ test("an agent's tools are found by loading its extensions, grouped PiSpark firs
     const core = view.tools.filter((tool) => tool.source?.kind === "core").map((tool) => tool.name);
     assert.deepEqual(core.slice(0, 2), ["read", "bash"]);
     assert.ok(core.includes("pispark_set_title") && core.includes("pispark_schedule"));
+    // Pi's own built-in extensions count as core and are on unless switched off.
+    assert.ok(core.includes("codemode") && core.includes("tool_search"));
+    assert.equal(row("codemode").on, true);
     assert.equal(row("pispark_set_title").label, "Set session title");
     assert.equal(row("pispark_set_title").on, true);
     assert.equal(row("pispark_schedule").on, false);
