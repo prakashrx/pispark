@@ -13,8 +13,8 @@ export type UpdateState =
   | { phase: "checking" }
   | { phase: "current"; checkedAt: string }
   | { phase: "downloading"; version: string; received: number; total?: number }
-  /** Downloaded, checked and unpacked; nothing running was touched. */
-  | { phase: "ready"; version: string; notes?: string }
+  /** Newer than this one; downloaded only when you update, so the newest at that moment is installed. */
+  | { phase: "available"; version: string; notes?: string }
   /** Asked to update when nothing is running. */
   | { phase: "waiting"; version: string }
   | { phase: "restarting"; version: string }

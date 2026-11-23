@@ -28,6 +28,8 @@ export class Daemon {
   private tray?: Tray;
   private update: UpdateState = { phase: "idle" };
   private available?: Available;
+  /** When the release list was last read here. */
+  private checkedAt?: string;
   private checkTimer?: NodeJS.Timeout;
   private idleTimer?: NodeJS.Timeout;
   private queries = new Map<number, (running: RunningWork) => void>();
@@ -117,7 +119,7 @@ export class Daemon {
     const state =
       { starting: "starting", running: "running", stopping: "stopping", stopped: "stopped", crashed: "stopped after repeated crashes" }[this.supervisor.state] ?? this.supervisor.state;
     const u = this.update;
-    const label = u.phase === "ready" ? `Update to v${u.version} and restart` : u.phase === "waiting" ? `Update to v${u.version} now` : undefined;
+    const label = u.phase === "available" ? `Update to v${u.version} and restart` : u.phase === "waiting" ? `Update to v${u.version} now` : undefined;
     this.tray.show(`${identity(this.install.choices().name).label} · ${state} · v${version}`, label);
   }
 
@@ -149,8 +151,7 @@ export class Daemon {
         return this.installVersion(request.version);
       case "update":
         if (this.install.choices().kept) throw new Error(`PiSpark is kept at ${this.install.choices().kept}. Resume updates in Settings → About, or install another version with: pispark install <version>`);
-        if (this.update.phase === "idle" || this.update.phase === "current" || this.update.phase === "error") await this.act({ action: "check" });
-        if (this.update.phase === "ready") await this.act({ action: "apply", when: "now" });
+        await this.updateNow();
         return this.update;
     }
   }
@@ -200,8 +201,8 @@ export class Daemon {
           void this.check();
         }
         this.push();
-        // Switched on with an update already downloaded: install it when idle.
-        if (action.autoUpdate && !before.autoUpdate && this.update.phase === "ready") await this.act({ action: "apply", when: "idle" });
+        // Switched on with an update available: install it when idle.
+        if (action.autoUpdate && !before.autoUpdate && this.update.phase === "available") await this.act({ action: "apply", when: "idle" });
         return;
       }
       case "resume":
@@ -214,12 +215,12 @@ export class Daemon {
       case "cancel":
         if (this.update.phase === "waiting") {
           clearTimeout(this.idleTimer);
-          this.setUpdate({ phase: "ready", version: this.update.version, ...(this.available?.notes ? { notes: this.available.notes } : {}) });
+          this.setUpdate({ phase: "available", version: this.update.version, ...(this.available?.notes ? { notes: this.available.notes } : {}) });
         }
         return;
       case "apply":
-        if (this.update.phase !== "ready" && this.update.phase !== "waiting") return;
-        if (action.when === "now") return this.switchTo(this.update.version);
+        if (this.update.phase !== "available" && this.update.phase !== "waiting") return;
+        if (action.when === "now") return this.updateNow();
         clearTimeout(this.idleTimer);
         this.setUpdate({ phase: "waiting", version: this.update.version });
         return this.whenIdle();
@@ -230,7 +231,7 @@ export class Daemon {
     return ["checking", "downloading", "waiting", "restarting"].includes(this.update.phase);
   }
 
-  // ---- Checking and downloading ----
+  // ---- Checking, and updating ----
 
   private schedule(delay: number) {
     clearTimeout(this.checkTimer);
@@ -240,27 +241,54 @@ export class Daemon {
     this.checkTimer.unref();
   }
 
+  /** Checking only looks: a newer release is shown as available, and checks go on. */
   private async check() {
-    if (this.busyPhase() || this.update.phase === "ready" || this.install.choices().kept) return;
+    if (this.busyPhase() || this.install.choices().kept) return;
+    const found = await this.look();
+    if (found && this.install.choices().autoUpdate) await this.act({ action: "apply", when: "idle" });
+  }
+
+  /** Reads the release list: the newest release for this channel and platform, if newer than this one. */
+  private async look(): Promise<Available | undefined> {
     this.setUpdate({ phase: "checking" });
     const choices = this.install.choices();
     try {
       const current = this.supervisor.runningRelease?.info.version ?? this.own.info.version;
       const found = await check(choices.releases ?? RELEASES_URL, { channel: choices.channel, os: this.own.info.os, arch: this.own.info.arch, current, failed: this.install.failed() });
-      if (!found) return this.setUpdate({ phase: "current", checkedAt: new Date().toISOString() });
+      this.checkedAt = new Date().toISOString();
       this.available = found;
-      this.note(`downloading ${found.version}`);
-      this.setUpdate({ phase: "downloading", version: found.version, received: 0 });
+      if (!found) this.setUpdate({ phase: "current", checkedAt: this.checkedAt });
+      else this.setUpdate({ phase: "available", version: found.version, ...(found.notes ? { notes: found.notes } : {}) });
+      return found;
+    } catch (error) {
+      this.note(`update check failed: ${(error as Error).message}`);
+      this.setUpdate({ phase: "error", message: (error as Error).message, at: new Date().toISOString() });
+    }
+  }
+
+  /** Updates to the newest release there is now: looks again, downloads it while this one runs, then switches. */
+  private async updateNow() {
+    if (this.busy || this.update.phase === "checking" || this.update.phase === "downloading") return;
+    clearTimeout(this.idleTimer);
+    const found = await this.look();
+    if (found && (await this.download(found))) await this.switchTo(found.version);
+  }
+
+  /** Downloads a release unless it is here already: checked against SHA256SUMS and unpacked; nothing running is touched. */
+  private async download(found: Available, why = ""): Promise<boolean> {
+    if (this.install.installed().includes(found.version)) return true;
+    this.note(`downloading ${found.version}${why}`);
+    this.setUpdate({ phase: "downloading", version: found.version, received: 0 });
+    try {
       await fetchRelease(this.install, found, (received, total) => {
         this.update = { phase: "downloading", version: found.version, received, ...(total ? { total } : {}) };
         this.push();
       });
-      this.note(`${found.version} ready`);
-      this.setUpdate({ phase: "ready", version: found.version, ...(found.notes ? { notes: found.notes } : {}) });
-      if (choices.autoUpdate) await this.act({ action: "apply", when: "idle" });
+      return true;
     } catch (error) {
-      this.note(`update check failed: ${(error as Error).message}`);
+      this.note(`downloading ${found.version} failed: ${(error as Error).message}`);
       this.setUpdate({ phase: "error", message: (error as Error).message, at: new Date().toISOString() });
+      return false;
     }
   }
 
@@ -278,21 +306,11 @@ export class Daemon {
       const choices = this.install.choices();
       const found = find(await listReleases(choices.releases ?? RELEASES_URL), version, this.own.info.os, this.own.info.arch);
       if (!found) throw new Error(`There is no release ${version} for ${this.own.info.os}-${this.own.info.arch}.`);
-      this.note(`downloading ${version} (asked for)`);
-      this.setUpdate({ phase: "downloading", version, received: 0 });
-      try {
-        await fetchRelease(this.install, found, (received, total) => {
-          this.update = { phase: "downloading", version, received, ...(total ? { total } : {}) };
-          this.push();
-        });
-      } catch (error) {
-        this.setUpdate({ phase: "error", message: (error as Error).message, at: new Date().toISOString() });
-        throw error;
-      }
+      if (!(await this.download(found, " (asked for)"))) throw new Error(this.update.phase === "error" ? this.update.message : `Downloading ${version} failed.`);
     }
     this.install.choose({ kept: version });
     if (version === current) {
-      this.setUpdate({ phase: "current", checkedAt: new Date().toISOString() });
+      this.setUpdate(this.checked());
       return { ...this.update, kept: version };
     }
     await this.switchTo(version);
@@ -325,7 +343,7 @@ export class Daemon {
     if (this.update.phase !== "waiting") return;
     const running = await this.running();
     if (this.update.phase !== "waiting") return;
-    if (!running.replies.length && !running.processes.length) return this.switchTo(this.update.version);
+    if (!running.replies.length && !running.processes.length) return this.updateNow();
     this.idleTimer = setTimeout(() => void this.whenIdle(), IDLE_POLL_MS);
   }
 
@@ -354,10 +372,15 @@ export class Daemon {
       this.note(`now on ${version}`);
       this.available = undefined;
       this.busy = false;
-      return this.setUpdate({ phase: "current", checkedAt: new Date().toISOString() });
+      return this.setUpdate(this.checked());
     }
     const exit = this.supervisor.lastExit;
     await this.rollBack(old, version, exit ? `It stopped while starting (exit code ${exit.code ?? exit.signal}). See the server log.` : "It did not answer within 30 seconds. See the server log.");
+  }
+
+  /** After a switch: up to date as of the last real check, never a check that did not happen. */
+  private checked(): UpdateState {
+    return this.checkedAt ? { phase: "current", checkedAt: this.checkedAt } : { phase: "idle" };
   }
 
   private async rollBack(old: Release, version: string, reason: string) {

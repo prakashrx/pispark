@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { RELEASE_CHANNELS, compareVersions, type ReleaseChannel } from "../../server/src/contract/host-protocol.ts";
 
 /** Bumped when the launcher changes; a release whose launcher differs switches launchers too. */
-export const LAUNCHER_VERSION = 1;
+export const LAUNCHER_VERSION = 2;
 export const windows = process.platform === "win32";
 export const VERSION = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
 /** An install's name: lowercase letters, digits and dashes. */

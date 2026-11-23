@@ -41,7 +41,7 @@
             <span class="block font-medium">{info.label}</span>
             <span class="block text-sm text-muted-foreground">{info.hint}</span>
           </span>
-          {#if id === "about" && sessions.host.ready}<span class="update">Update</span>{/if}
+          {#if id === "about" && sessions.host.available}<span class="update">Update</span>{/if}
           <Icon name="chevronRight" class="h-4 w-4 text-muted-foreground" />
         </a>
       {/each}
@@ -57,7 +57,7 @@
       <nav aria-label="Settings sections" class="sections">
         {#each sections as [id, info] (id)}
           <a class="nav-item" href={href({ name: "settings", section: id })} aria-current={shown === id ? "page" : undefined}
-            ><Icon name={icons[id]} class="h-4 w-4 text-muted-foreground" /><span class="flex-1">{info.label}</span>{#if id === "about" && sessions.host.ready}<span class="update">Update</span>{/if}</a
+            ><Icon name={icons[id]} class="h-4 w-4 text-muted-foreground" /><span class="flex-1">{info.label}</span>{#if id === "about" && sessions.host.available}<span class="update">Update</span>{/if}</a
           >
         {/each}
       </nav>

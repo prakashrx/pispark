@@ -23,10 +23,10 @@ export class HostClient {
   get update(): UpdateState | undefined {
     return this.status?.launcher?.update;
   }
-  /** A version is ready to install (or waiting for the right moment). */
-  get ready(): string | undefined {
+  /** A newer version is available (or waiting for the right moment to install). */
+  get available(): string | undefined {
     const u = this.update;
-    return u?.phase === "ready" || u?.phase === "waiting" ? u.version : undefined;
+    return u?.phase === "available" || u?.phase === "waiting" ? u.version : undefined;
   }
 
   async refresh(): Promise<void> {

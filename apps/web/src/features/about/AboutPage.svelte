@@ -63,25 +63,25 @@
           <div class="notice" role="status">
             <span class="spin" aria-hidden="true"></span><span><strong>Updating to v{host.restarting ?? (update.phase === "restarting" ? update.version : "")}…</strong> Back in a few seconds.</span>
           </div>
-        {:else if update.phase === "ready" || update.phase === "waiting"}
+        {:else if update.phase === "available" || update.phase === "waiting"}
           <div class="notice" role="status">
             <Icon name="arrowUp" class="w-4 h-4 shrink-0" />
             <span class="flex-1"
               >{#if update.phase === "waiting"}<strong>v{update.version} installs when nothing is running.</strong>
-                It checks again every 30 seconds.{:else}<strong>v{update.version} is ready.</strong> Downloaded and checked. PiSpark restarts in a few
-                seconds; your sessions stay.{/if}</span
+                It checks again every 30 seconds.{:else}<strong>v{update.version} is available.</strong> Your sessions stay
+                through the restart.{/if}</span
             >
             <span class="flex gap-2">
-              {#if update.phase === "ready" && update.notes}<a class="link" href={update.notes} target="_blank" rel="noreferrer">What’s new</a>{/if}
+              {#if update.phase === "available" && update.notes}<a class="link" href={update.notes} target="_blank" rel="noreferrer">What’s new</a>{/if}
               {#if update.phase === "waiting"}
                 <Button size="compact" disabled={acting} onclick={() => void act({ action: "apply", when: "now" })}>Update now</Button>
                 <Button size="compact" variant="ghost" disabled={acting} onclick={() => void act({ action: "cancel" })}>Cancel</Button>
               {:else}
-                <Button size="compact" variant="primary" disabled={acting} onclick={restart}>Restart to update</Button>
+                <Button size="compact" variant="primary" disabled={acting} onclick={restart}>Update</Button>
               {/if}
             </span>
           </div>
-          {#if confirming && update.phase === "ready"}
+          {#if confirming && update.phase === "available"}
             <div class="notice block" role="group" aria-labelledby="running-title">
               <p id="running-title" class="flex items-center gap-2 font-semibold"><Icon name="alert" class="w-4 h-4" />Something is running</p>
               <ul class="running">

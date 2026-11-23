@@ -144,8 +144,8 @@
   </div>
 
   <div class="foot" class:bar={screen}>
-    {#if client.host.ready}<a class="footrow" href={href({ name: "settings", section: "about" })} data-purpose="update-ready"
-        ><Icon name="arrowUp" class="h-4 w-4 shrink-0" /><span class="flex-1 truncate">Update ready · v{client.host.ready}</span></a
+    {#if client.host.available}<a class="footrow" href={href({ name: "settings", section: "about" })} data-purpose="update-available"
+        ><Icon name="arrowUp" class="h-4 w-4 shrink-0" /><span class="flex-1 truncate">Update available · v{client.host.available}</span></a
       >{/if}
     {#if client.schedules.paused}<a class="footrow" href={href({ name: "background" })} data-purpose="runs-paused"
         ><Icon name="clock" class="h-4 w-4 shrink-0" /><span class="flex-1 truncate">Unattended runs paused</span></a

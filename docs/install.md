@@ -94,8 +94,8 @@ Going back works within the same data layout. A version older than your data fol
 ## Updates
 
 The launcher checks your channel once a day, and whenever you press **Check now** in Settings → About.
-1. **Download:** it downloads a newer release in the background, checks it against `SHA256SUMS` and unpacks it. Nothing running is touched.
-2. **Ready:** Settings → About, the sessions sidebar and the tray show **Update ready**.
+1. **Available:** a check only reads the release list. When there is a newer release, Settings → About, the sessions sidebar and the tray show **Update available**, and checks go on, so a newer build that comes out meanwhile replaces it.
+2. **Update:** when you press **Update** (or automatic install finds nothing running), the launcher reads the list again and downloads the newest release there is then, checks it against `SHA256SUMS` and unpacks it. Nothing running is touched until it restarts. A failed download changes nothing.
 3. **Something running:** if a reply or a background process is running, About says what, and offers **Update when idle** or **Update now**. Background processes end with the server; their agents are told.
 4. **Restart:** the launcher stops the server gracefully and starts the new version's server. If it answers within 30 seconds, `current` points at it. If not, the previous version starts again, and the new one is marked failed and never offered again.
 5. **Your windows:** open windows show "Updating PiSpark…" and reconnect by themselves.
