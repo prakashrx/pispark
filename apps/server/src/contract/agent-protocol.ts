@@ -98,6 +98,8 @@ export interface AgentSummary {
   /** The view its sessions open on, its own or a parent's: an app agent has one. */
   home?: string;
   builtIn: boolean;
+  /** Shipped with the app (`plugins/agents/`): read-only, replaced by an update. Others may build on it. */
+  bundled?: true;
   /** False when agent.json can't be read or resolved; `error` says why. */
   valid: boolean;
   error?: string;

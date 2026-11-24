@@ -256,7 +256,7 @@ test("a working folder: absolute, inherited from the nearest layer, not for Defa
   assert.equal(viewAgent(s, { agent: "reviewer" }).folder, project);
   assert.equal(bindingOf(s, { agent: "moved" }).folder, other);
   assert.deepEqual(
-    listAgents(s).map((summary) => [summary.id, summary.folder]),
+    listAgents(s).filter((summary) => !summary.bundled).map((summary) => [summary.id, summary.folder]),
     [["default", undefined], ["moved", other], ["project", project], ["reviewer", project], ["role", undefined]],
   );
   // A project agent's sessions read their folder's AGENTS.md: becoming one changes the setup, which folder does not.
@@ -291,7 +291,7 @@ test("a home view: a view key, inherited from the nearest layer, not for Default
   assert.deepEqual(bindingOf(s, { agent: "variant" }), { home: "desk" });
   assert.equal(viewAgent(s, { agent: "other" }).home, "board");
   assert.deepEqual(
-    listAgents(s).map((summary) => [summary.id, summary.home]),
+    listAgents(s).filter((summary) => !summary.bundled).map((summary) => [summary.id, summary.home]),
     [["default", undefined], ["app", "desk"], ["other", "board"], ["role", undefined], ["variant", "desk"]],
   );
   // Which view shows first is the client's business: the agent's setup is the same.

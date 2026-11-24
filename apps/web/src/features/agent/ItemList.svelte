@@ -32,6 +32,7 @@
     description,
     viewing,
     help,
+    readOnly = false,
   }: {
     client: AgentClient;
     type: ItemType;
@@ -39,6 +40,8 @@
     /** ID of the layer being edited ("session" for a session's own layer). */
     viewing: string;
     help?: string;
+    /** An agent the app ships: everything can be read, nothing changed. */
+    readOnly?: boolean;
   } = $props();
   const labels = $derived(ITEM_LABELS[type]);
   const items = $derived(
@@ -155,13 +158,13 @@
       title={description}
       onclick={() => (helping = !helping)}>?</button
     >
-    <button
+    {#if !readOnly}<button
         type="button"
         class="icon"
         aria-label={`Add ${labels.one}`}
         title={`Add ${labels.one}`}
         onclick={() => void openPicker()}><Icon name="plus" class="h-4 w-4" /></button
-      >
+      >{/if}
   {/snippet}
   {#if helping}<p class="note">{description}{help ? ` ${help}` : ""}</p>{/if}
   {#if items.length}
@@ -181,10 +184,10 @@
           <Toggle
               label={`Use ${labels.one} ${item.name}`}
               checked={item.on}
-              disabled={client.busy}
+              disabled={client.busy || readOnly}
               onchange={(event: Event) => void client.toggle(type, item.name, (event.currentTarget as HTMLInputElement).checked)}
             />
-          {#if item.reference && client.local(item)}
+          {#if item.reference && client.local(item) && !readOnly}
             <button type="button" class="icon" aria-label={`Remove selection ${item.name}`}
               title="Remove selection" disabled={client.busy}
               onclick={() => void client.selectResource(type, item.reference!, false)}>×</button>
@@ -197,11 +200,11 @@
 
 {#if openItem}
   {@const item = openItem}
-  {@const local = client.local(item)}
+  {@const local = client.local(item) && !readOnly}
   <Modal label={item.name} title={item.name} size="wide" onclose={() => void closeItem()}>
     {#if loading}<p role="status" class="text-sm text-muted-foreground">Loading…</p>
     {:else}
-      <p class="text-xs text-muted-foreground">{originLabel(item.origin, viewing)}{local ? "" : ". Customize to make your own copy here; the original stays unchanged."}</p>
+      <p class="text-xs text-muted-foreground">{originLabel(item.origin, viewing)}{readOnly ? ". Comes with PiSpark." : local ? "" : ". Customize to make your own copy here; the original stays unchanged."}</p>
       {#if item.path?.endsWith(".md")}<Segmented label="Show" options={[{ value: "text", label: "Text" }, { value: "preview", label: "Preview" }]} bind:value={mode} />{/if}
       {#if mode === "preview" && item.path?.endsWith(".md")}<div class="preview"><Markdown text={readable(text)} /></div>
       {:else}<Textarea label={`${item.name} text`} monospace rows={14} readonly={!local} bind:value={text} />{/if}
@@ -217,7 +220,7 @@
         <Button variant="primary" unavailable={text === baseline ? "No changes" : client.busy ? "Saving…" : undefined} onclick={() => void save(item)}>Save</Button>
       {:else}
         <Button variant="ghost" onclick={() => void closeItem()}>Close</Button>
-        <Button variant="primary" onclick={() => void client.customize(item).then(() => (open = undefined))}>Customize here</Button>
+        {#if !readOnly}<Button variant="primary" onclick={() => void client.customize(item).then(() => (open = undefined))}>Customize here</Button>{/if}
       {/if}
     {/snippet}
   </Modal>

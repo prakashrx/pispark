@@ -76,7 +76,8 @@ const isFolder = (path: string): boolean => {
 
 /**
  * Agent folders live in `<home>/agents/<id>/`; a session's own layer in `<home>/sessions/<id>/agent/`.
- * Plain files, no copies: sessions read agents live.
+ * Plain files, no copies: sessions read agents live. Agents the app ships live in
+ * `plugins/agents/<id>/`: listed like any agent, read-only, and replaced by an app update.
  */
 export class AgentStore {
   private listeners = new Set<(target: AgentTarget) => void>();
@@ -151,10 +152,18 @@ export class AgentStore {
     );
   }
 
+  /** Whether the app ships this agent. Its ID is reserved: a data folder of the same name is ignored. */
+  bundled(id: string): boolean {
+    return validAgentId(id) && id !== DEFAULT_AGENT && existsSync(join(this.bundledDir, "agents", id, "agent.json"));
+  }
+  private writable(target: AgentTarget): void {
+    if ("agent" in target && this.bundled(target.agent)) fail("built-in");
+  }
+
   dir(target: AgentTarget): string {
     if ("agent" in target) {
       if (!validAgentId(target.agent)) fail("invalid-input");
-      return join(this.agentsDir, target.agent);
+      return this.bundled(target.agent) ? join(this.bundledDir, "agents", target.agent) : join(this.agentsDir, target.agent);
     }
     if (typeof target.session !== "string" || !UUID.test(target.session))
       fail("invalid-input");
@@ -196,9 +205,11 @@ export class AgentStore {
 
   list(): AgentSummary[] {
     const summaries: AgentSummary[] = [];
-    for (const id of readdirSync(this.agentsDir)) {
-      if (!validAgentId(id)) continue;
-      if (!existsSync(join(this.agentsDir, id, "agent.json"))) continue;
+    const bundledDir = join(this.bundledDir, "agents");
+    const bundled = isFolder(bundledDir) ? readdirSync(bundledDir).filter((id) => this.bundled(id)) : [];
+    const own = readdirSync(this.agentsDir).filter((id) => validAgentId(id) && !bundled.includes(id) && existsSync(join(this.agentsDir, id, "agent.json")));
+    for (const id of [...own, ...bundled]) {
+      const shipped = bundled.includes(id) ? { bundled: true as const } : {};
       try {
         const { definition } = this.read({ agent: id });
         summaries.push({
@@ -209,6 +220,7 @@ export class AgentStore {
             : {}),
           base: definition.base ?? [],
           builtIn: id === DEFAULT_AGENT,
+          ...shipped,
           valid: true,
         });
       } catch (error) {
@@ -217,6 +229,7 @@ export class AgentStore {
           name: id,
           base: [],
           builtIn: id === DEFAULT_AGENT,
+          ...shipped,
           valid: false,
           error: error instanceof AgentError ? error.code : "storage",
         });
@@ -243,7 +256,7 @@ export class AgentStore {
       ...(input.base?.length ? { base: input.base } : {}),
     });
     const id = slug(definition.name!, (candidate) =>
-      existsSync(join(this.agentsDir, candidate)),
+      existsSync(join(this.agentsDir, candidate)) || this.bundled(candidate),
     );
     for (const parent of definition.base ?? [])
       if (!this.exists({ agent: parent })) fail("missing-parent", 400, parent);
@@ -266,6 +279,7 @@ export class AgentStore {
     input: unknown,
     check?: (definition: AgentDefinition) => void,
   ): { revision: string } {
+    this.writable(target);
     const definition = validateDefinition(input, rules(target));
     if ("agent" in target && definition.base?.includes(target.agent))
       fail("cycle", 400, target.agent);
@@ -307,7 +321,7 @@ export class AgentStore {
 
   remove(id: string): void {
     if (!validAgentId(id)) fail("invalid-input");
-    if (id === DEFAULT_AGENT) fail("built-in");
+    if (id === DEFAULT_AGENT || this.bundled(id)) fail("built-in");
     if (!this.exists({ agent: id })) fail("not-found", 404);
     const dependent = this.list().find((p) => p.base.includes(id));
     if (dependent) fail("in-use", 409, dependent.id);
@@ -331,6 +345,7 @@ export class AgentStore {
     text: string,
   ): ItemFile {
     const item = itemPath(path);
+    this.writable(target);
     if (typeof text !== "string" || text.includes("\0")) fail("invalid-input");
     if (Buffer.byteLength(text) > MAX_FILE) fail("limit");
     if (!this.exists(target)) {
@@ -356,6 +371,7 @@ export class AgentStore {
 
   deleteFile(target: AgentTarget, path: string, expectedRevision: string) {
     const item = itemPath(path);
+    this.writable(target);
     const full = join(this.dir(target), path);
     if (!existsSync(full)) fail("not-found", 404);
     if (digest(readText(full)) !== expectedRevision)

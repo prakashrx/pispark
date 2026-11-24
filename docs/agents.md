@@ -76,6 +76,19 @@ Default → parents (flattened) → this agent → the session's own layer, if a
 
 Cycles and a missing parent are reported (`cycle`, `missing-parent`); at most 16 layers.
 
+## Agents that come with PiSpark
+
+An agent folder under the app's `plugins/agents/<id>/` ships with PiSpark: it is listed like any agent (marked **Bundled**, `bundled: true` in `AgentSummary`), its `local:` references point into its own folder, and an app update replaces it. It is read-only: `save`, the file endpoints, switches and `delete` refuse it (`built-in`), and the editor shows it without controls that change it. Other agents may build on it. Its ID is reserved: a data-folder agent of the same name is ignored, and `create` never picks it.
+
+**Agent Builder** (`agent-builder`) helps build and improve agents. It writes an agent's files directly with Pi's `read`, `edit` and `write`, working on the agent in its working folder. It has no shell (`bash`, `powershell`) and none of PiSpark's session, schedule, process or session-extension tools. Its skills cover designing agents, instructions, skills (adapted from Anthropic's skill-creator, Apache-2.0), prompts and extensions. Its extension:
+
+- lets `edit` and `write` run inside the working folder;
+- asks the person before writing anywhere else, naming a shared resource or another agent when that's what it is, and remembers a yes for that file in the session;
+- refuses files under the app's `plugins/`;
+- tells the model where the agent and PiSpark's and Pi's documentation are.
+
+The ask is not a sandbox: it covers `edit` and `write` only.
+
 ## Project agents
 
 `"folder": "D:/dev/pispark"` in `agent.json` binds an agent to a folder on the backend host (an absolute path). An agent with a folder, its own or one a parent names, is a **project agent**.

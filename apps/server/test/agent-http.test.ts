@@ -54,8 +54,8 @@ async function fixture(t: TestContext) {
 test("agent HTTP: list Default, create, view the resolved layers, revision-checked save", async (t) => {
   const f = await fixture(t);
   assert.deepEqual(
-    (await f.list()).map((p) => [p.id, p.builtIn]),
-    [["default", true]],
+    (await f.list()).map((p) => [p.id, p.builtIn, p.bundled]),
+    [["default", true, undefined], ["agent-builder", false, true]],
   );
   const { id } = await f.ok<{ id: string }>("create", {
     name: "Dev helper",
@@ -126,7 +126,7 @@ test("agent HTTP: item files, session layers and delete rules", async (t) => {
   const builtIn = await f.post("delete", { id: "default" });
   assert.equal((await builtIn.json()).error, "built-in");
   await f.ok("delete", { id: "dev" });
-  assert.deepEqual((await f.list()).map((p) => p.id), ["default"]);
+  assert.deepEqual((await f.list()).map((p) => p.id), ["default", "agent-builder"]);
 });
 
 test("agent HTTP: strict inputs, same-origin guard and content-free failure logs", async (t) => {
