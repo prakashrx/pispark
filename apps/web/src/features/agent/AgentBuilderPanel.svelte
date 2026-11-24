@@ -136,7 +136,7 @@
       <span class="focus-label">Working on</span>
       <span class="focus-chip">{focusLabel}<button type="button" class="focus-x" aria-label="Work on the whole agent instead" title="Work on the whole agent" onclick={onclear}><Icon name="close" class="h-3 w-3" /></button></span>
     {:else}
-      <span class="focus-label">Working on the whole agent{tab in KINDS ? `. Anything new goes in ${KINDS[tab as Kind].title}.` : "."}</span>
+      <span class="focus-label">Working on the whole agent.</span>
     {/if}
   </div>
 

@@ -34,7 +34,8 @@ export function builderNote(page: AgentPage, tab: string, open: Row | undefined)
       `Open: the ${KINDS[open.type as Kind]?.one ?? open.type} "${open.name}" (${page.source(open)}${open.on ? "" : ", switched off"})${where ? `, file ${where}` : ", which ships with PiSpark and can't be changed"}.` +
         (reach ? ` It's shared: ${reach} agents use it, so changing it changes them all.` : ""),
     );
-  } else if (kind) lines.push(`Nothing is open: something new goes in ${KINDS[kind].title}.`);
+  } else lines.push("Nothing is open: the request is about the agent as a whole, so choose whatever kinds of item it needs.");
+  if (!view.items.some((item) => item.origin.id === page.agent)) lines.push("It has nothing of its own yet: this is a new agent.");
   const byKind = (["instructions", "skills", "prompts", "extensions"] as Kind[])
     .map((kind) => {
       const items = view.items.filter((item) => item.type === kind);

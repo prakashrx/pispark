@@ -42,7 +42,9 @@ Names are lowercase letters, numbers and hyphens. The ID is the folder name and 
 
   **A file in the folder does nothing until it's referenced.** When you add `skills/release-checklist/SKILL.md`, also add `"local:release-checklist"` to `resources.skills`.
 - **Switches** are `type:name` in `on` and `off`: `instruction:`, `skill:`, `prompt:`, `extension:`, `mcp:`, `tool:`. `off` turns off an inherited item or a tool; `on` turns one back on.
-- **`base`** lists parent agents. **`folder`** (an absolute path) binds it to a project. **`settings`** sets a preferred model and thinking level.
+- **`base`** lists parent agents. **`folder`** (an absolute path) is its working folder: every session works there. **`settings`** sets a preferred model and thinking level.
+- **`home`** names a view one of its extensions offers (`session.view`): its sessions open on that view, as an app. The extension must emit a view with that `key`.
+- **`routines`** are runs on a schedule: `[{"id": "daily-drill", "name": "Daily drill", "cron": "0 8 * * *", "prompt": "Start today's drill."}]`. Each is off until the person switches it on (`on: ["routine:daily-drill"]` turns it on from the agent itself; tell them it's there either way).
 
 ## Layering
 

@@ -111,7 +111,9 @@ describe("agent page and Agent Builder", () => {
     const page = pageWith([own, shared, inherited]);
     expect(builderNote(page, "skills", shared)).toMatch(/Open: the skill "review" \(Shared · 3 agents\), file \.\.\/\.\.\/resources\/skills\/review\/SKILL\.md\. It's shared: 3 agents use it/);
     expect(builderNote(page, "instructions", inherited)).toMatch(/file \.\.\/writer\/instructions\/style\.md/);
-    expect(builderNote(page, "skills", undefined)).toMatch(/Nothing is open: something new goes in Skills/);
+    expect(builderNote(page, "skills", undefined)).toMatch(/Nothing is open: the request is about the agent as a whole/);
+    expect(builderNote(page, "skills", undefined)).not.toMatch(/new agent/);
+    expect(builderNote(pageWith([inherited]), "instructions", undefined)).toMatch(/It has nothing of its own yet: this is a new agent/);
     expect(builderNote(page, "skills", own)).toMatch(/Its items\. Instructions: style \(From Writer\)\. Skills: deploy \(Only this agent\), review/);
   });
 });
