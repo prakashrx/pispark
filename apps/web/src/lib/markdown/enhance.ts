@@ -19,6 +19,11 @@ const once = <T>(load: () => Promise<T>) => {
   return () => (loading ??= load().catch((error: unknown) => ((loading = undefined), Promise.reject(error))));
 };
 const highlighter = once(() => import("highlight.js/lib/common").then((module) => module.default));
+/** Highlighted HTML for `code` in `language`, loading the highlighter the first time. highlight.js escapes the code. */
+export async function highlightCode(code: string, language: string): Promise<string> {
+  const library = await highlighter();
+  return library.highlight(code, { language, ignoreIllegals: true }).value;
+}
 const katex = once(() => Promise.all([import("katex"), import("katex/dist/katex.min.css")]).then(([module]) => module.default));
 const mermaid = once(() => import("mermaid").then((module) => module.default));
 

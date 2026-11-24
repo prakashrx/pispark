@@ -4,6 +4,7 @@
  * already finished.
  */
 export { default as Markdown } from "./Markdown.svelte";
+export { default as MarkdownEditor } from "./MarkdownEditor.svelte";
 export { MarkdownView, type MarkdownOptions } from "./view";
 export type { FenceRenderer } from "./enhance";
 export type { ImageSource } from "./sanitize";
