@@ -15,6 +15,8 @@ export interface LayerItem {
   description?: string;
   config?: Record<string, unknown>;
   companions?: string[];
+  /** A skill's other files, relative to its folder. */
+  files?: string[];
   reference?: ResourceReference;
   unavailable?: true;
 }
@@ -52,7 +54,7 @@ export function resource(root: string, type: ItemType, name: string): LayerItem 
     const skill = join(base, "SKILL.md");
     if (!stat(base)?.isDirectory() || !stat(skill)?.isFile()) return;
     const description = frontmatter(readText(skill)).data.description?.slice(0, 300);
-    return { type, name, location: base, path: "skills/" + name + "/SKILL.md", description };
+    return { type, name, location: base, path: "skills/" + name + "/SKILL.md", description, files: skillFiles(base) };
   }
   if (type === "extensions") {
     // Match the legacy sorted inventory, where a same-name entry file wins over a folder.
@@ -80,6 +82,23 @@ export function resource(root: string, type: ItemType, name: string): LayerItem 
   const location = join(folder, file);
   const description = type === "prompts" ? promptDescription(readText(location)) : undefined;
   return { type, name, location, path: type + "/" + file, description };
+}
+
+/** A skill's files besides SKILL.md, a few levels deep, bounded. */
+function skillFiles(base: string): string[] {
+  const found: string[] = [];
+  const walk = (folder: string, prefix: string, depth: number) => {
+    for (const entry of entries(folder)) {
+      if (found.length >= MAX_ITEMS) return;
+      if (entry.name === "node_modules") continue;
+      const relative = prefix + entry.name;
+      if (entry.isDirectory()) {
+        if (depth < 4) walk(join(folder, entry.name), relative + "/", depth + 1);
+      } else if (entry.isFile() && relative !== "SKILL.md") found.push(relative);
+    }
+  };
+  walk(base, "", 0);
+  return found;
 }
 
 function promptDescription(text: string): string | undefined {

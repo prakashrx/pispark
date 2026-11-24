@@ -86,15 +86,10 @@
     mode = "text";
     loading = true;
     try {
-      const local = client.local(item);
-      const file = await client.readFile(
-        item.path!,
-        local || item.origin.id === "session"
-          ? client.target
-          : { agent: item.origin.id },
-      );
+      const own = client.owns(item);
+      const file = await client.readFile(item.path!, client.fileTarget(item));
       text = baseline = file.text;
-      revision = local ? file.revision : null;
+      revision = own ? file.revision : null;
     } catch (error) {
       client.editorError = (error as Error).message;
       open = undefined;
@@ -200,7 +195,7 @@
 
 {#if openItem}
   {@const item = openItem}
-  {@const local = client.local(item) && !readOnly}
+  {@const local = client.owns(item) && !readOnly}
   <Modal label={item.name} title={item.name} size="wide" onclose={() => void closeItem()}>
     {#if loading}<p role="status" class="text-sm text-muted-foreground">Loading…</p>
     {:else}

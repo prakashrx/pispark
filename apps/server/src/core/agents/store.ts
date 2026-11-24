@@ -12,7 +12,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SWITCH_PREFIX } from "../../contract/agent-protocol.js";
 import type {
@@ -25,6 +25,7 @@ import type {
   AgentDefinition,
   AgentSummary,
   AgentTarget,
+  ItemTarget,
 } from "../../contract/agent-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import {
@@ -35,10 +36,12 @@ import {
   ITEM_TYPES,
   parseResource,
   itemPath,
+  readablePath,
   AgentError,
   slug,
   validateDefinition,
   validAgentId,
+  validItemName,
 } from "./format.js";
 import { inventory, readText, resource, type LayerItem } from "./resources.js";
 export type { LayerItem } from "./resources.js";
@@ -168,6 +171,11 @@ export class AgentStore {
     if (typeof target.session !== "string" || !UUID.test(target.session))
       fail("invalid-input");
     return join(this.sessionsDir, target.session, "agent");
+  }
+  /** Where an item's files live: a layer's folder, the Shared library, or the app's `plugins/`. */
+  private fileRoot(target: ItemTarget): string {
+    if ("library" in target) return target.library === "shared" ? this.sharedDir : this.bundledDir;
+    return this.dir(target);
   }
   /** Whether the agent (or session layer) exists on disk. */
   exists(target: AgentTarget): boolean {
@@ -329,25 +337,40 @@ export class AgentStore {
     this.changed({ agent: id });
   }
 
-  readFile(target: AgentTarget, path: string): ItemFile {
-    itemPath(path);
-    const full = join(this.dir(target), path);
+  /** An item file, or any file in a skill's folder, from a layer or a library. */
+  readFile(target: ItemTarget, path: string): ItemFile {
+    readablePath(path);
+    const full = join(this.fileRoot(target), path);
     if (!existsSync(full)) fail("not-found", 404);
     const text = readText(full);
     return { text, revision: digest(text) };
   }
 
-  /** Create (expectedRevision null) or replace an instruction, prompt or SKILL.md. */
+  /**
+   * Create (expectedRevision null) or replace an instruction, prompt or SKILL.md. In a layer, a new
+   * file is selected there. In the Shared library it reaches every agent that selects it; nothing
+   * is selected. The app's own resources can't be written.
+   */
   writeFile(
-    target: AgentTarget,
+    target: ItemTarget,
     path: string,
     expectedRevision: string | null,
     text: string,
   ): ItemFile {
     const item = itemPath(path);
-    this.writable(target);
+    if ("library" in target && target.library !== "shared") fail("built-in");
+    if (!("library" in target)) this.writable(target);
     if (typeof text !== "string" || text.includes("\0")) fail("invalid-input");
     if (Buffer.byteLength(text) > MAX_FILE) fail("limit");
+    if ("library" in target) {
+      const full = join(this.sharedDir, path);
+      const current = existsSync(full) ? digest(readText(full)) : null;
+      if (current !== expectedRevision) fail("revision-conflict", 409);
+      mkdirSync(dirname(full), { recursive: true, mode: 0o700 });
+      writeAtomic(full, text);
+      this.changed({ agent: DEFAULT_AGENT });
+      return { text, revision: digest(text) };
+    }
     if (!this.exists(target)) {
       if ("agent" in target) fail("not-found", 404);
       this.save(target, "", this.read(target).definition);
@@ -402,7 +425,7 @@ export class AgentStore {
     const inline = source === "local" && type === "mcp" ? this.inlineMcp(definition, name) : undefined;
     const item = inline ?? (root && resource(root, type, name));
     if (!item) return { type, name, reference, unavailable: true };
-    return { ...item, path: source === "local" ? item.path : undefined, reference };
+    return { ...item, reference };
   }
 
   /** Each layer declares its selections. Folder discovery still reads unconverted definitions. */
@@ -433,8 +456,63 @@ export class AgentStore {
       if (source === "local" && type === "mcp")
         for (const name of Object.keys(definition.mcpServers ?? {}))
           byName.set(name, this.inlineMcp(definition, name)!);
-      return [...byName.values()].map(({ name, description }) => ({ name, description, reference: `${source}:${name}` }));
+      const used = source === "shared" ? this.usage() : undefined;
+      return [...byName.values()].map(({ name, description }) => ({
+        name,
+        description,
+        reference: `${source}:${name}` as ResourceReference,
+        ...(used ? { usedBy: used.get(`${type}:${name}`) ?? 0 } : {}),
+      }));
     });
+  }
+
+  /** How many agents select each shared resource, by `type:name`. */
+  usage(): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const { id } of this.list()) {
+      let resources: AgentResources | undefined;
+      try {
+        resources = this.read({ agent: id }).definition.resources;
+      } catch {
+        continue;
+      }
+      for (const type of ITEM_TYPES)
+        for (const reference of new Set(resources?.[type] ?? [])) {
+          const parsed = parseResource(reference);
+          if (parsed?.source === "shared") counts.set(`${type}:${parsed.name}`, (counts.get(`${type}:${parsed.name}`) ?? 0) + 1);
+        }
+    }
+    return counts;
+  }
+
+  /**
+   * Move one of this agent's own items into the Shared library, so other agents can select it.
+   * Its `local:` reference becomes `shared:`; agents built on this one keep it.
+   */
+  promote(target: AgentTarget, type: ItemType, name: string, expectedRevision: string): { revision: string } {
+    if (!("agent" in target) || type === "mcp" || !validItemName(name)) return fail("invalid-input");
+    this.writable(target);
+    const { definition, revision } = this.read(target);
+    if (revision !== expectedRevision) return fail("revision-conflict", 409);
+    const selected = definition.resources?.[type] ?? [];
+    if (!selected.includes(`local:${name}`)) return fail("not-found", 404);
+    const item = resource(this.dir(target), type, name);
+    if (!item?.location) return fail("not-found", 404);
+    // A skill or a folder extension moves as its folder; the rest as their file.
+    const from = type === "extensions" && item.companions ? dirname(item.location) : item.location;
+    const to = join(this.sharedDir, type, basename(from));
+    if (existsSync(to) || resource(this.sharedDir, type, name)) return fail("exists", 409, name);
+    mkdirSync(dirname(to), { recursive: true, mode: 0o700 });
+    renameSync(from, to);
+    try {
+      return this.save(target, revision, {
+        ...definition,
+        resources: { ...definition.resources, [type]: selected.map((reference) => (reference === `local:${name}` ? `shared:${name}` : reference)) },
+      });
+    } catch (error) {
+      renameSync(to, from);
+      throw error;
+    }
   }
 
   select(target: AgentTarget, type: ItemType, reference: ResourceReference, on: boolean, expectedRevision: string) {

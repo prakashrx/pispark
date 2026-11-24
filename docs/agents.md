@@ -142,17 +142,18 @@ All endpoints use the shared loopback Host/Origin/Fetch Metadata guard and exact
 | Endpoint | Body → result |
 | --- | --- |
 | `GET /api/agents` | → `{agents: AgentSummary[]}`, Default first; each has `folder` when it is a project agent and `home` when it is an app agent |
-| `POST /api/agents/read` | `{target}` → `AgentView` (definition, revision, layers, resolved items and tools, settings, folder and home; `error` when unresolvable) |
-| `POST /api/agents/resources` | `{target, type}` → `{resources}`, the eligible local, shared, and bundled resources |
+| `POST /api/agents/read` | `{target}` → `AgentView` (definition, revision, layers, resolved items and tools, settings, folder and home; `error` when unresolvable). Each item's `path` is inside where its file lives (its layer, the Shared library or `plugins/`); a skill lists its other `files`; a shared item has `usedBy`, how many agents select it |
+| `POST /api/agents/resources` | `{target, type}` → `{resources}`, the eligible local, shared, and bundled resources; shared ones with `usedBy` |
 | `POST /api/agents/resource/select` | `{target, type, reference, on, expectedRevision}` → `{revision}`. Saves or removes the direct selection |
+| `POST /api/agents/resource/promote` | `{target, type, name, expectedRevision}` → `{revision}`. Moves one of the agent's own items (its file or folder) into the Shared library and turns `local:<name>` into `shared:<name>`; agents built on it keep it. `exists` when the library already has that name |
 | `POST /api/agents/create` | `{name, description?, base?}` → `{id, revision}` |
 | `POST /api/agents/save` | `{target, expectedRevision, definition}` → `{revision}`; `""` creates a session's layer |
 | `POST /api/agents/delete` | `{id}` |
-| `POST /api/agents/file/read` | `{target, path}` → `{text, revision}` |
-| `POST /api/agents/file/write` | `{target, path, expectedRevision \| null, text}` → `{text, revision}` |
+| `POST /api/agents/file/read` | `{target, path}` → `{text, revision}`; `target` may also be `{library: "shared" \| "bundled"}` |
+| `POST /api/agents/file/write` | `{target, path, expectedRevision \| null, text}` → `{text, revision}`; `target` may also be `{library: "shared"}`, which changes the file for every agent that selects it and selects nothing |
 | `POST /api/agents/file/delete` | `{target, path, expectedRevision}`; a skill is removed with its folder |
 
-Editable paths are `instructions/<name>.md`, `prompts/<name>.md` and `skills/<name>/SKILL.md`. Failures are `{error, requestId, detail?}` with safe codes; details are agent IDs, never file contents.
+Editable paths are `instructions/<name>.md`, `prompts/<name>.md` and `skills/<name>/SKILL.md`; any other file in a skill's folder can be read. Reordering a layer's instructions is a `save` with its `resources.instructions` in the new order. Failures are `{error, requestId, detail?}` with safe codes; details are agent IDs, never file contents.
 
 ## Trust
 

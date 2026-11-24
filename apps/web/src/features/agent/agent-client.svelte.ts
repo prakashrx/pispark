@@ -6,6 +6,7 @@ import {
   type AgentSummary,
   type AgentTarget,
   type AgentView,
+  type ItemTarget,
   type AvailableResource,
   type ResourceReference,
   type ResolvedItem,
@@ -199,7 +200,7 @@ export class AgentClient {
       on,
     }), on ? "Added" : "Removed");
   }
-  readFile(path: string, target = this.target) {
+  readFile(path: string, target: ItemTarget | undefined = this.target) {
     return agentRequest<ItemFile>("file/read", { target, path });
   }
   /** Create or replace an item file in this layer. */
@@ -226,12 +227,14 @@ export class AgentClient {
   /** Copy an inherited item into this layer, where it replaces the original by name. */
   async customize(item: ResolvedItem) {
     if (!item.path || !this.view) return false;
-    const origin: AgentTarget =
-      item.origin.id === "session" && this.target && "session" in this.target
-        ? this.target
-        : { agent: item.origin.id };
-    const source = await this.readFile(item.path, origin);
+    const source = await this.readFile(item.path, this.fileTarget(item));
     return this.writeFile(item.path, source.text, null);
+  }
+  /** Where an item's file lives: the Shared library, the app's own resources, or its origin layer. */
+  fileTarget(item: ResolvedItem): ItemTarget | undefined {
+    if (item.reference?.startsWith("shared:")) return { library: "shared" };
+    if (item.reference?.startsWith("bundled:")) return { library: "bundled" };
+    return item.origin.id === "session" || this.local(item) ? this.target : { agent: item.origin.id };
   }
   async remove(id: string) {
     const ok = await this.change(() => agentRequest("delete", { id }), "Deleted");
@@ -246,5 +249,9 @@ export class AgentClient {
   /** Whether an item comes from the layer being edited. */
   local(item: { origin: { id: string } }) {
     return !!this.target && item.origin.id === layerId(this.target);
+  }
+  /** Whether the layer being edited owns the item's file, not just a reference to a shared or bundled one. */
+  owns(item: ResolvedItem) {
+    return this.local(item) && (!item.reference || item.reference.startsWith("local:"));
   }
 }

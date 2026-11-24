@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { body, sendJson } from "./session-http.js";
 import { correlated } from "../core/logger.js";
-import type { DiscoveredTool, AgentTarget, ItemType, ResourceReference } from "../contract/agent-protocol.js";
+import type { DiscoveredTool, AgentTarget, ItemTarget, ItemType, ResourceReference } from "../contract/agent-protocol.js";
 import type { AgentStore } from "../core/agents/store.js";
 import { AgentError, ITEM_TYPES, parseResource } from "../core/agents/format.js";
 import { checkCycles, listAgents, viewAgent } from "../core/agents/resolve.js";
@@ -35,6 +35,12 @@ function target(value: unknown): AgentTarget {
   if (typeof value.session === "string") return { session: value.session };
   throw new AgentError("invalid-input");
 }
+/** A layer, or `{library: "shared" | "bundled"}` for a file that lives in a library. */
+function itemTarget(value: unknown): ItemTarget {
+  if (plain(value) && Object.keys(value).length === 1 && (value.library === "shared" || value.library === "bundled"))
+    return { library: value.library };
+  return target(value);
+}
 function revision(value: unknown, allowEmpty = false): string {
   if (typeof value !== "string" || !(REVISION.test(value) || (allowEmpty && !value)))
     throw new AgentError("invalid-input");
@@ -42,8 +48,10 @@ function revision(value: unknown, allowEmpty = false): string {
 }
 
 /**
- * GET /api/agents, then POST /api/agents/{read,create,save,delete,file/read,file/write,file/delete}.
- * A target is `{ agent: id }` or `{ session: id }` (a session's own layer).
+ * GET /api/agents, then POST /api/agents/{read,create,save,delete,resources,resource/select,
+ * resource/promote,file/read,file/write,file/delete}. A target is `{ agent: id }` or
+ * `{ session: id }` (a session's own layer); file/read and file/write also take
+ * `{ library: "shared" | "bundled" }`.
  */
 export class AgentHttp {
   constructor(
@@ -86,6 +94,12 @@ export class AgentHttp {
               result = this.store.select(target(i.target), itemType(i.type), i.reference as ResourceReference, i.on, revision(i.expectedRevision, true));
               break;
             }
+            case "resource/promote": {
+              const i = input(value, ["target", "type", "name", "expectedRevision"]);
+              if (typeof i.name !== "string") throw new AgentError("invalid-input");
+              result = this.store.promote(target(i.target), itemType(i.type), i.name, revision(i.expectedRevision));
+              break;
+            }
             case "create": {
               const i = input(value, ["name"], ["description", "base"]);
               if (typeof i.name !== "string") throw new AgentError("invalid-input");
@@ -118,13 +132,13 @@ export class AgentHttp {
             }
             case "file/read": {
               const i = input(value, ["target", "path"]);
-              result = this.store.readFile(target(i.target), i.path as string);
+              result = this.store.readFile(itemTarget(i.target), i.path as string);
               break;
             }
             case "file/write": {
               const i = input(value, ["target", "path", "expectedRevision", "text"]);
               result = this.store.writeFile(
-                target(i.target),
+                itemTarget(i.target),
                 i.path as string,
                 i.expectedRevision === null ? null : revision(i.expectedRevision),
                 i.text as string,

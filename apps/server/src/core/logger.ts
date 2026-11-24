@@ -40,6 +40,7 @@ const codes = [
   "missing-parent",
   "cycle",
   "in-use",
+  "exists",
   "built-in",
   "not-found",
   "closed",

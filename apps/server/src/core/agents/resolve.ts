@@ -166,6 +166,7 @@ function fold(store: AgentStore, layers: Layer[]) {
             : [],
           ...(item.description ? { description: item.description } : {}),
           ...(item.path ? { path: item.path } : {}),
+          ...(item.files?.length ? { files: item.files } : {}),
           ...(item.reference ? { reference: item.reference } : {}),
           ...(item.unavailable ? { unavailable: true as const } : {}),
         },
@@ -364,12 +365,16 @@ export function viewAgent(
   const { definition, revision } = store.read(target);
   try {
     const setup = resolveSetup(store, target);
+    // How far saving a shared item reaches: counted for the view, not part of the setup.
+    const used = setup.items.some((item) => item.reference?.startsWith("shared:")) ? store.usage() : undefined;
     return {
       target,
       definition,
       revision,
       layers: setup.layers,
-      items: setup.items,
+      items: used
+        ? setup.items.map((item) => (item.reference?.startsWith("shared:") ? { ...item, usedBy: used.get(`${item.type}:${item.name}`) ?? 0 } : item))
+        : setup.items,
       tools: discovered ? withDiscovered(setup.tools, discovered.tools) : setup.tools,
       ...(discovered?.incomplete ? { toolsIncomplete: true as const } : {}),
       settings: setup.settings,

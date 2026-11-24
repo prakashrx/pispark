@@ -247,6 +247,16 @@ export function itemPath(path: unknown): { type: ItemType; name: string } {
   return fail("invalid-path");
 }
 
+/** An item file, or any file inside a skill's folder: what may be read. */
+export function readablePath(path: unknown): void {
+  if (typeof path !== "string") return fail("invalid-path");
+  const skill = /^skills\/([^/\\]+)\/(.+)$/.exec(path);
+  const inside = skill?.[2]?.split("/") ?? [];
+  if (skill && validItemName(skill[1]) && inside.length <= 8 && inside.every((part) => part && !part.startsWith(".") && !part.includes("\\")))
+    return;
+  itemPath(path);
+}
+
 /**
  * Minimal YAML-ish frontmatter between `---` fences: `key: value` lines, including folded
  * (`>`, `>-`) and literal (`|`, `|-`) blocks of indented lines.
