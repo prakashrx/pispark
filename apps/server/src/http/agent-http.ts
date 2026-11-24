@@ -58,6 +58,12 @@ export class AgentHttp {
     readonly store: AgentStore,
     /** The tools an agent's extensions register, found without a session. */
     private readonly tools?: (target: AgentTarget) => Promise<{ tools: DiscoveredTool[]; incomplete: boolean } | undefined>,
+    /** The sessions side: an agent's Agent Builder session, and what goes when an agent does. */
+    private readonly sessions?: {
+      builder: (agent: string, fresh: boolean) => Promise<string>;
+      release: (session: string) => void;
+      agentRemoved: (agent: string) => Promise<void>;
+    },
   ) {}
   async handle(request: IncomingMessage, response: ServerResponse) {
     const requestId = randomUUID(),
@@ -127,6 +133,21 @@ export class AgentHttp {
               const i = input(value, ["id"]);
               if (typeof i.id !== "string") throw new AgentError("invalid-input");
               this.store.remove(i.id);
+              await this.sessions?.agentRemoved(i.id);
+              result = {};
+              break;
+            }
+            case "builder": {
+              const i = input(value, ["agent"], ["fresh"]);
+              if (typeof i.agent !== "string" || (i.fresh !== undefined && typeof i.fresh !== "boolean") || !this.sessions)
+                throw new AgentError("invalid-input");
+              result = { session: await this.sessions.builder(i.agent, i.fresh === true) };
+              break;
+            }
+            case "builder/release": {
+              const i = input(value, ["session"]);
+              if (typeof i.session !== "string" || !this.sessions) throw new AgentError("invalid-input");
+              this.sessions.release(i.session);
               result = {};
               break;
             }

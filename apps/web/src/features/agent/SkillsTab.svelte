@@ -11,11 +11,12 @@
   import DetailHead, { type Entry } from "./DetailHead.svelte";
   import Pane from "./Pane.svelte";
   import LockedNote from "./LockedNote.svelte";
+  import AiChange from "./AiChange.svelte";
   import SaveBar from "./SaveBar.svelte";
   import DescriptionPane from "./DescriptionPane.svelte";
   import { isFresh, keyOf, type AgentPage, type Row } from "./agent-page.svelte";
 
-  let { page, narrow, stacked }: { page: AgentPage; narrow: boolean; stacked: boolean } = $props();
+  let { page, onai, narrow, stacked }: { page: AgentPage; onai?: () => void; narrow: boolean; stacked: boolean } = $props();
 
   const skills = $derived(page.rows("skills"));
   const open = $derived(page.opened("skills", narrow));
@@ -48,7 +49,7 @@
   const fileCount = (item: Row) => (files(item).length ? `SKILL.md and ${files(item).length} more file${files(item).length > 1 ? "s" : ""}` : "SKILL.md");
 </script>
 
-<TabIntro {page} kind="skills" oncreate={() => page.create("skills")}>Know-how the agent loads only when a task matches <em>Use when</em>.</TabIntro>
+<TabIntro {page} kind="skills" oncreate={() => { page.create("skills"); onai?.(); }}>Know-how the agent loads only when a task matches <em>Use when</em>.</TabIntro>
 
 <Split items={skills} selected={open} {narrow} label="Skills" off={(item) => !isFresh(item) && !item.on} onselect={(item) => { file = undefined; page.show("skills", item); }}>
   {#snippet row(item)}
@@ -62,6 +63,7 @@
       {@const can = page.editable(item)}
       {@const text = page.text(item)}
       <DetailHead {page} {item} about={fileCount(item)} entries={entries(item)} />
+      <AiChange {page} {item} />
       <div class="panes" data-stack={stacked || narrow || undefined}>
         <Pane title={file?.key === keyOf(item) ? file.path : "SKILL.md"} area="doc">
           {#snippet action()}
@@ -76,6 +78,7 @@
               <MarkdownEditor
                 value={page.draft(item)}
                 onchange={(next) => page.setDraft(item, next)}
+                compare={page.before[keyOf(item)]}
                 label="SKILL.md"
                 editable={can}
                 mode={isFresh(item) ? "edit" : "preview"}

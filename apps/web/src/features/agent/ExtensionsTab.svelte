@@ -16,7 +16,7 @@
   import BackButton from "./BackButton.svelte";
   import { isFresh, keyOf, type AgentPage } from "./agent-page.svelte";
 
-  let { page }: { page: AgentPage } = $props();
+  let { page, onai }: { page: AgentPage; onai?: () => void } = $props();
 
   const BUILT_IN = "extensions/built-in";
   const exts = $derived(page.rows("extensions").filter((row): row is ResolvedItem => !isFresh(row)));
@@ -89,7 +89,7 @@
     {/if}
   </article>
 {:else}
-  <TabIntro {page} kind="extensions">Code that adds tools, commands and views. Turn single tools off without removing the extension.</TabIntro>
+  <TabIntro {page} kind="extensions" oncreate={onai} createLabel="Build with AI">Code that adds tools, commands and views. Turn single tools off without removing the extension.</TabIntro>
   <ul class="rows">
     <li class="ext" data-builtin>
       <span class="tile" aria-hidden="true"><Icon name="code" class="h-4 w-4" /></span>

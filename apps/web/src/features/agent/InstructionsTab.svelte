@@ -9,10 +9,11 @@
   import Split from "./Split.svelte";
   import DetailHead, { type Entry } from "./DetailHead.svelte";
   import LockedNote from "./LockedNote.svelte";
+  import AiChange from "./AiChange.svelte";
   import SaveBar from "./SaveBar.svelte";
   import { isFresh, keyOf, words, type AgentPage, type Row } from "./agent-page.svelte";
 
-  let { page, narrow, name }: { page: AgentPage; narrow: boolean; name: string } = $props();
+  let { page, onai, narrow, name }: { page: AgentPage; onai?: () => void; narrow: boolean; name: string } = $props();
 
   const all = $derived(page.rows("instructions"));
   // Read in this order; what's off comes last and isn't read.
@@ -41,7 +42,7 @@
   }
 </script>
 
-<TabIntro {page} kind="instructions" oncreate={() => page.create("instructions")}>What {name} reads at the start of every session, top to bottom. Later parts win when they disagree.</TabIntro>
+<TabIntro {page} kind="instructions" oncreate={() => { page.create("instructions"); onai?.(); }}>What {name} reads at the start of every session, top to bottom. Later parts win when they disagree.</TabIntro>
 
 <Split items={all} selected={open} showing={everything || !!open} {narrow} label="Instructions" onselect={(item) => page.show("instructions", item)} off={(item) => !isFresh(item) && !item.on}>
   {#snippet top()}
@@ -85,6 +86,7 @@
       {@const n = used.indexOf(item)}
       {@const text = page.text(item)}
       <DetailHead {page} {item} about={n >= 0 ? `Part ${n + 1} of ${used.length} · ${size(item)} words, read every session` : "Turned off: the agent doesn't read it."} entries={entries(item)} />
+      <AiChange {page} {item} />
       {#if text?.loading}<p class="note" role="status">Loading…</p>
       {:else if text?.error}<p class="note" role="alert">{text.error}</p>
       {:else}
@@ -92,6 +94,7 @@
           <MarkdownEditor
             value={page.draft(item)}
             onchange={(next) => page.setDraft(item, next)}
+            compare={page.before[keyOf(item)]}
             label={item.name || "New instruction"}
             editable={page.editable(item)}
             mode={isFresh(item) ? "edit" : "preview"}

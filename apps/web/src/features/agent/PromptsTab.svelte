@@ -10,12 +10,13 @@
   import DetailHead, { type Entry } from "./DetailHead.svelte";
   import Pane from "./Pane.svelte";
   import LockedNote from "./LockedNote.svelte";
+  import AiChange from "./AiChange.svelte";
   import DescriptionPane from "./DescriptionPane.svelte";
   import SaveBar from "./SaveBar.svelte";
   import { argumentNames, fieldOf } from "./frontmatter";
   import { isFresh, keyOf, type AgentPage, type Row } from "./agent-page.svelte";
 
-  let { page, narrow, stacked }: { page: AgentPage; narrow: boolean; stacked: boolean } = $props();
+  let { page, onai, narrow, stacked }: { page: AgentPage; onai?: () => void; narrow: boolean; stacked: boolean } = $props();
 
   const prompts = $derived(page.rows("prompts"));
   const open = $derived(page.opened("prompts", narrow));
@@ -53,7 +54,7 @@
 
 {#snippet slash(item: Row)}<span class="cmd">/{item.name || "new-prompt"}</span>{#each argsOf(item) as a (a.n)}<span class="arg">‹{a.name}›</span>{/each}{/snippet}
 
-<TabIntro {page} kind="prompts" oncreate={() => page.create("prompts")}>Type <kbd>/</kbd> in the message box to run one. What you type after the name fills in <code>$1</code>, <code>$2</code>…</TabIntro>
+<TabIntro {page} kind="prompts" oncreate={() => { page.create("prompts"); onai?.(); }}>Type <kbd>/</kbd> in the message box to run one. What you type after the name fills in <code>$1</code>, <code>$2</code>…</TabIntro>
 
 <Split items={prompts} selected={open} {narrow} label="Prompts" off={(item) => !isFresh(item) && !item.on} onselect={(item) => page.show("prompts", item)}>
   {#snippet row(item)}
@@ -68,6 +69,7 @@
       <DetailHead {page} {item} entries={entries(item)}>
         {#snippet title()}{#if isFresh(item) && !item.name}<span class="placeholder">New prompt</span>{:else}{@render slash(item)}{/if}{/snippet}
       </DetailHead>
+      <AiChange {page} {item} />
       {#if isFresh(item) && !item.name}<p class="note">Name it with the pencil above; the name is what you type after <code>/</code>.</p>{/if}
       <DescriptionPane {page} {item} title="What it's for" empty="Not set yet. The slash picker shows this beside /name." />
       <div class="panes" data-stack={stacked || narrow || undefined}>
@@ -79,6 +81,7 @@
               <MarkdownEditor
                 value={page.draft(item)}
                 onchange={(next) => page.setDraft(item, next)}
+                compare={page.before[keyOf(item)]}
                 label={`/${item.name || "new-prompt"} template`}
                 editable={page.editable(item)}
                 mode={isFresh(item) ? "edit" : "preview"}

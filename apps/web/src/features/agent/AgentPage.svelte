@@ -15,7 +15,9 @@
   import { useSessions } from "../workspace/session-client.svelte";
   import type { AgentDefinition, ThinkingLevel } from "../../../../server/src/contract/agent-protocol";
   import { agentError } from "./agent-presentation";
-  import { AgentPage, KINDS, type Kind } from "./agent-page.svelte";
+  import { AgentPage, KINDS, keyOf, type Kind } from "./agent-page.svelte";
+  import AgentBuilderPanel from "./AgentBuilderPanel.svelte";
+  import BackButton from "./BackButton.svelte";
   import InstructionsTab from "./InstructionsTab.svelte";
   import SkillsTab from "./SkillsTab.svelte";
   import PromptsTab from "./PromptsTab.svelte";
@@ -145,6 +147,24 @@
     });
   }
   let askingDelete = $state(false);
+
+  // The agent's AI, beside the tabs where there's room, in their place on a phone. It works on
+  // what's open in the current tab, unless that's cleared to work on the whole agent.
+  let ai = $state(false);
+  let cleared = $state<string | undefined>();
+  const opened = $derived(tab === "settings" ? undefined : page.opened(tab as Kind, narrow));
+  const focus = $derived(opened && keyOf(opened) !== cleared ? opened : undefined);
+  const canAi = $derived(!!view && !readOnly);
+  let aiButton: HTMLButtonElement | undefined = $state();
+  function openAi() {
+    cleared = undefined;
+    ai = true;
+  }
+  async function closeAi() {
+    ai = false;
+    await tick();
+    aiButton?.focus();
+  }
 </script>
 
 <div class="page" bind:clientWidth={width}>
@@ -182,6 +202,7 @@
       {/if}
     </div>
     <div class="start">
+      {#if canAi}<button bind:this={aiButton} type="button" class="ui-button ask-ai" aria-pressed={ai} onclick={() => (ai ? void closeAi() : openAi())}><Icon name="pencil" class="h-4 w-4" />Ask AI</button>{/if}
       <a class="ui-button" data-variant="primary" href="#/new" onclick={() => (client.selected = id)}>New session</a>
     </div>
   </header>
@@ -190,15 +211,21 @@
   {#if view?.error}<p role="alert" class="inline-note" data-tone="danger">{agentError(view.error, view.detail)} Fix “Builds on” in Settings.</p>{/if}
   {#if !view && !client.editorError}<p role="status" class="loading">Loading…</p>{/if}
 
-  {#if view}
+  {#if view && ai && narrow}
+    <div class="phone-builder">
+      <BackButton label={`Back to ${focus?.name || (tab === "settings" ? "Settings" : KINDS[tab as Kind].title)}`} onclick={() => void closeAi()} />
+      <AgentBuilderPanel {page} {name} {tab} {focus} narrow onclose={() => void closeAi()} onclear={() => (cleared = opened ? keyOf(opened) : undefined)} />
+    </div>
+  {:else if view}
+    <div class="bench" data-builder={ai || undefined}>
     <Tabs label="Agent" {tabs} bind:value={tab} panelClass="panel">
       {#snippet children(current)}
         {@const t = current as Tab}
         <div class="tab-body" data-settings={t === "settings" || undefined}>
-          {#if t === "instructions"}<InstructionsTab {page} {narrow} {name} />
-          {:else if t === "skills"}<SkillsTab {page} {narrow} stacked={false} />
-          {:else if t === "prompts"}<PromptsTab {page} {narrow} stacked={false} />
-          {:else if t === "extensions"}<ExtensionsTab {page} />
+          {#if t === "instructions"}<InstructionsTab {page} {narrow} {name} onai={canAi ? openAi : undefined} />
+          {:else if t === "skills"}<SkillsTab {page} {narrow} stacked={ai} onai={canAi ? openAi : undefined} />
+          {:else if t === "prompts"}<PromptsTab {page} {narrow} stacked={ai} onai={canAi ? openAi : undefined} />
+          {:else if t === "extensions"}<ExtensionsTab {page} onai={canAi ? openAi : undefined} />
           {:else}
             <div class="settings">
               <section class="setting">
@@ -250,6 +277,12 @@
         </div>
       {/snippet}
     </Tabs>
+    {#if ai}
+      <aside class="dock">
+        <AgentBuilderPanel {page} {name} {tab} {focus} onclose={() => void closeAi()} onclear={() => (cleared = opened ? keyOf(opened) : undefined)} />
+      </aside>
+    {/if}
+    </div>
   {/if}
 </div>
 
@@ -354,6 +387,37 @@
     flex-shrink: 0;
     display: flex;
     align-items: center;
+    gap: 0.5rem;
+  }
+  .ask-ai {
+    border-color: color-mix(in srgb, var(--accent-fill) 35%, var(--border));
+    color: var(--accent-text);
+  }
+  .ask-ai:hover,
+  .ask-ai[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
+  }
+  .bench {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+  }
+  .bench[data-builder] {
+    grid-template-columns: minmax(0, 1fr) 23rem;
+  }
+  .dock {
+    position: sticky;
+    top: 0.5rem;
+    height: min(46rem, calc(100vh - 6rem));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+  }
+  .phone-builder {
+    display: flex;
+    flex-direction: column;
     gap: 0.5rem;
   }
   .loading {

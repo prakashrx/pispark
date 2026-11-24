@@ -224,6 +224,14 @@ export class AgentClient {
       await agentRequest("resource/select", { target: this.target, type, reference: `shared:${name}`, on: true, expectedRevision: revision });
     }, "Saved to the Shared library");
   }
+  /** The agent's Agent Builder session: the one it has, or a new one; `fresh` puts the last away. */
+  async builder(agent: string, fresh = false): Promise<string> {
+    return (await agentRequest<{ session: string }>("builder", { agent, ...(fresh ? { fresh: true } : {}) })).session;
+  }
+  /** "Open as a session": the Agent Builder session joins the session list. */
+  release(session: string) {
+    return agentRequest("builder/release", { session });
+  }
   /** Move one of this agent's own items into the Shared library. */
   promote(type: ItemType, name: string) {
     return this.change(

@@ -111,6 +111,13 @@ export class Session {
    * Sends a message to an idle session: the given text, or the draft (cleared once it is accepted,
    * unless it changed meanwhile). Whether the server accepted it; a failure is in `error`.
    */
+  /**
+   * A note for the model with each new message, set by whoever hosts the session (the agent page
+   * tells Agent Builder what's open). Sent as `context`; it isn't shown in the conversation.
+   */
+  note?: () => string | undefined;
+  /** Why sending waits, set by whoever hosts the session (the agent page: unsaved changes first). */
+  hold?: () => string | undefined;
   async send(text?: string): Promise<boolean> {
     const message = text ?? this.draft;
     const revision = this.draftRevision;
@@ -132,7 +139,7 @@ export class Session {
       const receipt = await this.transport.submit(
         editing
           ? { type: "edit", sessionId: this.id, entryId: editing.entryId, text: outgoing.text, ...attachments }
-          : { type: "start", sessionId: this.id, text: outgoing.text, ...attachments },
+          : { type: "start", sessionId: this.id, text: outgoing.text, ...attachments, ...this.context() },
       );
       if (receipt.error) throw new CommandFailed(receipt.error);
       if (editing && this.editing === editing) this.editing = undefined;
@@ -148,6 +155,11 @@ export class Session {
     } finally {
       this.sending = false;
     }
+  }
+  private context(): { context?: string } {
+    const note = this.note?.()?.trim();
+    // The server takes at most 8 KiB; a longer note is cut rather than refused.
+    return note ? { context: new TextDecoder().decode(new TextEncoder().encode(note).slice(0, 8 * 1024)).replace(/�$/, "") } : {};
   }
   /** Stops the run, or takes a message that waits for its turn off the queue. */
   async stop() {

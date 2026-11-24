@@ -71,6 +71,8 @@
   const unavailable = $derived(
     mode === "reply" && session?.doc?.compacting
       ? "Context is being compacted."
+      : mode === "reply" && session?.hold?.()
+        ? session.hold()
       : sessions.busy
         ? "Please wait…"
       : attachments?.blocked && (mode === "reply" || !attachments.blocked.startsWith("Waiting"))

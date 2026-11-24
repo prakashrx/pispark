@@ -83,6 +83,8 @@ export interface SessionSummary {
   parent?: string;
   /** The schedule or app routine this session is one run of. */
   schedule?: { id: string; due: string };
+  /** The agent this session builds with Agent Builder. */
+  edits?: string;
   /** Kept loaded while no one watches, by one of its extensions. */
   held?: { extension: string; reason: string };
   /** How many processes it started are running. */
@@ -570,7 +572,10 @@ export class Session {
       fixed,
       admission: {
         valid: () => inputAdmission.getStore()?.valid() ?? true,
-        beforeRun: () => this.adopt(),
+        beforeRun: async () => {
+          await this.adopt();
+          return this.takeContext();
+        },
         beforeProviderDispatch: () => {
           // Pi still calls the provider once after a cancel that arrived while it prepared the run.
           if (this.run?.cancelled || this.status === "stopping") {
@@ -1169,6 +1174,13 @@ export class Session {
     this.metadata = metadata;
     this.changed();
   }
+  /** No longer an agent page's Agent Builder session: it joins the session list. */
+  untie(): void {
+    const { edits: _edits, ...metadata } = this.metadata;
+    this.host.storage.write(metadata);
+    this.metadata = metadata;
+    this.changed();
+  }
   /** A person names the session. Pi's session name follows, as in terminal Pi's `/name`. */
   rename(title: string): void {
     const metadata: SessionMetadata = { ...this.metadata, title, renamed: true };
@@ -1189,12 +1201,19 @@ export class Session {
    * Sends a prompt: it runs now if a run slot is free, else it waits for one in order. A waiting
    * prompt is saved with the session, so a restart keeps it.
    */
-  start(text: string, marker?: WokenDetails): RunHandle {
+  start(text: string, marker?: WokenDetails, context?: string): RunHandle {
     validateText(text);
     if (!this.host.accepting()) throw new RuntimeError("closed");
     this.loaded();
     if (this.status !== "idle" || this.input) throw new RuntimeError("busy");
     this.touch();
+    // The note goes with this prompt: saved with it, so a wait for a slot or a restart keeps it.
+    if (context !== undefined || this.metadata.context !== undefined) {
+      const { context: _old, ...metadata } = this.metadata;
+      const next = context ? { ...metadata, context } : metadata;
+      this.host.storage.write(next);
+      this.metadata = next;
+    }
     if (!this.host.slots.take(this.id)) return { completion: this.enqueue(text, false, marker) };
     try {
       return { completion: this.begin(text, marker) };
@@ -1284,6 +1303,8 @@ export class Session {
     this.changed();
     const settle = (): RunResult => {
       run.settled = true;
+      // A note whose run never reached the model doesn't go with a later one.
+      delete this.metadata.context;
       if (!run.cancelled) this.error ??= run.providerError;
       let childResult: RunResult["childResult"];
       this.metadata.active = !!this.error;
@@ -1410,6 +1431,18 @@ export class Session {
       this.host.slots.wait(this.id, this.resuming);
       this.changed();
     });
+  }
+  /** The note sent with the prompt that is starting, once; it isn't kept after. */
+  private takeContext(): string | undefined {
+    const { context, ...metadata } = this.metadata;
+    if (context === undefined) return undefined;
+    try {
+      this.host.storage.write(metadata);
+    } catch {
+      /* Sent anyway; a leftover note is dropped when the run settles. */
+    }
+    this.metadata = metadata;
+    return context;
   }
   /** Waiting for a person, the run gives its slot to the next session. */
   private pause(): void {

@@ -136,6 +136,15 @@ Agents lists every agent, Default first. An agent's page has a short profile (it
 - **Routines:** `routines: [{id, name, cron, prompt}]` in `agent.json` offers runs on a schedule, each a new session of the agent; inherited like the folder. Each is off until switched on with `routine:<id>` (on Background, or in Details of one of its sessions). `hold:<extension>` allows that extension to keep the agent's sessions loaded while no one watches ([hold](session-runtime.md#hold)). Both are ordinary `on`/`off` switches and are off unless switched on.
 - MCP servers are part of the format but aren't shown or connected yet.
 
+**Ask AI** opens the agent's **Agent Builder** session beside the tabs (in their place on a phone, with Back). It's an ordinary session of the bundled `agent-builder` agent, working in the agent's folder, one per agent: the session records the agent in `edits`.
+
+- **Working on** names what's open in the tab; × switches to the whole agent, where something new goes in the current tab. **Create** opens it on a new item; on Extensions, **Build with AI** opens it.
+- Each message carries a note the conversation doesn't show (`start {context}`, [session protocol](session-protocol.md)): the tab, what's open and where its file is seen from the agent's folder, and the agent's items.
+- While the open item has unsaved changes, sending waits: save or discard them first.
+- When its reply ends, the page reads the agent again. Parts it changed in the open item are highlighted, with **Keep** or **Undo** (Undo writes the earlier text back); something new it wrote opens, with **Keep** or **Delete it**.
+- **+** starts a new conversation: the last one is archived and no longer tied to the agent. ⋯ **Open as a session** unties it and opens it as a regular session; the next Ask AI starts another. Deleting the agent deletes its Agent Builder sessions.
+- Bundled agents have none: they can't be changed.
+
 Switches and settings save immediately; text saves from the save bar. Saves are revision-checked against the file's hash: if the file changed elsewhere, the save is refused and the latest version is shown. A session's own layer (Details ⋯ → Edit agent for this session) still uses the earlier editor.
 
 ## HTTP
@@ -152,6 +161,8 @@ All endpoints use the shared loopback Host/Origin/Fetch Metadata guard and exact
 | `POST /api/agents/create` | `{name, description?, base?}` → `{id, revision}` |
 | `POST /api/agents/save` | `{target, expectedRevision, definition}` → `{revision}`; `""` creates a session's layer |
 | `POST /api/agents/delete` | `{id}` |
+| `POST /api/agents/builder` | `{agent, fresh?}` → `{session}`: the agent's Agent Builder session, made in the agent's folder when it has none; `fresh` archives the current one first (no longer tied to the agent). `agent` for a bundled agent |
+| `POST /api/agents/builder/release` | `{session}`: the session is no longer the agent's Agent Builder session (`edits` cleared) |
 | `POST /api/agents/file/read` | `{target, path}` → `{text, revision}`; `target` may also be `{library: "shared" \| "bundled"}` |
 | `POST /api/agents/file/write` | `{target, path, expectedRevision \| null, text}` → `{text, revision}`; `target` may also be `{library: "shared"}`, which changes the file for every agent that selects it and selects nothing |
 | `POST /api/agents/file/delete` | `{target, path, expectedRevision}`; a skill is removed with its folder |

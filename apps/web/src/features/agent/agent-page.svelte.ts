@@ -228,6 +228,101 @@ export class AgentPage {
       this.open[item.type as Kind] = undefined;
     }
   }
+  // ---- Agent Builder -------------------------------------------------------------------------
+
+  /** An item's text from before Agent Builder changed it, while it waits for Keep or Undo. */
+  before = $state<Record<string, string>>({});
+  /** What was there when a message went: the open item's text, and which items existed. */
+  private sent?: { key?: string; text?: string; items: Set<string>; fresh?: Kind };
+
+  /**
+   * What Agent Builder is told with each message: which agent, the tab, what's open and where its
+   * file is, and the agent's items. Plain text; the page knows nothing more than it shows.
+   */
+  note(tab: string, open: Row | undefined): string {
+    const view = this.view;
+    if (!view) return "";
+    const name = view.definition.name ?? this.agent;
+    const lines = [`The person is on the agent page of "${name}" (id ${this.agent}), in the ${tab} tab.`];
+    if (open && isFresh(open)) {
+      const one = KINDS[open.type].one;
+      lines.push(
+        `Open: a new ${one}, not saved yet${open.name ? `, named "${open.name}"` : ", not named yet"}. Write it in this agent's folder${open.name ? ` as ${open.type === "skills" ? `skills/${open.name}/SKILL.md` : `${open.type}/${open.name}.md`}` : ""} and add it to agent.json's resources as local:<name>.`,
+      );
+    } else if (open) {
+      const where = fileFrom(this, open);
+      const reach = this.reach(open);
+      lines.push(
+        `Open: the ${KINDS[open.type as Kind]?.one ?? open.type} "${open.name}" (${this.source(open)}${open.on ? "" : ", switched off"})${where ? `, file ${where}` : ", which ships with PiSpark and can't be changed"}.` +
+          (reach ? ` It's shared: ${reach} agents use it, so changing it changes them all.` : ""),
+      );
+      if (this.dirty(open)) lines.push("The person has unsaved changes to it in the page.");
+    } else if (tab in KINDS) lines.push(`Nothing is open: something new goes in ${KINDS[tab as Kind].title}.`);
+    const byKind = (["instructions", "skills", "prompts", "extensions"] as Kind[])
+      .map((kind) => {
+        const items = view.items.filter((item) => item.type === kind);
+        return items.length ? `${KINDS[kind].title}: ${items.map((item) => `${item.name} (${this.source(item)}${item.on ? "" : ", off"})`).join(", ")}.` : "";
+      })
+      .filter(Boolean);
+    if (byKind.length) lines.push(`Its items. ${byKind.join(" ")}`);
+    return lines.join("\n");
+  }
+  /** A message is going: remember the open item's text and what exists, to show what changed. */
+  snapshot(open: Row | undefined) {
+    const items = new Set((this.view?.items ?? []).map((item) => keyOf(item)));
+    if (open && !isFresh(open)) {
+      const text = this.texts[keyOf(open)];
+      this.sent = { key: keyOf(open), text: text && !text.loading && !text.error ? text.saved : undefined, items };
+    } else this.sent = { items, fresh: open && isFresh(open) ? open.type : undefined };
+  }
+  /** Agent Builder's turn ended: read the agent again, mark what it changed in the open item, open what it made. */
+  async afterTurn() {
+    const sent = this.sent;
+    this.sent = undefined;
+    await this.client.load();
+    void this.client.refresh();
+    const view = this.view;
+    if (!view) return;
+    // Texts read before may be stale now; read what's open again.
+    for (const [key, text] of Object.entries(this.texts)) if (text.draft === text.saved) delete this.texts[key];
+    if (sent?.key) {
+      const item = view.items.find((next) => keyOf(next) === sent.key);
+      if (item) {
+        await this.load(item, true);
+        const now = this.texts[sent.key]?.saved;
+        if (sent.text !== undefined && now !== undefined && now !== sent.text) this.before[sent.key] = sent.text;
+      }
+    }
+    // Something new it wrote: open it in its tab, in place of the unsaved one.
+    const made = view.items.filter((item) => !sent?.items.has(keyOf(item)));
+    for (const item of made) {
+      const kind = item.type as Kind;
+      if (!(kind in KINDS)) continue;
+      if (this.fresh[kind] && (!this.fresh[kind]!.name || this.fresh[kind]!.name === item.name)) this.fresh[kind] = undefined;
+      this.open[kind] = keyOf(item);
+      await this.load(item, true);
+      if (sent?.fresh === kind || !sent?.key) this.before[keyOf(item)] = "";
+    }
+  }
+  keep(item: Row) {
+    delete this.before[keyOf(item)];
+  }
+  /** Write back what was there before Agent Builder's change. */
+  async undo(item: Row) {
+    if (isFresh(item) || !item.path) return;
+    const key = keyOf(item);
+    const was = this.before[key];
+    const text = this.texts[key];
+    if (was === undefined || !text) return;
+    const ok = was === "" && this.owns(item) ? await this.client.deleteFile(item.path) : await this.client.writeFile(item.path, was, text.revision, this.client.fileTarget(item), "Undone");
+    if (!ok) return;
+    delete this.before[key];
+    if (was === "") {
+      delete this.texts[key];
+      this.open[item.type as Kind] = undefined;
+    } else await this.load(item, true);
+  }
+
   promote(item: ResolvedItem) {
     return this.client.promote(item.type, item.name);
   }
@@ -247,6 +342,14 @@ export class AgentPage {
       return { ...definition, resources: { ...definition.resources, instructions: list } };
     });
   }
+}
+
+/** Where an item's file is, seen from the agent's own folder (Agent Builder's working folder). */
+export function fileFrom(page: AgentPage, item: ResolvedItem): string | undefined {
+  if (!item.path) return undefined;
+  if (item.reference?.startsWith("bundled:")) return undefined;
+  if (item.reference?.startsWith("shared:")) return `../../resources/${item.path}`;
+  return item.origin.id === page.agent ? item.path : `../${item.origin.id}/${item.path}`;
 }
 
 /** Rough size of what's read every session. */

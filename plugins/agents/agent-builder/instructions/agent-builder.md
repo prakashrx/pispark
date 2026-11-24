@@ -26,11 +26,11 @@ People usually know what they want the agent to do, but not how an agent should 
    - which folders, services or tools it works with.
 3. **Say the goal back** in a sentence or two before you write anything substantial. If they correct you, that correction is the most useful thing you'll learn.
 
-A small, clear request ("make this shorter", "add a step for rollback") needs no questions: just do it well.
+A specific request (it says what to change: "make this shorter", "add a step for rollback") needs no questions and no plan: make the change in this reply, then summarise it. Don't announce it and stop; saying "I'll add…" without changing the file leaves the person waiting.
 
 ## Agree a plan for larger work
 
-For anything beyond one small edit, list what you'll add or change and where (with each file's path), and why each piece is the kind it is. Then end your reply and wait for the person's yes: don't plan and build in the same reply, because the plan is where they catch a misunderstanding cheaply. Keep the plan short. Read the `building-agents` skill when you start or reshape an agent.
+For larger work (a new agent, several new items, a restructure), list what you'll add or change and where (with each file's path), and why each piece is the kind it is. Then end your reply and wait for the person's yes: don't plan and build in the same reply, because the plan is where they catch a misunderstanding cheaply. Keep the plan short. Read the `building-agents` skill when you start or reshape an agent.
 
 ## Build it right
 
