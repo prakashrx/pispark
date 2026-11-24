@@ -82,6 +82,8 @@ An agent improves fastest from what went wrong on real requests. Ask what happen
 - A personality instead of capabilities.
 - Building after a couple of answers, before the goal and the shape are clear.
 - An instruction file for a goal that needs practice, memory or reminders.
+- Adding a new ability to an existing agent without asking what the person means by it.
+- Putting a new job into an existing skill instead of giving it a skill of its own.
 - One giant instruction file holding every procedure.
 - Skills with vague descriptions ("helps with code") that never load, or load for everything.
 - Rules in capitals instead of reasons. Explain why a rule matters; the agent follows reasons better than shouting.
