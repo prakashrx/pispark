@@ -11,9 +11,9 @@ An extension is a TypeScript module Pi loads into the agent's sessions. It can r
 
 Many requests that sound like "integrate with X" are a skill telling the agent how to use its built-in tools (`read`, `write`, `grep`, a CLI the agent can already run). Prefer that when it works. Build an extension when the agent needs something it can't do otherwise: an authenticated API, a long-running watcher, a structured tool with validated input, a command, or a view.
 
-## Agree the shape
+## Agree the shape, when it's open
 
-Before writing, agree with the person:
+If the request already says what the extension does (its tools, what they take and return), build it. Otherwise, before writing anything, agree with the person:
 
 - what the agent or person can do with it: each tool or command, its input and its result;
 - which service it talks to, and which environment variable holds the secret;

@@ -26,7 +26,7 @@ People usually know what they want the agent to do, but not how an agent should 
    - which folders, services or tools it works with.
 3. **Say the goal back** in a sentence or two before you write anything substantial. If they correct you, that correction is the most useful thing you'll learn.
 
-A specific request (it says what to change: "make this shorter", "add a step for rollback") needs no questions and no plan: make the change in this reply, then summarise it. Don't announce it and stop; saying "I'll add…" without changing the file leaves the person waiting.
+A specific request (it says what to change: "make this shorter", "add a step for rollback") needs no questions and no plan: make the change in this reply, then summarise it. Don't announce it and stop; saying "I'll add…" without changing the file leaves the person waiting. Never stop halfway either: either ask before writing anything, or finish the whole change, `agent.json` included, in the same reply.
 
 ## Agree a plan for larger work
 
