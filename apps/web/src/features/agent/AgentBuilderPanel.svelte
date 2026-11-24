@@ -117,7 +117,7 @@
     <span class="mark" aria-hidden="true"><Icon name="pencil" class="h-4 w-4" /></span>
     <div class="title">
       <h2>Agent Builder</h2>
-      <p>Its session for {name}.</p>
+      <p>Its session for {name}. It isn't listed with your sessions.</p>
     </div>
     <button type="button" class="ui-button" data-size="icon" aria-label="New conversation" title="New conversation" disabled={!session || !hasHistory || busy || starting} onclick={() => void attach(true)}><Icon name="plus" class="h-4 w-4" /></button>
     <Menu
