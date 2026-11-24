@@ -203,15 +203,32 @@ export class AgentClient {
   readFile(path: string, target: ItemTarget | undefined = this.target) {
     return agentRequest<ItemFile>("file/read", { target, path });
   }
-  /** Create or replace an item file in this layer. */
-  writeFile(path: string, text: string, revision: string | null) {
-    return this.change(() =>
-      agentRequest<ItemFile>("file/write", {
-        target: this.target,
-        path,
-        expectedRevision: revision,
-        text,
-      }),
+  /** Create or replace an item file in this layer, or in the Shared library. */
+  writeFile(path: string, text: string, revision: string | null, target: ItemTarget | undefined = this.target, done = "Saved") {
+    return this.change(
+      () =>
+        agentRequest<ItemFile>("file/write", {
+          target,
+          path,
+          expectedRevision: revision,
+          text,
+        }),
+      done,
+    );
+  }
+  /** Write a new file into the Shared library and select it here, as one change. */
+  addShared(type: ItemType, name: string, path: string, text: string) {
+    return this.change(async () => {
+      await agentRequest<ItemFile>("file/write", { target: { library: "shared" }, path, expectedRevision: null, text });
+      const { revision } = await agentRequest<AgentView>("read", { target: this.target });
+      await agentRequest("resource/select", { target: this.target, type, reference: `shared:${name}`, on: true, expectedRevision: revision });
+    }, "Saved to the Shared library");
+  }
+  /** Move one of this agent's own items into the Shared library. */
+  promote(type: ItemType, name: string) {
+    return this.change(
+      () => agentRequest("resource/promote", { target: this.target, type, name, expectedRevision: this.view?.revision ?? "" }),
+      "Moved to the Shared library",
     );
   }
   async deleteFile(path: string) {

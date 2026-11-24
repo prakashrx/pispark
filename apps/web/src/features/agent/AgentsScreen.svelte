@@ -5,7 +5,7 @@
   import Screen from "../../shell/Screen.svelte";
   import { layout } from "../../shell/layout.svelte";
   import AgentCollection from "./AgentCollection.svelte";
-  import AgentEditor from "./AgentEditor.svelte";
+  import AgentPage from "./AgentPage.svelte";
   import { useSessions } from "../workspace/session-client.svelte";
 
   let { id }: { id?: string } = $props();
@@ -18,7 +18,7 @@
 {#if id}
   <Screen title={name} hideTitle back={{ name: "agents" }} backLabel="All agents" wide={layout.size !== "compact"}>
     {#snippet actions()}<span class="saved" role="status" aria-live="polite">{client.busy ? "Saving…" : client.status}</span>{/snippet}
-    {#key id}<AgentEditor target={{ agent: id }} />{/key}
+    {#key id}<AgentPage {id} />{/key}
   </Screen>
 {:else}
   <Screen title="Agents" wide={layout.size !== "compact"}>

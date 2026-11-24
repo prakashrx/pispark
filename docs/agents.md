@@ -120,20 +120,23 @@ A session records only which agent it uses; nothing is copied. When its Pi sessi
 
 Model choice for a new session: the one chosen under the New session composer, else the agent's preferred model (when signed in), else the default. If an extension switches the model with Pi's `setModel`, that model stays attached to this session when reopened. Other sessions, the agent's preference and the workspace default are unchanged.
 
-## Editor
+## Agent page
 
-Agents lists every agent, Default first. The editor shows, for one layer:
+Agents lists every agent, Default first. An agent's page has a short profile (its name and what it does, edited in place; its kind: Base, Bundled, App or Project; its preferred model, thinking level and working folder; **New session**), then a tab per kind of resource and **Settings**. The tabs count what's switched on.
 
-- **Builds on:** Default (always) and the parents, in order; add or remove parents.
-- **Instructions, Skills, Prompts, Extensions, MCP:** every resolved item with where it comes from ("Added here", "From Writer"), whether a layer switched it, and an on/off switch. Items in this layer can be edited or removed; inherited ones can be viewed and **customized here** (copied into this layer). New instructions, skills and prompts start from a template; a prompt runs by typing `/name`.
+- **Instructions, Skills, Prompts** share one layout: a list and the open item. On a phone it's the list, then the item with Back. Each item has a header with where it comes from (Only this agent, Shared · N agents, Bundled, From a parent), an on/off switch and ⋯.
+  - **Instructions** are listed in reading order with word counts, and what's off last. "Everything, in order" shows the whole text and each part's share. ⋯ moves the agent's own parts up or down within its own list; inherited parts keep their layer's place.
+  - **Skills** show SKILL.md beside **Use when** (its `description`, edited in place) and its other files, which open read-only.
+  - **Prompts** read like the slash picker (`/name ‹args›`), with **What it's for** edited in place, and the template beside a preview where you type the arguments and see what it sends.
+- **Text** uses the shared Markdown editor (`lib/markdown/MarkdownEditor.svelte`): **Preview** or **Edit**, the whole text as written with its Markdown highlighted. Changes wait for the save bar, which says where saving goes: **Save** for the agent's own file; for a shared one used by other agents, **Save for all** or **Save a copy for this agent**. Inherited and bundled text is read-only until **Make it this agent's own** copies it here.
+- **Add** is a search dropdown of what's available and not on the agent yet (bundled, the Shared library, the agent's own folder). **Create** starts something new, named in place and saved to the Shared library (and selected here) or for this agent only.
+- ⋯ also offers **Move to Shared library** for the agent's own items, and **Delete** (its own file) or **Remove from this agent** (a shared or bundled selection). Inherited items are switched off, not removed.
+- **Extensions** list PiSpark's own tools first (**Built in**), then each extension with where it comes from and its tools. Opening one lists the tools it gives the agent, each with a switch. Tools are found by loading the agent's extensions without starting a session (cached by the setup's fingerprint); commands and views exist only while a session runs, so they aren't listed. Installing extensions from npm or git is not offered yet.
+- **Settings:** what it builds on (Default always first, then the parents; add or remove), the app home view (the key of a `session.view` an extension offers; not for Default), where it's stored, and delete (not Default, not an agent another one builds on).
 - **Routines:** `routines: [{id, name, cron, prompt}]` in `agent.json` offers runs on a schedule, each a new session of the agent; inherited like the folder. Each is off until switched on with `routine:<id>` (on Background, or in Details of one of its sessions). `hold:<extension>` allows that extension to keep the agent's sessions loaded while no one watches ([hold](session-runtime.md#hold)). Both are ordinary `on`/`off` switches and are off unless switched on.
-- **Tools:** every tool the agent has, found by loading its extensions without starting a session (Pi allows it; cached by the setup's fingerprint), with on/off switches and which layer set them. Grouped: **PiSpark** first (Pi's built-in tools, including `codemode` and `tool_search`, on unless switched off, and those of PiSpark's own built-in extension), then each extension, then switches naming tools nothing provides now. MCP tools appear once PiSpark connects MCP servers (not yet).
-- **Model:** a preferred model and thinking level.
-- **App:** the key of the home view of an app agent, or "Inherited" with the parent's. The editor cannot list views: they exist only while a session runs. Not shown for Default or a session's own layer.
-- **Working folder:** the folder of a project agent, chosen as for a new session (recent folders, home, or a path), or "Inherited" with the parent's folder. Not shown for Default or a session's own layer.
-- **Advanced:** where the agent is stored, the layer order and the raw `agent.json`; delete (not Default, not an agent another one builds on).
+- MCP servers are part of the format but aren't shown or connected yet.
 
-Every change saves immediately. Saves are revision-checked against the file's hash: if the file changed elsewhere, the save is refused and the latest version is shown.
+Switches and settings save immediately; text saves from the save bar. Saves are revision-checked against the file's hash: if the file changed elsewhere, the save is refused and the latest version is shown. A session's own layer (Details ⋯ → Edit agent for this session) still uses the earlier editor.
 
 ## HTTP
 
