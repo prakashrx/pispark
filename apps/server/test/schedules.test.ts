@@ -275,6 +275,25 @@ test("the agent's schedule tool adds to its own session only after the person sa
     assert.equal(f.one().by, "agent");
     assert.equal(f.one().sessionId, session.id);
     assert.equal(f.one().prompt, "digest");
+    assert.equal(f.one().run, undefined);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("the agent's schedule tool keeps run 'new' and its report mode", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    const add = { action: "add", cron: "0 7 * * *", prompt: "feed", run: "new", report: "result" };
+    const run = f.runtime.start(session.id, `tool:pispark_schedule:${JSON.stringify(add)}`);
+    await eventually(() => f.runtime.session(session.id).extensions.dialogs.length === 1);
+    const dialog = f.runtime.session(session.id).extensions.dialogs[0]!;
+    assert.match(dialog.kind === "confirm" ? dialog.title : "", /new sessions/);
+    f.runtime.answer(session.id, dialog.id, true);
+    await run.completion;
+    assert.equal(f.one().run, "new");
+    assert.equal(f.one().report, "result");
   } finally {
     await f.cleanup();
   }

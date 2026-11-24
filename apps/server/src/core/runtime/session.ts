@@ -951,9 +951,11 @@ export class Session {
       const when = { cron: input.cron, at: input.at };
       if (input.cron !== undefined ? !parseCron(input.cron) : Number.isNaN(new Date(input.at ?? "").getTime()) || new Date(input.at!).getTime() <= Date.now())
         return { ok: false, text: "That is not a time that can be scheduled." };
-      const yes = await this.ui.context.confirm("Schedule this in this session?", `${describeSchedule(when)}: ${input.prompt ?? ""}`);
+      const how = { ...(input.run !== undefined ? { run: input.run } : {}), ...(input.report !== undefined ? { report: input.report } : {}) };
+      const title = how.run === "new" ? "Schedule this as new sessions under this one?" : "Schedule this in this session?";
+      const yes = await this.ui.context.confirm(title, `${describeSchedule(when)}: ${input.prompt ?? ""}`);
       if (!yes) return { ok: true, text: "The person declined; nothing was scheduled." };
-      const added = schedules.add(this.id, { ...when, prompt: input.prompt }, "agent");
+      const added = schedules.add(this.id, { ...when, ...how, prompt: input.prompt }, "agent");
       return { ok: true, text: `Scheduled: ${describeSchedule(added)} (id ${added.id}). The person can change it under Session info → Schedules.` };
     };
     void answer()
