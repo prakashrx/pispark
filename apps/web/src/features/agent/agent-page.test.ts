@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentSummary, AgentView, ResolvedItem } from "../../../../server/src/contract/agent-protocol";
 import type { AgentClient } from "./agent-client.svelte";
 import { AgentPage, keyOf } from "./agent-page.svelte";
+import { builderNote, unsavedReason } from "./agent-builder";
 import { argumentNames, fieldOf, withField } from "./frontmatter";
 
 const item = (over: Partial<ResolvedItem> & Pick<ResolvedItem, "type" | "name">): ResolvedItem => ({
@@ -22,7 +23,7 @@ function pageWith(items: ResolvedItem[], summary: Partial<AgentSummary> = {}, in
     settings: {},
   } as unknown as AgentView;
   const client = { view, items: [{ id: "shop", name: "Shop", base: [], builtIn: false, valid: true, ...summary }] } as unknown as AgentClient;
-  return new AgentPage(client, "shop");
+  return new AgentPage(client, { agent: "shop" });
 }
 
 describe("agent page rules", () => {
@@ -97,21 +98,21 @@ describe("agent page and Agent Builder", () => {
   it("Agent Builder works on saved files: unsaved text holds sending", () => {
     const page = pageWith([own]);
     page.texts[keyOf(own)] = { saved: "a", draft: "a", revision: "r", loading: false, error: "" };
-    expect(page.unsaved(own)).toBeUndefined();
+    expect(unsavedReason(page, own)).toBeUndefined();
     page.setDraft(own, "b");
-    expect(page.unsaved(own)).toMatch(/Save or discard your changes to deploy/);
+    expect(unsavedReason(page, own)).toMatch(/Save or discard your changes to deploy/);
     const fresh = page.create("skills");
-    expect(page.unsaved(fresh)).toBeUndefined();
+    expect(unsavedReason(page, fresh)).toBeUndefined();
     page.setDraft(page.fresh.skills!, page.fresh.skills!.draft + "Steps.");
-    expect(page.unsaved(page.fresh.skills!)).toMatch(/Save or discard the new one/);
+    expect(unsavedReason(page, page.fresh.skills!)).toMatch(/Save or discard the new one/);
   });
 
   it("the note says what's open and where its file is, seen from the agent's folder", () => {
     const page = pageWith([own, shared, inherited]);
-    expect(page.note("skills", shared)).toMatch(/Open: the skill "review" \(Shared · 3 agents\), file \.\.\/\.\.\/resources\/skills\/review\/SKILL\.md\. It's shared: 3 agents use it/);
-    expect(page.note("instructions", inherited)).toMatch(/file \.\.\/writer\/instructions\/style\.md/);
-    expect(page.note("skills", undefined)).toMatch(/Nothing is open: something new goes in Skills/);
-    expect(page.note("skills", own)).toMatch(/Its items\. Instructions: style \(From Writer\)\. Skills: deploy \(Only this agent\), review/);
+    expect(builderNote(page, "skills", shared)).toMatch(/Open: the skill "review" \(Shared · 3 agents\), file \.\.\/\.\.\/resources\/skills\/review\/SKILL\.md\. It's shared: 3 agents use it/);
+    expect(builderNote(page, "instructions", inherited)).toMatch(/file \.\.\/writer\/instructions\/style\.md/);
+    expect(builderNote(page, "skills", undefined)).toMatch(/Nothing is open: something new goes in Skills/);
+    expect(builderNote(page, "skills", own)).toMatch(/Its items\. Instructions: style \(From Writer\)\. Skills: deploy \(Only this agent\), review/);
   });
 });
 

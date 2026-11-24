@@ -14,7 +14,7 @@
   <p class="locked">
     <Icon name="lock" class="h-3 w-3" />Comes from {from}.
     {#if !page.readOnly}
-      <button type="button" class="link" disabled={page.client.busy} onclick={() => void page.makeOwn(item)}>Make it this agent's own</button> to change it.
+      <button type="button" class="link" disabled={page.client.busy} onclick={() => void page.makeOwn(item)}>Make it {page.here}'s own</button> to change it.
     {/if}
   </p>
 {/if}

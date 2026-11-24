@@ -145,7 +145,7 @@ Agents lists every agent, Default first. An agent's page has a short profile (it
 - **+** starts a new conversation: the last one is archived and no longer tied to the agent. ⋯ **Open as a session** unties it and opens it as a regular session; the next Ask AI starts another. Deleting the agent deletes its Agent Builder sessions.
 - Bundled agents have none: they can't be changed.
 
-Switches and settings save immediately; text saves from the save bar. Saves are revision-checked against the file's hash: if the file changed elsewhere, the save is refused and the latest version is shown. A session's own layer (Details ⋯ → Edit agent for this session) still uses the earlier editor.
+Switches and settings save immediately; text saves from the save bar. Saves are revision-checked against the file's hash: if the file changed elsewhere, the save is refused and the latest version is shown. A session's own layer (Details ⋯ → Edit agent for this session) is edited with the same tabs, saving to that session only ("Only this session", "Make it this session's own"); it has no profile, settings or Agent Builder.
 
 ## HTTP
 

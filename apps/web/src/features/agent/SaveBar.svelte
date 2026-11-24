@@ -31,10 +31,10 @@
     <div class="acts">
       <button type="button" class="ui-button" data-variant="ghost" data-size="compact" disabled={busy} onclick={() => page.discard(item)}>Discard</button>
       {#if fresh}
-        <button type="button" class="ui-button" data-variant="secondary" data-size="compact" disabled={busy || !named} onclick={() => void page.saveNew(fresh, "agent")}>Only this agent</button>
+        <button type="button" class="ui-button" data-variant="secondary" data-size="compact" disabled={busy || !named} onclick={() => void page.saveNew(fresh, "agent")}>Only {page.here}</button>
         <button type="button" class="ui-button" data-variant="primary" data-size="compact" disabled={busy || !named} onclick={() => void page.saveNew(fresh, "shared")}>Save to Shared</button>
       {:else if reach}
-        <button type="button" class="ui-button" data-variant="secondary" data-size="compact" disabled={busy} onclick={() => void page.saveCopy(item)}>Save a copy for this agent</button>
+        <button type="button" class="ui-button" data-variant="secondary" data-size="compact" disabled={busy} onclick={() => void page.saveCopy(item)}>Save a copy for {page.here}</button>
         <button type="button" class="ui-button" data-variant="primary" data-size="compact" disabled={busy} onclick={() => void page.save(item)}>Save for all</button>
       {:else}
         <button type="button" class="ui-button" data-variant="primary" data-size="compact" disabled={busy} onclick={() => void page.save(item)}>Save</button>

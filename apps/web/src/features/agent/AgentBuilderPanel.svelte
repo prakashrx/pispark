@@ -12,6 +12,7 @@
   import type { Session } from "../workspace/session.svelte";
   import { useSessions } from "../workspace/session-client.svelte";
   import BuilderConversation from "./BuilderConversation.svelte";
+  import { afterReply, builderNote, itemKeys, unsavedReason } from "./agent-builder";
   import { isFresh, KINDS, type AgentPage, type Kind, type Row } from "./agent-page.svelte";
 
   let {
@@ -47,8 +48,8 @@
       await sessions.refresh();
       session?.hide();
       const next = sessions.session(id);
-      next.note = () => page.note(tabNow(), focusNow());
-      next.hold = () => page.unsaved(focusNow());
+      next.note = () => builderNote(page, tabNow(), focusNow());
+      next.hold = () => unsavedReason(page, focusNow());
       session = next;
       await next.show();
     } catch (failure) {
@@ -71,9 +72,9 @@
   $effect(() => {
     const status = session?.doc?.status;
     const working = status === "running" || status === "queued" || status === "cancelling";
-    if (working && !before) before = page.itemKeys();
+    if (working && !before) before = itemKeys(page);
     else if (!working && before) {
-      void page.afterReply(before);
+      void afterReply(page, before);
       before = undefined;
     }
   });
@@ -147,7 +148,7 @@
           {#each suggestions as s (s)}<button type="button" class="chip" onclick={() => send(s)}>{s}</button>{/each}
         </div>
       {/if}
-      <BuilderConversation {session} held={page.unsaved(focus)} />
+      <BuilderConversation {session} held={unsavedReason(page, focus)} />
     {/key}
   {:else if starting}
     <p class="status" role="status">Starting Agent Builder…</p>

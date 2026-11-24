@@ -26,7 +26,12 @@
   const sessions = useSessions();
   const client = sessions.agents;
   // svelte-ignore state_referenced_locally
-  const page = new AgentPage(client, id);
+  const page = new AgentPage(client, { agent: id });
+  // Unsaved text on the page: closing the browser tab asks first.
+  $effect(() => {
+    client.drafts = { page: page.changed };
+    return () => (client.drafts = {});
+  });
   $effect(() => {
     void client.open({ agent: id });
   });

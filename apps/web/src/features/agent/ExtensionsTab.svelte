@@ -67,7 +67,7 @@
 {#if builtIn}
   <article class="ext-page">
     <BackButton label="Extensions" onclick={() => void show(undefined)} />
-    <DetailHead {page} heading="Built in" about="What every PiSpark session can do: files, commands, sessions and schedules. Turn single tools off for this agent." />
+    <DetailHead {page} heading="Built in" about="What every PiSpark session can do: files, commands, sessions and schedules. Turn single tools off for {page.here}." />
     <Pane title="Tools it gives the agent" count={summary(core)}>{@render toolList(core)}</Pane>
   </article>
 {:else if item}

@@ -22,7 +22,7 @@
    * What a session's side panel (or, on compact, its Details screen) shows: the Details panels, or
    * a view opened from them. Each view keeps the words that say what it does.
    */
-  import AgentEditor from "../agent/AgentEditor.svelte";
+  import SessionAgent from "../agent/SessionAgent.svelte";
   import ProcessOutput from "../background/ProcessOutput.svelte";
   import FileView from "../files/FileView.svelte";
   import RoutinesPanel from "../background/RoutinesPanel.svelte";
@@ -54,7 +54,7 @@
     <RoutinesPanel agent={info.agent.id} />
   {:else if view === "agent"}
     <p class="help">Changes apply to this session only. Leaving here reloads the session with them; your messages stay.</p>
-    <AgentEditor target={{ session: session.id }} embedded />
+    <SessionAgent session={session.id} agent={info.agent.name} />
   {:else if view === "file"}
     {#if focus}<FileView sessionId={session.id} name={focus} />{:else}<p class="help">Choose a file in Details.</p>{/if}
   {:else}
