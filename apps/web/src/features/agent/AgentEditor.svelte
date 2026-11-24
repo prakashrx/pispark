@@ -47,9 +47,7 @@
   const base = $derived(definition?.base ?? []);
   // What it is, as the Agents list says it: Base, App or Project.
   const summary = $derived(client.items.find((item) => item.id === viewing));
-  const kind = $derived(summary?.builtIn ? "Base" : summary?.bundled ? "Bundled" : summary?.home ? "App" : summary?.folder ? "Project" : "");
-  // An agent the app ships can be read and built on, not changed.
-  const readOnly = $derived(!!summary?.bundled);
+  const kind = $derived(summary?.builtIn ? "Base" : summary?.home ? "App" : summary?.folder ? "Project" : "");
   const nameOf = (id: string) =>
     client.items.find((p) => p.id === id)?.name ?? id;
   const parentOptions = $derived(
@@ -193,7 +191,7 @@
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-1">
             <h1 class="name">{definition?.name ?? viewing}</h1>
-            {#if definition && !readOnly}<Button variant="ghost" size="icon" aria-label="Edit name and description" class="text-muted-foreground" onclick={editName}
+            {#if definition}<Button variant="ghost" size="icon" aria-label="Edit name and description" class="text-muted-foreground" onclick={editName}
                 ><Icon name="pencil" class="h-4 w-4" /></Button
               >{/if}
           </div>
@@ -201,7 +199,6 @@
             {#if kind}<strong>{kind}</strong>{#if definition?.description}{" · "}{/if}{/if}{definition?.description ?? ""}
           </p>
           {#if isDefault}<p class="sub">Every agent starts from Default. What you add here reaches every session unless an agent turns it off.</p>{/if}
-          {#if readOnly}<p class="sub">Comes with PiSpark and updates with it, so it can't be changed here. To make your own, create an agent that builds on it.</p>{/if}
         </div>
       {/if}
     </header>
@@ -221,7 +218,7 @@
         {#each base as id}
           <span class="chip">
             {nameOf(id)}
-            {#if !(isSession && base.length === 1) && !readOnly}<button
+            {#if !(isSession && base.length === 1)}<button
                 type="button"
                 class="chip-remove"
                 aria-label={`Stop building on ${nameOf(id)}`}
@@ -230,24 +227,23 @@
               >{/if}
           </span>
         {/each}
-        {#if parentOptions.length && !readOnly}<Selector label="Add an agent to build on" options={parentOptions} bind:value={addParent} action>
+        {#if parentOptions.length}<Selector label="Add an agent to build on" options={parentOptions} bind:value={addParent} action>
             {#snippet children()}<Icon name="plus" class="h-4 w-4" /><span>Add</span>{/snippet}
           </Selector>{/if}
       </div>
     {/if}
     <div class="cards">
-      <ItemList {client} {viewing} {readOnly} type="instructions" description="Added to the system prompt, in order." />
-      <ItemList {client} {viewing} {readOnly} type="skills" description="Knowledge the agent loads when a task needs it." />
-      <ItemList {client} {viewing} {readOnly} type="prompts" description="Saved prompts you run by typing /name." />
+      <ItemList {client} {viewing} type="instructions" description="Added to the system prompt, in order." />
+      <ItemList {client} {viewing} type="skills" description="Knowledge the agent loads when a task needs it." />
+      <ItemList {client} {viewing} type="prompts" description="Saved prompts you run by typing /name." />
       <ItemList
         {client}
         {viewing}
-        {readOnly}
         type="extensions"
         description="Pi extensions loaded into the session."
         help="Put extension files in the agent’s extensions folder on the server; they appear here."
       />
-      {#if view.items.some((item) => item.type === "mcp")}<ItemList {client} {viewing} {readOnly} type="mcp" description="MCP servers from agent.json." />{/if}
+      {#if view.items.some((item) => item.type === "mcp")}<ItemList {client} {viewing} type="mcp" description="MCP servers from agent.json." />{/if}
       <Card title="Tools" count={`${view.tools.filter((tool) => tool.on).length} of ${view.tools.length} on`}>
         {#each toolGroups(view.tools) as group (group.title)}
           <div class="tools">
@@ -262,7 +258,7 @@
                     aria-checked={tool.on}
                     aria-label={`Allow ${tool.label ?? tool.name}`}
                     title={`${tool.description ?? ""}${tool.label ? ` (${tool.name})` : ""}${tool.setBy ? ` · ${tool.setBy.id === viewing ? "set here" : `from ${tool.setBy.name}`}` : ""}`}
-                    disabled={client.busy || readOnly}
+                    disabled={client.busy}
                     onclick={() => void client.toggle("tool", tool.name, !tool.on)}
                     >{#if tool.on}<Icon name="check" class="h-3.5 w-3.5" />{/if}{tool.label ?? tool.name}{#if tool.label}<span class="sr-only">
                         {tool.name}</span
@@ -278,13 +274,13 @@
       <!-- Values read as values (design set 1/2): plain and to the right, each opening its choices. -->
       <div class="defaults"><Card title="Defaults">
         <CardRow label="Model">
-          <Selector label="Preferred model" searchable options={models} bind:value={modelValue} disabled={readOnly} />
+          <Selector label="Preferred model" searchable options={models} bind:value={modelValue} />
         </CardRow>
         <CardRow label="Thinking">
-          <Selector label="Thinking" options={thinkingLevels} bind:value={thinkingValue} disabled={readOnly} />
+          <Selector label="Thinking" options={thinkingLevels} bind:value={thinkingValue} />
         </CardRow>
         {#if view.settings.model && !definition?.settings?.model}<p class="note">Inherited model: {view.settings.model}</p>{/if}
-        {#if !isDefault && !isSession && !readOnly}
+        {#if !isDefault && !isSession}
           <CardRow label="Working folder">
             <FolderChoice
               none={view.folder && !definition?.folder ? "Inherited folder" : "Chosen per session"}
@@ -312,10 +308,10 @@
         <Disclosure title="Advanced">
           <div class="space-y-3 mt-2">
             <p class="text-sm text-muted-foreground break-all">
-              <span class="mono">{isSession ? "Stored with this session" : readOnly ? `Comes with PiSpark: plugins/agents/${viewing}/agent.json` : `agents/${viewing}/agent.json`}</span> · Layers: {view.layers.map((l) => l.name).join(" → ")}
+              <span class="mono">{isSession ? "Stored with this session" : `agents/${viewing}/agent.json`}</span> · Layers: {view.layers.map((l) => l.name).join(" → ")}
             </p>
             <pre class="json">{JSON.stringify(view.definition, null, 2)}</pre>
-            {#if !embedded && !isDefault && !isSession && !readOnly}<Button
+            {#if !embedded && !isDefault && !isSession}<Button
                 variant="destructive"
                 size="compact"
                 onclick={() => (askingDelete = true)}>Delete agent</Button

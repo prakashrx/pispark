@@ -80,6 +80,41 @@ describe("agent page rules", () => {
   });
 });
 
+describe("agent page and Agent Builder", () => {
+  const own = item({ type: "skills", name: "deploy", reference: "local:deploy", path: "skills/deploy/SKILL.md" });
+  const shared = item({ type: "skills", name: "review", reference: "shared:review", path: "skills/review/SKILL.md", usedBy: 3 });
+  const inherited = item({ type: "instructions", name: "style", reference: "local:style", path: "instructions/style.md", origin: { id: "writer", name: "Writer" } });
+
+  it("one ⋯ menu for every tab: the tab's own entries, then own, shared or remove", () => {
+    const page = pageWith([own, shared, inherited]);
+    const labels = (row: ResolvedItem) => page.entries(row, [{ id: "x", label: "Extra", onselect: () => {} }]).map((e) => e.label);
+    expect(labels(own)).toEqual(["Extra", "Move to Shared library", "Delete skill"]);
+    expect(labels(shared)).toEqual(["Extra", "Make it this agent's own", "Remove from this agent"]);
+    expect(labels(inherited)).toEqual(["Extra", "Make it this agent's own"]);
+    expect(pageWith([own], { bundled: true }).entries(own)).toEqual([]);
+  });
+
+  it("Agent Builder works on saved files: unsaved text holds sending", () => {
+    const page = pageWith([own]);
+    page.texts[keyOf(own)] = { saved: "a", draft: "a", revision: "r", loading: false, error: "" };
+    expect(page.unsaved(own)).toBeUndefined();
+    page.setDraft(own, "b");
+    expect(page.unsaved(own)).toMatch(/Save or discard your changes to deploy/);
+    const fresh = page.create("skills");
+    expect(page.unsaved(fresh)).toBeUndefined();
+    page.setDraft(page.fresh.skills!, page.fresh.skills!.draft + "Steps.");
+    expect(page.unsaved(page.fresh.skills!)).toMatch(/Save or discard the new one/);
+  });
+
+  it("the note says what's open and where its file is, seen from the agent's folder", () => {
+    const page = pageWith([own, shared, inherited]);
+    expect(page.note("skills", shared)).toMatch(/Open: the skill "review" \(Shared · 3 agents\), file \.\.\/\.\.\/resources\/skills\/review\/SKILL\.md\. It's shared: 3 agents use it/);
+    expect(page.note("instructions", inherited)).toMatch(/file \.\.\/writer\/instructions\/style\.md/);
+    expect(page.note("skills", undefined)).toMatch(/Nothing is open: something new goes in Skills/);
+    expect(page.note("skills", own)).toMatch(/Its items\. Instructions: style \(From Writer\)\. Skills: deploy \(Only this agent\), review/);
+  });
+});
+
 describe("front matter fields", () => {
   const skill = "---\r\nname: review\r\ndescription: >\r\n  Review code.\r\n  Use for PRs.\r\nlicense: MIT\r\n---\r\n# Review\r\n";
 

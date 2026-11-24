@@ -1,13 +1,13 @@
 <script lang="ts">
   /**
-   * Markdown with a Preview / Edit switch. Preview draws it as PiSpark draws any Markdown, and marks
-   * the parts that aren't in `compare`. Edit is the whole text as written, with its Markdown
+   * Markdown with a Preview / Edit switch. Preview draws it as PiSpark draws any Markdown. Edit is
+   * the whole text as written, with its Markdown
    * highlighted: what you type is the file, line endings included. Read-only, it is the preview
    * alone. Nothing here knows what the text is for.
    */
   import { tick } from "svelte";
   import Segmented from "../ui/Segmented.svelte";
-  import { FRONT_MATTER, changedBlocks, lineEndings, sourceBlocks } from "./blocks";
+  import { FRONT_MATTER, lineEndings, sourceBlocks } from "./blocks";
   import { enhance, highlightCode } from "./enhance";
   import { escapeHtml } from "./parse";
   import { patch } from "./patch";
@@ -19,7 +19,6 @@
     label,
     editable = true,
     mode = $bindable("preview"),
-    compare,
     placeholder = "",
     tone = "plain",
     frontmatter = "shown",
@@ -31,8 +30,6 @@
     label: string;
     editable?: boolean;
     mode?: "preview" | "edit";
-    /** An earlier version: in the preview, parts not in it are marked as changed. */
-    compare?: string;
     /** Said when there is no text yet. */
     placeholder?: string;
     /** "quiet" sits on a muted ground, for text that is shown rather than worked on. */
@@ -49,7 +46,6 @@
   const editing = $derived(editable && mode === "edit");
   const blocks = $derived(sourceBlocks(text.lf, flavor));
   const shown = $derived(frontmatter === "hidden" ? blocks.filter((block) => block.kind !== "frontmatter") : blocks);
-  const changed = $derived(compare === undefined ? new Set<number>() : changedBlocks(blocks, lineEndings(compare).lf, flavor));
 
   // The source, highlighted once the highlighter has loaded; plain until then.
   let highlighted = $state("");
@@ -115,7 +111,7 @@
   {:else if shown.length}
     <div class="preview prose max-w-none" role="group" aria-label={label}>
       {#each shown as block (block.start)}
-        <div class="block" data-changed={changed.has(block.start) || undefined}>
+        <div class="block">
           {#if block.kind === "frontmatter" || !block.html.trim()}
             <pre class="raw">{block.source}</pre>
           {:else}
@@ -124,7 +120,6 @@
         </div>
       {/each}
     </div>
-    {#if changed.size}<p class="sr-only">{changed.size} {changed.size === 1 ? "part is" : "parts are"} marked as changed.</p>{/if}
   {:else}
     <div class="empty">
       <div class="skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -168,10 +163,6 @@
   }
   .block :global(> div > :last-child) {
     margin-bottom: 0;
-  }
-  .block[data-changed] {
-    background: color-mix(in srgb, var(--accent-fill) 9%, transparent);
-    box-shadow: inset 3px 0 0 var(--accent-fill);
   }
   .block .raw {
     margin: 0;

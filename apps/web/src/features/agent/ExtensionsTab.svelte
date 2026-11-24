@@ -11,7 +11,7 @@
   import Toggle from "../../lib/ui/Toggle.svelte";
   import type { ResolvedItem, ResolvedTool } from "../../../../server/src/contract/agent-protocol";
   import TabIntro from "./TabIntro.svelte";
-  import DetailHead, { type Entry } from "./DetailHead.svelte";
+  import DetailHead from "./DetailHead.svelte";
   import Pane from "./Pane.svelte";
   import BackButton from "./BackButton.svelte";
   import { isFresh, keyOf, type AgentPage } from "./agent-page.svelte";
@@ -42,13 +42,6 @@
     const on = list.filter((tool) => tool.on).length;
     return on < list.length ? `${on} of ${plural(list.length, "tool")} on` : plural(list.length, "tool");
   };
-  function entries(ext: ResolvedItem): Entry[] {
-    const list: Entry[] = [];
-    if (page.owns(ext) && !page.readOnly) list.push({ id: "promote", label: "Move to Shared library", onselect: () => void page.promote(ext) });
-    const how = page.removable(ext);
-    if (how) list.push({ id: "remove", label: how === "delete" ? "Delete extension" : "Remove from this agent", destructive: true, onselect: () => void page.remove(ext).then(() => show(undefined)) });
-    return list;
-  }
 </script>
 
 {#snippet toolList(list: ResolvedTool[])}
@@ -80,7 +73,7 @@
 {:else if item}
   {@const mine = toolsOf(item.name)}
   <article class="ext-page">
-    <DetailHead {page} {item} back={{ label: "Extensions", onclick: () => void show(undefined) }} about={item.unavailable ? "Unavailable: its files are missing." : item.description} entries={entries(item)} />
+    <DetailHead {page} {item} back={{ label: "Extensions", onclick: () => void show(undefined) }} about={item.unavailable ? "Unavailable: its files are missing." : item.description} entries={page.entries(item)} />
     <p class="source"><Icon name={item.reference?.startsWith("shared:") || item.reference?.startsWith("bundled:") ? "code" : "folder"} class="h-4 w-4" />{from(item)}</p>
     {#if mine.length}
       <Pane title="Tools it gives the agent" count={summary(mine)}>{@render toolList(mine)}</Pane>

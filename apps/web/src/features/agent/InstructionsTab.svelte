@@ -5,11 +5,10 @@
    * agent reads it, with each part's share.
    */
   import { MarkdownEditor } from "../../lib/markdown";
+  import ItemText from "./ItemText.svelte";
   import TabIntro from "./TabIntro.svelte";
   import Split from "./Split.svelte";
-  import DetailHead, { type Entry } from "./DetailHead.svelte";
-  import LockedNote from "./LockedNote.svelte";
-  import AiChange from "./AiChange.svelte";
+  import DetailHead from "./DetailHead.svelte";
   import SaveBar from "./SaveBar.svelte";
   import { isFresh, keyOf, words, type AgentPage, type Row } from "./agent-page.svelte";
 
@@ -29,17 +28,13 @@
   const share = (n: number) => `${Math.round((n / Math.max(total, 1)) * 100)}%`;
   const own = (item: Row) => page.owns(item);
 
-  function entries(item: Row): Entry[] {
-    if (isFresh(item)) return [];
-    const list: Entry[] = [];
-    if (page.movable(item, -1)) list.push({ id: "up", label: "Move up", onselect: () => void page.move(item, -1) });
-    if (page.movable(item, 1)) list.push({ id: "down", label: "Move down", onselect: () => void page.move(item, 1) });
-    if (page.owns(item) && !page.readOnly) list.push({ id: "promote", label: "Move to Shared library", onselect: () => void page.promote(item) });
-    if (!page.owns(item) && !page.readOnly) list.push({ id: "own", label: "Make it this agent's own", onselect: () => void page.makeOwn(item) });
-    const how = page.removable(item);
-    if (how) list.push({ id: "remove", label: how === "delete" ? "Delete instruction" : "Remove from this agent", destructive: true, onselect: () => void page.remove(item) });
-    return list;
-  }
+  const entries = (item: Row) =>
+    isFresh(item)
+      ? []
+      : page.entries(item, [
+          ...(page.movable(item, -1) ? [{ id: "up", label: "Move up", onselect: () => void page.move(item, -1) }] : []),
+          ...(page.movable(item, 1) ? [{ id: "down", label: "Move down", onselect: () => void page.move(item, 1) }] : []),
+        ]);
 </script>
 
 <TabIntro {page} kind="instructions" oncreate={() => { page.create("instructions"); onai?.(); }}>What {name} reads at the start of every session, top to bottom. Later parts win when they disagree.</TabIntro>
@@ -84,25 +79,8 @@
     {:else if open}
       {@const item = open}
       {@const n = used.indexOf(item)}
-      {@const text = page.text(item)}
       <DetailHead {page} {item} about={n >= 0 ? `Part ${n + 1} of ${used.length} · ${size(item)} words, read every session` : "Turned off: the agent doesn't read it."} entries={entries(item)} />
-      <AiChange {page} {item} />
-      {#if text?.loading}<p class="note" role="status">Loading…</p>
-      {:else if text?.error}<p class="note" role="alert">{text.error}</p>
-      {:else}
-        {#key keyOf(item)}
-          <MarkdownEditor
-            value={page.draft(item)}
-            onchange={(next) => page.setDraft(item, next)}
-            compare={page.before[keyOf(item)]}
-            label={item.name || "New instruction"}
-            editable={page.editable(item)}
-            mode={isFresh(item) ? "edit" : "preview"}
-            placeholder="Write how the agent should behave in every session: tone, rules, what to check."
-          />
-        {/key}
-      {/if}
-      <LockedNote {page} {item} />
+      <ItemText {page} {item} label={item.name || "New instruction"} placeholder="Write how the agent should behave in every session: tone, rules, what to check." />
       <SaveBar {page} {item} />
     {/if}
   {/snippet}
@@ -174,9 +152,5 @@
   .share {
     font-size: var(--text-xs);
     color: var(--subtle-foreground);
-  }
-  .note {
-    font-size: var(--text-sm);
-    color: var(--muted-foreground);
   }
 </style>

@@ -8,10 +8,9 @@
   import { MarkdownEditor } from "../../lib/markdown";
   import TabIntro from "./TabIntro.svelte";
   import Split from "./Split.svelte";
-  import DetailHead, { type Entry } from "./DetailHead.svelte";
+  import DetailHead from "./DetailHead.svelte";
+  import ItemText from "./ItemText.svelte";
   import Pane from "./Pane.svelte";
-  import LockedNote from "./LockedNote.svelte";
-  import AiChange from "./AiChange.svelte";
   import SaveBar from "./SaveBar.svelte";
   import DescriptionPane from "./DescriptionPane.svelte";
   import { isFresh, keyOf, type AgentPage, type Row } from "./agent-page.svelte";
@@ -36,15 +35,6 @@
     }
   }
 
-  function entries(item: Row): Entry[] {
-    if (isFresh(item)) return [];
-    const list: Entry[] = [];
-    if (page.owns(item) && !page.readOnly) list.push({ id: "promote", label: "Move to Shared library", onselect: () => void page.promote(item) });
-    if (!page.owns(item) && !page.readOnly) list.push({ id: "own", label: "Make it this agent's own", onselect: () => void page.makeOwn(item) });
-    const how = page.removable(item);
-    if (how) list.push({ id: "remove", label: how === "delete" ? "Delete skill" : "Remove from this agent", destructive: true, onselect: () => void page.remove(item) });
-    return list;
-  }
   const files = (item: Row) => (isFresh(item) ? [] : (item.files ?? []));
   const fileCount = (item: Row) => (files(item).length ? `SKILL.md and ${files(item).length} more file${files(item).length > 1 ? "s" : ""}` : "SKILL.md");
 </script>
@@ -60,10 +50,7 @@
   {#snippet detail()}
     {#if open}
       {@const item = open}
-      {@const can = page.editable(item)}
-      {@const text = page.text(item)}
-      <DetailHead {page} {item} about={fileCount(item)} entries={entries(item)} />
-      <AiChange {page} {item} />
+      <DetailHead {page} {item} about={fileCount(item)} entries={page.entries(item)} />
       <div class="panes" data-stack={stacked || narrow || undefined}>
         <Pane title={file?.key === keyOf(item) ? file.path : "SKILL.md"} area="doc">
           {#snippet action()}
@@ -71,22 +58,8 @@
           {/snippet}
           {#if file?.key === keyOf(item)}
             <MarkdownEditor value={file.text} label={file.path} editable={false} />
-          {:else if text?.loading}<p class="note" role="status">Loading…</p>
-          {:else if text?.error}<p class="note" role="alert">{text.error}</p>
           {:else}
-            {#key keyOf(item)}
-              <MarkdownEditor
-                value={page.draft(item)}
-                onchange={(next) => page.setDraft(item, next)}
-                compare={page.before[keyOf(item)]}
-                label="SKILL.md"
-                editable={can}
-                mode={isFresh(item) ? "edit" : "preview"}
-                frontmatter="hidden"
-                placeholder="The steps, rules and examples the agent follows when it uses the skill."
-              />
-            {/key}
-            <LockedNote {page} {item} />
+            <ItemText {page} {item} label="SKILL.md" frontmatter="hidden" placeholder="The steps, rules and examples the agent follows when it uses the skill." />
           {/if}
         </Pane>
 
@@ -123,10 +96,6 @@
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "use" "doc" "files";
     grid-template-rows: none;
-  }
-  .note {
-    font-size: var(--text-xs);
-    color: var(--muted-foreground);
   }
   .files {
     display: flex;

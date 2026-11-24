@@ -35,14 +35,6 @@ export function sourceBlocks(text: string, flavor: Flavor = "prose"): SourceBloc
   return blocks;
 }
 
-/** The starts of the blocks of `text` whose source isn't a block of `compare`. */
-export function changedBlocks(blocks: SourceBlock[], compare: string, flavor: Flavor = "prose"): Set<number> {
-  const before = new Set(sourceBlocks(compare, flavor).map((block) => normalize(block.source)));
-  return new Set(blocks.filter((block) => !before.has(normalize(block.source))).map((block) => block.start));
-}
-
-const normalize = (source: string) => source.replace(/\r\n/g, "\n").trim();
-
 /**
  * The text with plain `\n` line endings, as the editor works with it, and a way back: only the
  * span that changed is written into the original, with its line endings, so every other

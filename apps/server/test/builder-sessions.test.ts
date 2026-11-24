@@ -41,6 +41,12 @@ test("an agent has one Agent Builder session, in its folder; a fresh one puts th
     assert.equal(f.runtime.list().find((session) => session.id === second)!.edits, undefined);
     assert.notEqual(await f.runtime.builder(shop), second);
 
+    // Two at once still make one; and an agent's folder is no place to start a new session in.
+    const other = f.runtime.agents.create({ name: "Other" }).id;
+    const [a, b] = await Promise.all([f.runtime.builder(other), f.runtime.builder(other)]);
+    assert.equal(a, b);
+    assert.ok(!f.runtime.recentFolders().some((folder) => folder.includes(`${shop}`) || folder.includes(other)));
+
     // Agents the app ships can't be edited; an unknown one has none.
     await assert.rejects(f.runtime.builder("agent-builder"), { code: "agent" });
     await assert.rejects(f.runtime.builder("missing"), { code: "not-found" });

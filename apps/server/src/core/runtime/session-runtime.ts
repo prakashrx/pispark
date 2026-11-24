@@ -285,19 +285,25 @@ export class SessionRuntime {
   get unreadableSessions(): number {
     return this.storage.unreadable;
   }
-  /** Recent distinct working folders, newest first, for the New session folder picker. An app's own folder is its own. */
+  /**
+   * Recent distinct working folders, newest first, for the New session folder picker. An app's own
+   * folder is its own, and an agent's folder (where Agent Builder works) is no place to start in.
+   */
   recentFolders(limit = 8): string[] {
     const folders: string[] = [];
-    let apps = this.appsDir;
-    try {
-      apps = realpathSync.native(apps);
-    } catch {
-      /* No app has a folder yet. */
-    }
-    const inApps = (folder: string) => {
-      const path = relative(apps, folder);
-      return !path.startsWith("..") && !isAbsolute(path);
+    const canonical = (dir: string) => {
+      try {
+        return realpathSync.native(dir);
+      } catch {
+        return dir;
+      }
     };
+    const own = [canonical(this.appsDir), canonical(this.agents.agentsDir)];
+    const inApps = (folder: string) =>
+      own.some((dir) => {
+        const path = relative(dir, folder);
+        return !path.startsWith("..") && !isAbsolute(path);
+      });
     for (const session of this.storage.list().sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
       if (session.cwd && !folders.includes(session.cwd) && !inApps(session.cwd)) {
         folders.push(session.cwd);
@@ -689,6 +695,19 @@ export class SessionRuntime {
    */
   async builder(agent: string, fresh = false): Promise<string> {
     if (!validAgentId(agent)) throw new RuntimeError("invalid-input");
+    // One at a time per agent, so two quick requests can't both make a session.
+    const pending = this.builders.get(agent);
+    if (pending) await pending.catch(() => {});
+    const next = this.findOrStartBuilder(agent, fresh);
+    this.builders.set(agent, next);
+    try {
+      return await next;
+    } finally {
+      if (this.builders.get(agent) === next) this.builders.delete(agent);
+    }
+  }
+  private readonly builders = new Map<string, Promise<string>>();
+  private async findOrStartBuilder(agent: string, fresh: boolean): Promise<string> {
     if (!this.agents.exists({ agent })) throw new RuntimeError("not-found");
     if (this.agents.bundled(agent) || !this.agents.bundled(AGENT_BUILDER)) throw new RuntimeError("agent");
     const current = this.storage.list().find((metadata) => metadata.edits === agent && !metadata.archived);

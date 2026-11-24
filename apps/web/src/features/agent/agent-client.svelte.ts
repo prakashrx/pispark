@@ -249,11 +249,17 @@ export class AgentClient {
       });
     }, "Removed");
   }
-  /** Copy an inherited item into this layer, where it replaces the original by name. */
-  async customize(item: ResolvedItem) {
-    if (!item.path || !this.view) return false;
-    const source = await this.readFile(item.path, this.fileTarget(item));
-    return this.writeFile(item.path, source.text, null);
+  /**
+   * Copy an inherited, shared or bundled item into this layer, whole (a skill with its scripts and
+   * references), where it replaces the original by name.
+   */
+  customize(item: ResolvedItem) {
+    const from = this.fileTarget(item);
+    if (!from || !this.view || this.owns(item)) return Promise.resolve(false);
+    return this.change(
+      () => agentRequest("resource/copy", { target: this.target, type: item.type, name: item.name, from, expectedRevision: this.view?.revision ?? "" }),
+      "Copied here",
+    );
   }
   /** Where an item's file lives: the Shared library, the app's own resources, or its origin layer. */
   fileTarget(item: ResolvedItem): ItemTarget | undefined {

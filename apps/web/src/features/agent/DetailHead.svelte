@@ -11,9 +11,7 @@
   import Menu from "../../lib/ui/Menu.svelte";
   import Toggle from "../../lib/ui/Toggle.svelte";
   import BackButton from "./BackButton.svelte";
-  import { isFresh, KINDS, NAME, type AgentPage, type Kind, type Row } from "./agent-page.svelte";
-
-  export type Entry = { id: string; label: string; onselect: () => void; destructive?: boolean };
+  import { isFresh, KINDS, NAME, type AgentPage, type Entry, type Kind, type Row } from "./agent-page.svelte";
 
   let {
     page,

@@ -1,4 +1,5 @@
 import { Notifications } from "./notifications.js";
+import { MAX_CONTEXT } from "../core/runtime/storage.js";
 import { validEndpoint } from "./push.js";
 import { validEvents, type NotificationState } from "../contract/notification-protocol.js";
 import { WorkspaceLive } from "./workspace-live.js";
@@ -120,7 +121,7 @@ function validate(value: unknown): Command {
     throw new RuntimeError("invalid-input");
   if (c.model !== undefined && !validChoice(c.model))
     throw new RuntimeError("invalid-input");
-  if (c.context !== undefined && (typeof c.context !== "string" || !c.context || Buffer.byteLength(c.context) > 8 * 1024))
+  if (c.context !== undefined && (typeof c.context !== "string" || !c.context || Buffer.byteLength(c.context) > MAX_CONTEXT))
     throw new RuntimeError("invalid-input");
   if (c.agent !== undefined && !validAgentId(c.agent))
     throw new RuntimeError("invalid-input");

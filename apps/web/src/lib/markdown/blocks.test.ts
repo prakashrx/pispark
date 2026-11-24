@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedBlocks, lineEndings, sourceBlocks } from "./blocks";
+import { lineEndings, sourceBlocks } from "./blocks";
 
 const doc = [
   "---",
@@ -43,14 +43,6 @@ describe("source blocks", () => {
     }
     expect(doc.slice(end).trim()).toBe("");
     expect(blocks.find((b) => b.kind === "paragraph" && b.source.startsWith("See"))!.html).toContain('href="https://example.com"');
-  });
-
-  it("finds blocks that aren't in the earlier text", () => {
-    const before = "# Title\n\nKeep this.\n\nOld line.\n";
-    const after = "# Title\n\nKeep this.\n\nNew line.\n\nAnd more.\n";
-    const blocks = sourceBlocks(after);
-    const changed = changedBlocks(blocks, before);
-    expect(blocks.filter((b) => changed.has(b.start)).map((b) => b.source)).toEqual(["New line.", "And more."]);
   });
 
   it("gives Windows and mixed line endings back, touching only what changed", () => {

@@ -107,3 +107,27 @@ test("instructions follow the order the agent lists them in", async (t) => {
   store.save({ agent: id }, revision, { ...definition, resources: { ...definition.resources, instructions: ["local:second", "local:first"] } });
   assert.deepEqual(resolveSetup(store, { agent: id }).instructions.map((i) => i.name), ["second", "first"]);
 });
+
+test("making a shared or bundled item this agent's own copies it whole, scripts and references too", async (t) => {
+  const { root, store, put, select } = await fixture(t);
+  await put("resources/skills/guide/SKILL.md", skill("guide"));
+  await put("resources/skills/guide/references/style.md", "Style.");
+  await put("app/plugins/extensions/notify/index.ts", "export default () => {};\n");
+  await put("app/plugins/extensions/notify/helper.ts", "export const x = 1;\n");
+  const id = store.create({ name: "Mine" }).id;
+  select(id, "skills", "shared:guide");
+  const copy = (type: "skills" | "extensions", name: string, from: { library: "shared" | "bundled" }) =>
+    store.copyIn({ agent: id }, type, name, from, store.read({ agent: id }).revision);
+
+  copy("skills", "guide", { library: "shared" });
+  copy("extensions", "notify", { library: "bundled" });
+  assert.deepEqual(store.read({ agent: id }).definition.resources, { skills: ["local:guide"], extensions: ["local:notify"] });
+  assert.equal(await readFile(join(root, `agents/${id}/skills/guide/references/style.md`), "utf8"), "Style.");
+  assert.ok(existsSync(join(root, `agents/${id}/extensions/notify/helper.ts`)));
+  assert.equal(await readFile(join(root, "resources/skills/guide/references/style.md"), "utf8"), "Style.", "the original stays");
+  assert.deepEqual(resolveSetup(store, { agent: id }).skillDirs, [join(root, `agents/${id}/skills/guide`)]);
+
+  assert.throws(() => copy("skills", "guide", { library: "shared" }), { code: "exists" });
+  assert.throws(() => copy("skills", "missing", { library: "shared" }), { code: "not-found" });
+  assert.throws(() => store.copyIn({ agent: id }, "skills", "guide", { library: "shared" }, "0".repeat(64)), { code: "exists" });
+});

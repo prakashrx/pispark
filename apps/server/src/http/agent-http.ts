@@ -100,6 +100,12 @@ export class AgentHttp {
               result = this.store.select(target(i.target), itemType(i.type), i.reference as ResourceReference, i.on, revision(i.expectedRevision, true));
               break;
             }
+            case "resource/copy": {
+              const i = input(value, ["target", "type", "name", "from", "expectedRevision"]);
+              if (typeof i.name !== "string") throw new AgentError("invalid-input");
+              result = this.store.copyIn(target(i.target), itemType(i.type), i.name, itemTarget(i.from), revision(i.expectedRevision, true));
+              break;
+            }
             case "resource/promote": {
               const i = input(value, ["target", "type", "name", "expectedRevision"]);
               if (typeof i.name !== "string") throw new AgentError("invalid-input");

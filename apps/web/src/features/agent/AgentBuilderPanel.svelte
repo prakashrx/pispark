@@ -47,15 +47,8 @@
       await sessions.refresh();
       session?.hide();
       const next = sessions.session(id);
-      next.note = () => {
-        // Called as a message goes: what's open now, and its text before any change.
-        page.snapshot(focusNow());
-        return page.note(tabTitle(), focusNow());
-      };
-      next.hold = () => {
-        const open = focusNow();
-        return open && !isFresh(open) && page.dirty(open) ? `Save or discard your changes to ${open.name} first.` : undefined;
-      };
+      next.note = () => page.note(tabNow(), focusNow());
+      next.hold = () => page.unsaved(focusNow());
       session = next;
       await next.show();
     } catch (failure) {
@@ -66,20 +59,23 @@
   }
   // The latest of what's open, for the note (props read inside a closure stay current).
   const focusNow = () => focus;
-  const tabTitle = () => (tab in KINDS ? KINDS[tab as Kind].title : "Settings");
+  const tabNow = () => tab;
 
   onMount(() => {
     void attach();
     return () => session?.hide();
   });
 
-  // A reply ended: the page reads the agent again and marks what changed.
-  let wasWorking = false;
+  // A reply ended: the page reads the agent again and opens anything new it made.
+  let before: Set<string> | undefined;
   $effect(() => {
     const status = session?.doc?.status;
     const working = status === "running" || status === "queued" || status === "cancelling";
-    if (wasWorking && !working) void page.afterTurn();
-    wasWorking = working;
+    if (working && !before) before = page.itemKeys();
+    else if (!working && before) {
+      void page.afterReply(before);
+      before = undefined;
+    }
   });
 
   const hasHistory = $derived(!!session?.doc?.hasHistory || !!session?.items.length);
@@ -151,7 +147,7 @@
           {#each suggestions as s (s)}<button type="button" class="chip" onclick={() => send(s)}>{s}</button>{/each}
         </div>
       {/if}
-      <BuilderConversation {session} />
+      <BuilderConversation {session} held={page.unsaved(focus)} />
     {/key}
   {:else if starting}
     <p class="status" role="status">Starting Agent Builder…</p>

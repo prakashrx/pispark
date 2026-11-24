@@ -128,7 +128,7 @@ Agents lists every agent, Default first. An agent's page has a short profile (it
   - **Instructions** are listed in reading order with word counts, and what's off last. "Everything, in order" shows the whole text and each part's share. ⋯ moves the agent's own parts up or down within its own list; inherited parts keep their layer's place.
   - **Skills** show SKILL.md beside **Use when** (its `description`, edited in place) and its other files, which open read-only.
   - **Prompts** read like the slash picker (`/name ‹args›`), with **What it's for** edited in place, and the template beside a preview where you type the arguments and see what it sends.
-- **Text** uses the shared Markdown editor (`lib/markdown/MarkdownEditor.svelte`): **Preview** or **Edit**, the whole text as written with its Markdown highlighted. Changes wait for the save bar, which says where saving goes: **Save** for the agent's own file; for a shared one used by other agents, **Save for all** or **Save a copy for this agent**. Inherited and bundled text is read-only until **Make it this agent's own** copies it here.
+- **Text** uses the shared Markdown editor (`lib/markdown/MarkdownEditor.svelte`): **Preview** or **Edit**, the whole text as written with its Markdown highlighted. Changes wait for the save bar, which says where saving goes: **Save** for the agent's own file; for a shared one used by other agents, **Save for all** or **Save a copy for this agent**. Inherited and bundled text is read-only until **Make it this agent's own** copies it here, whole (a skill with its scripts and references).
 - **Add** is a search dropdown of what's available and not on the agent yet (bundled, the Shared library, the agent's own folder). **Create** starts something new, named in place and saved to the Shared library (and selected here) or for this agent only.
 - ⋯ also offers **Move to Shared library** for the agent's own items, and **Delete** (its own file) or **Remove from this agent** (a shared or bundled selection). Inherited items are switched off, not removed.
 - **Extensions** list PiSpark's own tools first (**Built in**), then each extension with where it comes from and its tools. Opening one lists the tools it gives the agent, each with a switch. Tools are found by loading the agent's extensions without starting a session (cached by the setup's fingerprint); commands and views exist only while a session runs, so they aren't listed. Installing extensions from npm or git is not offered yet.
@@ -140,8 +140,8 @@ Agents lists every agent, Default first. An agent's page has a short profile (it
 
 - **Working on** names what's open in the tab; × switches to the whole agent, where something new goes in the current tab. **Create** opens it on a new item; on Extensions, **Build with AI** opens it.
 - Each message carries a note the conversation doesn't show (`start {context}`, [session protocol](session-protocol.md)): the tab, what's open and where its file is seen from the agent's folder, and the agent's items.
-- While the open item has unsaved changes, sending waits: save or discard them first.
-- When its reply ends, the page reads the agent again. Parts it changed in the open item are highlighted, with **Keep** or **Undo** (Undo writes the earlier text back); something new it wrote opens, with **Keep** or **Delete it**.
+- It works on saved files only: while the open item has unsaved changes (or a new one has text), sending waits until they're saved or discarded.
+- When its reply ends, the page reads the agent again and anything new it made opens. What it changed shows in its conversation, each edit as a diff; to take a change back, ask it or edit the text.
 - **+** starts a new conversation: the last one is archived and no longer tied to the agent. ⋯ **Open as a session** unties it and opens it as a regular session; the next Ask AI starts another. Deleting the agent deletes its Agent Builder sessions.
 - Bundled agents have none: they can't be changed.
 
@@ -154,9 +154,10 @@ All endpoints use the shared loopback Host/Origin/Fetch Metadata guard and exact
 | Endpoint | Body → result |
 | --- | --- |
 | `GET /api/agents` | → `{agents: AgentSummary[]}`, Default first; each has `folder` when it is a project agent and `home` when it is an app agent |
-| `POST /api/agents/read` | `{target}` → `AgentView` (definition, revision, layers, resolved items and tools, settings, folder and home; `error` when unresolvable). Each item's `path` is inside where its file lives (its layer, the Shared library or `plugins/`); a skill lists its other `files`; a shared item has `usedBy`, how many agents select it |
+| `POST /api/agents/read` | `{target}` → `AgentView` (definition, revision, layers, resolved items and tools, settings, folder and home; `error` when unresolvable). Each item's `path` is inside where its file lives (its layer, the Shared library or `plugins/`); a skill lists its other `files`; a shared item has `usedBy`, how many agents select it themselves (not counting agents that inherit it) |
 | `POST /api/agents/resources` | `{target, type}` → `{resources}`, the eligible local, shared, and bundled resources; shared ones with `usedBy` |
 | `POST /api/agents/resource/select` | `{target, type, reference, on, expectedRevision}` → `{revision}`. Saves or removes the direct selection |
+| `POST /api/agents/resource/copy` | `{target, type, name, from, expectedRevision}` → `{revision}`. Copies an item whole (a skill or extension folder with all its files) from `from` (`{library: "shared" \| "bundled"}` or another layer) into this layer and selects it there, where it replaces the original by name. `exists` when this layer already has one |
 | `POST /api/agents/resource/promote` | `{target, type, name, expectedRevision}` → `{revision}`. Moves one of the agent's own items (its file or folder) into the Shared library and turns `local:<name>` into `shared:<name>`; agents built on it keep it. `exists` when the library already has that name |
 | `POST /api/agents/create` | `{name, description?, base?}` → `{id, revision}` |
 | `POST /api/agents/save` | `{target, expectedRevision, definition}` → `{revision}`; `""` creates a session's layer |

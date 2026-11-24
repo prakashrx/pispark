@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   type FSWatcher,
+  cpSync,
   watch,
   existsSync,
   mkdirSync,
@@ -43,7 +44,7 @@ import {
   validAgentId,
   validItemName,
 } from "./format.js";
-import { inventory, readText, resource, type LayerItem } from "./resources.js";
+import { inventory, readText, resource, skillFiles, type LayerItem } from "./resources.js";
 export type { LayerItem } from "./resources.js";
 
 const UUID =
@@ -466,6 +467,14 @@ export class AgentStore {
     });
   }
 
+  /** A resolved skill's other files, relative to its folder, wherever it lives. */
+  skillFiles(item: { name: string; reference?: ResourceReference; origin: { id: string } }, viewing: AgentTarget): string[] {
+    const source = parseResource(item.reference ?? `local:${item.name}`)?.source ?? "local";
+    const root = source === "local" ? this.dir(item.origin.id === "session" ? viewing : { agent: item.origin.id }) : this.fileRoot({ library: source });
+    const found = resource(root, "skills", item.name);
+    return found?.location ? skillFiles(found.location) : [];
+  }
+
   /** How many agents select each shared resource, by `type:name`. */
   usage(): Map<string, number> {
     const counts = new Map<string, number>();
@@ -483,6 +492,34 @@ export class AgentStore {
         }
     }
     return counts;
+  }
+
+  /**
+   * Copy an item from where it lives (the Shared library, the app's resources, or another layer)
+   * into this layer, whole: a skill or extension folder with all its files. The copy is selected
+   * here under the same name, so it replaces the original for this layer only.
+   */
+  copyIn(target: AgentTarget, type: ItemType, name: string, from: ItemTarget, expectedRevision: string): { revision: string } {
+    if (type === "mcp" || !validItemName(name)) return fail("invalid-input");
+    this.writable(target);
+    if (!("library" in from) && JSON.stringify(from) === JSON.stringify(target)) return fail("invalid-input");
+    const item = resource(this.fileRoot(from), type, name);
+    if (!item?.location) return fail("not-found", 404);
+    const source = type === "extensions" && item.companions ? dirname(item.location) : item.location;
+    const dir = this.dir(target);
+    const destination = join(dir, type, basename(source));
+    if (existsSync(destination) || resource(dir, type, name)) return fail("exists", 409, name);
+    const { revision } = this.exists(target) ? this.read(target) : { revision: "" };
+    if (revision !== expectedRevision) return fail("revision-conflict", 409);
+    if (!this.exists(target)) this.save(target, "", this.read(target).definition);
+    mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
+    cpSync(source, destination, { recursive: true, filter: (path) => !/[\/]node_modules([\/]|$)/.test(path) });
+    try {
+      return this.select(target, type, `local:${name}`, true, this.read(target).revision);
+    } catch (error) {
+      rmSync(destination, { recursive: true, force: true });
+      throw error;
+    }
   }
 
   /**

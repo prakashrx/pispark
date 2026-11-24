@@ -123,6 +123,12 @@ export class Session {
     const revision = this.draftRevision;
     // After a failed reply the next message goes too: the server starts the session again first.
     if (this.sending || this.doc?.compacting || !message.trim() || !["idle", "error"].includes(this.doc?.status ?? "")) return false;
+    // Whoever hosts the session may hold sending, with a reason (unsaved changes first).
+    const held = this.hold?.();
+    if (held) {
+      this.error = held;
+      return false;
+    }
     // The draft's attachments go with it, each named where it sits; a given text carries none.
     const placed = text === undefined ? this.attachments.placed(message) : [];
     if (placed.length && this.attachments.blocked) {

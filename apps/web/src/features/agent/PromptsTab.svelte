@@ -7,10 +7,9 @@
   import { MarkdownEditor } from "../../lib/markdown";
   import TabIntro from "./TabIntro.svelte";
   import Split from "./Split.svelte";
-  import DetailHead, { type Entry } from "./DetailHead.svelte";
+  import DetailHead from "./DetailHead.svelte";
+  import ItemText from "./ItemText.svelte";
   import Pane from "./Pane.svelte";
-  import LockedNote from "./LockedNote.svelte";
-  import AiChange from "./AiChange.svelte";
   import DescriptionPane from "./DescriptionPane.svelte";
   import SaveBar from "./SaveBar.svelte";
   import { argumentNames, fieldOf } from "./frontmatter";
@@ -41,15 +40,6 @@
       .replace(/\$(?:@|ARGUMENTS)/g, () => values.filter(Boolean).join(" ") || "‹arguments›")
       .replace(/\$(\d)/g, (_, n: string) => (value(Number(n)) ? `**${value(Number(n))}**` : `‹${argsOf(item).find((a) => a.n === Number(n))?.name ?? `argument ${n}`}›`));
   }
-  function entries(item: Row): Entry[] {
-    if (isFresh(item)) return [];
-    const list: Entry[] = [];
-    if (page.owns(item) && !page.readOnly) list.push({ id: "promote", label: "Move to Shared library", onselect: () => void page.promote(item) });
-    if (!page.owns(item) && !page.readOnly) list.push({ id: "own", label: "Make it this agent's own", onselect: () => void page.makeOwn(item) });
-    const how = page.removable(item);
-    if (how) list.push({ id: "remove", label: how === "delete" ? "Delete prompt" : "Remove from this agent", destructive: true, onselect: () => void page.remove(item) });
-    return list;
-  }
 </script>
 
 {#snippet slash(item: Row)}<span class="cmd">/{item.name || "new-prompt"}</span>{#each argsOf(item) as a (a.n)}<span class="arg">‹{a.name}›</span>{/each}{/snippet}
@@ -65,35 +55,17 @@
   {#snippet detail()}
     {#if open}
       {@const item = open}
-      {@const text = page.text(item)}
-      <DetailHead {page} {item} entries={entries(item)}>
+      <DetailHead {page} {item} entries={page.entries(item)}>
         {#snippet title()}{#if isFresh(item) && !item.name}<span class="placeholder">New prompt</span>{:else}{@render slash(item)}{/if}{/snippet}
       </DetailHead>
-      <AiChange {page} {item} />
       {#if isFresh(item) && !item.name}<p class="note">Name it with the pencil above; the name is what you type after <code>/</code>.</p>{/if}
       <DescriptionPane {page} {item} title="What it's for" empty="Not set yet. The slash picker shows this beside /name." />
       <div class="panes" data-stack={stacked || narrow || undefined}>
         <Pane title="Template">
-          {#if text?.loading}<p class="note" role="status">Loading…</p>
-          {:else if text?.error}<p class="note" role="alert">{text.error}</p>
-          {:else}
-            {#key keyOf(item)}
-              <MarkdownEditor
-                value={page.draft(item)}
-                onchange={(next) => page.setDraft(item, next)}
-                compare={page.before[keyOf(item)]}
-                label={`/${item.name || "new-prompt"} template`}
-                editable={page.editable(item)}
-                mode={isFresh(item) ? "edit" : "preview"}
-                frontmatter="hidden"
-                placeholder="What /name sends. Use $1, $2 for what's typed after it."
-              />
-            {/key}
-          {/if}
+          <ItemText {page} {item} label={`/${item.name || "new-prompt"} template`} frontmatter="hidden" placeholder="What /name sends. Use $1, $2 for what's typed after it." />
           {#if argsOf(item).length}
             <p class="note">{#each argsOf(item) as a, i (a.n)}{i ? " · " : ""}<code>${a.n}</code> is {a.name}{/each}</p>
           {/if}
-          <LockedNote {page} {item} />
         </Pane>
 
         <Pane title="Preview">

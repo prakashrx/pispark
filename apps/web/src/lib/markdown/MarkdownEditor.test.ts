@@ -33,10 +33,8 @@ test("an empty text says where to start, and Write it opens the editor", async (
   expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Skill, Markdown" }));
 });
 
-test("read-only is the preview alone; parts not in the earlier text are marked", () => {
-  render(MarkdownEditor, { value: "Same.\n\nNew.\n", compare: "Same.\n\nOld.\n", label: "Doc", editable: false });
+test("read-only is the preview alone", () => {
+  render(MarkdownEditor, { value: "Same.\n\nNew.\n", label: "Doc", editable: false });
   expect(screen.queryByRole("radio")).toBeNull();
-  const marked = [...document.querySelectorAll("[data-changed]")].map((block) => block.textContent?.trim());
-  expect(marked).toEqual(["New."]);
-  expect(screen.getByText("1 part is marked as changed.")).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Doc" }).textContent).toContain("New.");
 });
