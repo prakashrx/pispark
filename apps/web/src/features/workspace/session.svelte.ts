@@ -17,7 +17,7 @@ import { contributionsFor } from "./extension-views";
 import { LiveSession } from "./live-session.svelte";
 import { liveEvents } from "./live-stream";
 import { CommandFailed, CommandUncertainty, type Transport } from "./transport";
-import { Attachments } from "./attachments.svelte";
+import { Attachments, BLOCKED } from "./attachments.svelte";
 
 /** What a session needs from the app that holds it. */
 export interface SessionHost {
@@ -119,7 +119,7 @@ export class Session {
     // The draft's attachments go with it, each named where it sits; a given text carries none.
     const placed = text === undefined ? this.attachments.placed(message) : [];
     if (placed.length && this.attachments.blocked) {
-      this.error = this.attachments.blocked;
+      this.error = BLOCKED[this.attachments.blocked];
       return false;
     }
     const outgoing = placed.length ? this.attachments.outgoing(message) : { text: message, attachments: [] };

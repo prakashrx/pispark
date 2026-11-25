@@ -6,7 +6,7 @@ import { sessionName, sessionState, type CommandUncertaintyKind } from "./sessio
 import { attention } from "../../shell/attention.svelte";
 import { forgetViewChoice, Session } from "./session.svelte";
 import { CommandFailed, CommandUncertainty, Transport } from "./transport";
-import { Attachments } from "./attachments.svelte";
+import { Attachments, BLOCKED } from "./attachments.svelte";
 import { ProviderClient } from "../settings/provider-client.svelte";
 import { AgentClient } from "../agent/agent-client.svelte";
 import { ScheduleClient } from "../schedules/schedule-client.svelte";
@@ -328,8 +328,8 @@ export class SessionClient {
   ): Promise<boolean> {
     if (this.busy || !text.trim()) return false;
     const placed = this.askAttachments.placed(text);
-    if (placed.length && this.askAttachments.blocked && !this.askAttachments.blocked.startsWith("Waiting")) {
-      this.error = this.askAttachments.blocked;
+    if (placed.length && this.askAttachments.blocked === "failed") {
+      this.error = BLOCKED.failed;
       return false;
     }
     this.asking = true;

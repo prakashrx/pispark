@@ -12,11 +12,20 @@ export interface Attachment {
   name?: string;
   state: "waiting" | "uploading" | "done" | "failed";
   progress: number;
-  /** Why it failed, in words. */
-  problem?: string;
+  /** Why it failed: too big to send, or the upload did not work. */
+  problem?: "too-big" | "failed";
   /** An image's picture, for the chip. */
   thumbnail?: string;
 }
+
+/** Why an attachment failed, in words. */
+const PROBLEM: Record<NonNullable<Attachment["problem"]>, string> = { "too-big": "over 100 MB", failed: "upload failed" };
+/** Why a message cannot go yet: an attachment failed, or is still uploading. */
+export type AttachmentsBlock = "failed" | "uploading";
+export const BLOCKED: Record<AttachmentsBlock, string> = {
+  failed: "Remove the attachment that could not be added.",
+  uploading: "Waiting for attachments to upload…",
+};
 
 const TAG = /<file name="([^"]+)"><\/file>/g;
 const tag = (name: string) => `<file name="${name}"></file>`;
@@ -44,7 +53,7 @@ export class Attachments {
         file,
         state: tooBig ? "failed" : "waiting",
         progress: 0,
-        ...(tooBig ? { problem: "over 100 MB" } : {}),
+        ...(tooBig ? { problem: "too-big" as const } : {}),
         ...(file.type.startsWith("image/") ? { thumbnail: URL.createObjectURL(file) } : {}),
       };
       if (sessionId && !tooBig) void this.upload(id, sessionId);
@@ -64,7 +73,7 @@ export class Attachments {
     await Promise.all(
       ids.map((id) => {
         const item = this.items[id];
-        return item && item.state !== "done" && item.state !== "uploading" && !item.problem?.startsWith("over")
+        return item && item.state !== "done" && item.state !== "uploading" && item.problem !== "too-big"
           ? this.upload(id, sessionId)
           : undefined;
       }),
@@ -87,7 +96,7 @@ export class Attachments {
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable && this.items[id]) this.items[id].progress = event.loaded / event.total;
       };
-      const finish = (problem?: string, name?: string) => {
+      const finish = (problem?: Attachment["problem"], name?: string) => {
         this.uploads.delete(id);
         const current = this.items[id];
         if (current) {
@@ -103,12 +112,12 @@ export class Attachments {
           try {
             return finish(undefined, (JSON.parse(xhr.responseText) as { name: string }).name);
           } catch {
-            return finish("upload failed");
+            return finish("failed");
           }
         }
-        finish(xhr.status === 413 ? "over 100 MB" : "upload failed");
+        finish(xhr.status === 413 ? "too-big" : "failed");
       };
-      xhr.onerror = () => finish("upload failed");
+      xhr.onerror = () => finish("failed");
       xhr.onabort = () => done();
       xhr.send(item.file);
     });
@@ -121,20 +130,20 @@ export class Attachments {
       const words = `${item.file.name}, ${size(item.file.size)}`;
       out[item.id] = {
         label: item.file.name,
-        detail: item.problem ?? size(item.file.size),
+        detail: item.problem ? PROBLEM[item.problem] : size(item.file.size),
         ...(item.thumbnail && !item.problem ? { thumbnail: item.thumbnail } : {}),
         ...(item.state === "uploading" ? { state: "working" as const, progress: item.progress } : {}),
         ...(item.state === "failed" ? { state: "failed" as const } : {}),
-        description: item.state === "failed" ? `${words}: ${item.problem}` : item.state === "uploading" ? `${words}, uploading` : words,
+        description: item.state === "failed" ? `${words}: ${PROBLEM[item.problem ?? "failed"]}` : item.state === "uploading" ? `${words}, uploading` : words,
       };
     }
     return out;
   }
-  /** Some chip is still uploading, or failed: the message cannot go yet. */
-  get blocked(): string | undefined {
+  /** Some chip failed, or is still uploading: the message cannot go yet (`BLOCKED` says it in words). */
+  get blocked(): AttachmentsBlock | undefined {
     const items = Object.values(this.items);
-    if (items.some((item) => item.state === "failed")) return "Remove the attachment that could not be added.";
-    if (items.some((item) => item.state === "uploading")) return "Waiting for attachments to upload…";
+    if (items.some((item) => item.state === "failed")) return "failed";
+    if (items.some((item) => item.state === "uploading")) return "uploading";
     return undefined;
   }
 
