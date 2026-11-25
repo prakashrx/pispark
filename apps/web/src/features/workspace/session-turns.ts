@@ -76,7 +76,7 @@ export type Segment =
   /** A schedule the agent added, as it was saved. */
   | { kind: "schedule"; key: string; schedule: Schedule }
   /** A line saying something this session started ended, without a turn (status mode). */
-  | { kind: "status"; key: string; title: string; how: string; session?: string; process?: string };
+  | { kind: "status"; key: string; title: string; how: string; ok?: boolean; session?: string; process?: string };
 
 /** Your message and everything the agent did and said in answer to it. */
 export interface Turn {
@@ -294,12 +294,13 @@ export function buildTurns(
           latest: item === latestReply,
         });
     } else if (item.role === "custom" && item.customType === STATUS_ENTRY) {
-      const d = (item.details ?? {}) as { title?: unknown; how?: unknown; session?: unknown; process?: unknown };
+      const d = (item.details ?? {}) as { title?: unknown; how?: unknown; ok?: unknown; session?: unknown; process?: unknown };
       emit(turn, {
         kind: "status",
         key: item.key,
         title: typeof d.title === "string" ? d.title : "It",
         how: typeof d.how === "string" ? d.how : "ended",
+        ...(typeof d.ok === "boolean" ? { ok: d.ok } : {}),
         ...(typeof d.session === "string" ? { session: d.session } : {}),
         ...(typeof d.process === "string" ? { process: d.process } : {}),
       });

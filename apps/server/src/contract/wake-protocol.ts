@@ -72,8 +72,10 @@ export interface StatusDetails {
   session?: string;
   process?: string;
   title: string;
-  /** "finished", "stopped" or "failed", or how an extension worded it. */
+  /** How it ended, in words: "finished", "stopped", "exited 1". */
   how: string;
+  /** Whether it went as it should: a session finished, a process exited 0. Absent in older lines. */
+  ok?: boolean;
 }
 
 /** Records kept per source, newest first. */

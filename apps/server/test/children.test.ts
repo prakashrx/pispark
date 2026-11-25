@@ -170,7 +170,7 @@ test("status mode: a line in the parent without a turn; the child can raise some
     const [quiet] = f.children(parent.id);
     await eventually(() => f.runtime.items(parent.id, {}).items.some((item) => item.customType === STATUS_ENTRY));
     const line = f.runtime.items(parent.id, {}).items.find((item) => item.customType === STATUS_ENTRY)!;
-    assert.deepEqual(line.details, { session: quiet!.id, title: "Quiet", how: "finished" });
+    assert.deepEqual(line.details, { session: quiet!.id, title: "Quiet", how: "finished", ok: true });
     // No turn: nothing woke the parent's agent.
     assert.ok(!f.runtime.items(parent.id, {}).items.some((item) => item.customType === WOKEN_ENTRY));
     const childRequest = f.provider.requests.find((request) => JSON.stringify(request.context.messages).includes("all green") && toolsOf(request).includes(REPORT_TOOL));

@@ -265,7 +265,7 @@ test("a status line is its own segment; a report card drops the line the agent n
       item("assistant", [text("ok")]),
       item("custom", [text('The session "Quiet" you started finished.')], {
         customType: "pispark:status",
-        details: { session: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b", title: "Quiet", how: "finished" },
+        details: { session: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b", title: "Quiet", how: "finished", ok: true },
       }),
     ],
     { running: false },
@@ -275,6 +275,7 @@ test("a status line is its own segment; a report card drops the line the agent n
     key: turns[0]!.segments.at(-1)!.key,
     title: "Quiet",
     how: "finished",
+    ok: true,
     session: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b",
   });
   expect(reportBody('The session "Math" you started finished:\n\n391')).toBe("391");

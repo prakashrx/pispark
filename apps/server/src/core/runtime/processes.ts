@@ -22,6 +22,8 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{1
 export interface ProcessEnd {
   process: ProcessInfo;
   how: string;
+  /** It ended as it should (exited 0), or not; absent when a watch matched, which is neither. */
+  ok?: boolean;
   tail: string;
   mode: ReportMode;
   /** A watch matched (the process still runs), rather than the process ending. */
@@ -108,7 +110,7 @@ export class Processes {
       for (const p of list.filter((p) => p.untold)) {
         delete p.untold;
         this.save(sessionId);
-        this.host.tell(sessionId, { process: view(p), how: "ended when PiSpark stopped", tail: this.tail(p), mode: p.report });
+        this.host.tell(sessionId, { process: view(p), how: "ended when PiSpark stopped", ok: false, tail: this.tail(p), mode: p.report });
       }
   }
   /** PiSpark stops: every process is stopped (waited for, up to a few seconds); each session is told after the next start. */
@@ -274,7 +276,7 @@ export class Processes {
     if (stoppedBy === "agent" || stoppedBy === "pispark" || this.closed) return;
     const how =
       stoppedBy === "person" ? "was stopped" : stoppedBy === "timeout" ? "was stopped at its time limit" : code === 0 ? "exited 0" : code === null ? "could not start" : `exited ${code}`;
-    this.host.tell(record.sessionId, { process: view(record), how, tail: this.tail(record), mode: record.report });
+    this.host.tell(record.sessionId, { process: view(record), how, ok: stoppedBy === undefined && code === 0, tail: this.tail(record), mode: record.report });
   }
 
   // ---- Reading ----------------------------------------------------------------------------------

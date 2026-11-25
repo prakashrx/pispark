@@ -123,7 +123,7 @@ export class SessionProcesses {
     const title = end.process.title ?? end.process.command;
     const short = title.length > 80 ? `${title.slice(0, 79)}…` : title;
     if (end.mode === "status") {
-      void this.statusIn(sessionId, `The process "${short}" ${end.how}.`, { process: end.process.id, title: short, how: end.how }).catch(() => {});
+      void this.statusIn(sessionId, `The process "${short}" ${end.how}.`, { process: end.process.id, title: short, how: end.how, ...(end.ok !== undefined ? { ok: end.ok } : {}) }).catch(() => {});
       return;
     }
     void this.sessions.deliver(sessionId, {

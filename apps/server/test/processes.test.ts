@@ -107,7 +107,7 @@ test("a process runs in the background, outlives its idle session, streams its o
     await eventually(() => f.runtime.listProcesses(session.id)[0]!.state === "stopped", 10_000);
     await eventually(() => f.runtime.items(session.id, {}).items.some((item) => item.customType === STATUS_ENTRY), 10_000);
     const line = f.runtime.items(session.id, {}).items.find((item) => item.customType === STATUS_ENTRY)!;
-    assert.deepEqual(line.details, { process: process!.id, title: "dev server", how: "was stopped" });
+    assert.deepEqual(line.details, { process: process!.id, title: "dev server", how: "was stopped", ok: false });
   } finally {
     await f.cleanup();
   }
