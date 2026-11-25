@@ -107,11 +107,14 @@ test("Agent Builder asks before writing outside the agent and never changes app 
   await put("agents/writer/agent.json", "{}");
   await call(join(root, "agents", "writer", "agent.json"));
   assert.match(asked[2]!, /the agent "writer"/);
+  const note = join(root, "vault", "Progress.md");
+  await call(note, "edit");
+  assert.equal(asked[3], `Agent Builder wants to edit ${note}, in a folder outside this agent.`);
 
   const shipped = await call(join(AGENT_BUILDER, "agent.json"));
   assert.equal(shipped?.block, true);
   assert.match(shipped!.reason!, /ships with PiSpark/);
-  assert.equal(asked.length, 3, "app files are refused without asking");
+  assert.equal(asked.length, 4, "app files are refused without asking");
 
   const prompt = (await handlers.get("before_agent_start")!({ systemPrompt: "Base." }, ctx)) as { systemPrompt: string };
   assert.ok(prompt.systemPrompt.startsWith("Base.\n\n## Agent Builder"));

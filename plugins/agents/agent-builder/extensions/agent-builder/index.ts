@@ -58,7 +58,7 @@ export function whereIs(path: string, cwd: string): string {
       return `the agent "${agent}". It and every agent built on it change too.`;
     }
   }
-  return "outside this agent.";
+  return "a folder outside this agent.";
 }
 
 export default function agentBuilder(pi: ExtensionAPI) {

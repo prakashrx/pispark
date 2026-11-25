@@ -6,6 +6,7 @@
   import { onMount, setContext, tick } from "svelte";
   import Conversation from "../workspace/Conversation.svelte";
   import Composer from "../workspace/Composer.svelte";
+  import Shelf from "../workspace/Shelf.svelte";
   import type { Session } from "../workspace/session.svelte";
   import { provideSession } from "../workspace/session-client.svelte";
 
@@ -30,6 +31,7 @@
   <Conversation />
 </div>
 <div class="reply" bind:this={reply}>
+  <Shelf />
   {#if held}<p class="held" role="status">{held}</p>{/if}
   <Composer mode="reply" />
 </div>
