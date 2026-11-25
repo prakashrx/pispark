@@ -4,7 +4,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { sessionTitle } from "../../contract/session-title.js";
 import { registerExtensionTool } from "../runtime/extension-tool.js";
 import { TITLE_TOOL } from "../runtime/session-title.js";
-import { SCHEDULE_CHANNEL, SCHEDULE_TOOL, type ScheduleMessage, type ScheduleRequest } from "../runtime/schedule-tool.js";
+import { SCHEDULE_CHANNEL, SCHEDULE_TOOL, type ScheduleAnswer, type ScheduleMessage, type ScheduleRequest } from "../runtime/schedule-tool.js";
 import { REPORT_TOOL, SESSION_CHANNEL, SESSION_TOOL, type SessionMessage, type SessionRequest } from "../runtime/session-tool.js";
 import { PROCESS_CHANNEL, PROCESS_TOOL, type ProcessMessage, type ProcessRequest } from "../runtime/process-tool.js";
 
@@ -99,14 +99,16 @@ export default function pispark(pi: ExtensionAPI): void {
           },
         };
       }
-      const answer = await new Promise<{ ok: boolean; text: string }>((reply) => {
+      const answer = await new Promise<ScheduleAnswer>((reply) => {
         const message: ScheduleMessage = { request, reply };
         pi.events.emit(SCHEDULE_CHANNEL, message);
         // The host takes the request while the event is delivered; nobody did: not hosted by PiSpark.
         if (!message.taken) reply({ ok: false, text: "Scheduling is not available here." });
       });
       if (!answer.ok) throw new Error(answer.text);
-      return { content: [{ type: "text", text: answer.text }], details: undefined };
+      // The schedules as saved, for views of the call.
+      const details = answer.schedule ? { schedule: answer.schedule } : answer.schedules ? { schedules: answer.schedules } : undefined;
+      return { content: [{ type: "text", text: answer.text }], details };
     },
   });
   pi.registerTool({

@@ -81,8 +81,7 @@
   .message {
     margin: 0;
     color: var(--muted-foreground);
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     white-space: pre-line;
     overflow-wrap: anywhere;
     max-height: 6rem;

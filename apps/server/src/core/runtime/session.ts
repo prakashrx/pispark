@@ -34,7 +34,7 @@ import type { SessionMetadata, SessionStorage } from "./storage.js";
 import { STATUS_ENTRY, WOKEN_ENTRY, type StatusDetails, type WokenDetails } from "../../contract/wake-protocol.js";
 import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
 import { describeSchedule, parseCron } from "../../contract/cron.js";
-import { SCHEDULE_CHANNEL, validMessage, type ScheduleMessage } from "./schedule-tool.js";
+import { SCHEDULE_CHANNEL, validMessage, type ScheduleAnswer, type ScheduleMessage } from "./schedule-tool.js";
 import {
   CHILD_ENDED_CHANNEL,
   REPORT_TOOL,
@@ -940,7 +940,9 @@ export class Session {
     const message: ScheduleMessage = value;
     message.taken = true;
     const schedules = this.host.schedules;
-    const answer = async (): Promise<{ ok: boolean; text: string }> => {
+    // Where each run goes and how it reports, as saved: the agent sees what was made, not what it asked for.
+    const where = (s: Schedule) => (s.run === "new" ? `as a new session, reports ${s.report ?? "status"}` : "in this session");
+    const answer = async (): Promise<ScheduleAnswer> => {
       if (!schedules || !this.ui) return { ok: false, text: "Scheduling is not available here." };
       const { request } = message;
       const mine = schedules.of(this.id);
@@ -948,8 +950,9 @@ export class Session {
         return {
           ok: true,
           text: mine.length
-            ? mine.map((s) => `${s.id}: ${describeSchedule(s)} (${s.on ? "on" : "off"}): ${s.prompt}`).join("\n")
+            ? mine.map((s) => `${s.id}: ${describeSchedule(s)}, ${where(s)} (${s.on ? "on" : "off"}): ${s.prompt}`).join("\n")
             : "This session has no schedules.",
+          schedules: mine,
         };
       if (request.action === "remove") {
         if (!mine.some((s) => s.id === request.id)) return { ok: false, text: "This session has no schedule with that id." };
@@ -960,10 +963,16 @@ export class Session {
       const when = { cron: input.cron, at: input.at };
       if (input.cron !== undefined ? !parseCron(input.cron) : Number.isNaN(new Date(input.at ?? "").getTime()) || new Date(input.at!).getTime() <= Date.now())
         return { ok: false, text: "That is not a time that can be scheduled." };
-      const yes = await this.ui.context.confirm("Schedule this in this session?", `${describeSchedule(when)}: ${input.prompt ?? ""}`);
+      const how = { ...(input.run !== undefined ? { run: input.run } : {}), ...(input.report !== undefined ? { report: input.report } : {}) };
+      const title = how.run === "new" ? "Schedule this as new sessions under this one?" : "Schedule this in this session?";
+      const yes = await this.ui.context.confirm(title, `${describeSchedule(when)}: ${input.prompt ?? ""}`);
       if (!yes) return { ok: true, text: "The person declined; nothing was scheduled." };
-      const added = schedules.add(this.id, { ...when, prompt: input.prompt }, "agent");
-      return { ok: true, text: `Scheduled: ${describeSchedule(added)} (id ${added.id}). The person can change it under Session info → Schedules.` };
+      const added = schedules.add(this.id, { ...when, ...how, prompt: input.prompt }, "agent");
+      return {
+        ok: true,
+        text: `Scheduled: ${describeSchedule(added)}, ${where(added)} (id ${added.id}). The person can change it under Session info → Schedules.`,
+        schedule: added,
+      };
     };
     void answer()
       .catch((error: unknown) => ({ ok: false, text: `Scheduling failed (${runtimeError(error, "execution").code}).` }))

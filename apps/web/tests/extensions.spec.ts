@@ -35,8 +35,9 @@ test("an extension's notice and question appear around the session and answer by
   await expect(question).toHaveCount(0);
   await expect(reply).toBeFocused();
   await expect(page.getByText("local:ui-select", { exact: true })).toBeVisible();
-  // The session keeps a line of what was asked and chosen.
-  await expect(page.getByText("Pick one — you chose two", { exact: true })).toBeVisible();
+  // The session keeps a line of what was asked and chosen: the question, then what was said.
+  const said = (asked: string) => page.getByRole("status").filter({ has: page.getByText(asked, { exact: true }) });
+  await expect(said("Pick one")).toContainText("you chose two");
 
   // A confirmation starts on the question itself, not on an answer; Y and N answer, Escape skips.
   await reply.fill("ui-confirm");
@@ -47,14 +48,14 @@ test("an extension's notice and question appear around the session and answer by
   await expect(confirm.getByRole("button", { name: "No" })).toBeVisible();
   await page.keyboard.press("n");
   await expect(confirm).toHaveCount(0);
-  await expect(page.getByText("Proceed? — you said no", { exact: true })).toBeVisible();
+  await expect(said("Proceed?")).toContainText("you said no");
   await expect(page.getByText("local:ui-confirm", { exact: true })).toBeVisible();
   await reply.fill("ui-confirm");
   await reply.press("Enter");
   await expect(confirm).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(confirm).toHaveCount(0);
-  await expect(page.getByText("Proceed? — skipped", { exact: true })).toBeVisible();
+  await expect(said("Proceed?").last()).toContainText("skipped");
   await expect(page.getByText("local:ui-confirm", { exact: true })).toHaveCount(2);
 
   // The browser tab title and Pi's session name as the session title; the header and footer text

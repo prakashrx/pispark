@@ -1,4 +1,4 @@
-import type { ScheduleInput } from "../../contract/schedule-protocol.js";
+import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
 
 /** The built-in extension's schedule tool; no agent extension may register the same name. */
 export const SCHEDULE_TOOL = "pispark_schedule";
@@ -12,10 +12,17 @@ export type ScheduleRequest =
   | { action: "list" }
   | { action: "add"; input: ScheduleInput }
   | { action: "remove"; id: string };
-/** What the bus carries: the request, and where its answer goes (text for the agent). */
+/** The host's answer: text for the agent, and the schedules as saved, for the tool's `details`. */
+export interface ScheduleAnswer {
+  ok: boolean;
+  text: string;
+  schedule?: Schedule;
+  schedules?: Schedule[];
+}
+/** What the bus carries: the request, and where its answer goes. */
 export interface ScheduleMessage {
   request: ScheduleRequest;
-  reply: (answer: { ok: boolean; text: string }) => void;
+  reply: (answer: ScheduleAnswer) => void;
   /** Set by the host while the event is delivered. */
   taken?: boolean;
 }

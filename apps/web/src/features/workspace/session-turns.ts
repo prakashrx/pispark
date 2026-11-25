@@ -2,6 +2,7 @@ import { NOTICE_ENTRY, type ExtensionView, type Item, type ItemPart, type ReplyF
 import type { Json } from "../../../../server/src/contract/stream-ops";
 import { STATUS_ENTRY, WOKEN_ENTRY, type WakeSource } from "../../../../server/src/contract/wake-protocol";
 import { TITLE_TOOL } from "../../../../server/src/contract/session-title";
+import type { Schedule } from "../../../../server/src/contract/schedule-protocol";
 import { artifactsOf } from "./tool-views";
 
 /** A clipped part of a finalized item, read on demand. */
@@ -57,6 +58,8 @@ export type Segment =
   | { kind: "session"; key: string; sessionId: string; title: string }
   /** A process this one started, shown with its live state. */
   | { kind: "process"; key: string; processId: string; title: string }
+  /** A schedule the agent added, as it was saved. */
+  | { kind: "schedule"; key: string; schedule: Schedule }
   /** A line saying something this session started ended, without a turn (status mode). */
   | { kind: "status"; key: string; title: string; how: string; session?: string; process?: string };
 
