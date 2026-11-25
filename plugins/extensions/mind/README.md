@@ -9,11 +9,11 @@ Memory and attention for any agent. Add it to an agent (`bundled:mind`) and the 
 | Knowledge | What's true here beyond any one goal, and skills for how things are done here | The person, or proposals they accept |
 | Work | Goals as cards, from idea to done or dropped | The agent, as it works |
 
-- **Pinned:** the charter, contract, active cards and knowledge index are pinned into the system prompt every run (one `mind` section, within small token budgets), so compaction and new sessions don't lose them. After a compaction the agent is told to reorient from its card.
+- **Pinned:** the charter, contract, active cards and knowledge index are pinned into the system prompt every run (one `mind` section, within small token budgets), so compaction and new sessions don't lose them. When the context nears PiSpark's compaction point, the agent is asked once to bring its card up to date; after a compaction it is told to reorient from it.
 - **Written only through its tools:**
   - `mind_work` for cards.
   - `mind_record` for the rest. What the person said in this conversation (quoted) is recorded. `ask` puts a yes/no question to them now. Anything inferred becomes a proposal.
-  - `mind_decide` asks for a decision: one question, a recommendation, at most three options and a safe default.
+  - `mind_decide` asks for a decision: one question, a recommendation, at most three options and a safe default. For a routine call, approving the recommendation offers once to let the agent handle it next time; a yes becomes a contract rule.
   - Raw writes into `.mind/` are refused.
 - **Learning:**
   - When a card closes, a reflection runs in a child session with fresh context. It proposes what outlasts the goal (facts, skills, principles) and retires the card.

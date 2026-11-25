@@ -30,6 +30,21 @@ const LESSON_REMINDER =
   "If they stated it as a rule (always, never, from now on), record it now with mind_record, origin 'told', quoting their words. " +
   "If you changed course because they corrected you, offer the general lesson once with mind_record, origin 'ask'. " +
   "If there is nothing lasting, end your turn without saying anything more.";
+const CHECKPOINT_ENTRY = "mind-checkpoint";
+const CHECKPOINT_REMINDER =
+  "The conversation will soon be compacted and older details summarised. Bring your active card up to date now with mind_work: " +
+  "state, next step, what it waits on, and any constraint or decision from this conversation that isn't on it yet. Then end your turn without saying anything more.";
+/**
+ * Whether the context is close to PiSpark's compaction point (70% of the usable window: the
+ * model's, or the input size where its price rises), so the card should be saved first.
+ */
+function nearCompaction(ctx: ExtensionContext): boolean {
+  const usage = ctx.getContextUsage();
+  if (!usage?.tokens) return false;
+  const tiers = (ctx.model?.cost as { tiers?: { inputTokensAbove: number }[] } | undefined)?.tiers ?? [];
+  const usable = Math.min(usage.contextWindow, ...tiers.map((t) => t.inputTokensAbove));
+  return usage.tokens >= usable * 0.55;
+}
 const SECTION_LABEL: Record<string, string> = { purpose: "Purpose", "for-whom": "For whom", good: "What good looks like", "off-limits": "Off-limits" };
 
 const text = (value: string, details?: unknown) => ({ content: [{ type: "text" as const, text: value }], details });
@@ -65,6 +80,8 @@ export default function mind(pi: ExtensionAPI) {
 
   /** Yes/no questions already asked in this session. */
   const asked = new Set<string>();
+  /** Whether the agent was already asked to save its card before the coming compaction. */
+  let checkpointed = false;
   /** Whether this run recorded something, and whether it was already reminded to. */
   let recorded = false;
   let nudged = false;
@@ -128,11 +145,12 @@ export default function mind(pi: ExtensionAPI) {
 
   pi.on("session_compact", () => {
     compacted = true;
+    checkpointed = false;
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
-    // Our own reminder continues the person's run: what they said still counts.
-    const reminder = event.messageType === "custom" && event.message.customType === LESSON_ENTRY;
+    // Our own reminders continue the person's run: what they said still counts.
+    const reminder = event.messageType === "custom" && [LESSON_ENTRY, CHECKPOINT_ENTRY].includes(event.message.customType);
     if (!reminder) {
       personSaid = event.messageType === "user" && startedByPerson(event.messageType, ctx.sessionManager.getBranch()) ? event.prompt : undefined;
       recorded = false;
@@ -164,7 +182,16 @@ export default function mind(pi: ExtensionAPI) {
 
   // A correction or a standing preference is easy to fix and forget: before the run ends, remind
   // the agent once to keep the lesson. Only for runs the person started, when their words read like one.
-  pi.on("agent_before_settle", (event) => {
+  pi.on("agent_before_settle", async (event, ctx) => {
+    // Before PiSpark compacts (at 70% of the usable window, before the next message), have the
+    // agent bring its card up to date while it still remembers: once per compaction cycle.
+    if (!checkpointed && nearCompaction(ctx) && (sessionCard || (await hasActiveCards(ctx)))) {
+      checkpointed = true;
+      return {
+        entries: [...event.entries, { type: "custom_message" as const, customType: CHECKPOINT_ENTRY, content: CHECKPOINT_REMINDER, display: false }],
+        continue: true,
+      };
+    }
     if (nudged || recorded || !personSaid || !LESSON.test(personSaid)) return undefined;
     nudged = true;
     return {
@@ -172,6 +199,8 @@ export default function mind(pi: ExtensionAPI) {
       continue: true,
     };
   });
+  const hasActiveCards = async (ctx: ExtensionContext) =>
+    (await mindOf(ctx).read("work")).cards.some((c) => c.stage === "active" || c.stage === "waiting");
 
   pi.registerTool({
     name: "mind_work",
@@ -341,6 +370,10 @@ export default function mind(pi: ExtensionAPI) {
       recommended: Type.String({ minLength: 1, maxLength: 80, description: "The option you recommend; listed first." }),
       others: Type.Array(Type.String({ minLength: 1, maxLength: 80 }), { maxItems: 2, description: "At most two other options." }),
       ifNoAnswer: Type.String({ minLength: 3, maxLength: 160, description: "What you'll do if they don't answer: nothing risky." }),
+      routine: Type.Optional(Type.Object({
+        when: Type.String({ minLength: 3, maxLength: 200, description: "The kind of situation, in general terms." }),
+        what: Type.String({ minLength: 3, maxLength: 200, description: "The action as a noun phrase." }),
+      }, { additionalProperties: false, description: "If this is a routine call you could make yourself: if they approve your recommendation, they're offered once to let you handle it next time." })),
     }, { additionalProperties: false }),
     async execute(_id, p, signal, _update, ctx) {
       if (!ctx.hasUI) return text(`No one to ask now. ${p.ifNoAnswer}`);
@@ -348,7 +381,23 @@ export default function mind(pi: ExtensionAPI) {
       const choice = await ctx.ui.select(`${p.question}\nIf no answer: ${p.ifNoAnswer}`, [recommended, ...p.others], { signal });
       if (choice === undefined) return text(`No answer. ${p.ifNoAnswer}`, { answered: false });
       const chosen = choice === recommended ? p.recommended : choice;
-      return text(`The person chose: ${chosen}`, { answered: true, chosen });
+      let handover = "";
+      // Autonomy is asked for, never inferred: one yes/no after they approve a routine call.
+      if (choice === recommended && p.routine) {
+        const rule = { part: "contract" as const, when: p.routine.when, act: "own" as const, what: p.routine.what };
+        const question = itemText(shaped(rule));
+        const situation = normal(p.routine.when);
+        const known = (await mindOf(ctx).read("contract")).rules.some((r) => normal(r.when) === situation);
+        if (!known && !asked.has(normal(question))) {
+          asked.add(normal(question));
+          if (await ctx.ui.confirm("Next time, handle this yourself?", question, { signal })) {
+            await mindOf(ctx).apply(rule, { origin: "told", source: sessionId(ctx), quote: `yes to: Next time, handle this yourself? ${question}`, at: new Date().toISOString() });
+            handover = " They said yes to handling it yourself next time; it's in the contract.";
+            await show(ctx);
+          } else handover = " They want to be asked again next time.";
+        }
+      }
+      return text(`The person chose: ${chosen}.${handover}`, { answered: true, chosen });
     },
   });
 

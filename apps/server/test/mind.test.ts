@@ -321,3 +321,51 @@ test("mind: the Mind view compiles as PiSpark compiles extension views", async (
   const hash = await compileView(join(folder, "Mind.svelte"), folder);
   assert.ok((viewBundle(hash) ?? "").length > 0);
 });
+
+test("mind: approving a routine call offers once to hand it over; a yes becomes a rule and stops the offer", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.place, agent: "mindful" });
+    const dialog = async () => {
+      await eventually(() => f.runtime.session(session.id).extensions.dialogs.length === 1);
+      return f.runtime.session(session.id).extensions.dialogs[0]!;
+    };
+    const decide = { question: "Restart the stuck worker?", recommended: "Restart it", others: ["Leave it"], ifNoAnswer: "I leave it.", routine: { when: "a worker is stuck", what: "restarting it" } };
+    let run = f.start(session.id, call("mind_decide", decide));
+    f.runtime.answer(session.id, (await dialog()).id, "Restart it (recommended)");
+    const offer = await dialog();
+    assert.equal(offer.kind, "confirm");
+    assert.match(JSON.stringify(offer), /Next time, handle this yourself\?/);
+    f.runtime.answer(session.id, offer.id, true);
+    await run;
+    assert.equal((await f.json("contract")).rules[0].when, "a worker is stuck");
+    // Already a rule: no second offer.
+    run = f.start(session.id, call("mind_decide", decide));
+    f.runtime.answer(session.id, (await dialog()).id, "Restart it (recommended)");
+    await run;
+    assert.equal(f.runtime.session(session.id).extensions.dialogs.length, 0);
+    assert.equal((await f.json("contract")).rules.length, 1);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("mind: close to compaction, the agent is asked once to bring its card up to date", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.place, agent: "mindful" });
+    await f.start(session.id, call("mind_work", { action: "start", goal: "Long task" }));
+    const reminded = () => f.provider.requests.filter((r) => /will soon be compacted/.test(JSON.stringify(r.context.messages.at(-1)))).length;
+    await f.start(session.id, "early on");
+    assert.equal(reminded(), 0);
+    // The model reports a context past 55% of its 100k window.
+    f.provider.inputTokens = 60_000;
+    await f.start(session.id, "first");
+    await f.start(session.id, "later on");
+    assert.equal(reminded(), 1, `context ${JSON.stringify(f.runtime.session(session.id).context)}`);
+    await f.start(session.id, "and later");
+    assert.equal(reminded(), 1, "once per compaction cycle");
+  } finally {
+    await f.cleanup();
+  }
+});

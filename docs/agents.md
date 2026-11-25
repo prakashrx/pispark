@@ -37,7 +37,9 @@
 
 The editor's **+** picker lists available resources. A file becomes active through a selection or an inherited selection.
 
-- `bundled:<name>` refers to a resource shipped in the running app's `plugins/` directory, for example `plugins/extensions/web-research/`. An app update supplies the new copy. A newly bundled plugin is available to select.
+- `bundled:<name>` refers to a resource shipped in the running app's `plugins/` directory, for example `plugins/extensions/web-research/`. An app update supplies the new copy. A newly bundled plugin is available to select. Bundled extensions:
+  - `web-research`: web search and reading (needs `TAVILY_API_KEY`).
+  - `mind`: memory and attention kept in the working folder (charter, contract, knowledge and work cards, a Mind view, reflection when a goal closes). See [its README](../plugins/extensions/mind/README.md).
 - `shared:<name>` refers to a resource you install under `<data folder>/resources/`. Several agents can use one copy.
 - `local:<name>` refers to a resource in the declaring agent or session layer. An inherited local reference still points to its owner.
 
