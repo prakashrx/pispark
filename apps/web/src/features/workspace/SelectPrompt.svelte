@@ -1,6 +1,6 @@
 <script lang="ts">
   /** Pick one of a list. Long lists get a filter; the first nine answer to their number. */
-  let { options, onanswer, autofocus = true }: { options: string[]; onanswer: (value: string) => void; autofocus?: boolean } = $props();
+  let { options, onanswer }: { options: string[]; onanswer: (value: string) => void } = $props();
 
   const FILTER_FROM = 8;
   let query = $state("");
@@ -50,7 +50,7 @@
   <div class="options" bind:this={list}>
     {#each shown as option, index (option)}
       {@const [label, detail] = split(option)}
-      <button type="button" class="option" data-option data-autofocus={autofocus && options.length < FILTER_FROM && index === 0 ? "" : undefined} onclick={() => onanswer(option)}>
+      <button type="button" class="option" data-option data-autofocus={options.length < FILTER_FROM && index === 0 ? "" : undefined} onclick={() => onanswer(option)}>
         <span class="number" aria-hidden="true">{index < 9 ? index + 1 : ""}</span>
         <span class="text"><span>{label}</span>{#if detail}<span class="detail">{detail}</span>{/if}</span>
       </button>

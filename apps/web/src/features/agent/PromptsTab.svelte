@@ -15,7 +15,7 @@
   import { argumentNames, fieldOf } from "./frontmatter";
   import { isFresh, keyOf, type AgentPage, type Row } from "./agent-page.svelte";
 
-  let { page, onai, narrow, stacked }: { page: AgentPage; onai?: () => void; narrow: boolean; stacked: boolean } = $props();
+  let { page, narrow, stacked = false }: { page: AgentPage; narrow: boolean; stacked?: boolean } = $props();
 
   const prompts = $derived(page.rows("prompts"));
   const open = $derived(page.opened("prompts", narrow));
@@ -44,7 +44,7 @@
 
 {#snippet slash(item: Row)}<span class="cmd">/{item.name || "new-prompt"}</span>{#each argsOf(item) as a (a.n)}<span class="arg">‹{a.name}›</span>{/each}{/snippet}
 
-<TabIntro {page} kind="prompts" oncreate={() => { page.create("prompts"); onai?.(); }}>Type <kbd>/</kbd> in the message box to run one. What you type after the name fills in <code>$1</code>, <code>$2</code>…</TabIntro>
+<TabIntro {page} kind="prompts" oncreate={() => page.create("prompts")}>Type <kbd>/</kbd> in the message box to run one. What you type after the name fills in <code>$1</code>, <code>$2</code>…</TabIntro>
 
 <Split items={prompts} selected={open} {narrow} label="Prompts" off={(item) => !isFresh(item) && !item.on} onselect={(item) => page.show("prompts", item)}>
   {#snippet row(item)}

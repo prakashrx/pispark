@@ -94,8 +94,10 @@ registerToolView("grep", search("Searching for", "Searched for", "pattern"));
 registerToolView("find", search("Finding", "Found", "pattern"));
 registerToolView("ls", { describe: words("Listing", "Listed", on), group: "search", summarize: (calls) => `searched ${noun(calls.length, "time")}`, artifacts: genericArtifacts });
 
+// PiSpark's own session and process tools name what a start made in the call's details.
+const startedId = (call: ToolCall) => (call.status === "done" && arg(call, "action") === "start" ? text(field(call.result?.details, "id")) : undefined);
+
 // PiSpark's own session tool: words for each action, and the session a start made, as a row.
-const startedId = (call: ToolCall) => /\(id ([0-9a-f-]{36})\)/.exec((call.result?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""))?.[1];
 registerToolView("pispark_session", {
   describe(call) {
     const action = arg(call, "action");
@@ -112,13 +114,12 @@ registerToolView("pispark_session", {
     return started ? `started ${noun(started, "session")}` : `used ${noun(calls.length, "session action")}`;
   },
   artifacts(call) {
-    const id = call.status === "done" && arg(call, "action") === "start" ? startedId(call) : undefined;
+    const id = startedId(call);
     return id ? [{ kind: "session", key: `session.${call.id}`, sessionId: id, title: arg(call, "title") ?? "A session" }] : [];
   },
 });
 
 // PiSpark's own process tool: words for each action, and the process a start made, as a row.
-const processId = (call: ToolCall) => /^Started ([0-9a-f-]{36}):/.exec((call.result?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""))?.[1];
 registerToolView("pispark_process", {
   describe(call) {
     const action = arg(call, "action");
@@ -136,7 +137,7 @@ registerToolView("pispark_process", {
     return started ? `started ${noun(started, "process", "processes")}` : `used ${noun(calls.length, "process action")}`;
   },
   artifacts(call) {
-    const id = call.status === "done" && arg(call, "action") === "start" ? processId(call) : undefined;
+    const id = startedId(call);
     return id ? [{ kind: "process", key: `process.${call.id}`, processId: id, title: arg(call, "title") ?? arg(call, "command") ?? "A process" }] : [];
   },
 });

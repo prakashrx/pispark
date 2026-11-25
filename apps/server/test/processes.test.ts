@@ -54,6 +54,8 @@ test("wait returns only status; search finds early literal evidence without cons
     };
     await run({ action: "start", command: SERVER, report: "none" });
     const [server] = f.runtime.listProcesses(session.id);
+    const started = f.runtime.items(session.id, {}).items.filter((item) => item.role === "toolResult").at(-1);
+    assert.deepEqual(started?.details, { id: server!.id });
     assert.equal(await run({ action: "wait", id: server!.id, timeout_seconds: 1 }), `${server!.id}: running (wait timed out)`);
     await run({ action: "stop", id: server!.id });
 
@@ -107,7 +109,7 @@ test("a process runs in the background, outlives its idle session, streams its o
     await eventually(() => f.runtime.listProcesses(session.id)[0]!.state === "stopped", 10_000);
     await eventually(() => f.runtime.items(session.id, {}).items.some((item) => item.customType === STATUS_ENTRY), 10_000);
     const line = f.runtime.items(session.id, {}).items.find((item) => item.customType === STATUS_ENTRY)!;
-    assert.deepEqual(line.details, { process: process!.id, title: "dev server", how: "was stopped" });
+    assert.deepEqual(line.details, { process: process!.id, title: "dev server", how: "was stopped", ok: false });
   } finally {
     await f.cleanup();
   }
@@ -123,6 +125,9 @@ test("a failing command wakes its session with the exit code and its last output
     const woken = items.findIndex((item) => item.customType === WOKEN_ENTRY);
     assert.equal((items[woken]!.details as { source: { kind: string; label: string } }).source.label, "tests · exited 1");
     assert.match(text(items[woken + 1]!), /^The process "tests" exited 1\.\n\nLast output:\n1 failed, 212 passed/);
+    const { card } = items[woken]!.details as { card: { title: string; how: string; start: number } };
+    assert.deepEqual({ title: card.title, how: card.how }, { title: "tests", how: "exited 1" });
+    assert.match(text(items[woken + 1]!).slice(card.start), /^1 failed, 212 passed/);
   } finally {
     await f.cleanup();
   }

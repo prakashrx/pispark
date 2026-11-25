@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Item, ItemPart } from "../../../../server/src/contract/protocol";
-import { buildTurns, clippedPart, itemText, reportBody } from "./session-turns";
+import { buildTurns, clippedPart, itemText, wokenFrom } from "./session-turns";
 import { artifactsOf, describeCall, summarizeCalls } from "./tool-views";
 import { pointOf } from "./extension-views";
 
@@ -231,12 +231,14 @@ test("PiSpark's session tool: words for each action, and the session a start mad
     name: "pispark_session",
     args: { action: "start", prompt: "research", title: "Zustand research" },
     status: "done" as const,
-    result: item("toolResult", [{ type: "text", text: `Started "Zustand research" (id ${id}). It works on its own.` }]),
+    result: item("toolResult", [{ type: "text", text: `Started "Zustand research" (id ${id}). It works on its own.` }], { details: { id } }),
   };
   expect(describeCall(call).done).toBe("Started Zustand research");
   expect(summarizeCalls([call, call])).toBe("Started 2 sessions");
   expect(artifactsOf(call)).toEqual([{ kind: "session", key: "session.c1", sessionId: id, title: "Zustand research" }]);
   expect(artifactsOf({ ...call, args: { action: "list" } })).toEqual([]);
+  // The id comes from the call's details, not from its words.
+  expect(artifactsOf({ ...call, result: { ...call.result, details: undefined } })).toEqual([]);
 });
 
 test("sessions started one after another are one list under one activity line", () => {
@@ -247,8 +249,8 @@ test("sessions started one after another are one list under one activity line", 
     [
       item("user", [text("research both")]),
       item("assistant", [call("c1", "pispark_session", { action: "start", title: "Math" }), call("c2", "pispark_session", { action: "start", title: "Capital" })]),
-      item("toolResult", [text(`Started "Math" (id ${a}).`)], { callId: "c1", toolName: "pispark_session" }),
-      item("toolResult", [text(`Started "Capital" (id ${b}).`)], { callId: "c2", toolName: "pispark_session" }),
+      item("toolResult", [text(`Started "Math" (id ${a}).`)], { callId: "c1", toolName: "pispark_session", details: { id: a } }),
+      item("toolResult", [text(`Started "Capital" (id ${b}).`)], { callId: "c2", toolName: "pispark_session", details: { id: b } }),
     ],
     { running: false },
   );
@@ -257,7 +259,7 @@ test("sessions started one after another are one list under one activity line", 
   expect(activity.kind === "activity" && activity.calls).toHaveLength(2);
 });
 
-test("a status line is its own segment; a report card drops the line the agent needs", () => {
+test("a status line is its own segment; a report card is drawn from what the server sent", () => {
   n = 0;
   const turns = buildTurns(
     [
@@ -265,7 +267,7 @@ test("a status line is its own segment; a report card drops the line the agent n
       item("assistant", [text("ok")]),
       item("custom", [text('The session "Quiet" you started finished.')], {
         customType: "pispark:status",
-        details: { session: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b", title: "Quiet", how: "finished" },
+        details: { session: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b", title: "Quiet", how: "finished", ok: true },
       }),
     ],
     { running: false },
@@ -275,11 +277,14 @@ test("a status line is its own segment; a report card drops the line the agent n
     key: turns[0]!.segments.at(-1)!.key,
     title: "Quiet",
     how: "finished",
+    ok: true,
     session: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b",
   });
-  expect(reportBody('The session "Math" you started finished:\n\n391')).toBe("391");
-  expect(reportBody('The process "tests" exited 1.\n\nLast output:\n1 failed')).toBe("1 failed");
-  expect(reportBody("Something else")).toBe("Something else");
+  // A report card is whose it is, how it ended, and where the report starts, as the server sent them.
+  const source = { kind: "process", id: "p1", label: "tests · exited 1" };
+  expect(wokenFrom({ source, due: "x", card: { title: "tests", how: "exited 1", start: 12 } })).toEqual({ ...source, title: "tests", how: "exited 1", start: 12 });
+  // An older one without a card shows its label and all of its text.
+  expect(wokenFrom({ source, due: "x" })).toEqual({ ...source, title: "tests · exited 1", start: 0 });
 });
 
 test("the process tool: words, and the process a start made as a row", () => {
@@ -289,7 +294,7 @@ test("the process tool: words, and the process a start made as a row", () => {
     name: "pispark_process",
     args: { action: "start", command: "npm run dev", title: "dev server" },
     status: "done" as const,
-    result: item("toolResult", [text(`Started ${id}: dev server (npm run dev) — running since now in /work.`)]),
+    result: item("toolResult", [text(`Started ${id}: dev server (npm run dev) — running since now in /work.`)], { details: { id } }),
   };
   expect(describeCall(started)).toEqual({ doing: "Starting", done: "Started", object: "dev server" });
   expect(summarizeCalls([started])).toBe("Started 1 process");
@@ -350,4 +355,22 @@ test("a usage-limit card describes the terminal failure and disappears after a s
     .toContainEqual({ kind: "stopped", key: `${limit.key}.stop`, reason: "usage-limit", latest: true });
   expect(buildTurns([user, limit, done], { running: false })[0]?.segments.map((segment) => segment.kind))
     .toEqual(["text"]);
+});
+
+test("an answered question is its own item where it was asked, saved or live; a notice that only reads like one stays a notice", () => {
+  n = 0;
+  const [turn] = buildTurns(
+    [
+      item("user", [text("go")]),
+      item("assistant", [call("c1", "schedule")]),
+      result("c1"),
+      item("entry", [], { customType: "pispark:notice", details: { kind: "info", lines: [], answered: { question: "Schedule this?", said: "yes" }, at: 1 } }),
+      item("entry", [], { customType: "pispark:notice", details: { kind: "info", lines: [[{ text: "Disk — answered" }]], at: 2 } }),
+      item("assistant", [text("done")]),
+    ],
+    { running: false, notices: [{ id: 1, kind: "info", lines: [], answered: { question: "Pick one", said: "chose", choice: "two" }, after: 99, at: 3 }] },
+  );
+  expect(turn!.segments.map((s) => s.kind)).toEqual(["activity", "answered", "notice", "text", "answered"]);
+  expect(turn!.segments[1]).toMatchObject({ answered: { question: "Schedule this?", said: "yes" } });
+  expect(turn!.segments[4]).toMatchObject({ answered: { question: "Pick one", said: "chose", choice: "two" } });
 });

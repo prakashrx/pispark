@@ -1,8 +1,7 @@
 <script lang="ts">
   /**
    * Back to where you came from, named after it ("Skills", "Back to Shop developer"). One look for
-   * every way back on this page: a tab's list on a phone, an extension's page, the Agent Builder
-   * on a phone.
+   * every way back on this page: a tab's list on a phone, an extension's page.
    */
   import Icon from "../../lib/ui/Icon.svelte";
 

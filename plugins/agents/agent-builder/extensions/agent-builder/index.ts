@@ -5,7 +5,8 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { fileURLToPath } from "node:url";
 
 /**
- * Agent Builder's guard and orientation. The agent it edits is its working folder:
+ * Agent Builder's guard and orientation. The agent it edits is its working folder (or, when that
+ * isn't an agent's folder, the one the person names):
  * - `edit` and `write` inside that folder run as usual;
  * - anywhere else (a shared resource, another agent, any other file), the person is asked first;
  * - files the app ships (`plugins/`) are refused: an update replaces them.
@@ -43,20 +44,26 @@ export function target(path: string, cwd: string): string {
   return real(resolve(cwd, expanded.replace(/^@/, "")));
 }
 
+/** PiSpark's data folder: the one the working folder is an agent of, else `PISPARK_HOME` or `~/.pispark`. */
+export function dataFolder(cwd: string): string {
+  if (basename(dirname(cwd)) === "agents") return dirname(dirname(cwd));
+  const home = process.env.PISPARK_HOME;
+  if (!home) return join(homedir(), ".pispark");
+  return home === "~" || home.startsWith("~/") || home.startsWith("~\\") ? join(homedir(), home.slice(1)) : home;
+}
+
 /** Where a file outside the agent sits, in the person's words. */
 export function whereIs(path: string, cwd: string): string {
-  const agents = dirname(cwd);
-  if (basename(agents) === "agents") {
-    const home = dirname(agents);
-    if (inside(path, join(home, "resources"))) {
-      const [kind, name] = relative(join(home, "resources"), path).split(sep);
-      const one = { skills: "skill", instructions: "instruction", prompts: "prompt", extensions: "extension" }[kind ?? ""];
-      return one && name ? `the shared ${one} "${name.replace(/\.(md|ts|js|mjs)$/, "")}". Every agent that uses it changes too.` : "the Shared library. Every agent that uses it changes too.";
-    }
-    if (inside(path, agents)) {
-      const [agent] = relative(agents, path).split(sep);
-      return `the agent "${agent}". It and every agent built on it change too.`;
-    }
+  const home = real(dataFolder(cwd));
+  const agents = join(home, "agents");
+  if (inside(path, join(home, "resources"))) {
+    const [kind, name] = relative(join(home, "resources"), path).split(sep);
+    const one = { skills: "skill", instructions: "instruction", prompts: "prompt", extensions: "extension" }[kind ?? ""];
+    return one && name ? `the shared ${one} "${name.replace(/\.(md|ts|js|mjs)$/, "")}". Every agent that uses it changes too.` : "the Shared library. Every agent that uses it changes too.";
+  }
+  if (inside(path, agents)) {
+    const [agent] = relative(agents, path).split(sep);
+    return `the agent "${agent}". It and every agent built on it change too.`;
   }
   return "a folder outside this agent.";
 }
@@ -99,7 +106,7 @@ export default function agentBuilder(pi: ExtensionAPI) {
       "## Agent Builder",
       agent
         ? `The agent you're building is in your working folder, ${ctx.cwd}. Its definition is agent.json there. Change files in this folder; the person is asked before you change anything outside it.`
-        : `Your working folder, ${ctx.cwd}, isn't an agent's folder (it has no agent.json). Ask the person which agent to work on before changing anything.`,
+        : `Your working folder, ${ctx.cwd}, isn't an agent's folder (it has no agent.json). Each agent is a folder in ${join(dataFolder(ctx.cwd), "agents")}, and the Shared library is ${join(dataFolder(ctx.cwd), "resources")}. Ask the person which agent to work on before changing anything; they're asked before each change outside your working folder.`,
       `PiSpark's documentation: ${join(APP, "docs")} (agents.md for the agent format and layering, extensions.md for extensions in PiSpark).`,
       ...(existsSync(piDocs) ? [`Pi's documentation: ${piDocs} (skills.md, prompt-templates.md, extensions.md; search extensions.md rather than reading it whole).`] : []),
     ];

@@ -82,12 +82,12 @@ Cycles and a missing parent are reported (`cycle`, `missing-parent`); at most 16
 
 An agent folder under the app's `plugins/agents/<id>/` ships with PiSpark: it is listed like any agent (marked **Bundled**, `bundled: true` in `AgentSummary`), its `local:` references point into its own folder, and an app update replaces it. It is read-only: `save`, the file endpoints, switches and `delete` refuse it (`built-in`), and the editor shows it without controls that change it. Other agents may build on it. Its ID is reserved: a data-folder agent of the same name is ignored, and `create` never picks it.
 
-**Agent Builder** (`agent-builder`) helps build and improve agents. It writes an agent's files directly with Pi's `read`, `edit` and `write`, working on the agent in its working folder. It has no shell (`bash`, `powershell`) and none of PiSpark's session, schedule, process or session-extension tools. Its skills cover designing agents, instructions, skills (adapted from Anthropic's skill-creator, Apache-2.0), prompts and extensions. Its extension:
+**Agent Builder** (`agent-builder`) helps build and improve agents in an ordinary session: start one with the agent's folder as the working folder (Settings on the agent's page shows where it's stored), or anywhere else and name the agent. It writes the agent's files directly with Pi's `read`, `edit` and `write`. It has no shell (`bash`, `powershell`) and none of PiSpark's session, schedule, process or session-extension tools. Its skills cover designing agents, instructions, skills (adapted from Anthropic's skill-creator, Apache-2.0), prompts and extensions. Its extension:
 
 - lets `edit` and `write` run inside the working folder;
 - asks the person before writing anywhere else, naming a shared resource or another agent when that's what it is, and remembers a yes for that file in the session;
 - refuses files under the app's `plugins/`;
-- tells the model where the agent and PiSpark's and Pi's documentation are.
+- tells the model where the agent (or, from another folder, the data folder's agents and Shared library) and PiSpark's and Pi's documentation are.
 
 The ask is not a sandbox: it covers `edit` and `write` only.
 
@@ -138,16 +138,7 @@ Agents lists every agent, Default first. An agent's page has a short profile (it
 - **Routines:** `routines: [{id, name, cron, prompt}]` in `agent.json` offers runs on a schedule, each a new session of the agent; inherited like the folder. Each is off until switched on with `routine:<id>` (on Background, or in Details of one of its sessions). `hold:<extension>` allows that extension to keep the agent's sessions loaded while no one watches ([hold](session-runtime.md#hold)). Both are ordinary `on`/`off` switches and are off unless switched on.
 - MCP servers are part of the format but aren't shown or connected yet.
 
-**Ask AI** opens the agent's **Agent Builder** session beside the tabs (in their place on a phone, with Back). It's an ordinary session of the bundled `agent-builder` agent, working in the agent's folder, one per agent: the session records the agent in `edits`.
-
-- **Working on** names what's open in the tab; × switches to the whole agent, where something new goes in the current tab. **Create** opens it on a new item; on Extensions, **Build with AI** opens it.
-- Each message carries a note the conversation doesn't show (`start {context}`, [session protocol](session-protocol.md)): the tab, what's open and where its file is seen from the agent's folder, and the agent's items.
-- It works on saved files only: while the open item has unsaved changes (or a new one has text), sending waits until they're saved or discarded.
-- When its reply ends, the page reads the agent again and anything new it made opens. What it changed shows in its conversation, each edit as a diff; to take a change back, ask it or edit the text.
-- **+** starts a new conversation: the last one is archived and no longer tied to the agent. ⋯ **Open as a session** unties it and opens it as a regular session; the next Ask AI starts another. Deleting the agent deletes its Agent Builder sessions.
-- Bundled agents have none: they can't be changed.
-
-Switches and settings save immediately; text saves from the save bar. Saves are revision-checked against the file's hash: if the file changed elsewhere, the save is refused and the latest version is shown. A session's own layer (Details ⋯ → Edit agent for this session) is edited with the same tabs, saving to that session only ("Only this session", "Make it this session's own"); it has no profile, settings or Agent Builder.
+Switches and settings save immediately; text saves from the save bar. Saves are revision-checked against the file's hash: if the file changed elsewhere, the save is refused and the latest version is shown. A session's own layer (Details ⋯ → Edit agent for this session) is edited with the same tabs, saving to that session only ("Only this session", "Make it this session's own"); it has no profile or settings.
 
 ## HTTP
 
@@ -164,8 +155,6 @@ All endpoints use the shared loopback Host/Origin/Fetch Metadata guard and exact
 | `POST /api/agents/create` | `{name, description?, base?}` → `{id, revision}` |
 | `POST /api/agents/save` | `{target, expectedRevision, definition}` → `{revision}`; `""` creates a session's layer |
 | `POST /api/agents/delete` | `{id}` |
-| `POST /api/agents/builder` | `{agent, fresh?}` → `{session}`: the agent's Agent Builder session, made in the agent's folder when it has none; `fresh` archives the current one first (no longer tied to the agent). `agent` for a bundled agent |
-| `POST /api/agents/builder/release` | `{session}`: the session is no longer the agent's Agent Builder session (`edits` cleared) |
 | `POST /api/agents/file/read` | `{target, path}` → `{text, revision}`; `target` may also be `{library: "shared" \| "bundled"}` |
 | `POST /api/agents/file/write` | `{target, path, expectedRevision \| null, text}` → `{text, revision}`; `target` may also be `{library: "shared"}`, which changes the file for every agent that selects it and selects nothing |
 | `POST /api/agents/file/delete` | `{target, path, expectedRevision}`; a skill is removed with its folder |

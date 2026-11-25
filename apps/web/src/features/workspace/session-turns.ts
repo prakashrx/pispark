@@ -1,6 +1,6 @@
-import { NOTICE_ENTRY, type ExtensionView, type Item, type ItemPart, type ReplyFailure, type StyledLine, type ToolProgress } from "../../../../server/src/contract/protocol";
+import { NOTICE_ENTRY, type Answered, type ExtensionView, type Item, type ItemPart, type ReplyFailure, type StyledLine, type ToolProgress } from "../../../../server/src/contract/protocol";
 import type { Json } from "../../../../server/src/contract/stream-ops";
-import { STATUS_ENTRY, WOKEN_ENTRY, type WakeSource } from "../../../../server/src/contract/wake-protocol";
+import { STATUS_ENTRY, WOKEN_ENTRY, type WakeSource, type WokenCard } from "../../../../server/src/contract/wake-protocol";
 import { TITLE_TOOL } from "../../../../server/src/contract/session-title";
 import type { Schedule } from "../../../../server/src/contract/schedule-protocol";
 import { artifactsOf } from "./tool-views";
@@ -11,6 +11,19 @@ export interface PartRef {
   part: number;
 }
 type Notice = ExtensionView["notices"][number];
+
+const SAID = new Set<unknown>(["yes", "no", "chose", "answered", "skipped"]);
+/** An answered question as the session kept it, when it is one. */
+function answeredOf(value: unknown): Answered | undefined {
+  const v = (value ?? {}) as Partial<Answered>;
+  if (typeof v.question !== "string" || !SAID.has(v.said)) return undefined;
+  return { question: v.question, said: v.said!, ...(typeof v.choice === "string" ? { choice: v.choice } : {}) };
+}
+/** A notice where it happened: an answered question, or an extension's message or failure. */
+function noticeSegment(key: string, notice: Pick<Notice, "kind" | "lines"> & { answered?: unknown }): Segment {
+  const answered = answeredOf(notice.answered);
+  return answered ? { kind: "answered", key, answered } : { kind: "notice", key, notice: { kind: notice.kind, lines: notice.lines } };
+}
 
 export interface ToolCall {
   /** Pi's (opaque) call id. */
@@ -47,6 +60,8 @@ export type Segment =
   /** ... or an SVG a tool wrote, drawn from the markup in its arguments. */
   | { kind: "svg"; key: string; markup: string; alt: string; /** The markup was cut to fit, so it is not drawn. */ clipped?: boolean }
   | { kind: "notice"; key: string; notice: Pick<Notice, "kind" | "lines"> }
+  /** A question an extension asked, and what the person answered. */
+  | { kind: "answered"; key: string; answered: Answered }
   /** A tool call drawn by the component its extension placed at `item.tool:<name>`. */
   | { kind: "view"; key: string; point: string; call: ToolCall }
   /**
@@ -61,7 +76,7 @@ export type Segment =
   /** A schedule the agent added, as it was saved. */
   | { kind: "schedule"; key: string; schedule: Schedule }
   /** A line saying something this session started ended, without a turn (status mode). */
-  | { kind: "status"; key: string; title: string; how: string; session?: string; process?: string };
+  | { kind: "status"; key: string; title: string; how: string; ok?: boolean; session?: string; process?: string };
 
 /** Your message and everything the agent did and said in answer to it. */
 export interface Turn {
@@ -69,8 +84,12 @@ export interface Turn {
   user?: Item;
   /** The message was sent by something other than the person (a wake): how it reads ("Scheduled · Every day at 9:00 am · Fri 13 Nov"). */
   woken?: string;
-  /** Sent by another session (which one, so the turn can link to it) or by a process it started. */
-  from?: { id: string; label: string; kind: "session" | "process" | "reload" };
+  /**
+   * Sent by another session (which one, so the turn can link to it) or by a process it started. A
+   * report says whose it is and how it ended (`title`, `how`), and where in the message the report
+   * itself starts (`start`); a message without that shows its label and all of its text.
+   */
+  from?: { id: string; label: string; kind: "session" | "process" | "reload"; title: string; how?: string; start: number };
   segments: Segment[];
   /** The agent is still working on this turn. */
   running: boolean;
@@ -107,20 +126,13 @@ export function wokenLabel(details: unknown): string {
 }
 /** The session, process or reload a turn came from, when it was not the person or a schedule. */
 export function wokenFrom(details: unknown): Turn["from"] {
-  const { source } = (details ?? {}) as { source?: { kind?: unknown; id?: unknown; label?: unknown } };
-  return (source?.kind === "session" || source?.kind === "process" || source?.kind === "reload") && typeof source.id === "string" && typeof source.label === "string"
-    ? { id: source.id, label: source.label, kind: source.kind }
-    : undefined;
-}
-/**
- * What a report card shows: the message without the first line the agent needs and the card already
- * says ("The session "Math" you started finished:", "The process "tests" exited 1. Last output:").
- */
-export function reportBody(text: string): string {
-  const session = /^The session "[^"\n]*" you started [^\n]*:\n\n/.exec(text);
-  if (session) return text.slice(session[0].length);
-  const process = /^The process "[^"\n]*" [^\n]*\n\nLast output:\n/.exec(text);
-  return process ? text.slice(process[0].length) : text;
+  const { source, card } = (details ?? {}) as { source?: { kind?: unknown; id?: unknown; label?: unknown }; card?: Partial<WokenCard> };
+  if (!(source?.kind === "session" || source?.kind === "process" || source?.kind === "reload") || typeof source.id !== "string" || typeof source.label !== "string")
+    return undefined;
+  const from: NonNullable<Turn["from"]> = { id: source.id, label: source.label, kind: source.kind, title: source.label, start: 0 };
+  return card && typeof card.title === "string" && typeof card.how === "string" && Number.isSafeInteger(card.start) && card.start! >= 0
+    ? { ...from, title: card.title, how: card.how, start: card.start! }
+    : from;
 }
 
 const summaryOf = (item: Item, between: boolean): Segment => ({
@@ -184,7 +196,7 @@ export function buildTurns(
   const flush = (position: number | undefined) => {
     while (notice < notices.length && (position === undefined || notices[notice]!.after <= position)) {
       const next = notices[notice++]!;
-      emit(current(), { kind: "notice", key: `n${next.id}`, notice: next });
+      emit(current(), noticeSegment(`n${next.id}`, next));
     }
   };
 
@@ -279,19 +291,20 @@ export function buildTurns(
           latest: item === latestReply,
         });
     } else if (item.role === "custom" && item.customType === STATUS_ENTRY) {
-      const d = (item.details ?? {}) as { title?: unknown; how?: unknown; session?: unknown; process?: unknown };
+      const d = (item.details ?? {}) as { title?: unknown; how?: unknown; ok?: unknown; session?: unknown; process?: unknown };
       emit(turn, {
         kind: "status",
         key: item.key,
         title: typeof d.title === "string" ? d.title : "It",
         how: typeof d.how === "string" ? d.how : "ended",
+        ...(typeof d.ok === "boolean" ? { ok: d.ok } : {}),
         ...(typeof d.session === "string" ? { session: d.session } : {}),
         ...(typeof d.process === "string" ? { process: d.process } : {}),
       });
     } else if (item.role === "entry" && item.customType === NOTICE_ENTRY) {
       // A notice the session kept in its history, where it happened.
-      const saved = (item.details ?? {}) as { kind?: Notice["kind"]; lines?: StyledLine[] };
-      emit(turn, { kind: "notice", key: item.key, notice: { kind: saved.kind ?? "info", lines: Array.isArray(saved.lines) ? saved.lines : [] } });
+      const saved = (item.details ?? {}) as { kind?: Notice["kind"]; lines?: StyledLine[]; answered?: unknown };
+      emit(turn, noticeSegment(item.key, { kind: saved.kind ?? "info", lines: Array.isArray(saved.lines) ? saved.lines : [], answered: saved.answered }));
     } else if (item.role === "custom" || item.role === "entry") {
       emit(turn, { kind: "custom", key: item.key, item });
     } else if (item.role === "summary") {

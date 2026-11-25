@@ -82,12 +82,10 @@
 
 {#snippet tabs()}<SessionTabs />{/snippet}
 {#snippet replyDock()}
-  <div class="reply-dock">
-    <Shelf />
-    {#if session.doc?.readOnly}<ReadOnlyReply />{:else}<Composer mode="reply" />{/if}
-    <ContributionPoint point="session.input.below" />
-    <StatusLine />
-  </div>
+  <Shelf />
+  {#if session.doc?.readOnly}<ReadOnlyReply />{:else}<Composer mode="reply" />{/if}
+  <ContributionPoint point="session.input.below" />
+  <StatusLine />
 {/snippet}
 
 {#snippet detailsMenu()}{#if detailsActions.length}<Menu label="Details actions" items={detailsActions} />{/if}{/snippet}
@@ -126,6 +124,3 @@
   {/if}
 {/if}
 
-<style>
-  .reply-dock { max-width: var(--conversation-reading-width); }
-</style>

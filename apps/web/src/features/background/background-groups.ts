@@ -9,7 +9,7 @@ type RunningProcess = ProcessList["processes"][number];
 
 /** One thing that runs without you, in its owner's group (design set 5). */
 export type BackgroundRow =
-  | { kind: "session"; key: string; session: SessionInfo; state: Exclude<SessionState, "" | "failed" | "opening" | "stopping"> }
+  | { kind: "session"; key: string; session: SessionInfo; state: Exclude<SessionState, "" | "failed" | "interrupted" | "opening" | "stopping"> }
   | { kind: "task"; key: string; process: RunningProcess }
   | { kind: "kept"; key: string; session: SessionInfo }
   | { kind: "schedule"; key: string; schedule: ScheduleSummary }

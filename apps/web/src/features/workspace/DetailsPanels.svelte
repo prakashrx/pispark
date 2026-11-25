@@ -316,7 +316,7 @@
       <li class="row">
         <button type="button" class="grow link line" onclick={() => client.open(child.id)}>{sessionName(child)}</button>
         {#if state}<StatusMark
-            kind={state === "needs-you" ? "attention" : state === "failed" ? "error" : state === "queued" ? "waiting" : "busy"}
+            kind={state === "needs-you" ? "attention" : state === "failed" || state === "interrupted" ? "error" : state === "queued" ? "waiting" : "busy"}
             label={sessionStatus(child)}
             words
           />{:else}<span class="sub">Finished</span>{/if}

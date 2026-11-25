@@ -3,7 +3,7 @@
   import FolderChoice from "./FolderChoice.svelte";
   import Button from "../../lib/ui/Button.svelte";
   import RichInput from "../../lib/ui/RichInput.svelte";
-  import { Attachments } from "./attachments.svelte";
+  import { Attachments, BLOCKED } from "./attachments.svelte";
   import Selector from "../../lib/ui/Selector.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
   import type { Session } from "./session.svelte";
@@ -71,12 +71,10 @@
   const unavailable = $derived(
     mode === "reply" && session?.doc?.compacting
       ? "Context is being compacted."
-      : mode === "reply" && session?.hold?.()
-        ? session.hold()
       : sessions.busy
         ? "Please wait…"
-      : attachments?.blocked && (mode === "reply" || !attachments.blocked.startsWith("Waiting"))
-        ? attachments.blocked
+      : attachments?.blocked && (mode === "reply" || attachments.blocked !== "uploading")
+        ? BLOCKED[attachments.blocked]
       : mode === "ask"
         ? !bound && !sessions.askFolder
           ? "Choose a working folder."

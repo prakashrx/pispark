@@ -1,5 +1,4 @@
 import { Notifications } from "./notifications.js";
-import { MAX_CONTEXT } from "../core/runtime/storage.js";
 import { validEndpoint } from "./push.js";
 import { validEvents, type NotificationState } from "../contract/notification-protocol.js";
 import { WorkspaceLive } from "./workspace-live.js";
@@ -111,7 +110,7 @@ function validate(value: unknown): Command {
         : c.type === "configure"
           ? ["sessionId", ...(c.model === undefined ? [] : ["model"]), ...(c.thinking === undefined ? [] : ["thinking"])]
         : ["start", "steer", "follow-up"].includes(String(c.type))
-          ? ["sessionId", "text", ...(c.attachments === undefined ? [] : ["attachments"]), ...(c.type === "start" && c.context !== undefined ? ["context"] : [])]
+          ? ["sessionId", "text", ...(c.attachments === undefined ? [] : ["attachments"])]
           : undefined;
   if (
     !keys ||
@@ -120,8 +119,6 @@ function validate(value: unknown): Command {
   )
     throw new RuntimeError("invalid-input");
   if (c.model !== undefined && !validChoice(c.model))
-    throw new RuntimeError("invalid-input");
-  if (c.context !== undefined && (typeof c.context !== "string" || !c.context || Buffer.byteLength(c.context) > MAX_CONTEXT))
     throw new RuntimeError("invalid-input");
   if (c.agent !== undefined && !validAgentId(c.agent))
     throw new RuntimeError("invalid-input");
@@ -236,11 +233,7 @@ export class SessionHttp {
   ) {
     // Every server answers /api/host; one the launcher did not start is simply not managed.
     this.host = host ?? new HostHttp(new HostLink(() => runtime.runningWork(), () => {}), runtime.dataFolder, () => runtime.runningWork());
-    this.agents = new AgentHttp(runtime.agents, (target) => runtime.discoverTools(target), {
-      builder: (agent, fresh) => runtime.builder(agent, fresh),
-      release: (session) => runtime.release(session),
-      agentRemoved: (agent) => runtime.agentRemoved(agent),
-    });
+    this.agents = new AgentHttp(runtime.agents, (target) => runtime.discoverTools(target));
     this.remote = remote && new RemoteHttp(remote, (device) => this.endRemote(device));
     this.workspace = new WorkspaceLive({
       sessions: () => [this.runtime.list(), this.runtime.archived().length, this.runtime.unreadableSessions],
@@ -414,7 +407,7 @@ export class SessionHttp {
           await this.runtime.ensure(command.sessionId);
           let run;
           try {
-            run = this.runtime.start(command.sessionId, command.text, command.attachments, command.context);
+            run = this.runtime.start(command.sessionId, command.text, command.attachments);
           } catch (error) {
             // Admission is synchronous. Return a definite rejection before clients clear drafts.
             receipt.state = "settled";

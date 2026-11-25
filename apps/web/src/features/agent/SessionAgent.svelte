@@ -2,7 +2,7 @@
   /**
    * The agent for one session (Details → Agent for this session): the same tabs and parts as an
    * agent's page, editing the session's own layer, which builds on its agent. What's changed here
-   * stays with this session. No profile, settings or Agent Builder: those belong to the agent.
+   * stays with this session. No profile or settings: those belong to the agent.
    */
   import Tabs from "../../lib/ui/Tabs.svelte";
   import { useSessions } from "../workspace/session-client.svelte";

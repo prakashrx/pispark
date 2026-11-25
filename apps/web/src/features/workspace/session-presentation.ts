@@ -82,11 +82,12 @@ export function sessionName(session?: SessionInfo): string {
 }
 
 /** A session's state, one of the shared status marks (design language §3.1); "" when idle. */
-export type SessionState = "needs-you" | "failed" | "working" | "queued" | "opening" | "stopping" | "";
+export type SessionState = "needs-you" | "failed" | "interrupted" | "working" | "queued" | "opening" | "stopping" | "";
 /** The words for each state, the same everywhere: list, header, details, notifications. */
 export const STATE_WORDS: Record<Exclude<SessionState, "">, string> = {
   "needs-you": "Needs you",
   failed: "Failed",
+  interrupted: "Interrupted",
   working: "Working",
   queued: "Queued",
   opening: "Opening",
@@ -100,7 +101,9 @@ export function sessionState(session?: StateFields): SessionState {
   if (status === "cancelling" || status === "stopping") return "stopping";
   if (status === "running") return "working";
   if (status === "starting") return "opening";
-  if (session?.interrupted || status === "error") return "failed";
+  if (status === "error") return "failed";
+  // PiSpark stopped in the middle of a run (a restart): nothing failed, and Continue picks it up.
+  if (session?.interrupted) return "interrupted";
   return "";
 }
 /** A session's state in words; empty when there is nothing to say. */
@@ -112,7 +115,7 @@ export function sessionStatus(session?: StateFields): string {
 export const canArchive = (session: Pick<SessionInfo, "status" | "waiting" | "queued">): boolean =>
   ["idle", "error", "unloaded", "read-only"].includes(session.status) && !session.waiting && !session.queued;
 /** Of several sessions' states, the one a person most needs to see. */
-const FOREMOST: SessionState[] = ["needs-you", "failed", "working", "queued", "opening", "stopping"];
+const FOREMOST: SessionState[] = ["needs-you", "failed", "interrupted", "working", "queued", "opening", "stopping"];
 export function foremostState(states: SessionState[]): SessionState {
   return FOREMOST.find((state) => states.includes(state)) ?? "";
 }

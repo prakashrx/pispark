@@ -142,9 +142,8 @@
     overflow-anchor: none;
     padding-inline: var(--conversation-gutter);
   }
-  .conversation-content { max-width: var(--conversation-width); }
+  .conversation-content { max-width: var(--conversation-width); --reading-width: none; }
   .queued-turn {
-    width: min(100%, var(--conversation-reading-width));
     display: flex;
     flex-direction: column;
     align-items: flex-end;

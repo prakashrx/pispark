@@ -3,6 +3,7 @@ import type { ProcessInfo, ProcessList, ProcessOutput } from "../../contract/pro
 import type { StatusDetails } from "../../contract/wake-protocol.js";
 import type { Processes, ProcessEnd } from "./processes.js";
 import type { ProcessRequest } from "./process-tool.js";
+import type { ToolAnswer } from "./session-tool.js";
 import { RuntimeError } from "./errors.js";
 import { validateId, type SessionMetadata } from "./storage.js";
 import { titleOf, type SessionAccess } from "./session-access.js";
@@ -23,7 +24,7 @@ export class SessionProcesses {
   ) {}
 
   /** The process tool's requests (the agent's, or an extension's in that session). */
-  async request(sessionId: string, request: ProcessRequest, signal?: AbortSignal): Promise<{ ok: boolean; text: string }> {
+  async request(sessionId: string, request: ProcessRequest, signal?: AbortSignal): Promise<ToolAnswer> {
     const { storage } = this.sessions;
     const processes = this.processes;
     const metadata = storage.read(sessionId);
@@ -69,7 +70,7 @@ export class SessionProcesses {
         const process = processes.get(started.id, [sessionId]);
         // Its first output, or what it was asked to wait for.
         const note = request.waitFor !== undefined ? await waited(process, request, 0) : (await processes.wait(process, undefined, 0, 1000, signal), "");
-        return { ok: true, text: `Started ${describe(processes.get(started.id, [sessionId]))} in ${folder}.\n${note}${output(process)}` };
+        return { ok: true, text: `Started ${describe(processes.get(started.id, [sessionId]))} in ${folder}.\n${note}${output(process)}`, details: { id: started.id } };
       }
       case "list": {
         const all = visible().flatMap((id) => processes.list(id));
@@ -123,12 +124,15 @@ export class SessionProcesses {
     const title = end.process.title ?? end.process.command;
     const short = title.length > 80 ? `${title.slice(0, 79)}…` : title;
     if (end.mode === "status") {
-      void this.statusIn(sessionId, `The process "${short}" ${end.how}.`, { process: end.process.id, title: short, how: end.how }).catch(() => {});
+      void this.statusIn(sessionId, `The process "${short}" ${end.how}.`, { process: end.process.id, title: short, how: end.how, ...(end.ok !== undefined ? { ok: end.ok } : {}) }).catch(() => {});
       return;
     }
+    // The lines the agent needs; the card says them already, so it shows the output after them.
+    const heading = `The process "${short}" ${end.how}${end.watch ? `:\n${end.watch}` : "."}\n\nLast output:\n`;
     void this.sessions.deliver(sessionId, {
       source: { kind: "process", id: end.process.id, label: `${short} · ${end.how}`.slice(0, 200) },
-      text: `The process "${short}" ${end.how}${end.watch ? `:\n${end.watch}` : "."}\n\nLast output:\n${end.tail.trim() || "(none)"}`,
+      text: `${heading}${end.tail.trim() || "(none)"}`,
+      card: { title: short, how: end.how.slice(0, 200), start: heading.length },
       due: new Date(this.sessions.now()).toISOString(),
       policy: "queue",
     });

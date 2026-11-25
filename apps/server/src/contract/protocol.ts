@@ -51,8 +51,6 @@ export interface SessionInfo {
   forkOf?: string;
   /** The schedule or app routine this session is one run of. */
   schedule?: { id: string; due: string };
-  /** The agent this session builds with Agent Builder: shown on that agent's page, not with the sessions. */
-  edits?: string;
   /** Kept loaded while no one watches, by one of its extensions, and why (see `HoldRequest`). */
   held?: { extension: string; reason: string };
   /** How many processes it started are running (see `process-protocol.ts`). */
@@ -82,9 +80,20 @@ export interface HoldRequest {
 /**
  * A notice PiSpark showed in an open session (an extension's message or failure, an answered question),
  * kept as a custom entry of this type in Pi's session so it stays where it happened. Its item is an
- * `entry` whose `details` are `{ kind, lines, at }`.
+ * `entry` whose `details` are `{ kind, lines, at }`, plus `answered` for an answered question.
  */
 export const NOTICE_ENTRY = "pispark:notice";
+/**
+ * A question an extension asked and what the person answered: yes or no, the option they chose, that
+ * they answered (what they typed is not kept: it may be a name, a path or something private), or
+ * that they skipped it.
+ */
+export interface Answered {
+  question: string;
+  said: "yes" | "no" | "chose" | "answered" | "skipped";
+  /** The option chosen (`said: "chose"`). */
+  choice?: string;
+}
 /**
  * One thing in the session, projected from Pi's session: a message, a summary, or a custom entry.
  * Content keeps Pi's shape; what is large travels by reference and is read on demand.
@@ -199,11 +208,15 @@ export interface ExtensionView {
   dialogs: ExtensionDialog[];
   statuses: { key: string; line: StyledLine }[];
   widgets: { key: string; placement: "above" | "below"; lines: StyledLine[] }[];
-  /** `after`: the number of messages that preceded the notice; `at`: epoch milliseconds. */
+  /**
+   * `after`: the number of messages that preceded the notice; `at`: epoch milliseconds. An answered
+   * question is a notice with `answered` and no lines.
+   */
   notices: {
     id: number;
     kind: "info" | "warning" | "error";
     lines: StyledLine[];
+    answered?: Answered;
     after: number;
     at: number;
   }[];
@@ -331,11 +344,7 @@ export type Command = { commandId: string } & (
    * `attachments`: names of files uploaded to the session (`POST /api/sessions/:id/attachments`). Each is named
    * where the text places `<file name="<name>"></file>` (or at the end); images also go to the model as content.
    */
-  /**
-   * `context` (start only, at most 8 KiB) goes to the model with this run as a note it reads but the
-   * person didn't write: what they are looking at, for example. It isn't shown in the conversation.
-   */
-  | { type: "start" | "steer" | "follow-up"; sessionId: string; text: string; attachments?: string[]; context?: string }
+  | { type: "start" | "steer" | "follow-up"; sessionId: string; text: string; attachments?: string[] }
   /** Answer an extension's question; null dismisses it. */
   | {
       type: "answer";

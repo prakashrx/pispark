@@ -1,4 +1,5 @@
 import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";
+import type { ToolAnswer } from "./session-tool.js";
 
 /** The built-in extension's tool for running commands in the background. */
 export const PROCESS_TOOL = "pispark_process";
@@ -22,7 +23,7 @@ export type ProcessRequest =
   | { action: "stop"; id: string };
 export interface ProcessMessage {
   request: ProcessRequest;
-  reply: (answer: { ok: boolean; text: string }) => void;
+  reply: (answer: ToolAnswer) => void;
   /** Ends a wait early, such as when the agent's turn is cancelled. */
   signal?: AbortSignal;
   taken?: boolean;

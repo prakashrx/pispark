@@ -36,10 +36,19 @@ export type SessionRequest =
   | { action: "read"; id: string; runId?: string }
   /** From a child in status mode: wake its parent with this. */
   | { action: "report"; text: string };
+/**
+ * An answer from one of PiSpark's own tools: text for the agent, and for clients what the text
+ * names (the session or process a start made), as the tool call's `details`.
+ */
+export interface ToolAnswer {
+  ok: boolean;
+  text: string;
+  details?: { id: string };
+}
 /** What the bus carries: the request, and where its answer goes (text for the agent). */
 export interface SessionMessage {
   request: SessionRequest;
-  reply: (answer: { ok: boolean; text: string }) => void;
+  reply: (answer: ToolAnswer) => void;
   /** Set by the host while the event is delivered. */
   taken?: boolean;
 }

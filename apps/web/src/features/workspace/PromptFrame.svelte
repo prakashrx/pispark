@@ -1,23 +1,21 @@
 <script lang="ts">
   import { onMount, untrack, type Snippet } from "svelte";
   import Button from "../../lib/ui/Button.svelte";
-  import { TONE_WORDS, type QuestionTone } from "./question-tone";
 
   /**
    * What every question shares, whatever it asks: focus moves in and comes back, Escape skips, a
    * waiting question counts down, and key hints say what the keys do. A question's own view only
    * fills the body and answers; keeping this here is what makes any view behave the same way.
-   * It reads as part of the conversation: small, in the conversation's column, its tone (how much
-   * care it asks for) in colour and in words.
+   * It reads as part of the conversation: small, in the conversation's column. Every question looks
+   * the same: Pi's questions do not say how much care they ask for, and their own words say it.
    */
   let {
     title,
     expiresAt,
     hint,
-    tone = "info",
     onskip,
     children,
-  }: { title: string; expiresAt?: number; hint: string; tone?: QuestionTone; onskip: () => void; children: Snippet } = $props();
+  }: { title: string; expiresAt?: number; hint: string; onskip: () => void; children: Snippet } = $props();
 
   const titleId = $props.id();
   let section = $state<HTMLElement>();
@@ -49,10 +47,10 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<section bind:this={section} class="prompt" data-tone={tone} role="group" aria-labelledby={titleId} tabindex="-1" onkeydown={keydown}>
+<section bind:this={section} class="prompt" role="group" aria-labelledby={titleId} tabindex="-1" onkeydown={keydown}>
   <div class="prompt-head">
-    <span class="prompt-mark" aria-hidden="true">{tone === "info" ? "?" : "!"}</span>
-    <p class="prompt-label">{TONE_WORDS[tone]}</p>
+    <span class="prompt-mark" aria-hidden="true">?</span>
+    <p class="prompt-label">Needs you</p>
     {#if seconds !== undefined}<span class="prompt-timer" aria-label={`${seconds} seconds left`}>{seconds}s</span>{/if}
     <Button variant="ghost" size="compact" class="prompt-skip" onclick={onskip}>Skip</Button>
   </div>
@@ -65,8 +63,6 @@
 
 <style>
   .prompt {
-    --tone: var(--interactive);
-    --tone-text: var(--interactive-text);
     position: relative;
     display: flex;
     flex-direction: column;
@@ -75,19 +71,11 @@
     max-width: 48rem;
     margin: 0 auto;
     padding: 0.5rem 0.75rem 0.625rem;
-    border: 1px solid color-mix(in srgb, var(--tone) 50%, var(--border));
+    border: 1px solid color-mix(in srgb, var(--interactive) 50%, var(--border));
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--tone) 5%, var(--card, var(--background)));
+    background: color-mix(in srgb, var(--interactive) 5%, var(--card, var(--background)));
     font-size: var(--text-sm);
     overflow: hidden;
-  }
-  .prompt[data-tone="warning"] {
-    --tone: var(--warning);
-    --tone-text: var(--warning-foreground);
-  }
-  .prompt[data-tone="danger"] {
-    --tone: var(--danger);
-    --tone-text: var(--danger-foreground);
   }
   .prompt:focus {
     outline: none;
@@ -105,7 +93,7 @@
     height: 1rem;
     flex: none;
     border-radius: var(--radius-full);
-    background: var(--tone);
+    background: var(--interactive);
     color: var(--background);
     font-size: 0.6875rem;
     font-weight: 700;
@@ -116,7 +104,7 @@
     margin: 0;
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--tone-text);
+    color: var(--interactive-text);
   }
   .prompt-title {
     margin: 0;
@@ -152,7 +140,7 @@
     right: 0;
     bottom: 0;
     height: 2px;
-    background: var(--tone);
+    background: var(--interactive);
     transform-origin: left;
     animation: prompt-shrink linear forwards;
   }

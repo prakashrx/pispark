@@ -1,5 +1,5 @@
 import type { RemoteAction, RemoteStatus } from "../../../../server/src/contract/remote-protocol";
-import type { Transport } from "../workspace/transport";
+import { RequestFailed, type Transport } from "../workspace/transport";
 
 /**
  * Remote access as the server reports it (`/api/remote`): Tailscale, the address, pairing and the
@@ -16,7 +16,7 @@ export class RemoteClient {
       this.status = await this.transport.json<RemoteStatus>("/api/remote");
       this.elsewhere = false;
     } catch (error) {
-      if ((error as Error).message === "forbidden") this.elsewhere = true;
+      if (error instanceof RequestFailed && error.code === "forbidden") this.elsewhere = true;
       else throw error;
     }
   }

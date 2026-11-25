@@ -15,7 +15,7 @@
   import DescriptionPane from "./DescriptionPane.svelte";
   import { isFresh, keyOf, type AgentPage, type Row } from "./agent-page.svelte";
 
-  let { page, onai, narrow, stacked }: { page: AgentPage; onai?: () => void; narrow: boolean; stacked: boolean } = $props();
+  let { page, narrow, stacked = false }: { page: AgentPage; narrow: boolean; stacked?: boolean } = $props();
 
   const skills = $derived(page.rows("skills"));
   const open = $derived(page.opened("skills", narrow));
@@ -39,7 +39,7 @@
   const fileCount = (item: Row) => (files(item).length ? `SKILL.md and ${files(item).length} more file${files(item).length > 1 ? "s" : ""}` : "SKILL.md");
 </script>
 
-<TabIntro {page} kind="skills" oncreate={() => { page.create("skills"); onai?.(); }}>Know-how the agent loads only when a task matches <em>Use when</em>.</TabIntro>
+<TabIntro {page} kind="skills" oncreate={() => page.create("skills")}>Know-how the agent loads only when a task matches <em>Use when</em>.</TabIntro>
 
 <Split items={skills} selected={open} {narrow} label="Skills" off={(item) => !isFresh(item) && !item.on} onselect={(item) => { file = undefined; page.show("skills", item); }}>
   {#snippet row(item)}

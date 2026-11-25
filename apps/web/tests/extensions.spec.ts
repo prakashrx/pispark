@@ -26,7 +26,7 @@ test("an extension's notice and question appear around the session and answer by
   await reply.fill("ui-select");
   await reply.press("Enter");
   const question = page.getByRole("group", { name: "Pick one" });
-  // Its tone is in words as well as colour: an ordinary question just needs you.
+  // Every question says it needs you, in words.
   await expect(question).toContainText("Needs you");
   await expect(question.getByRole("button", { name: "one" })).toBeFocused();
   await page.keyboard.press("ArrowDown");
@@ -37,7 +37,7 @@ test("an extension's notice and question appear around the session and answer by
   await expect(page.getByText("local:ui-select", { exact: true })).toBeVisible();
   // The session keeps a line of what was asked and chosen: the question, then what was said.
   const said = (asked: string) => page.getByRole("status").filter({ has: page.getByText(asked, { exact: true }) });
-  await expect(said("Pick one")).toContainText("you chose two");
+  await expect(said("Pick one")).toContainText("two");
 
   // A confirmation starts on the question itself, not on an answer; Y and N answer, Escape skips.
   await reply.fill("ui-confirm");
@@ -48,7 +48,7 @@ test("an extension's notice and question appear around the session and answer by
   await expect(confirm.getByRole("button", { name: "No" })).toBeVisible();
   await page.keyboard.press("n");
   await expect(confirm).toHaveCount(0);
-  await expect(said("Proceed?")).toContainText("you said no");
+  await expect(said("Proceed?")).toContainText("no");
   await expect(page.getByText("local:ui-confirm", { exact: true })).toBeVisible();
   await reply.fill("ui-confirm");
   await reply.press("Enter");

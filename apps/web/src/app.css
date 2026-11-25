@@ -244,10 +244,10 @@ button[aria-disabled="true"] {
 .prose th[align="center"], .prose td[align="center"] { text-align: center; }
 .prose th[align="right"], .prose td[align="right"] { text-align: right; }
 
-/* Blocks drawn by lib/markdown: prose keeps a reading width, a table scrolls sideways on its own. */
+/* Blocks drawn by lib/markdown: prose keeps a reading width, a table scrolls sideways inside it. */
 .prose > :first-child > :first-child { margin-top: 0; }
 .prose > :last-child > :last-child { margin-bottom: 0; }
-.prose .reading-block { max-width: var(--conversation-reading-width); display: flow-root; }
+.prose .reading-block { max-width: var(--reading-width); display: flow-root; }
 .prose .table-scroll { overflow-x: auto; overflow-wrap: normal; }
 .prose .table-scroll:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .prose img { display: block; max-width: 100%; max-height: 28rem; width: auto; height: auto; object-fit: contain; border-radius: var(--radius-md); }
@@ -309,9 +309,13 @@ button[aria-disabled="true"] {
 .prose .hljs-emphasis { font-style: italic; }
 .prose .hljs-strong { font-weight: 650; }
 
+/*
+ * Markdown keeps a reading width; a session's conversation is one wider column instead: its
+ * messages, replies, tables and views, and the reply box under them.
+ */
 :root {
+  --reading-width: 48rem;
   --conversation-width: 68rem;
-  --conversation-reading-width: 48rem;
   --conversation-gutter: 1rem;
 }
 @media (min-width: 640px) {

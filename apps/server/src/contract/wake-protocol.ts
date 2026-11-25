@@ -47,6 +47,17 @@ export const WOKEN_ENTRY = "pispark:woken";
 export interface WokenDetails {
   source: WakeSource;
   due: string;
+  /** A report from a session or process this one started, as its card shows it. */
+  card?: WokenCard;
+}
+/**
+ * How a report's card reads: whose it is, how it ended, and where the report itself starts in the
+ * message (after the line the agent needs, which the card already says).
+ */
+export interface WokenCard {
+  title: string;
+  how: string;
+  start: number;
 }
 
 /**
@@ -72,8 +83,10 @@ export interface StatusDetails {
   session?: string;
   process?: string;
   title: string;
-  /** "finished", "stopped" or "failed", or how an extension worded it. */
+  /** How it ended, in words: "finished", "stopped", "exited 1". */
   how: string;
+  /** Whether it went as it should: a session finished, a process exited 0. Absent in older lines. */
+  ok?: boolean;
 }
 
 /** Records kept per source, newest first. */

@@ -16,8 +16,8 @@ import type { CommandUncertaintyKind } from "./session-presentation";
 import { contributionsFor } from "./extension-views";
 import { LiveSession } from "./live-session.svelte";
 import { liveEvents } from "./live-stream";
-import { CommandFailed, CommandUncertainty, type Transport } from "./transport";
-import { Attachments } from "./attachments.svelte";
+import { CommandFailed, CommandGone, CommandUncertainty, type Transport } from "./transport";
+import { Attachments, BLOCKED } from "./attachments.svelte";
 
 /** What a session needs from the app that holds it. */
 export interface SessionHost {
@@ -111,28 +111,15 @@ export class Session {
    * Sends a message to an idle session: the given text, or the draft (cleared once it is accepted,
    * unless it changed meanwhile). Whether the server accepted it; a failure is in `error`.
    */
-  /**
-   * A note for the model with each new message, set by whoever hosts the session (the agent page
-   * tells Agent Builder what's open). Sent as `context`; it isn't shown in the conversation.
-   */
-  note?: () => string | undefined;
-  /** Why sending waits, set by whoever hosts the session (the agent page: unsaved changes first). */
-  hold?: () => string | undefined;
   async send(text?: string): Promise<boolean> {
     const message = text ?? this.draft;
     const revision = this.draftRevision;
     // After a failed reply the next message goes too: the server starts the session again first.
     if (this.sending || this.doc?.compacting || !message.trim() || !["idle", "error"].includes(this.doc?.status ?? "")) return false;
-    // Whoever hosts the session may hold sending, with a reason (unsaved changes first).
-    const held = this.hold?.();
-    if (held) {
-      this.error = held;
-      return false;
-    }
     // The draft's attachments go with it, each named where it sits; a given text carries none.
     const placed = text === undefined ? this.attachments.placed(message) : [];
     if (placed.length && this.attachments.blocked) {
-      this.error = this.attachments.blocked;
+      this.error = BLOCKED[this.attachments.blocked];
       return false;
     }
     const outgoing = placed.length ? this.attachments.outgoing(message) : { text: message, attachments: [] };
@@ -145,7 +132,7 @@ export class Session {
       const receipt = await this.transport.submit(
         editing
           ? { type: "edit", sessionId: this.id, entryId: editing.entryId, text: outgoing.text, ...attachments }
-          : { type: "start", sessionId: this.id, text: outgoing.text, ...attachments, ...this.context() },
+          : { type: "start", sessionId: this.id, text: outgoing.text, ...attachments },
       );
       if (receipt.error) throw new CommandFailed(receipt.error);
       if (editing && this.editing === editing) this.editing = undefined;
@@ -161,11 +148,6 @@ export class Session {
     } finally {
       this.sending = false;
     }
-  }
-  private context(): { context?: string } {
-    const note = this.note?.()?.trim();
-    // The server takes at most 8 KiB; a longer note is cut rather than refused.
-    return note ? { context: new TextDecoder().decode(new TextEncoder().encode(note).slice(0, 8 * 1024)).replace(/�$/, "") } : {};
   }
   /** Stops the run, or takes a message that waits for its turn off the queue. */
   async stop() {
@@ -360,6 +342,8 @@ export class Session {
     this.connection = "Reconnecting";
   }
   fail(error: unknown) {
+    // Nothing runs for a command the server no longer knows: the session's own state says the rest.
+    if (error instanceof CommandGone) return this.clearError();
     this.error = (error as Error).message;
     this.errorKind = error instanceof CommandUncertainty ? error.kind : undefined;
     this.unsettled = error instanceof CommandUncertainty && error.receipt ? error : undefined;
@@ -380,7 +364,7 @@ export class Session {
       await this.transport.settled(pending.receipt, pending.longRunning);
       if (this.unsettled === pending) this.clearError();
     } catch (error) {
-      if (this.unsettled === pending && error instanceof CommandFailed) this.fail(error);
+      if (this.unsettled === pending && (error instanceof CommandFailed || error instanceof CommandGone)) this.fail(error);
     } finally {
       if (this.checking === pending) this.checking = undefined;
     }

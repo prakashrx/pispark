@@ -6,6 +6,7 @@ import {
   validChildReportMode,
   type WakeRecord,
   type WakeSource,
+  type WokenCard,
   type WokenDetails,
 } from "../../contract/wake-protocol.js";
 import { validResultData, type ChildEnded } from "./session-tool.js";
@@ -31,6 +32,8 @@ export interface Wake {
    * `CHILD_ENDED_CHANNEL`), with the data an extension in the child set.
    */
   report?: Omit<ChildEnded, "reply">;
+  /** How the conversation shows it, when it is a report (see `WokenCard`). */
+  card?: WokenCard;
 }
 
 /** What delivery needs from the runtime that holds the sessions. */
@@ -89,6 +92,16 @@ function validReport(value: unknown): boolean {
     (value.data === undefined || validResultData(value.data))
   );
 }
+function validCard(value: unknown, text: string): value is WokenCard {
+  return (
+    object(value) &&
+    shortString(value.title, 200) &&
+    shortString(value.how, 200) &&
+    Number.isSafeInteger(value.start) &&
+    (value.start as number) >= 0 &&
+    (value.start as number) <= text.length
+  );
+}
 function validWake(value: unknown): value is Wake {
   return (
     object(value) &&
@@ -97,7 +110,8 @@ function validWake(value: unknown): value is Wake {
     validTime(value.due) &&
     (value.policy === "latest" || value.policy === "queue") &&
     (value.late === undefined || value.late === true) &&
-    (value.report === undefined || validReport(value.report))
+    (value.report === undefined || validReport(value.report)) &&
+    (value.card === undefined || validCard(value.card, value.text as string))
   );
 }
 function validRecord(value: unknown): value is WakeRecord {
@@ -232,7 +246,7 @@ export class Wakes {
     this.running.add(running);
     let completion: Promise<RunResult>;
     try {
-      const sent = await this.host.run(sessionId, wake, { source: wake.source, due: wake.due });
+      const sent = await this.host.run(sessionId, wake, { source: wake.source, due: wake.due, ...(wake.card ? { card: wake.card } : {}) });
       if ("handled" in sent) {
         this.running.delete(running);
         this.note(sessionId, wake.source.id, { due: wake.due, at, outcome: "handled", ...how });

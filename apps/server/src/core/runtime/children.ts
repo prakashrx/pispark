@@ -3,7 +3,7 @@ import { bindingOf } from "../agents/resolve.js";
 import { validAgentId } from "../agents/format.js";
 import { validateText, type RunResult, type Session } from "./session.js";
 import { toolSessionTitle } from "./session-title.js";
-import type { SessionRequest } from "./session-tool.js";
+import type { SessionRequest, ToolAnswer } from "./session-tool.js";
 import { runtimeError } from "./errors.js";
 import type { SessionMetadata } from "./storage.js";
 import type { Wake } from "./wakes.js";
@@ -30,7 +30,7 @@ export class Children {
   }
 
   /** The session tool's requests (the agent's, or an extension's in that session): its own children only. */
-  async request(parentId: string, request: SessionRequest): Promise<{ ok: boolean; text: string }> {
+  async request(parentId: string, request: SessionRequest): Promise<ToolAnswer> {
     const { storage, admit, ensure, get, live, cancel } = this.sessions;
     const parent = storage.read(parentId);
     if (request.action === "inspect" || request.action === "reload") return { ok: false, text: "The calling session handles this itself." };
@@ -89,13 +89,16 @@ export class Children {
       return void this.statusLine(parent, report).catch((error: unknown) => {
         this.sessions.logger.event("wake.failure", { sessionId: parent.id, outcome: "failed", code: runtimeError(error, "execution").code });
       });
+    // The line the agent needs; the card says it already, so it shows the report after it.
+    const heading = `The session "${title}" you started ${how}:\n\n`;
     void this.sessions.deliver(parent.id, {
       source: { kind: "session", id: session.id, label: `${title} · ${how}` },
       text: mode === "notice"
         ? exact
           ? `The session "${title}" you started ${how} (run_id: ${exact.id}). To fetch this result, use pispark_session read with id ${session.id} and run_id ${exact.id}.`
           : `The session "${title}" you started ${how}${result.error ? ` (${result.error})` : ""}. No run result was saved.`
-        : `The session "${title}" you started ${how}:\n\n${body}${dataText(data, 56 * 1024 - body.length)}`,
+        : `${heading}${body}${dataText(data, 56 * 1024 - body.length)}`,
+      card: { title, how, start: mode === "notice" ? 0 : heading.length },
       due: this.due(),
       policy: "queue",
       report,
@@ -155,7 +158,7 @@ export class Children {
       status: "a line here says when it ends, and it raises anything that needs you.",
       none: "it does not report back (read shows its answer).",
     }[report];
-    return { ok: true, text: `Started "${titleOf(session.metadata)}" (id ${doc.id}). It works on its own; ${how}` };
+    return { ok: true, text: `Started "${titleOf(session.metadata)}" (id ${doc.id}). It works on its own; ${how}`, details: { id: doc.id } };
   }
 
   /** The parent of a child, while it can be told something: listed and itself not a child. */
@@ -183,10 +186,11 @@ export class Children {
       return this.sessions.deliver(parent.id, {
         source: { kind: "session", id: report.session, label: `${report.title} · ${report.how}` },
         text: answer.text,
+        card: { title: report.title, how: report.how, start: 0 },
         due: this.due(),
         policy: "queue",
       });
-    await session.addStatus(`The session "${report.title}" you started ${report.how}.`, { session: report.session, title: report.title, how: report.how });
+    await session.addStatus(`The session "${report.title}" you started ${report.how}.`, { session: report.session, title: report.title, how: report.how, ok: report.how === "finished" });
   }
 
   /** A child in status mode raises something: its text wakes its parent, whose extensions see it first. */
@@ -194,9 +198,11 @@ export class Children {
     const parent = this.parentOf(child);
     if (!parent || child.report !== "status") return { ok: false, text: "Only a session started by another one, in status mode, can raise things with it." };
     const title = titleOf(child);
+    const heading = `The session "${title}" you started raises this:\n\n`;
     void this.sessions.deliver(parent.id, {
       source: { kind: "session", id: child.id, label: `${title} · raised` },
-      text: `The session "${title}" you started raises this:\n\n${text}`,
+      text: `${heading}${text}`,
+      card: { title, how: "raised", start: heading.length },
       due: this.due(),
       policy: "queue",
       report: { session: child.id, title, how: "raised", mode: "status", text },

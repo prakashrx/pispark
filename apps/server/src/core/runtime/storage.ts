@@ -57,13 +57,7 @@ export interface SessionMetadata {
   schedule?: { id: string; due: string };
   /** An extension keeps it loaded while no one watches (`pispark:hold`), and why. */
   held?: { extension: string; reason: string };
-  /** The agent this session builds with Agent Builder; the agent's page shows it. */
-  edits?: string;
-  /** A note for the model with the next run (what the person is looking at), not shown as theirs. */
-  context?: string;
 }
-/** At most this much note goes with a message. */
-export const MAX_CONTEXT = 8 * 1024;
 
 const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 const UUID =
@@ -134,14 +128,14 @@ export class SessionStorage {
             typeof value.schedule.due !== "string" ||
             Number.isNaN(new Date(value.schedule.due).getTime()))) ||
         (value.held !== undefined &&
-          (!value.held || typeof value.held.extension !== "string" || typeof value.held.reason !== "string" || value.held.reason.length > 200)) ||
-        (value.edits !== undefined && !validAgentId(value.edits)) ||
-        (value.context !== undefined && (typeof value.context !== "string" || Buffer.byteLength(value.context) > MAX_CONTEXT))
+          (!value.held || typeof value.held.extension !== "string" || typeof value.held.reason !== "string" || value.held.reason.length > 200))
       )
         throw new Error();
       // `report: false` was the first form of `none`.
       const report = (value.report as unknown) === false ? { report: "none" as const } : {};
-      return { ...value, ...report, id };
+      // The agent page's Agent Builder sessions (`edits`, `context`) were once hidden from the list; now they're ordinary sessions.
+      const { edits: _edits, context: _context, ...kept } = value as SessionMetadata & { edits?: unknown; context?: unknown };
+      return { ...kept, ...report, id };
     } catch (error) {
       if (error instanceof RuntimeError) throw error;
       if ((error as NodeJS.ErrnoException).code === "ENOENT")
