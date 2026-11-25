@@ -273,6 +273,24 @@ test("the process tool: words, and the process a start made as a row", () => {
   expect(artifactsOf(started)).toEqual([{ kind: "process", key: "process.p1", processId: id, title: "dev server" }]);
 });
 
+test("the schedule tool: words from the schedule as saved, and the schedule an add made as a row", () => {
+  const schedule = { id: "5e6be256-39c5-4dcb-a848-8e9cf3390a36", sessionId: "s", cron: "0 7 * * *", prompt: "Feed", on: true, createdAt: "now", by: "agent", run: "new", report: "status", runs: [] };
+  const added = {
+    id: "c9",
+    name: "pispark_schedule",
+    args: { action: "add", cron: "0 7 * * *", prompt: "Feed", run: "new" },
+    status: "done" as const,
+    result: item("toolResult", [text("Scheduled: Every day at 7:00 am, as a new session, reports status (id …).")], { details: { schedule } }),
+  };
+  expect(describeCall(added)).toEqual({ doing: "Adding a schedule", done: "Scheduled every day at 7:00 am" });
+  expect(summarizeCalls([added])).toBe("Added 1 schedule");
+  expect(artifactsOf(added)).toEqual([{ kind: "schedule", key: "schedule.c9", schedule }]);
+  // Declined, or from a host that sends no details: no row, and nothing claimed.
+  const declined = { ...added, id: "c10", result: item("toolResult", [text("The person declined; nothing was scheduled.")]) };
+  expect(describeCall(declined).done).toBe("Added no schedule");
+  expect(artifactsOf(declined)).toEqual([]);
+});
+
 test("a turn knows when it started and when its last response ended", () => {
   const items: Item[] = [
     { key: "u1", role: "user", at: 1_000, parts: [{ type: "text", text: "go" }] },

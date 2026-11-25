@@ -2,7 +2,8 @@
   import type { StyledLine, StyledSpan } from "../../../../server/src/contract/protocol";
 
   /** Text an extension wrote for a terminal, drawn with this theme's colors. */
-  let { lines, class: className = "" }: { lines: StyledLine[]; class?: string } = $props();
+  /** `prose`: words, not a terminal layout (notices), so the page's own font. */
+  let { lines, class: className = "", prose = false }: { lines: StyledLine[]; class?: string; prose?: boolean } = $props();
 
   const role = (value: string | undefined, slot: "fg" | "bg") =>
     value && !value.startsWith("#") ? `${slot}-${value}` : "";
@@ -27,7 +28,7 @@
       .join("; ") || undefined;
 </script>
 
-<div class="styled-text {className}">
+<div class="styled-text {className}" class:prose>
   {#each lines as line}
     <div class="line">
       {#each line as span}
@@ -45,6 +46,11 @@
     line-height: 1.55;
     color: var(--foreground);
     min-width: 0;
+  }
+  .styled-text.prose {
+    font-family: inherit;
+    font-size: var(--text-sm);
+    line-height: 1.5;
   }
   .line {
     white-space: pre-wrap;

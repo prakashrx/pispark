@@ -1,4 +1,6 @@
 import type { Json } from "../../../../server/src/contract/stream-ops";
+import type { Schedule } from "../../../../server/src/contract/schedule-protocol";
+import { describeSchedule } from "../../../../server/src/contract/cron";
 import type { Segment, ToolCall } from "./session-turns";
 import { registerGenericToolView, registerToolView, resolveToolView, type CallWords, type ToolView } from "./views.svelte";
 
@@ -136,6 +138,31 @@ registerToolView("pispark_process", {
   artifacts(call) {
     const id = call.status === "done" && arg(call, "action") === "start" ? processId(call) : undefined;
     return id ? [{ kind: "process", key: `process.${call.id}`, processId: id, title: arg(call, "title") ?? arg(call, "command") ?? "A process" }] : [];
+  },
+});
+// PiSpark's own schedule tool: what it saved, from the call's details, as a row.
+const savedSchedule = (call: ToolCall) => {
+  const schedule = field(call.result?.details, "schedule");
+  return schedule && typeof schedule === "object" && !Array.isArray(schedule) && typeof schedule.id === "string" ? (schedule as unknown as Schedule) : undefined;
+};
+registerToolView("pispark_schedule", {
+  describe(call) {
+    const action = arg(call, "action");
+    if (action === "add") {
+      const saved = savedSchedule(call);
+      return { doing: "Adding a schedule", done: saved ? `Scheduled ${describeSchedule(saved).replace(/^./, (c) => c.toLowerCase())}` : "Added no schedule" };
+    }
+    if (action === "list") return { doing: "Listing its schedules", done: "Listed its schedules" };
+    return { doing: "Removing a schedule", done: "Removed a schedule" };
+  },
+  group: "schedules",
+  summarize: (calls) => {
+    const added = calls.filter((call) => savedSchedule(call)).length;
+    return added ? `added ${noun(added, "schedule")}` : `used ${noun(calls.length, "schedule action")}`;
+  },
+  artifacts(call) {
+    const schedule = call.status === "done" ? savedSchedule(call) : undefined;
+    return schedule ? [{ kind: "schedule", key: `schedule.${call.id}`, schedule }] : [];
   },
 });
 registerToolView("pispark_report", {

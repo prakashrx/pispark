@@ -276,6 +276,8 @@ test("the agent's schedule tool adds to its own session only after the person sa
     assert.equal(f.one().sessionId, session.id);
     assert.equal(f.one().prompt, "digest");
     assert.equal(f.one().run, undefined);
+    const result = f.runtime.items(session.id, {}).items.findLast((item) => item.role === "toolResult" && item.toolName === "pispark_schedule");
+    assert.match((result?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""), /, in this session \(id /);
   } finally {
     await f.cleanup();
   }
@@ -294,6 +296,22 @@ test("the agent's schedule tool keeps run 'new' and its report mode", async () =
     await run.completion;
     assert.equal(f.one().run, "new");
     assert.equal(f.one().report, "result");
+
+    // The call's result is the schedule as saved: its details for views, and words saying where runs go.
+    const results = () => f.runtime.items(session.id, {}).items.filter((item) => item.role === "toolResult" && item.toolName === "pispark_schedule");
+    const text = (item: (typeof results extends () => (infer T)[] ? T : never) | undefined) =>
+      (item?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join("");
+    const added = results().at(-1);
+    const saved = (added?.details as { schedule?: { id: string; run?: string; report?: string } } | undefined)?.schedule;
+    assert.equal(saved?.id, f.one().id);
+    assert.equal(saved?.run, "new");
+    assert.equal(saved?.report, "result");
+    assert.match(text(added), /Every day at 7:00 am, as a new session, reports result/);
+
+    await f.runtime.start(session.id, `tool:pispark_schedule:${JSON.stringify({ action: "list" })}`).completion;
+    const listed = results().at(-1);
+    assert.deepEqual(((listed?.details as { schedules?: { id: string }[] } | undefined)?.schedules ?? []).map((s) => s.id), [f.one().id]);
+    assert.match(text(listed), /as a new session, reports result \(on\): feed/);
   } finally {
     await f.cleanup();
   }
