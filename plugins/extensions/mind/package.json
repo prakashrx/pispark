@@ -1,0 +1,19 @@
+{
+  "name": "mind",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Memory and attention for any agent: a charter, a contract, knowledge and work cards kept in the place it works in.",
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  }
+}
