@@ -6,6 +6,7 @@ import {
   type AgentSummary,
   type AgentTarget,
   type AgentView,
+  type ItemTarget,
   type AvailableResource,
   type ResourceReference,
   type ResolvedItem,
@@ -199,18 +200,43 @@ export class AgentClient {
       on,
     }), on ? "Added" : "Removed");
   }
-  readFile(path: string, target = this.target) {
+  readFile(path: string, target: ItemTarget | undefined = this.target) {
     return agentRequest<ItemFile>("file/read", { target, path });
   }
-  /** Create or replace an item file in this layer. */
-  writeFile(path: string, text: string, revision: string | null) {
-    return this.change(() =>
-      agentRequest<ItemFile>("file/write", {
-        target: this.target,
-        path,
-        expectedRevision: revision,
-        text,
-      }),
+  /** Create or replace an item file in this layer, or in the Shared library. */
+  writeFile(path: string, text: string, revision: string | null, target: ItemTarget | undefined = this.target, done = "Saved") {
+    return this.change(
+      () =>
+        agentRequest<ItemFile>("file/write", {
+          target,
+          path,
+          expectedRevision: revision,
+          text,
+        }),
+      done,
+    );
+  }
+  /** Write a new file into the Shared library and select it here, as one change. */
+  addShared(type: ItemType, name: string, path: string, text: string) {
+    return this.change(async () => {
+      await agentRequest<ItemFile>("file/write", { target: { library: "shared" }, path, expectedRevision: null, text });
+      const { revision } = await agentRequest<AgentView>("read", { target: this.target });
+      await agentRequest("resource/select", { target: this.target, type, reference: `shared:${name}`, on: true, expectedRevision: revision });
+    }, "Saved to the Shared library");
+  }
+  /** The agent's Agent Builder session: the one it has, or a new one; `fresh` puts the last away. */
+  async builder(agent: string, fresh = false): Promise<string> {
+    return (await agentRequest<{ session: string }>("builder", { agent, ...(fresh ? { fresh: true } : {}) })).session;
+  }
+  /** "Open as a session": the Agent Builder session joins the session list. */
+  release(session: string) {
+    return agentRequest("builder/release", { session });
+  }
+  /** Move one of this agent's own items into the Shared library. */
+  promote(type: ItemType, name: string) {
+    return this.change(
+      () => agentRequest("resource/promote", { target: this.target, type, name, expectedRevision: this.view?.revision ?? "" }),
+      "Moved to the Shared library",
     );
   }
   async deleteFile(path: string) {
@@ -223,15 +249,23 @@ export class AgentClient {
       });
     }, "Removed");
   }
-  /** Copy an inherited item into this layer, where it replaces the original by name. */
-  async customize(item: ResolvedItem) {
-    if (!item.path || !this.view) return false;
-    const origin: AgentTarget =
-      item.origin.id === "session" && this.target && "session" in this.target
-        ? this.target
-        : { agent: item.origin.id };
-    const source = await this.readFile(item.path, origin);
-    return this.writeFile(item.path, source.text, null);
+  /**
+   * Copy an inherited, shared or bundled item into this layer, whole (a skill with its scripts and
+   * references), where it replaces the original by name.
+   */
+  customize(item: ResolvedItem) {
+    const from = this.fileTarget(item);
+    if (!from || !this.view || this.owns(item)) return Promise.resolve(false);
+    return this.change(
+      () => agentRequest("resource/copy", { target: this.target, type: item.type, name: item.name, from, expectedRevision: this.view?.revision ?? "" }),
+      "Copied here",
+    );
+  }
+  /** Where an item's file lives: the Shared library, the app's own resources, or its origin layer. */
+  fileTarget(item: ResolvedItem): ItemTarget | undefined {
+    if (item.reference?.startsWith("shared:")) return { library: "shared" };
+    if (item.reference?.startsWith("bundled:")) return { library: "bundled" };
+    return item.origin.id === "session" || this.local(item) ? this.target : { agent: item.origin.id };
   }
   async remove(id: string) {
     const ok = await this.change(() => agentRequest("delete", { id }), "Deleted");
@@ -246,5 +280,9 @@ export class AgentClient {
   /** Whether an item comes from the layer being edited. */
   local(item: { origin: { id: string } }) {
     return !!this.target && item.origin.id === layerId(this.target);
+  }
+  /** Whether the layer being edited owns the item's file, not just a reference to a shared or bundled one. */
+  owns(item: ResolvedItem) {
+    return this.local(item) && (!item.reference || item.reference.startsWith("local:"));
   }
 }

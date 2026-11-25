@@ -10,7 +10,7 @@ import type { Wake } from "./wakes.js";
 /** A new session's request: Ask's, or another session's. */
 export type NewSession = { folder?: string; model?: ModelChoice; agent?: string };
 /** What a session started by another one, or by a schedule, records of where it came from. */
-export type Origin = Pick<SessionMetadata, "parent" | "report" | "title" | "schedule">;
+export type Origin = Pick<SessionMetadata, "parent" | "report" | "title" | "schedule" | "edits">;
 
 /**
  * What the runtime lends the parts that work across sessions (child sessions, holds, processes,

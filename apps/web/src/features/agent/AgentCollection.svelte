@@ -27,7 +27,7 @@
     { value: "", label: "Only Default" },
     ...client.items.filter((p) => !p.builtIn && p.valid).map((p) => ({ value: p.id, label: p.name })),
   ]);
-  const kind = (item: AgentSummary) => (item.builtIn ? "Base" : item.home ? "App" : item.folder ? "Project" : "");
+  const kind = (item: AgentSummary) => (item.builtIn ? "Base" : item.bundled ? "Bundled" : item.home ? "App" : item.folder ? "Project" : "");
   const count = (item: AgentSummary) => {
     const n = sessions.sessions.filter((s) => s.agent.id === item.id).length;
     return n === 1 ? "1 session" : `${n} sessions`;

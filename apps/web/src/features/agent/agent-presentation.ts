@@ -1,11 +1,3 @@
-import type {
-  ItemType,
-  LayerRef,
-  ResolvedItem,
-  ResolvedTool,
-  ResourceReference,
-} from "../../../../server/src/contract/agent-protocol";
-
 const messages: Record<string, string> = {
   "invalid-input": "That request wasn’t valid.",
   "invalid-path": "That file name isn’t allowed.",
@@ -15,7 +7,8 @@ const messages: Record<string, string> = {
   "missing-parent": "An agent this one builds on is missing",
   cycle: "Agents can’t build on each other in a loop",
   "in-use": "Another agent builds on this one",
-  "built-in": "Default can’t be deleted.",
+  "built-in": "That comes with PiSpark: it can’t be changed or deleted.",
+  exists: "There’s already one with that name.",
   "not-found": "Not found.",
   limit: "That’s too large.",
   folder: "That folder doesn’t exist on the server.",
@@ -28,55 +21,4 @@ export function agentError(code: string, detail?: string): string {
   return detail && ["missing-parent", "cycle", "in-use"].includes(code)
     ? `${message}: ${detail}.`
     : message;
-}
-
-export const ITEM_LABELS: Record<ItemType, { title: string; one: string }> = {
-  instructions: { title: "Instructions", one: "instruction" },
-  skills: { title: "Skills", one: "skill" },
-  prompts: { title: "Prompts", one: "prompt" },
-  extensions: { title: "Extensions", one: "extension" },
-  mcp: { title: "MCP servers", one: "MCP server" },
-};
-
-export function resourceSource(reference: ResourceReference): string {
-  if (reference.startsWith("bundled:")) return "Bundled";
-  if (reference.startsWith("shared:")) return "Shared";
-  return "Agent-owned";
-}
-
-/** Where an item comes from, relative to the layer being edited. */
-export function originLabel(origin: LayerRef, viewing: string): string {
-  if (origin.id === viewing) return "Added here";
-  if (origin.id === "session") return "From this session";
-  return `From ${origin.name}`;
-}
-
-/** Why an item is in its current state, when a layer switched it. */
-export function switchLabel(item: ResolvedItem, viewing: string): string {
-  if (!item.switchedBy) return item.replaced.length ? "Replaces an inherited one" : "";
-  const who = item.switchedBy.id === viewing ? "here" : `by ${item.switchedBy.name}`;
-  return item.on ? `Turned back on ${who}` : `Turned off ${who}`;
-}
-
-/**
- * Tools in groups, in the order the server sends them: PiSpark (Pi's built-in tools and PiSpark's
- * own), then each extension, then each MCP server, then switches naming tools nothing provides now.
- */
-export function toolGroups(tools: ResolvedTool[]): { title: string; tools: ResolvedTool[] }[] {
-  const groups: { title: string; tools: ResolvedTool[] }[] = [];
-  for (const tool of tools) {
-    const title = !tool.source ? "Not provided now" : tool.source.kind === "core" ? "PiSpark" : tool.source.kind === "mcp" ? `MCP: ${tool.source.name}` : tool.source.name;
-    const group = groups.find((g) => g.title === title) ?? groups[groups.push({ title, tools: [] }) - 1]!;
-    group.tools.push(tool);
-  }
-  return groups;
-}
-
-/** Starting text for a new item file. */
-export function template(type: ItemType, name: string): string {
-  if (type === "skills")
-    return `---\nname: ${name}\ndescription: What this skill does and when to use it.\n---\n\n# ${name}\n\n`;
-  if (type === "prompts")
-    return `---\ndescription: What this command does\nargument-hint: "[topic]"\n---\n\nWrite the prompt here. Use $1 for the first argument.\n`;
-  return "";
 }

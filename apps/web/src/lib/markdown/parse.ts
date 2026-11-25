@@ -86,6 +86,23 @@ export function repairOpenBlock(raw: string): string {
   return text;
 }
 
+/** One top-level token as HTML, with the link definitions of its whole text; not yet sanitized. */
+export function blockHtml(flavor: Flavor, token: Token, links: Tokens.Generic["links"]): string {
+  return renderToken(flavor, token, links);
+}
+
+/** The top-level tokens of `text` with where each starts, and the text's link definitions. Blank lines are left out. */
+export function lexBlocks(flavor: Flavor, text: string): { blocks: { start: number; token: Token }[]; links: Tokens.Generic["links"] } {
+  const tokens = parsers[flavor].lexer(text);
+  const blocks: { start: number; token: Token }[] = [];
+  let at = 0;
+  for (const token of tokens) {
+    if (token.type !== "space") blocks.push({ start: at, token });
+    at += token.raw.length;
+  }
+  return { blocks, links: tokens.links };
+}
+
 interface Lexed {
   start: number;
   token: Token;

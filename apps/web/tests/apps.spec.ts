@@ -1,7 +1,7 @@
 import { newSession } from "./ask";
 import { expect, type Page } from "@playwright/test";
 import { hostedTest } from "./isolated-host";
-import { openAgent } from "./agent-journey";
+import { openAgent, openTab } from "./agent-journey";
 
 // Each test gets its own data folder. "Log app" is an app agent: its home is the Log view its extension offers.
 const fresh = hostedTest;
@@ -86,9 +86,10 @@ fresh("sessions stay in the session list; an app started from Ask is listed unde
 fresh("the editor makes an agent an app; with no view of that key, the app opens on the conversation", async ({ page }) => {
   await page.goto("/#/agents");
   await openAgent(page, "Review");
-  const form = page.getByRole("form", { name: "Home view" });
-  const key = form.getByRole("textbox", { name: "Home view" });
-  await expect(form.getByRole("button", { name: "Save" })).toHaveAttribute("aria-disabled", "true");
+  await openTab(page, "Settings");
+  const settings = page.getByRole("tabpanel", { name: "Settings" });
+  const key = settings.getByRole("textbox", { name: "Home view" });
+  await expect(settings.getByRole("button", { name: "Save" })).toBeDisabled();
   await key.fill("not a key");
   await key.press("Enter");
   await expect(page.getByRole("alert").filter({ hasText: "That agent setting isn’t valid." })).toBeVisible();

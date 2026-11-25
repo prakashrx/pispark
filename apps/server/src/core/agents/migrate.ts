@@ -7,7 +7,7 @@ import { resolveSetup } from "./resolve.js";
 import { digest } from "./format.js";
 
 function targets(store: AgentStore): AgentTarget[] {
-  const agents = store.list().map(({ id }) => ({ agent: id }));
+  const agents = store.list().filter((agent) => !agent.bundled).map(({ id }) => ({ agent: id }));
   const sessions = readdirSync(store.sessionsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(entry.name))
     .map(({ name }) => ({ session: name }))

@@ -194,8 +194,11 @@ test("item files: create, revision-checked replace, path rules, skill folders de
   );
   const replaced = s.writeFile(target, "instructions/tone.md", created.revision, "Shorter.");
   assert.equal(s.readFile(target, "instructions/tone.md").text, "Shorter.");
-  for (const bad of ["../x.md", "instructions/a/b.md", "skills/x/run.sh", "agent.json", "instructions/.hidden.md"])
+  for (const bad of ["../x.md", "instructions/a/b.md", "agent.json", "instructions/.hidden.md", "skills/x/.env", "skills/x/../../agent.json"])
     assert.throws(() => s.readFile(target, bad), code("invalid-path"));
+  // A skill's other files can be read, not written.
+  assert.throws(() => s.readFile(target, "skills/x/run.sh"), code("not-found"));
+  assert.throws(() => s.writeFile(target, "skills/x/run.sh", null, "echo"), code("invalid-path"));
   const skill = s.writeFile(target, "skills/review/SKILL.md", null, "---\nname: review\n---\n");
   await mkdir(join(home, "agents", "dev", "skills", "review", "scripts"));
   s.deleteFile(target, "skills/review/SKILL.md", skill.revision);
@@ -256,7 +259,7 @@ test("a working folder: absolute, inherited from the nearest layer, not for Defa
   assert.equal(viewAgent(s, { agent: "reviewer" }).folder, project);
   assert.equal(bindingOf(s, { agent: "moved" }).folder, other);
   assert.deepEqual(
-    listAgents(s).map((summary) => [summary.id, summary.folder]),
+    listAgents(s).filter((summary) => !summary.bundled).map((summary) => [summary.id, summary.folder]),
     [["default", undefined], ["moved", other], ["project", project], ["reviewer", project], ["role", undefined]],
   );
   // A project agent's sessions read their folder's AGENTS.md: becoming one changes the setup, which folder does not.
@@ -291,7 +294,7 @@ test("a home view: a view key, inherited from the nearest layer, not for Default
   assert.deepEqual(bindingOf(s, { agent: "variant" }), { home: "desk" });
   assert.equal(viewAgent(s, { agent: "other" }).home, "board");
   assert.deepEqual(
-    listAgents(s).map((summary) => [summary.id, summary.home]),
+    listAgents(s).filter((summary) => !summary.bundled).map((summary) => [summary.id, summary.home]),
     [["default", undefined], ["app", "desk"], ["other", "board"], ["role", undefined], ["variant", "desk"]],
   );
   // Which view shows first is the client's business: the agent's setup is the same.

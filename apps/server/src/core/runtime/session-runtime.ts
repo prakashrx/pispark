@@ -33,7 +33,7 @@ import { ToolDiscovery } from "./tool-discovery.js";
 import { Wakes } from "./wakes.js";
 import { reloads, SetupChanges, type SetupChange, type Waiting } from "./setup-changes.js";
 import type { Routine, RoutineList, ScheduleInput, ScheduleList } from "../../contract/schedule-protocol.js";
-import { switchName } from "../../contract/agent-protocol.js";
+import { AGENT_BUILDER, switchName } from "../../contract/agent-protocol.js";
 import { Routines } from "./routines.js";
 import { Processes } from "./processes.js";
 import type { ProcessInfo, ProcessList, ProcessOutput } from "../../contract/process-protocol.js";
@@ -285,19 +285,25 @@ export class SessionRuntime {
   get unreadableSessions(): number {
     return this.storage.unreadable;
   }
-  /** Recent distinct working folders, newest first, for the New session folder picker. An app's own folder is its own. */
+  /**
+   * Recent distinct working folders, newest first, for the New session folder picker. An app's own
+   * folder is its own, and an agent's folder (where Agent Builder works) is no place to start in.
+   */
   recentFolders(limit = 8): string[] {
     const folders: string[] = [];
-    let apps = this.appsDir;
-    try {
-      apps = realpathSync.native(apps);
-    } catch {
-      /* No app has a folder yet. */
-    }
-    const inApps = (folder: string) => {
-      const path = relative(apps, folder);
-      return !path.startsWith("..") && !isAbsolute(path);
+    const canonical = (dir: string) => {
+      try {
+        return realpathSync.native(dir);
+      } catch {
+        return dir;
+      }
     };
+    const own = [canonical(this.appsDir), canonical(this.agents.agentsDir)];
+    const inApps = (folder: string) =>
+      own.some((dir) => {
+        const path = relative(dir, folder);
+        return !path.startsWith("..") && !isAbsolute(path);
+      });
     for (const session of this.storage.list().sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
       if (session.cwd && !folders.includes(session.cwd) && !inApps(session.cwd)) {
         folders.push(session.cwd);
@@ -334,6 +340,7 @@ export class SessionRuntime {
       ...(metadata.forkOf ? { parent: metadata.forkOf, forkOf: metadata.forkOf }
         : metadata.parent ? { parent: metadata.parent } : {}),
       ...(metadata.schedule ? { schedule: { ...metadata.schedule } } : {}),
+      ...(metadata.edits ? { edits: metadata.edits } : {}),
       ...(metadata.held ? { held: { ...metadata.held } } : {}),
       ...(this.processes?.runningIn(metadata.id) ? { processes: this.processes.runningIn(metadata.id) } : {}),
       ...(session?.readOnly ? { readOnly: session.readOnly } : {}),
@@ -681,6 +688,56 @@ export class SessionRuntime {
       this.processes.stopSession(each);
     }
   }
+  /**
+   * The Agent Builder session that works on `agent`: the one it has, or a new one in the agent's
+   * folder. `fresh` puts the current one away first (archived, no longer tied to the agent) and
+   * starts another. An agent the app ships can't be edited, so it has none.
+   */
+  async builder(agent: string, fresh = false): Promise<string> {
+    if (!validAgentId(agent)) throw new RuntimeError("invalid-input");
+    // One at a time per agent, so two quick requests can't both make a session.
+    const pending = this.builders.get(agent);
+    if (pending) await pending.catch(() => {});
+    const next = this.findOrStartBuilder(agent, fresh);
+    this.builders.set(agent, next);
+    try {
+      return await next;
+    } finally {
+      if (this.builders.get(agent) === next) this.builders.delete(agent);
+    }
+  }
+  private readonly builders = new Map<string, Promise<string>>();
+  private async findOrStartBuilder(agent: string, fresh: boolean): Promise<string> {
+    if (!this.agents.exists({ agent })) throw new RuntimeError("not-found");
+    if (this.agents.bundled(agent) || !this.agents.bundled(AGENT_BUILDER)) throw new RuntimeError("agent");
+    const current = this.storage.list().find((metadata) => metadata.edits === agent && !metadata.archived);
+    if (current && !fresh) return current.id;
+    if (current) {
+      await this.archive(current.id);
+      this.release(current.id);
+    }
+    const doc = await this.createSession({ agent: AGENT_BUILDER, folder: this.agents.dir({ agent }) }, { edits: agent });
+    return doc.id;
+  }
+  /** "Open as a session": it no longer belongs to the agent's page and joins the session list. */
+  release(id: string): void {
+    validateId(id);
+    const live = this.live.get(id);
+    if (live) return live.untie();
+    const { edits: _edits, ...metadata } = this.storage.read(id);
+    this.storage.write(metadata);
+  }
+  /** An agent was deleted: its Agent Builder sessions go with it. One that is working is only let go. */
+  async agentRemoved(agent: string): Promise<void> {
+    for (const metadata of this.storage.list().filter((each) => each.edits === agent)) {
+      try {
+        if (!metadata.archived) await this.archive(metadata.id);
+        this.delete(metadata.id);
+      } catch {
+        this.release(metadata.id);
+      }
+    }
+  }
   /** Brings a session back, with its children. */
   /**
    * Another model or thinking level for this session, from its next reply on. While the session
@@ -977,10 +1034,10 @@ export class SessionRuntime {
     this.get(id).answer(dialogId, answer);
   }
   /** Send a prompt: it runs now if a run slot is free, else it waits for one. */
-  start(id: string, text: string, attachments: readonly string[] = []): RunHandle {
+  start(id: string, text: string, attachments: readonly string[] = [], context?: string): RunHandle {
     validateText(text);
     if (!this.accepting) throw new RuntimeError("closed");
-    return this.get(id).start(this.withAttachments(id, text, attachments));
+    return this.get(id).start(this.withAttachments(id, text, attachments), undefined, context);
   }
   /**
    * Sends one of the person's messages again, edited: Pi's tree navigation moves the session to just

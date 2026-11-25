@@ -364,12 +364,23 @@ export function viewAgent(
   const { definition, revision } = store.read(target);
   try {
     const setup = resolveSetup(store, target);
+    // For the page only, not part of the setup: how far saving a shared item reaches, and a skill's files.
+    const used = setup.items.some((item) => item.reference?.startsWith("shared:")) ? store.usage() : undefined;
+    const items = setup.items.map((item) => {
+      const shared = item.reference?.startsWith("shared:");
+      const files = item.type === "skills" && !item.unavailable ? store.skillFiles(item, target) : [];
+      return {
+        ...item,
+        ...(shared && used ? { usedBy: used.get(`${item.type}:${item.name}`) ?? 0 } : {}),
+        ...(files.length ? { files } : {}),
+      };
+    });
     return {
       target,
       definition,
       revision,
       layers: setup.layers,
-      items: setup.items,
+      items,
       tools: discovered ? withDiscovered(setup.tools, discovered.tools) : setup.tools,
       ...(discovered?.incomplete ? { toolsIncomplete: true as const } : {}),
       settings: setup.settings,

@@ -1,15 +1,21 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  /**
+   * Tabs with arrow keys, Home and End. Hidden panels stay mounted, so what was typed in them is
+   * kept. A tab may carry a count (how many of something it holds), said after its label.
+   */
   let {
     label,
     tabs,
     value = $bindable(""),
     children,
+    panelClass = "",
   }: {
     label: string;
-    tabs: { id: string; label: string; disabled?: boolean }[];
+    tabs: { id: string; label: string; disabled?: boolean; count?: number }[];
     value?: string;
     children: Snippet<[string]>;
+    panelClass?: string;
   } = $props();
   const id = $props.id();
   let root: HTMLDivElement;
@@ -42,11 +48,7 @@
 </script>
 
 <div bind:this={root}>
-  <div
-    role="tablist"
-    aria-label={label}
-    class="flex gap-1 border-b border-neutral-200 mb-5"
-  >
+  <div role="tablist" aria-label={label} class="tabs">
     {#each tabs as tab, index (tab.id)}
       <button
         type="button"
@@ -59,9 +61,7 @@
         disabled={tab.disabled}
         onclick={() => (value = tab.id)}
         onkeydown={(event) => navigate(event, tab.id)}
-        class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-neutral-500 disabled:opacity-50"
-        class:!border-neutral-900={selected === tab.id}
-        class:!text-neutral-900={selected === tab.id}>{tab.label}</button
+        class="tab">{tab.label}{#if tab.count !== undefined}<span class="count">{tab.count}</span>{/if}</button
       >
     {/each}
   </div>
@@ -71,9 +71,61 @@
       id={`${id}-panel-${tab.id}`}
       aria-labelledby={`${id}-tab-${tab.id}`}
       hidden={selected !== tab.id}
-      tabindex="0"
+      class={panelClass}
     >
       {@render children(tab.id)}
     </div>
   {/each}
 </div>
+
+<style>
+  .tabs {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-height: 2.5rem;
+    padding: 0 0.75rem;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--muted-foreground);
+    white-space: nowrap;
+  }
+  .tab:hover:not(:disabled),
+  .tab[aria-selected="true"] {
+    color: var(--foreground);
+  }
+  .tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--foreground);
+  }
+  .tab:disabled {
+    opacity: 0.5;
+  }
+  .tab:focus-visible {
+    outline-offset: -2px;
+  }
+  .count {
+    min-width: 1.25rem;
+    padding: 0 0.3125rem;
+    border-radius: var(--radius-full);
+    background: var(--muted);
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+    text-align: center;
+  }
+</style>

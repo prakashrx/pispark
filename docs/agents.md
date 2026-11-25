@@ -76,6 +76,19 @@ Default → parents (flattened) → this agent → the session's own layer, if a
 
 Cycles and a missing parent are reported (`cycle`, `missing-parent`); at most 16 layers.
 
+## Agents that come with PiSpark
+
+An agent folder under the app's `plugins/agents/<id>/` ships with PiSpark: it is listed like any agent (marked **Bundled**, `bundled: true` in `AgentSummary`), its `local:` references point into its own folder, and an app update replaces it. It is read-only: `save`, the file endpoints, switches and `delete` refuse it (`built-in`), and the editor shows it without controls that change it. Other agents may build on it. Its ID is reserved: a data-folder agent of the same name is ignored, and `create` never picks it.
+
+**Agent Builder** (`agent-builder`) helps build and improve agents. It writes an agent's files directly with Pi's `read`, `edit` and `write`, working on the agent in its working folder. It has no shell (`bash`, `powershell`) and none of PiSpark's session, schedule, process or session-extension tools. Its skills cover designing agents, instructions, skills (adapted from Anthropic's skill-creator, Apache-2.0), prompts and extensions. Its extension:
+
+- lets `edit` and `write` run inside the working folder;
+- asks the person before writing anywhere else, naming a shared resource or another agent when that's what it is, and remembers a yes for that file in the session;
+- refuses files under the app's `plugins/`;
+- tells the model where the agent and PiSpark's and Pi's documentation are.
+
+The ask is not a sandbox: it covers `edit` and `write` only.
+
 ## Project agents
 
 `"folder": "D:/dev/pispark"` in `agent.json` binds an agent to a folder on the backend host (an absolute path). An agent with a folder, its own or one a parent names, is a **project agent**.
@@ -107,20 +120,32 @@ A session records only which agent it uses; nothing is copied. When its Pi sessi
 
 Model choice for a new session: the one chosen under the New session composer, else the agent's preferred model (when signed in), else the default. If an extension switches the model with Pi's `setModel`, that model stays attached to this session when reopened. Other sessions, the agent's preference and the workspace default are unchanged.
 
-## Editor
+## Agent page
 
-Agents lists every agent, Default first. The editor shows, for one layer:
+Agents lists every agent, Default first. An agent's page has a short profile (its name and what it does, edited in place; its kind: Base, Bundled, App or Project; its preferred model, thinking level and working folder; **New session**), then a tab per kind of resource and **Settings**. The tabs count what's switched on.
 
-- **Builds on:** Default (always) and the parents, in order; add or remove parents.
-- **Instructions, Skills, Prompts, Extensions, MCP:** every resolved item with where it comes from ("Added here", "From Writer"), whether a layer switched it, and an on/off switch. Items in this layer can be edited or removed; inherited ones can be viewed and **customized here** (copied into this layer). New instructions, skills and prompts start from a template; a prompt runs by typing `/name`.
+- **Instructions, Skills, Prompts** share one layout: a list and the open item. On a phone it's the list, then the item with Back. Each item has a header with where it comes from (Only this agent, Shared · N agents, Bundled, From a parent), an on/off switch and ⋯.
+  - **Instructions** are listed in reading order with word counts, and what's off last. "Everything, in order" shows the whole text and each part's share. ⋯ moves the agent's own parts up or down within its own list; inherited parts keep their layer's place.
+  - **Skills** show SKILL.md beside **Use when** (its `description`, edited in place) and its other files, which open read-only.
+  - **Prompts** read like the slash picker (`/name ‹args›`), with **What it's for** edited in place, and the template beside a preview where you type the arguments and see what it sends.
+- **Text** uses the shared Markdown editor (`lib/markdown/MarkdownEditor.svelte`): **Preview** or **Edit**, the whole text as written with its Markdown highlighted. Changes wait for the save bar, which says where saving goes: **Save** for the agent's own file; for a shared one used by other agents, **Save for all** or **Save a copy for this agent**. Inherited and bundled text is read-only until **Make it this agent's own** copies it here, whole (a skill with its scripts and references).
+- **Add** is a search dropdown of what's available and not on the agent yet (bundled, the Shared library, the agent's own folder). **Create** starts something new, named in place and saved to the Shared library (and selected here) or for this agent only.
+- ⋯ also offers **Move to Shared library** for the agent's own items, and **Delete** (its own file) or **Remove from this agent** (a shared or bundled selection). Inherited items are switched off, not removed.
+- **Extensions** list PiSpark's own tools first (**Built in**: Pi's built-in tools, including `codemode` and `tool_search`, on unless switched off, and those of PiSpark's own extension), then each extension with where it comes from and its tools. Opening one lists the tools it gives the agent, each with a switch. Tools are found by loading the agent's extensions without starting a session (cached by the setup's fingerprint); commands and views exist only while a session runs, so they aren't listed. Installing extensions from npm or git is not offered yet.
+- **Settings:** what it builds on (Default always first, then the parents; add or remove), the app home view (the key of a `session.view` an extension offers; not for Default), where it's stored, and delete (not Default, not an agent another one builds on).
 - **Routines:** `routines: [{id, name, cron, prompt}]` in `agent.json` offers runs on a schedule, each a new session of the agent; inherited like the folder. Each is off until switched on with `routine:<id>` (on Background, or in Details of one of its sessions). `hold:<extension>` allows that extension to keep the agent's sessions loaded while no one watches ([hold](session-runtime.md#hold)). Both are ordinary `on`/`off` switches and are off unless switched on.
-- **Tools:** every tool the agent has, found by loading its extensions without starting a session (Pi allows it; cached by the setup's fingerprint), with on/off switches and which layer set them. Grouped: **PiSpark** first (Pi's built-in tools, including `codemode` and `tool_search`, on unless switched off, and those of PiSpark's own built-in extension), then each extension, then switches naming tools nothing provides now. MCP tools appear once PiSpark connects MCP servers (not yet).
-- **Model:** a preferred model and thinking level.
-- **App:** the key of the home view of an app agent, or "Inherited" with the parent's. The editor cannot list views: they exist only while a session runs. Not shown for Default or a session's own layer.
-- **Working folder:** the folder of a project agent, chosen as for a new session (recent folders, home, or a path), or "Inherited" with the parent's folder. Not shown for Default or a session's own layer.
-- **Advanced:** where the agent is stored, the layer order and the raw `agent.json`; delete (not Default, not an agent another one builds on).
+- MCP servers are part of the format but aren't shown or connected yet.
 
-Every change saves immediately. Saves are revision-checked against the file's hash: if the file changed elsewhere, the save is refused and the latest version is shown.
+**Ask AI** opens the agent's **Agent Builder** session beside the tabs (in their place on a phone, with Back). It's an ordinary session of the bundled `agent-builder` agent, working in the agent's folder, one per agent: the session records the agent in `edits`.
+
+- **Working on** names what's open in the tab; × switches to the whole agent, where something new goes in the current tab. **Create** opens it on a new item; on Extensions, **Build with AI** opens it.
+- Each message carries a note the conversation doesn't show (`start {context}`, [session protocol](session-protocol.md)): the tab, what's open and where its file is seen from the agent's folder, and the agent's items.
+- It works on saved files only: while the open item has unsaved changes (or a new one has text), sending waits until they're saved or discarded.
+- When its reply ends, the page reads the agent again and anything new it made opens. What it changed shows in its conversation, each edit as a diff; to take a change back, ask it or edit the text.
+- **+** starts a new conversation: the last one is archived and no longer tied to the agent. ⋯ **Open as a session** unties it and opens it as a regular session; the next Ask AI starts another. Deleting the agent deletes its Agent Builder sessions.
+- Bundled agents have none: they can't be changed.
+
+Switches and settings save immediately; text saves from the save bar. Saves are revision-checked against the file's hash: if the file changed elsewhere, the save is refused and the latest version is shown. A session's own layer (Details ⋯ → Edit agent for this session) is edited with the same tabs, saving to that session only ("Only this session", "Make it this session's own"); it has no profile, settings or Agent Builder.
 
 ## HTTP
 
@@ -129,17 +154,21 @@ All endpoints use the shared loopback Host/Origin/Fetch Metadata guard and exact
 | Endpoint | Body → result |
 | --- | --- |
 | `GET /api/agents` | → `{agents: AgentSummary[]}`, Default first; each has `folder` when it is a project agent and `home` when it is an app agent |
-| `POST /api/agents/read` | `{target}` → `AgentView` (definition, revision, layers, resolved items and tools, settings, folder and home; `error` when unresolvable) |
-| `POST /api/agents/resources` | `{target, type}` → `{resources}`, the eligible local, shared, and bundled resources |
+| `POST /api/agents/read` | `{target}` → `AgentView` (definition, revision, layers, resolved items and tools, settings, folder and home; `error` when unresolvable). Each item's `path` is inside where its file lives (its layer, the Shared library or `plugins/`); a skill lists its other `files`; a shared item has `usedBy`, how many agents select it themselves (not counting agents that inherit it) |
+| `POST /api/agents/resources` | `{target, type}` → `{resources}`, the eligible local, shared, and bundled resources; shared ones with `usedBy` |
 | `POST /api/agents/resource/select` | `{target, type, reference, on, expectedRevision}` → `{revision}`. Saves or removes the direct selection |
+| `POST /api/agents/resource/copy` | `{target, type, name, from, expectedRevision}` → `{revision}`. Copies an item whole (a skill or extension folder with all its files) from `from` (`{library: "shared" \| "bundled"}` or another layer) into this layer and selects it there, where it replaces the original by name. `exists` when this layer already has one |
+| `POST /api/agents/resource/promote` | `{target, type, name, expectedRevision}` → `{revision}`. Moves one of the agent's own items (its file or folder) into the Shared library and turns `local:<name>` into `shared:<name>`; agents built on it keep it. `exists` when the library already has that name |
 | `POST /api/agents/create` | `{name, description?, base?}` → `{id, revision}` |
 | `POST /api/agents/save` | `{target, expectedRevision, definition}` → `{revision}`; `""` creates a session's layer |
 | `POST /api/agents/delete` | `{id}` |
-| `POST /api/agents/file/read` | `{target, path}` → `{text, revision}` |
-| `POST /api/agents/file/write` | `{target, path, expectedRevision \| null, text}` → `{text, revision}` |
+| `POST /api/agents/builder` | `{agent, fresh?}` → `{session}`: the agent's Agent Builder session, made in the agent's folder when it has none; `fresh` archives the current one first (no longer tied to the agent). `agent` for a bundled agent |
+| `POST /api/agents/builder/release` | `{session}`: the session is no longer the agent's Agent Builder session (`edits` cleared) |
+| `POST /api/agents/file/read` | `{target, path}` → `{text, revision}`; `target` may also be `{library: "shared" \| "bundled"}` |
+| `POST /api/agents/file/write` | `{target, path, expectedRevision \| null, text}` → `{text, revision}`; `target` may also be `{library: "shared"}`, which changes the file for every agent that selects it and selects nothing |
 | `POST /api/agents/file/delete` | `{target, path, expectedRevision}`; a skill is removed with its folder |
 
-Editable paths are `instructions/<name>.md`, `prompts/<name>.md` and `skills/<name>/SKILL.md`. Failures are `{error, requestId, detail?}` with safe codes; details are agent IDs, never file contents.
+Editable paths are `instructions/<name>.md`, `prompts/<name>.md` and `skills/<name>/SKILL.md`; any other file in a skill's folder can be read. Reordering a layer's instructions is a `save` with its `resources.instructions` in the new order. Failures are `{error, requestId, detail?}` with safe codes; details are agent IDs, never file contents.
 
 ## Trust
 

@@ -82,6 +82,23 @@ export function resource(root: string, type: ItemType, name: string): LayerItem 
   return { type, name, location, path: type + "/" + file, description };
 }
 
+/** A skill's files besides SKILL.md, a few levels deep, bounded. */
+export function skillFiles(base: string): string[] {
+  const found: string[] = [];
+  const walk = (folder: string, prefix: string, depth: number) => {
+    for (const entry of entries(folder)) {
+      if (found.length >= MAX_ITEMS) return;
+      if (entry.name === "node_modules") continue;
+      const relative = prefix + entry.name;
+      if (entry.isDirectory()) {
+        if (depth < 4) walk(join(folder, entry.name), relative + "/", depth + 1);
+      } else if (entry.isFile() && relative !== "SKILL.md") found.push(relative);
+    }
+  };
+  walk(base, "", 0);
+  return found;
+}
+
 function promptDescription(text: string): string | undefined {
   const { data, body } = frontmatter(text);
   return (data.description || body.split(/\r?\n/).find((line) => line.trim())?.trim())?.slice(0, 200);

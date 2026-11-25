@@ -1,0 +1,24 @@
+{
+  "name": "Agent Builder",
+  "description": "Builds and improves agents with you: their instructions, skills, prompts and extensions.",
+  "off": [
+    "tool:bash",
+    "tool:powershell",
+    "tool:pispark_session",
+    "tool:pispark_schedule",
+    "tool:pispark_process",
+    "tool:pispark_extension",
+    "tool:pispark_report"
+  ],
+  "resources": {
+    "instructions": ["local:agent-builder"],
+    "skills": [
+      "local:building-agents",
+      "local:writing-instructions",
+      "local:creating-skills",
+      "local:writing-prompts",
+      "local:creating-extensions"
+    ],
+    "extensions": ["local:agent-builder"]
+  }
+}

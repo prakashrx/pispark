@@ -54,8 +54,8 @@ async function fixture(t: TestContext) {
 test("agent HTTP: list Default, create, view the resolved layers, revision-checked save", async (t) => {
   const f = await fixture(t);
   assert.deepEqual(
-    (await f.list()).map((p) => [p.id, p.builtIn]),
-    [["default", true]],
+    (await f.list()).map((p) => [p.id, p.builtIn, p.bundled]),
+    [["default", true, undefined], ["agent-builder", false, true]],
   );
   const { id } = await f.ok<{ id: string }>("create", {
     name: "Dev helper",
@@ -126,7 +126,7 @@ test("agent HTTP: item files, session layers and delete rules", async (t) => {
   const builtIn = await f.post("delete", { id: "default" });
   assert.equal((await builtIn.json()).error, "built-in");
   await f.ok("delete", { id: "dev" });
-  assert.deepEqual((await f.list()).map((p) => p.id), ["default"]);
+  assert.deepEqual((await f.list()).map((p) => p.id), ["default", "agent-builder"]);
 });
 
 test("agent HTTP: strict inputs, same-origin guard and content-free failure logs", async (t) => {
@@ -174,4 +174,24 @@ test("agent HTTP: a working folder is refused when it is not there, then listed 
   await f.ok("save", { target: { agent: id }, expectedRevision: current.revision, definition: { ...current.definition, home: "desk" } });
   assert.equal((await f.ok<AgentView>("read", { target: { agent: id } })).home, "desk");
   assert.equal((await f.list()).find((agent) => agent.id === id)!.home, "desk");
+});
+
+test("agent HTTP: library files and Move to Shared library", async (t) => {
+  const f = await fixture(t);
+  const { id } = await f.ok<{ id: string }>("create", { name: "Owner" });
+  const target = { agent: id };
+  await f.ok("file/write", { target, path: "skills/notes/SKILL.md", expectedRevision: null, text: "---\nname: notes\ndescription: Notes\n---\n# Notes\n" });
+  const view = await f.ok<AgentView>("read", { target });
+  await f.ok("resource/promote", { target, type: "skills", name: "notes", expectedRevision: view.revision });
+  const after = await f.ok<AgentView>("read", { target });
+  const notes = after.items.find((item) => item.name === "notes")!;
+  assert.deepEqual([notes.reference, notes.path, notes.usedBy], ["shared:notes", "skills/notes/SKILL.md", 1]);
+
+  const shared = { library: "shared" };
+  const file = await f.ok<{ text: string; revision: string }>("file/read", { target: shared, path: notes.path });
+  await f.ok("file/write", { target: shared, path: notes.path, expectedRevision: file.revision, text: file.text + "More.\n" });
+  assert.equal((await f.post("file/write", { target: { library: "bundled" }, path: "skills/x/SKILL.md", expectedRevision: null, text: "x" })).status, 400);
+  assert.equal((await f.post("file/read", { target: { library: "other" }, path: notes.path })).status, 400);
+  assert.equal((await f.post("file/delete", { target: shared, path: notes.path, expectedRevision: file.revision })).status, 400);
+  assert.equal((await f.post("resource/promote", { target, type: "skills", name: "notes", expectedRevision: after.revision, extra: 1 })).status, 400);
 });

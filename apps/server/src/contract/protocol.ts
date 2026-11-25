@@ -51,6 +51,8 @@ export interface SessionInfo {
   forkOf?: string;
   /** The schedule or app routine this session is one run of. */
   schedule?: { id: string; due: string };
+  /** The agent this session builds with Agent Builder: shown on that agent's page, not with the sessions. */
+  edits?: string;
   /** Kept loaded while no one watches, by one of its extensions, and why (see `HoldRequest`). */
   held?: { extension: string; reason: string };
   /** How many processes it started are running (see `process-protocol.ts`). */
@@ -329,7 +331,11 @@ export type Command = { commandId: string } & (
    * `attachments`: names of files uploaded to the session (`POST /api/sessions/:id/attachments`). Each is named
    * where the text places `<file name="<name>"></file>` (or at the end); images also go to the model as content.
    */
-  | { type: "start" | "steer" | "follow-up"; sessionId: string; text: string; attachments?: string[] }
+  /**
+   * `context` (start only, at most 8 KiB) goes to the model with this run as a note it reads but the
+   * person didn't write: what they are looking at, for example. It isn't shown in the conversation.
+   */
+  | { type: "start" | "steer" | "follow-up"; sessionId: string; text: string; attachments?: string[]; context?: string }
   /** Answer an extension's question; null dismisses it. */
   | {
       type: "answer";

@@ -9,6 +9,8 @@ export interface AvailableResource {
   name: string;
   reference: ResourceReference;
   description?: string;
+  /** For a shared resource: how many agents select it. */
+  usedBy?: number;
 }
 export type ThinkingLevel =
   | "off"
@@ -79,8 +81,16 @@ export interface AgentDefinition {
   routines?: RoutineDefinition[];
 }
 
+/** The agent PiSpark ships for building agents; the agent page opens it beside an agent. */
+export const AGENT_BUILDER = "agent-builder";
+
 /** An agent by ID, or the layer a session owns after an in-session edit. */
 export type AgentTarget = { agent: string } | { session: string };
+/**
+ * Where an item's file lives: an agent or session layer, the Shared library (`<home>/resources/`),
+ * or the resources the app ships (`plugins/`, read-only). Each has the same folder layout.
+ */
+export type ItemTarget = AgentTarget | { library: "shared" | "bundled" };
 
 export interface LayerRef {
   /** Agent ID, or "session" for a session's own layer. */
@@ -98,6 +108,8 @@ export interface AgentSummary {
   /** The view its sessions open on, its own or a parent's: an app agent has one. */
   home?: string;
   builtIn: boolean;
+  /** Shipped with the app (`plugins/agents/`): read-only, replaced by an update. Others may build on it. */
+  bundled?: true;
   /** False when agent.json can't be read or resolved; `error` says why. */
   valid: boolean;
   error?: string;
@@ -116,8 +128,15 @@ export interface ResolvedItem {
   description?: string;
   reference?: ResourceReference;
   unavailable?: true;
-  /** File path inside the origin layer, for instructions, prompts and skills. */
+  /**
+   * File path for instructions, prompts and skills, inside where the file lives: the origin layer
+   * for `local:`, the Shared library for `shared:`, the app's `plugins/` for `bundled:`.
+   */
   path?: string;
+  /** For a skill: its other files, relative to its folder (scripts, references…). */
+  files?: string[];
+  /** For a shared resource: how many agents select it. */
+  usedBy?: number;
 }
 
 /**

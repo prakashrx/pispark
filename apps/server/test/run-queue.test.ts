@@ -312,3 +312,27 @@ test("the live stream of a session that is not loaded says so as an event, not a
     await h.remove();
   }
 });
+
+test("a note sent with a prompt that waits for a turn waits with it, and goes when it runs", async () => {
+  const f = await fixture(1);
+  try {
+    const [a, b] = [await f.create(), await f.create()];
+    const runA = f.runtime.start(a.id, "first");
+    await eventually(() => f.provider.requests.length === 1);
+    const runB = f.runtime.start(b.id, "second", [], "NOTE: the skill review is open");
+    assert.equal(f.runtime.session(b.id).status, "queued");
+    const waiting = await f.saved(b.id);
+    assert.deepEqual([waiting.queued, waiting.context], ["second", "NOTE: the skill review is open"], "saved with the waiting prompt");
+
+    f.provider.requests[0]!.release();
+    await runA.completion;
+    await eventually(() => f.provider.requests.length === 2);
+    assert.match(JSON.stringify(f.provider.requests[1]!.context), /NOTE: the skill review is open/);
+    assert.match(JSON.stringify(f.provider.requests[1]!.context), /second/);
+    f.provider.requests[1]!.release();
+    await runB.completion;
+    assert.equal((await f.saved(b.id)).context, undefined, "used once, then gone");
+  } finally {
+    await f.cleanup();
+  }
+});

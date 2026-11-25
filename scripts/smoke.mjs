@@ -47,9 +47,9 @@ try {
   assert(catalog.providers.length > 0);
   assert.equal(catalog.defaultModel, null);
   assert(catalog.providers.every(provider => !provider.stored));
-  // First start creates the data folder with a Default agent that has Pi's built-in tools.
+  // First start creates the data folder with a Default agent that has Pi's built-in tools; Agent Builder ships with the app.
   const agents = await (await fetch(`${base}/api/agents`)).json();
-  assert.deepEqual(agents.agents.map((p) => p.id), ["default"]);
+  assert.deepEqual(agents.agents.map((p) => [p.id, p.bundled ?? false]), [["default", false], ["agent-builder", true]]);
   const saved = JSON.parse(await readFile(join(root, "agents", "default", "agent.json"), "utf8"));
   assert(saved.on.includes("tool:bash"));
   const page = await fetch(`${base}/`);
