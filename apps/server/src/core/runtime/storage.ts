@@ -1,20 +1,17 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "../../contract/agent-protocol.js";
-import { randomUUID } from "node:crypto";
 import {
   existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
-  unlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { RuntimeError } from "./errors.js";
+import { writeAtomic } from "../files.js";
 import { validChoice } from "./provider-storage.js";
 import type { ModelChoice } from "../../contract/provider-protocol.js";
 import { validSessionTitle } from "../../contract/session-title.js";
@@ -145,21 +142,11 @@ export class SessionStorage {
   }
   write(metadata: SessionMetadata): void {
     const dir = this.prepare(metadata.id);
-    const temporary = join(dir, `.session-${randomUUID()}.tmp`);
     const { id: _id, ...stored } = metadata;
     try {
-      writeFileSync(temporary, JSON.stringify(stored, null, 2) + "\n", {
-        flag: "wx",
-        mode: 0o600,
-      });
-      renameSync(temporary, join(dir, "session.json"));
+      writeAtomic(join(dir, "session.json"), JSON.stringify(stored, null, 2) + "\n");
       this.catalog.set(metadata.id, structuredClone(metadata));
     } catch {
-      try {
-        unlinkSync(temporary);
-      } catch {
-        /* The write error is what matters. */
-      }
       throw new RuntimeError("storage");
     }
   }
@@ -220,15 +207,9 @@ export class SessionStorage {
     const header = manager.getHeader();
     if (!file || !header) throw new RuntimeError("storage");
     if (existsSync(file)) return;
-    const temp = `${file}.${randomUUID()}.tmp`;
-    try {
-      const entries = [header, ...manager.getEntries()];
-      writeFileSync(temp, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n", { mode: 0o600, flag: "wx" });
-      renameSync(temp, file);
-      manager.setSessionFile(file);
-    } finally {
-      rmSync(temp, { force: true });
-    }
+    const entries = [header, ...manager.getEntries()];
+    writeAtomic(file, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    manager.setSessionFile(file);
   }
   /** Pi names the transcript `<time>_<id>.jsonl`; it's the only such file in the folder. */
   transcript(id: string): string | undefined {

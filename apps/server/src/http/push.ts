@@ -1,5 +1,6 @@
 import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
+import { writeAtomic } from "../core/files.js";
 import { dirname } from "node:path";
 
 /**
@@ -20,8 +21,7 @@ export class PushKeys {
     } catch {
       pem = generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" }).toString();
       mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-      writeFileSync(`${file}.tmp`, pem, { mode: 0o600 });
-      renameSync(`${file}.tmp`, file);
+      writeAtomic(file, pem);
     }
     this.privateKey = createPrivateKey(pem);
     const jwk = createPublicKey(this.privateKey).export({ format: "jwk" }) as { x: string; y: string };

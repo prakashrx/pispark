@@ -2,7 +2,8 @@ import { readFileSync, readdirSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { AgentTarget } from "../../contract/agent-protocol.js";
-import { AgentStore, writeAtomic } from "./store.js";
+import { AgentStore } from "./store.js";
+import { writeAtomic } from "../files.js";
 import { resolveSetup } from "./resolve.js";
 import { digest } from "./format.js";
 

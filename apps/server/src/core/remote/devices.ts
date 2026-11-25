@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { writeAtomic } from "../agents/store.js";
+import { writeAtomic } from "../files.js";
 import { RuntimeError } from "../runtime/errors.js";
 import type { RemoteDevice, RemotePairing } from "../../contract/remote-protocol.js";
 

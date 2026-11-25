@@ -5,7 +5,7 @@ import { describeSchedule, nextRun, parseCron, shortDate } from "../../contract/
 import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
 import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
-import { writeAtomic } from "../agents/store.js";
+import { writeAtomic } from "../files.js";
 import { RuntimeError, runtimeError } from "./errors.js";
 import type { Wake, Wakes } from "./wakes.js";
 

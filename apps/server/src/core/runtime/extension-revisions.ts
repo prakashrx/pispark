@@ -3,6 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
+import { writeAtomic } from "../files.js";
+
 const NAME = /^[a-z][a-z0-9-]{0,63}$/;
 const HASH = /^[a-f0-9]{64}$/;
 const LIMIT = 2 * 1024 * 1024;
@@ -83,11 +85,7 @@ export class ExtensionRevisions {
   }
   write(state: ExtensionState): void {
     mkdirSync(this.root, { recursive: true, mode: 0o700 });
-    const file = join(this.root, `.state-${randomUUID()}`);
-    try {
-      writeFileSync(file, JSON.stringify(state), { flag: "wx", mode: 0o600 });
-      renameSync(file, join(this.root, "state.json"));
-    } finally { rmSync(file, { force: true }); }
+    writeAtomic(join(this.root, "state.json"), JSON.stringify(state));
   }
   path(change: ExtensionChange): string {
     return join(this.root, change.snapshot!, change.entry!);

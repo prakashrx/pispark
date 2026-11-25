@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   type FSWatcher,
   cpSync,
@@ -6,15 +5,14 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
-  readFileSync,
   renameSync,
   rmSync,
   statSync,
   unlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeAtomic } from "../files.js";
 import { SWITCH_PREFIX } from "../../contract/agent-protocol.js";
 import type {
   ItemFile,
@@ -50,20 +48,6 @@ export type { LayerItem } from "./resources.js";
 const UUID =
   /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const MAX_FILE = 256 * 1024;
-export function writeAtomic(path: string, content: string): void {
-  const temporary = join(dirname(path), `.${randomUUID()}.tmp`);
-  try {
-    writeFileSync(temporary, content, { flag: "wx", mode: 0o600 });
-    renameSync(temporary, path);
-  } catch (error) {
-    try {
-      unlinkSync(temporary);
-    } catch {
-      /* The write error is what matters. */
-    }
-    throw error;
-  }
-}
 
 /** What a layer's agent.json may hold: Default and a session's own layer name no folder and no home view. */
 const rules = (target: AgentTarget) => ({

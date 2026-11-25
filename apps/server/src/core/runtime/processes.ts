@@ -6,7 +6,7 @@ import { getShellConfig } from "@earendil-works/pi-coding-agent";
 import type { ProcessInfo, ProcessOutput } from "../../contract/process-protocol.js";
 import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
-import { writeAtomic } from "../agents/store.js";
+import { writeAtomic } from "../files.js";
 import { RuntimeError } from "./errors.js";
 
 /** The newest output kept per process; when the log grows past it, it is cut to `KEEP`. */

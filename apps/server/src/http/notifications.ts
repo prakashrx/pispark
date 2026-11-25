@@ -1,4 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
+import { writeAtomic } from "../core/files.js";
 import { join } from "node:path";
 import { NOTIFY_EVENTS, type NotifyEvent, type PendingNotification } from "../contract/notification-protocol.js";
 import type { SessionInfo } from "../contract/protocol.js";
@@ -143,9 +144,7 @@ export class Notifications {
   private save(): void {
     try {
       mkdirSync(this.folder, { recursive: true, mode: 0o700 });
-      const file = join(this.folder, "subscriptions.json");
-      writeFileSync(`${file}.tmp`, JSON.stringify(this.subscriptions, null, 2), { mode: 0o600 });
-      renameSync(`${file}.tmp`, file);
+      writeAtomic(join(this.folder, "subscriptions.json"), JSON.stringify(this.subscriptions, null, 2));
     } catch {
       /* kept in memory; written again with the next change */
     }

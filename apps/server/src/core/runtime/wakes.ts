@@ -11,7 +11,7 @@ import {
 } from "../../contract/wake-protocol.js";
 import { validResultData, type ChildEnded } from "./session-tool.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
-import { writeAtomic } from "../agents/store.js";
+import { writeAtomic } from "../files.js";
 import { RuntimeError, runtimeError } from "./errors.js";
 import type { RunResult } from "./session.js";
 

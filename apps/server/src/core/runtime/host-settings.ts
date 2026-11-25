@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { writeAtomic } from "../agents/store.js";
+import { writeAtomic } from "../files.js";
 import type { HostSettings } from "../../contract/protocol.js";
 import { RuntimeError } from "./errors.js";
 
