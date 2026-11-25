@@ -89,13 +89,16 @@ export class Children {
       return void this.statusLine(parent, report).catch((error: unknown) => {
         this.sessions.logger.event("wake.failure", { sessionId: parent.id, outcome: "failed", code: runtimeError(error, "execution").code });
       });
+    // The line the agent needs; the card says it already, so it shows the report after it.
+    const heading = `The session "${title}" you started ${how}:\n\n`;
     void this.sessions.deliver(parent.id, {
       source: { kind: "session", id: session.id, label: `${title} · ${how}` },
       text: mode === "notice"
         ? exact
           ? `The session "${title}" you started ${how} (run_id: ${exact.id}). To fetch this result, use pispark_session read with id ${session.id} and run_id ${exact.id}.`
           : `The session "${title}" you started ${how}${result.error ? ` (${result.error})` : ""}. No run result was saved.`
-        : `The session "${title}" you started ${how}:\n\n${body}${dataText(data, 56 * 1024 - body.length)}`,
+        : `${heading}${body}${dataText(data, 56 * 1024 - body.length)}`,
+      card: { title, how, start: mode === "notice" ? 0 : heading.length },
       due: this.due(),
       policy: "queue",
       report,
@@ -183,6 +186,7 @@ export class Children {
       return this.sessions.deliver(parent.id, {
         source: { kind: "session", id: report.session, label: `${report.title} · ${report.how}` },
         text: answer.text,
+        card: { title: report.title, how: report.how, start: 0 },
         due: this.due(),
         policy: "queue",
       });
@@ -194,9 +198,11 @@ export class Children {
     const parent = this.parentOf(child);
     if (!parent || child.report !== "status") return { ok: false, text: "Only a session started by another one, in status mode, can raise things with it." };
     const title = titleOf(child);
+    const heading = `The session "${title}" you started raises this:\n\n`;
     void this.sessions.deliver(parent.id, {
       source: { kind: "session", id: child.id, label: `${title} · raised` },
-      text: `The session "${title}" you started raises this:\n\n${text}`,
+      text: `${heading}${text}`,
+      card: { title, how: "raised", start: heading.length },
       due: this.due(),
       policy: "queue",
       report: { session: child.id, title, how: "raised", mode: "status", text },

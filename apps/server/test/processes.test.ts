@@ -123,6 +123,9 @@ test("a failing command wakes its session with the exit code and its last output
     const woken = items.findIndex((item) => item.customType === WOKEN_ENTRY);
     assert.equal((items[woken]!.details as { source: { kind: string; label: string } }).source.label, "tests · exited 1");
     assert.match(text(items[woken + 1]!), /^The process "tests" exited 1\.\n\nLast output:\n1 failed, 212 passed/);
+    const { card } = items[woken]!.details as { card: { title: string; how: string; start: number } };
+    assert.deepEqual({ title: card.title, how: card.how }, { title: "tests", how: "exited 1" });
+    assert.match(text(items[woken + 1]!).slice(card.start), /^1 failed, 212 passed/);
   } finally {
     await f.cleanup();
   }

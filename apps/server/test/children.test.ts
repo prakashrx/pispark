@@ -32,6 +32,10 @@ async function fixture() {
   };
 }
 
+const cardBody = (marker: { details?: unknown }, message: Parameters<typeof text>[0]) => {
+  const { card } = marker.details as { card: { title: string; how: string; start: number } };
+  return { ...card, body: text(message).slice(card.start) };
+};
 test("a session starts a child; the child's answer comes back to the parent as a turn", async () => {
   const f = await fixture();
   try {
@@ -58,6 +62,9 @@ test("a session starts a child; the child's answer comes back to the parent as a
     const report = parentItems.findIndex((item) => item.customType === WOKEN_ENTRY);
     assert.deepEqual((parentItems[report]!.details as { source: unknown }).source, { kind: "session", id: child.id, label: "Zustand research · finished" });
     assert.match(text(parentItems[report + 1]!), /^The session "Zustand research" you started finished:\n\nlocal:research zustand$/);
+    // Its card: whose it is, how it ended, and the report after the line the agent needs.
+    const heading = 'The session "Zustand research" you started finished:\n\n';
+    assert.deepEqual(cardBody(parentItems[report]!, parentItems[report + 1]!), { title: "Zustand research", how: "finished", start: heading.length, body: "local:research zustand" });
   } finally {
     await f.cleanup();
   }
@@ -185,6 +192,7 @@ test("status mode: a line in the parent without a turn; the child can raise some
     const items = f.runtime.items(parent.id, {}).items;
     const woken = items.findIndex((item) => item.customType === WOKEN_ENTRY);
     assert.equal(text(items[woken + 1]!), 'The session "Loud" you started raises this:\n\n3 tests broke');
+    assert.equal(cardBody(items[woken]!, items[woken + 1]!).body, "3 tests broke");
     // A session nobody started cannot raise anything.
     const lone = await f.runtime.create({ folder: f.folder });
     await f.runtime.start(lone.id, raise).completion;

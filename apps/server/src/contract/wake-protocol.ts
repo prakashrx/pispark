@@ -47,6 +47,17 @@ export const WOKEN_ENTRY = "pispark:woken";
 export interface WokenDetails {
   source: WakeSource;
   due: string;
+  /** A report from a session or process this one started, as its card shows it. */
+  card?: WokenCard;
+}
+/**
+ * How a report's card reads: whose it is, how it ended, and where the report itself starts in the
+ * message (after the line the agent needs, which the card already says).
+ */
+export interface WokenCard {
+  title: string;
+  how: string;
+  start: number;
 }
 
 /**

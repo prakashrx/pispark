@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from "../../lib/ui/Icon.svelte";
-  import { reportBody, type Turn } from "./session-turns";
+  import type { Turn } from "./session-turns";
   import type { Item } from "../../../../server/src/contract/protocol";
   import { useSession, useSessions } from "./session-client.svelte";
   import { namedFiles } from "./attachments.svelte";
@@ -12,10 +12,11 @@
   let { text, woken, from, item }: { text: string; woken?: string; from?: Turn["from"]; item?: Item } = $props();
   const client = useSessions();
   const session = useSession();
-  // The label is "‹title› · finished": the title is what links to the session.
-  const cut = $derived(from ? from.label.indexOf(" · ") : -1);
-  const title = $derived(from ? (cut >= 0 ? from.label.slice(0, cut) : from.label) : "");
-  const rest = $derived(from && cut >= 0 ? from.label.slice(cut) : "");
+  // "‹title› · finished": the title is what links to the session. The card shows the report after
+  // the line the agent needs, which it says already.
+  const title = $derived(from?.title ?? "");
+  const rest = $derived(from?.how ? ` · ${from.how}` : "");
+  const body = $derived(from ? text.slice(from.start) : text);
   const known = $derived(from?.kind === "session" && client.sessions.some((session) => session.id === from.id));
   // Your own saved message can be edited and sent again, between replies; its versions switch then too.
   const free = $derived(!!session && !session.doc?.readOnly && (session.doc?.status === "idle" || session.doc?.status === "error"));
@@ -28,7 +29,7 @@
   {@const what = from.kind === "process" ? "output" : "details"}
   <details class="process-report" data-purpose="session-turn">
     <summary class="woken">{from.label} <span class="disclosure"><span class="closed">▸ Show {what}</span><span class="opened">▾ Hide {what}</span></span></summary>
-    <div class="report output">{reportBody(text)}</div>
+    <div class="report output">{body}</div>
   </details>
 {:else if from}
   <div class="flex flex-col items-start gap-1.5" data-purpose="session-turn">
@@ -37,7 +38,7 @@
         >From {#if known}<button type="button" class="link" onclick={() => client.open(from.id)}>{title}</button>{:else}{title}{/if}{rest}</span
       >
     </p>
-    <div class="report markdown"><SessionMarkdown text={reportBody(text)} /></div>
+    <div class="report markdown"><SessionMarkdown text={body} /></div>
   </div>
 {:else}
   <div class="flex flex-col items-end gap-1.5" data-purpose="user-turn">

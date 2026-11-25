@@ -126,9 +126,12 @@ export class SessionProcesses {
       void this.statusIn(sessionId, `The process "${short}" ${end.how}.`, { process: end.process.id, title: short, how: end.how, ...(end.ok !== undefined ? { ok: end.ok } : {}) }).catch(() => {});
       return;
     }
+    // The lines the agent needs; the card says them already, so it shows the output after them.
+    const heading = `The process "${short}" ${end.how}${end.watch ? `:\n${end.watch}` : "."}\n\nLast output:\n`;
     void this.sessions.deliver(sessionId, {
       source: { kind: "process", id: end.process.id, label: `${short} · ${end.how}`.slice(0, 200) },
-      text: `The process "${short}" ${end.how}${end.watch ? `:\n${end.watch}` : "."}\n\nLast output:\n${end.tail.trim() || "(none)"}`,
+      text: `${heading}${end.tail.trim() || "(none)"}`,
+      card: { title: short, how: end.how.slice(0, 200), start: heading.length },
       due: new Date(this.sessions.now()).toISOString(),
       policy: "queue",
     });

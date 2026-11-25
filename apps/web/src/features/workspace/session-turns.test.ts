@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Item, ItemPart } from "../../../../server/src/contract/protocol";
-import { buildTurns, clippedPart, itemText, reportBody } from "./session-turns";
+import { buildTurns, clippedPart, itemText, wokenFrom } from "./session-turns";
 import { artifactsOf, describeCall, summarizeCalls } from "./tool-views";
 import { pointOf } from "./extension-views";
 
@@ -257,7 +257,7 @@ test("sessions started one after another are one list under one activity line", 
   expect(activity.kind === "activity" && activity.calls).toHaveLength(2);
 });
 
-test("a status line is its own segment; a report card drops the line the agent needs", () => {
+test("a status line is its own segment; a report card is drawn from what the server sent", () => {
   n = 0;
   const turns = buildTurns(
     [
@@ -278,9 +278,11 @@ test("a status line is its own segment; a report card drops the line the agent n
     ok: true,
     session: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b",
   });
-  expect(reportBody('The session "Math" you started finished:\n\n391')).toBe("391");
-  expect(reportBody('The process "tests" exited 1.\n\nLast output:\n1 failed')).toBe("1 failed");
-  expect(reportBody("Something else")).toBe("Something else");
+  // A report card is whose it is, how it ended, and where the report starts, as the server sent them.
+  const source = { kind: "process", id: "p1", label: "tests · exited 1" };
+  expect(wokenFrom({ source, due: "x", card: { title: "tests", how: "exited 1", start: 12 } })).toEqual({ ...source, title: "tests", how: "exited 1", start: 12 });
+  // An older one without a card shows its label and all of its text.
+  expect(wokenFrom({ source, due: "x" })).toEqual({ ...source, title: "tests · exited 1", start: 0 });
 });
 
 test("the process tool: words, and the process a start made as a row", () => {
