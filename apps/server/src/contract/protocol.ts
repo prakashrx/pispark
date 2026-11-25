@@ -353,6 +353,31 @@ export type Command = { commandId: string } & (
       value: string | boolean | null;
     }
 );
+/** Why the server refused or failed something: the code a receipt or an error response carries. */
+export type RuntimeErrorCode =
+  | "invalid-input"
+  | "not-found"
+  | "busy"
+  | "limit"
+  | "configuration"
+  | "model-unavailable"
+  | "credentials"
+  | "resources"
+  | "folder"
+  | "agent"
+  | "storage"
+  | "owned"
+  | "sdk-version"
+  | "unsupported"
+  | "extension"
+  | "usage-limit"
+  | "nothing-to-compact"
+  | "compaction-cancelled"
+  | "execution"
+  | "timeout"
+  | "closed"
+  /** The session is open for reading only (`SessionInfo.readOnly`). */
+  | "read-only";
 export interface Receipt {
   commandId: string;
   sessionId?: string;

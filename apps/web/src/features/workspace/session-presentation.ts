@@ -1,4 +1,4 @@
-import type { SessionInfo } from "../../../../server/src/contract/protocol";
+import type { RuntimeErrorCode, SessionInfo } from "../../../../server/src/contract/protocol";
 import { validSessionTitle } from "../../../../server/src/contract/session-title";
 
 export type CommandUncertaintyKind =
@@ -16,8 +16,15 @@ export function commandUncertainty(
   return "";
 }
 
-/** What the server's code for a refused or failed command means, in words. */
-const COMMAND_ERRORS: Record<string, string> = {
+/** What each of the server's codes for a refused or failed command means, in words: every code has its own. */
+const COMMAND_ERRORS: Record<RuntimeErrorCode, string> = {
+  "invalid-input": "The server didn’t accept that request.",
+  limit: "That’s more than the server accepts: too large, or too many at once.",
+  resources: "The agent’s skills or extensions couldn’t be loaded. Check it under Agents.",
+  owned: "That session is already open.",
+  "sdk-version": "This PiSpark doesn’t match its Pi version. Update PiSpark.",
+  unsupported: "That isn’t available here.",
+  extension: "An extension couldn’t do that.",
   configuration: "The session configuration couldn’t be applied.",
   credentials: "The provider couldn’t authorize this request. Check its sign-in under Settings.",
   "model-unavailable": "The selected model is unavailable for this session.",
@@ -34,7 +41,8 @@ const COMMAND_ERRORS: Record<string, string> = {
   closed: "The server is shutting down.",
   "read-only": "This session can only be read: its model, agent or folder can’t be used.",
 };
-export const commandError = (code: string): string => COMMAND_ERRORS[code] ?? `The server could not do that (${code}).`;
+export const commandError = (code: string): string =>
+  Object.hasOwn(COMMAND_ERRORS, code) ? COMMAND_ERRORS[code as RuntimeErrorCode] : `The server could not do that (${code}).`;
 
 /** Last segment of a host path, for compact labels: "D:\\dev\\pispark" → "pispark". */
 export function folderName(path: string): string {

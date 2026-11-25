@@ -1,29 +1,6 @@
 import { isContextOverflow, isRetryableAssistantError, type AssistantMessage } from "@earendil-works/pi-ai";
-import type { ReplyFailure } from "../../contract/protocol.js";
-export type RuntimeErrorCode =
-  | "invalid-input"
-  | "not-found"
-  | "busy"
-  | "limit"
-  | "configuration"
-  | "model-unavailable"
-  | "credentials"
-  | "resources"
-  | "folder"
-  | "agent"
-  | "storage"
-  | "owned"
-  | "sdk-version"
-  | "unsupported"
-  | "extension"
-  | "usage-limit"
-  | "nothing-to-compact"
-  | "compaction-cancelled"
-  | "execution"
-  | "timeout"
-  | "closed"
-  /** The session is open for reading only (`SessionInfo.readOnly`). */
-  | "read-only";
+import type { ReplyFailure, RuntimeErrorCode } from "../../contract/protocol.js";
+export type { RuntimeErrorCode };
 
 /** Normalize only provider responses that explicitly identify an exhausted usage allowance. */
 export function providerUsageLimited(provider: unknown, message: unknown): boolean {

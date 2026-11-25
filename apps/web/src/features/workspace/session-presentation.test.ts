@@ -69,7 +69,8 @@ test("normal status is quiet and cancellation/agent errors remain distinct", () 
 test("a refused command is said in words; an unknown code is still named", () => {
   expect(commandError("folder")).toBe("That working folder doesn’t exist on the server.");
   expect(commandError("busy")).toBe("The session is busy. Try again when it has finished.");
-  expect(commandError("sdk-version")).toBe("The server could not do that (sdk-version).");
+  expect(commandError("sdk-version")).toBe("This PiSpark doesn’t match its Pi version. Update PiSpark.");
+  expect(commandError("unheard-of")).toBe("The server could not do that (unheard-of).");
 });
 test("a start time says the year only when it is not this year's", () => {
   const thisYear = new Date().getFullYear();
@@ -126,4 +127,11 @@ test("durations read the way people say them", () => {
     "2h 5m",
     "0s",
   ]);
+});
+
+test("every server error code is said in words; a code the web does not know says which", () => {
+  expect(commandError("limit")).toBe("That’s more than the server accepts: too large, or too many at once.");
+  expect(commandError("owned")).toBe("That session is already open.");
+  expect(commandError("toString")).toBe("The server could not do that (toString).");
+  expect(commandError("brand-new")).toBe("The server could not do that (brand-new).");
 });
