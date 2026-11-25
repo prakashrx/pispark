@@ -1,119 +1,275 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import { audit } from "./audit.js";
-import {
-  ACTIVE, ACTS, CHARTER_SECTIONS, CLOSED, type Card, cardText, FOLDER, type Item, itemText, Mind, newCard, ruleText, field, shaped,
-} from "./store.js";
+import { brief } from "./brief.js";
+import { findHomes, homeOf, type Homes, select } from "./homes.js";
+import { check, FOLDER, NOTES, refusePath, TASKS } from "./layout.js";
+import { Mind } from "./store.js";
+import { questions, section, spoken, withAnswer } from "./tasks.js";
 
 /**
- * mind: memory and attention for any agent, kept in the place it works in. Four parts (charter,
- * contract, knowledge, work) pinned into the system prompt, written only through its tools.
- * See `.work/agent-attention-and-memory/GOAL.md` (private) and the README.
+ * mind: what an agent keeps for itself in the place it works in, so that the person never repeats
+ * themselves and the agent can carry its own work across sessions and unattended runs.
+ *
+ * The agent writes plain documents in `.mind/` with its ordinary file tools. This extension puts
+ * them in front of it every run, checks every write against the fixed layout, keeps earlier
+ * versions, reminds it at the end of a run and before a compaction, takes its questions to the
+ * person without stopping the run, and shows it all in a view. See README.md.
  */
 
-const GUIDANCE = readFileSync(new URL("./guidance.md", import.meta.url), "utf8").trim();
-const CARD_ENTRY = "mind-card";
-/** PiSpark marks a run that something other than the person started with this entry before its message. */
-const WOKEN_ENTRY = "pispark:woken";
-const LESSON_ENTRY = "mind-lesson";
-/** PiSpark's bus channel for starting this session's own child sessions. */
-const SESSION_REQUEST = "pispark:session-request";
-const SWEEP =
-  "Sweep this place's mind, using the reflect skill's sweep section: review ideas that have aged, proposals that waited long or no longer apply, " +
-  "closed cards nobody reflected on, and anything over budget (/mind audit shows the audit). Tidy what you may; bring the person only what needs them, in a few lines.";
-/** Words that usually carry a correction or a standing preference. */
-const LESSON = /\b(always|never|from now on|next time|every|each time|in future|going forward|again|instead|don'?t|do not|stop|should(n'?t)?|make sure|remember|too (long|short|much|many|big|small)|keep (it|them|the|to)|i told you)\b/i;
-const LESSON_REMINDER =
-  "Before you finish: did the person's last message carry a lesson that should outlast this task, such as a correction or a standing preference? " +
-  "If they stated it as a rule (always, never, from now on), record it now with mind_record, origin 'told', quoting their words. " +
-  "If you changed course because they corrected you, offer the general lesson once with mind_record, origin 'ask'. " +
-  "If there is nothing lasting, end your turn without saying anything more.";
-const CHECKPOINT_ENTRY = "mind-checkpoint";
-const CHECKPOINT_REMINDER =
-  "The conversation will soon be compacted and older details summarised. Bring your active card up to date now with mind_work: " +
-  "state, next step, what it waits on, and any constraint or decision from this conversation that isn't on it yet. Then end your turn without saying anything more.";
-/**
- * Whether the context is close to PiSpark's compaction point (70% of the usable window: the
- * model's, or the input size where its price rises), so the card should be saved first.
- */
+/** Tools that change nothing worth keeping track of. */
+const QUIET = new Set(["read", "grep", "find", "ls", "tool_search", "pispark_set_title"]);
+const REMINDER = "mind-reminder";
+const CHECKPOINT = "mind-checkpoint";
+const SCHEDULE_REQUEST = "pispark:schedule-request";
+const AS_RECOMMENDED = "Do as recommended";
+const NO = "No, don't";
+const OWN_WORDS = "Answer in my own words";
+
+/** Words that mark a lasting instruction. Kept narrow: a false match costs the person a needless extra turn. */
+const LASTING = /\b(from now on|always|never|next time|every time|each time|in future|going forward|remember (to|that)|i told you)\b/i;
+
+const TIDY = `Tidy this place's ${FOLDER}/, using the mind-tidy skill. Report in at most three lines, and only what needs me.`;
+const WEEKLY = "0 9 * * 1";
+
+const readText = (file: string) => readFile(file, "utf8").catch(() => undefined);
+/** Today in the server's own time zone, as the agent writes its dates. */
+const today = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+
+/** What an `edit` would leave in the file, when its replacements can be applied exactly; else nothing. */
+export function edited(before: string | undefined, input: Record<string, unknown>): string | undefined {
+  if (before === undefined) return undefined;
+  const edits = Array.isArray(input.edits) ? input.edits : input.oldText !== undefined ? [{ oldText: input.oldText, newText: input.newText }] : [];
+  const spots: { at: number; oldText: string; newText: string }[] = [];
+  for (const each of edits as { oldText?: unknown; newText?: unknown }[]) {
+    if (typeof each?.oldText !== "string" || typeof each.newText !== "string" || !each.oldText) return undefined;
+    const at = before.indexOf(each.oldText);
+    if (at < 0 || before.indexOf(each.oldText, at + 1) >= 0) return undefined;
+    spots.push({ at, oldText: each.oldText, newText: each.newText });
+  }
+  if (!spots.length) return undefined;
+  spots.sort((a, b) => a.at - b.at);
+  let out = "";
+  let from = 0;
+  for (const spot of spots) {
+    if (spot.at < from) return undefined;
+    out += before.slice(from, spot.at) + spot.newText;
+    from = spot.at + spot.oldText.length;
+  }
+  return out + before.slice(from);
+}
+
+/** Close to PiSpark's compaction point: 70% of the usable window (the model's, or where its price rises). */
 function nearCompaction(ctx: ExtensionContext): boolean {
   const usage = ctx.getContextUsage();
   if (!usage?.tokens) return false;
   const tiers = (ctx.model?.cost as { tiers?: { inputTokensAbove: number }[] } | undefined)?.tiers ?? [];
-  const usable = Math.min(usage.contextWindow, ...tiers.map((t) => t.inputTokensAbove));
-  return usage.tokens >= usable * 0.55;
+  return usage.tokens >= Math.min(usage.contextWindow, ...tiers.map((t) => t.inputTokensAbove)) * 0.55;
 }
-const SECTION_LABEL: Record<string, string> = { purpose: "Purpose", "for-whom": "For whom", good: "What good looks like", "off-limits": "Off-limits" };
-
-const text = (value: string, details?: unknown) => ({ content: [{ type: "text" as const, text: value }], details });
-const normal = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase();
 
 export default function mind(pi: ExtensionAPI) {
   let place: Mind | undefined;
-  /** This session's own card (a goal that lives and dies with the session), restored from the branch. */
-  let sessionCard: Card | undefined;
-  /** What the person typed to start this run; undefined when a wake or an extension started it. */
-  let personSaid: string | undefined;
-  let compacted = false;
-  /**
-   * Starts a reflection on a closed card: a child session with fresh context, in the same place,
-   * that proposes what outlasts the goal and retires the card. Returns a line for the tool result.
-   */
-  async function reflect(card: Card, ctx: ExtensionContext, retire: boolean): Promise<string> {
-    const transcript = transcriptOf(card.source, ctx);
-    const prompt = [
-      `Reflect on this closed goal, using the reflect skill.`,
-      `Card: ${cardText(card)}`,
-      transcript ? `It was worked on in the session whose transcript is ${transcript} (JSON lines; read what you need).` : "",
-      retire ? `When you're done, retire the card: mind_work action "retire", id "${card.id}".` : "",
-    ].filter(Boolean).join("\n");
-    const answer = await new Promise<{ ok: boolean; text: string } | undefined>((resolve) => {
-      const message = { request: { action: "start", prompt, title: `Reflect · ${card.goal.slice(0, 60)}`, report: "none" }, reply: resolve, taken: false };
-      pi.events.emit(SESSION_REQUEST, message);
-      if (!message.taken) resolve(undefined);
-    });
-    if (!answer) return "";
-    return answer.ok ? " · Reflection started in the background." : ` · Reflection could not start: ${answer.text}`;
-  }
-
-  /** Yes/no questions already asked in this session. */
-  const asked = new Set<string>();
-  /** Whether the agent was already asked to save its card before the coming compaction. */
+  let homes: Homes | undefined;
+  /** What this run did: other work, writes to what it keeps, whether it was already reminded, and what the person said. */
+  let run = { worked: false, kept: false, reminded: false, said: undefined as string | undefined };
   let checkpointed = false;
-  /** Whether this run recorded something, and whether it was already reminded to. */
-  let recorded = false;
-  let nudged = false;
+  let compacted = false;
+  /** A file a running `write` or `edit` is about to change, and what it held before. */
+  const pending = new Map<string, { file: string; rel?: string; label: string; agent?: boolean; before: string | undefined }>();
+  /** Questions now shown to the person, so an answer given elsewhere closes the card. */
+  const asking = new Map<string, AbortController>();
 
   const mindOf = (ctx: ExtensionContext) => (place && place.place === ctx.cwd ? place : (place = new Mind(ctx.cwd)));
-  const sessionId = (ctx: ExtensionContext) => ctx.sessionManager.getSessionId();
+
+  // ---- Every run starts from what is kept ------------------------------------------------------
 
   pi.on("session_start", async (_event, ctx) => {
-    place = new Mind(ctx.cwd);
-    sessionCard = undefined;
-    for (const entry of ctx.sessionManager.getBranch())
-      if (entry.type === "custom" && entry.customType === CARD_ENTRY) sessionCard = (entry.data as Card | null) ?? undefined;
+    const m = mindOf(ctx);
+    await m.sweep();
     await show(ctx);
   });
 
-  /**
-   * The Mind view: what the agent believes here and what waits on the person. Offered beside the
-   * conversation (PiSpark's `session.view`); its actions are the person's, so they apply directly.
-   */
-  let viewing: ExtensionContext | undefined;
-  async function show(ctx: ExtensionContext, attention = false) {
-    viewing = ctx;
+  // The place's own skills, loaded by Pi (and again on reload).
+  pi.on("resources_discover", (event) => ({ skillPaths: [join(event.cwd, FOLDER, "skills")] }));
+
+  pi.on("before_agent_start", async (event, ctx) => {
+    // A reminder of ours continues the person's run; anything else starts a new one.
+    const ours = event.messageType === "custom" && (event.message.customType === REMINDER || event.message.customType === CHECKPOINT);
+    if (!ours) run = { worked: false, kept: false, reminded: false, said: event.messageType === "user" ? event.prompt : undefined };
+    homes = findHomes(pi, ctx, event.systemPromptOptions.contextFiles);
+    event.systemPromptOptions.sections.mind = await brief(mindOf(ctx), homes, compacted);
+    compacted = false;
+  });
+
+  pi.on("session_compact", () => {
+    compacted = true;
+    checkpointed = false;
+  });
+
+  // ---- Every write is checked -----------------------------------------------------------------
+
+  pi.on("tool_call", async (event, ctx) => {
+    const input = event.input as Record<string, unknown>;
+    if ((event.toolName !== "write" && event.toolName !== "edit") || typeof input.path !== "string") {
+      if (!QUIET.has(event.toolName)) run.worked = true;
+      return undefined;
+    }
+    const m = mindOf(ctx);
+    const file = resolve(ctx.cwd, input.path.replace(/^@/, ""));
+    const rel = m.rel(file);
+    if (rel === undefined) {
+      // One of the person's own instruction files: not checked, but its earlier version is kept.
+      const home = homeOf(homes, ctx.cwd, file);
+      if (home) pending.set(event.toolCallId, { file, ...home, before: await readText(file) });
+      else run.worked = true;
+      return undefined;
+    }
+    const refused = refusePath(rel);
+    if (refused) return { block: true, reason: `Not saved. ${refused}` };
+    const before = await readText(file);
+    const after = event.toolName === "write" ? (typeof input.content === "string" ? input.content : undefined) : edited(before, input);
+    const reason = after === undefined ? undefined : check(rel, after);
+    if (reason) return { block: true, reason: `Not saved. ${reason}` };
+    pending.set(event.toolCallId, { file, rel, label: `${FOLDER}/${rel}`, before });
+    return undefined;
+  });
+
+  pi.on("tool_result", async (event, ctx) => {
+    const m = mindOf(ctx);
+    const change = pending.get(event.toolCallId);
+    pending.delete(event.toolCallId);
+    if (!change) {
+      // A shell command may have put files in the folder: say what is out of place.
+      const command = (event.input as { command?: unknown }).command;
+      if ((event.toolName !== "bash" && event.toolName !== "powershell") || typeof command !== "string" || !command.includes(FOLDER) || !m.exists()) return undefined;
+      const problems = await m.problems();
+      await show(ctx);
+      return problems.length ? { content: [...event.content, { type: "text" as const, text: `\n${FOLDER}/ is out of shape. Fix it now:\n${problems.map((p) => `- ${p}`).join("\n")}` }] } : undefined;
+    }
+    if (event.isError) return undefined;
+    const after = await readText(change.file);
+    if (after === change.before) return undefined;
+    // An edit that could not be previewed is checked here, and put back if it broke the document.
+    const reason = change.rel && after !== undefined ? check(change.rel, after) : undefined;
+    if (reason) {
+      if (change.before === undefined) await rm(change.file, { force: true });
+      else await writeFile(change.file, change.before, "utf8");
+      return { content: [{ type: "text" as const, text: `Not saved: the file was put back as it was. ${reason}` }], isError: true };
+    }
+    await m.keep(change.file, change.before, change.label);
+    run.kept = true;
+    if (change.rel === TASKS) await m.sweep();
+    if (change.agent) await select(change.file);
+    await show(ctx);
+    return undefined;
+  });
+
+  // ---- Reminders: before the context is compacted, and at the end of a run ------------------------
+
+  pi.on("agent_before_settle", async (event, ctx) => {
+    if (event.outcome !== "completed") return undefined;
+    const m = mindOf(ctx);
+    const remind = (customType: string, content: string) => ({
+      entries: [...event.entries, { type: "custom_message" as const, customType, content, display: false }],
+      continue: true,
+    });
+    if (!checkpointed && nearCompaction(ctx) && section((await m.text(TASKS)) ?? "", "Doing")) {
+      checkpointed = true;
+      return remind(CHECKPOINT, `The conversation will soon be compacted and its older details summarised. Bring \`${FOLDER}/${TASKS}\` up to date now: where each thing you are doing stands, its next step, and any constraint or decision from this conversation that isn't written down yet. Then end your turn without saying anything more.`);
+    }
+    if (run.reminded || run.kept || !(run.worked || (run.said && LASTING.test(run.said)))) return undefined;
+    run.reminded = true;
+    const notes = (await m.text(NOTES)) === undefined ? ` This place has no \`${FOLDER}/${NOTES}\` yet: write it if you now know enough to.` : "";
+    return remind(REMINDER, `Before you finish, bring \`${FOLDER}/\` up to date for this run: move the entries in \`${FOLDER}/${TASKS}\` that changed (something important you did or decided becomes a dated line under "Done lately"), and fix any note that is no longer true.${notes} If the person's last message carried a lasting instruction or a correction, save it where it belongs. Write only what someone picking this up later would need: never a line that only says nothing changed. If nothing needs changing, write nothing and end your turn without saying anything more.`);
+  });
+
+  // ---- After a run: clean up, then take new questions to the person ------------------------------
+
+  pi.on("agent_settled", (event, ctx) => {
+    if (event.aborted) return;
+    void (async () => {
+      try {
+        await mindOf(ctx).sweep();
+        await show(ctx);
+        await ask(ctx);
+      } catch {
+        // Nothing here may disturb the session; the documents stay as the agent left them.
+      }
+    })();
+  });
+
+  /** Shows each new question under "Waiting on you" once; the run has already ended. */
+  async function ask(ctx: ExtensionContext): Promise<void> {
+    if (!ctx.hasUI) return;
+    const m = mindOf(ctx);
+    const open = questions((await m.text(TASKS)) ?? "").filter((q) => q.answer === undefined);
+    const fresh = new Set(await m.markAsked(open.map((q) => q.id)));
+    for (const question of open.filter((q) => fresh.has(q.id))) {
+      const stop = new AbortController();
+      asking.set(question.id, stop);
+      try {
+        // The card shows the whole entry: the question first, then what is recommended and what happens meanwhile.
+        const choice = await ctx.ui.select(spoken([question.text, question.detail].filter(Boolean).join(" ")), [AS_RECOMMENDED, NO, OWN_WORDS], { signal: stop.signal });
+        const answer =
+          choice === AS_RECOMMENDED ? "Yes, do as you recommend."
+          : choice === NO ? "No, don't."
+          : choice === OWN_WORDS ? (await ctx.ui.input("Your answer", "", { signal: stop.signal }))?.trim()
+          : undefined;
+        if (answer && !stop.signal.aborted) await answerQuestion(ctx, question.id, answer);
+      } catch {
+        // Closed, or answered elsewhere: it stays under "Waiting on you" and in the view.
+      } finally {
+        asking.delete(question.id);
+      }
+    }
+  }
+
+  /** Writes the person's answer under the question and gives it to the agent to act on. */
+  async function answerQuestion(ctx: ExtensionContext, id: string, answer: string): Promise<void> {
+    const m = mindOf(ctx);
+    const content = (await m.text(TASKS)) ?? "";
+    const question = questions(content).find((q) => q.id === id);
+    if (!question) throw new Error("That question is no longer waiting.");
+    if (question.answer !== undefined) throw new Error("That question was already answered.");
+    const next = withAnswer(content, id, answer, today())!;
+    await m.save(TASKS, next);
+    asking.get(id)?.abort();
+    await show(ctx);
+    const message = `My answer to "${spoken(question.text)}" (under "Waiting on you" in ${FOLDER}/${TASKS}): ${answer}\n\nAct on it and update the entry.`;
+    void pi.sendUserMessage(message, ctx.isIdle() ? undefined : { deliverAs: "followUp" });
+  }
+
+  // ---- The view ---------------------------------------------------------------------------------
+
+  /** Offers the Mind view beside the conversation, with what is kept now. */
+  async function show(ctx: ExtensionContext, attention = false): Promise<void> {
     const m = mindOf(ctx);
     let snapshot;
     try {
-      snapshot = await snapshotOf(m);
+      const tasks = (await m.text(TASKS)) ?? "";
+      // A card for a question that was answered elsewhere, or is gone, closes.
+      const open = new Set(questions(tasks).filter((q) => q.answer === undefined).map((q) => q.id));
+      for (const [id, stop] of asking) if (!open.has(id)) stop.abort();
+      snapshot = {
+        waiting: questions(tasks),
+        doing: section(tasks, "Doing"),
+        todo: section(tasks, "To do"),
+        done: section(tasks, "Done lately"),
+        notes: (await m.text(NOTES)) ?? "",
+        pages: await m.pages(),
+        skills: await m.skills(),
+        changes: await m.changes(),
+        problems: await m.problems(),
+      };
     } catch {
       return;
     }
-    const person = async (change: () => Promise<unknown>) => {
-      await change();
-      if (viewing) await show(viewing);
+    const text = (value: unknown, max: number) => {
+      if (typeof value !== "string" || !value.trim() || value.length > max) throw new Error("That can't be used.");
+      return value.trim();
     };
     pi.events.emit("pispark:view", {
       point: "session.view",
@@ -123,404 +279,36 @@ export default function mind(pi: ExtensionAPI) {
       props: { snapshot },
       ...(attention ? { attention: true } : {}),
       calls: {
-        accept: ({ id }: { id: string }) => person(() => m.accept(id, sessionId(ctx))),
-        reject: ({ id }: { id: string }) => person(() => m.dismiss(id)),
-        forget: ({ id }: { id: string }) => person(() => m.remove(id)),
+        answer: async (data: { id?: unknown; text?: unknown }) => answerQuestion(ctx, text(data?.id, 16), text(data?.text, 2000)),
+        undo: async (data: { id?: unknown }) => {
+          const label = await m.undo(text(data?.id, 80));
+          await show(ctx);
+          return label;
+        },
+        page: async (data: { name?: unknown }) => {
+          const name = text(data?.name, 80);
+          if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) throw new Error("No such page.");
+          return (await m.text(`notes/${name}.md`)) ?? "";
+        },
+        tidy: () => void pi.sendUserMessage(TIDY, ctx.isIdle() ? undefined : { deliverAs: "followUp" }),
+        weekly: () =>
+          new Promise<string>((done) => {
+            const message = { request: { action: "add", input: { cron: WEEKLY, prompt: TIDY, run: "new", report: "status" } }, reply: (answer: { text: string }) => done(answer.text), taken: false };
+            pi.events.emit(SCHEDULE_REQUEST, message);
+            if (!message.taken) done("Schedules are not available here.");
+          }),
       },
     });
   }
-  // Keep the view current as the agent works, and when another session (a reflection) changed it.
-  pi.on("tool_execution_end", async (event, ctx) => {
-    if (String(event.toolName).startsWith("mind_")) await show(ctx);
-  });
-  pi.on("agent_settled", async (_event, ctx) => {
-    await show(ctx);
-  });
-
-  // The place's own skills, loaded by Pi (and again on reload).
-  pi.on("resources_discover", (event) => {
-    const skills = join(event.cwd, FOLDER, "skills");
-    return { skillPaths: [skills] };
-  });
-
-  pi.on("session_compact", () => {
-    compacted = true;
-    checkpointed = false;
-  });
-
-  pi.on("before_agent_start", async (event, ctx) => {
-    // Our own reminders continue the person's run: what they said still counts.
-    const reminder = event.messageType === "custom" && [LESSON_ENTRY, CHECKPOINT_ENTRY].includes(event.message.customType);
-    if (!reminder) {
-      personSaid = event.messageType === "user" && startedByPerson(event.messageType, ctx.sessionManager.getBranch()) ? event.prompt : undefined;
-      recorded = false;
-      nudged = false;
-    }
-    event.systemPromptOptions.sections.mind = await slice(mindOf(ctx), sessionCard, compacted);
-    compacted = false;
-  });
-
-  // The parts change only through the tools: no raw writes into the folder.
-  pi.on("tool_call", (event, ctx) => {
-    const dir = join(ctx.cwd, FOLDER);
-    const inside = (path: unknown) => {
-      if (typeof path !== "string") return false;
-      const target = resolve(ctx.cwd, path.replace(/^@/, ""));
-      const rel = relative(dir, target);
-      return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
-    };
-    const input = event.input as Record<string, unknown>;
-    if ((event.toolName === "write" || event.toolName === "edit") && inside(input.path))
-      return { block: true, reason: `${FOLDER}/ is written only through the mind tools (mind_work, mind_record).` };
-    if ((event.toolName === "bash" || event.toolName === "powershell") && typeof input.command === "string") {
-      const command = input.command;
-      if (command.includes(FOLDER) && /(>|\brm\b|\bmv\b|\bcp\b|\bsed\s+-i|\btee\b|Set-Content|Out-File|Remove-Item|Move-Item|Copy-Item|New-Item)/i.test(command))
-        return { block: true, reason: `${FOLDER}/ is written only through the mind tools (mind_work, mind_record).` };
-    }
-    return undefined;
-  });
-
-  // A correction or a standing preference is easy to fix and forget: before the run ends, remind
-  // the agent once to keep the lesson. Only for runs the person started, when their words read like one.
-  pi.on("agent_before_settle", async (event, ctx) => {
-    // Before PiSpark compacts (at 70% of the usable window, before the next message), have the
-    // agent bring its card up to date while it still remembers: once per compaction cycle.
-    if (!checkpointed && nearCompaction(ctx) && (sessionCard || (await hasActiveCards(ctx)))) {
-      checkpointed = true;
-      return {
-        entries: [...event.entries, { type: "custom_message" as const, customType: CHECKPOINT_ENTRY, content: CHECKPOINT_REMINDER, display: false }],
-        continue: true,
-      };
-    }
-    if (nudged || recorded || !personSaid || !LESSON.test(personSaid)) return undefined;
-    nudged = true;
-    return {
-      entries: [...event.entries, { type: "custom_message" as const, customType: LESSON_ENTRY, content: LESSON_REMINDER, display: false }],
-      continue: true,
-    };
-  });
-  const hasActiveCards = async (ctx: ExtensionContext) =>
-    (await mindOf(ctx).read("work")).cards.some((c) => c.stage === "active" || c.stage === "waiting");
-
-  pi.registerTool({
-    name: "mind_work",
-    label: "Work card",
-    description:
-      "Keep goals on cards, from idea to done. add: an idea nobody has agreed to yet (not shown each run). commit: the person wants it done, not started yet. start: working on it now (without an id it creates the card; scope 'session' for a goal that lives only in this session). update: state, next step, what it waits on, done-when, authority given for this goal. wait/done/drop: move it (closing a card starts a reflection in the background). promote: this session's card becomes a card of the place. retire: remove a closed card once reflected on.",
-    promptSnippet: "Keep goals on work cards that survive compaction and new sessions.",
-    parameters: Type.Object({
-      action: Type.Union(["add", "commit", "start", "update", "wait", "done", "drop", "promote", "retire"].map((a) => Type.Literal(a))),
-      id: Type.Optional(Type.String({ maxLength: 20, description: "The card, or 'session' for this session's card." })),
-      scope: Type.Optional(Type.Union([Type.Literal("place"), Type.Literal("session")], { description: "For a new card: the place (default) or only this session." })),
-      goal: Type.Optional(Type.String({ maxLength: 200 })),
-      doneWhen: Type.Optional(Type.String({ maxLength: 300 })),
-      state: Type.Optional(Type.String({ maxLength: 400 })),
-      next: Type.Optional(Type.String({ maxLength: 200 })),
-      waitingOn: Type.Optional(Type.String({ maxLength: 200 })),
-      authority: Type.Optional(Type.String({ maxLength: 200, description: "Authority the person gave for this goal only." })),
-    }, { additionalProperties: false }),
-    async execute(_id, params, _signal, _update, ctx) {
-      const source = sessionId(ctx);
-      const fields: Partial<Card> = {};
-      for (const key of ["doneWhen", "state", "next", "waitingOn", "authority"] as const)
-        if (params[key] !== undefined) fields[key] = params[key]!.trim() || undefined;
-      const stageOf: Record<string, Card["stage"]> = { commit: "committed", start: "active", wait: "waiting", done: "done", drop: "dropped" };
-
-      // This session's card lives in the session.
-      if (params.id === "session" || (sessionCard && params.id === sessionCard.id) || (params.action === "start" && !params.id && params.scope === "session")) {
-        if (params.action === "promote") {
-          if (!sessionCard) throw new Error("This session has no card.");
-          const promoted = await mindOf(ctx).card((cards) => {
-            const card = { ...sessionCard!, ...fields };
-            cards.push(card);
-            return card;
-          });
-          sessionCard = undefined;
-          pi.appendEntry(CARD_ENTRY, null);
-          return text(`Promoted: ${cardText(promoted)}`, { card: promoted });
-        }
-        if (params.action === "start" && !sessionCard) {
-          sessionCard = newCard(params.goal ?? "", source, { stage: "active", ...fields });
-        } else {
-          if (!sessionCard) throw new Error("This session has no card yet: start one.");
-          sessionCard = { ...sessionCard, ...fields, ...(params.goal ? { goal: field(params.goal, 200, "The goal") } : {}), ...(stageOf[params.action] ? { stage: stageOf[params.action] } : {}), updated: new Date().toISOString() };
-        }
-        const closed = CLOSED.includes(sessionCard.stage);
-        const shown = sessionCard;
-        pi.appendEntry(CARD_ENTRY, closed ? null : sessionCard);
-        if (closed) sessionCard = undefined;
-        const reflecting = closed ? await reflect(shown, ctx, false) : "";
-        return text(`${closed ? "Closed" : "Session card"}: ${cardText(shown)}${reflecting}`, { card: shown });
-      }
-
-      if (params.action === "retire") {
-        if (!params.id) throw new Error("Name the card (id).");
-        const retired = await mindOf(ctx).update("work", (w) => {
-          const card = w.cards.find((c) => c.id === params.id);
-          if (!card) throw new Error(`No card ${params.id}.`);
-          if (!CLOSED.includes(card.stage)) throw new Error("Only a closed card (done or dropped) is retired.");
-          w.cards = w.cards.filter((c) => c !== card);
-          return card;
-        });
-        return text(`Retired: ${retired.goal}`);
-      }
-      const before = params.id ? (await mindOf(ctx).read("work")).cards.find((c) => c.id === params.id)?.stage : undefined;
-      const card = await mindOf(ctx).card((cards) => {
-        if (!params.id) {
-          if (params.action !== "add" && params.action !== "start" && params.action !== "commit") throw new Error("Name the card (id).");
-          const created = newCard(params.goal ?? "", source, { ...fields, stage: params.action === "add" ? "idea" : stageOf[params.action]! });
-          cards.push(created);
-          return created;
-        }
-        const existing = cards.find((c) => c.id === params.id);
-        if (!existing) throw new Error(`No card ${params.id}.`);
-        if (params.action === "promote") throw new Error("Only this session's card can be promoted.");
-        Object.assign(existing, fields);
-        if (params.goal) existing.goal = field(params.goal, 200, "The goal");
-        const stage = stageOf[params.action];
-        if (stage) existing.stage = stage;
-        return existing;
-      });
-      const closedNow = CLOSED.includes(card.stage) && !CLOSED.includes(before ?? "idea");
-      // An idea dropped before anyone took it on has nothing to teach.
-      const reflecting = closedNow && !(card.stage === "dropped" && before === "idea") ? await reflect(card, ctx, true) : "";
-      return text(`${closedNow ? "Closed" : "Card"}: ${cardText(card)}${reflecting}`, { card });
-    },
-  });
-
-  pi.registerTool({
-    name: "mind_record",
-    label: "Remember",
-    description:
-      "Change the charter, contract or knowledge. origin 'told': the person said it in this conversation; quote their words and it is recorded. origin 'ask': ask the person now, yes or no (after they corrected or repeated something: 'keep this as a standing rule?'; after approving something routine: a contract rule with act 'own', 'next time, handle this yourself?'); a yes records it. origin 'inferred': it becomes a proposal the person accepts or rejects later. op 'remove' or 'change' name the item (target). Also accept or reject a proposal when the person says so (op 'accept'/'reject', target = proposal id, origin 'told', quote).",
-    promptSnippet: "Remember what the person tells you; propose what you infer.",
-    parameters: Type.Object({
-      op: Type.Union(["add", "change", "remove", "accept", "reject", "withdraw"].map((a) => Type.Literal(a))),
-      origin: Type.Union([Type.Literal("told"), Type.Literal("ask"), Type.Literal("inferred")]),
-      part: Type.Optional(Type.Union([Type.Literal("charter"), Type.Literal("contract"), Type.Literal("knowledge"), Type.Literal("skill")])),
-      name: Type.Optional(Type.String({ maxLength: 40, description: "Skill: its name, lowercase-with-hyphens." })),
-      description: Type.Optional(Type.String({ maxLength: 300, description: "Skill: when to use it." })),
-      body: Type.Optional(Type.String({ maxLength: 6000, description: "Skill: the procedure, as Markdown steps." })),
-      target: Type.Optional(Type.String({ maxLength: 20, description: "The item (or proposal) this is about." })),
-      section: Type.Optional(Type.Union(CHARTER_SECTIONS.map((s) => Type.Literal(s)), { description: "Charter section." })),
-      text: Type.Optional(Type.String({ maxLength: 300, description: "Charter text." })),
-      when: Type.Optional(Type.String({ maxLength: 200, description: "Contract: the situation." })),
-      act: Type.Optional(Type.Union(ACTS.map((a) => Type.Literal(a)), { description: "Contract: own, tell, ask or never." })),
-      what: Type.Optional(Type.String({ maxLength: 200, description: "Contract: the action as a noun phrase, e.g. \"running the README examples\"." })),
-      claim: Type.Optional(Type.String({ maxLength: 240, description: "Knowledge: the claim, one line." })),
-      why: Type.Optional(Type.String({ maxLength: 400, description: "Knowledge: why it matters beyond any one goal." })),
-      quote: Type.Optional(Type.String({ maxLength: 400, description: "For told: the person's own words." })),
-      reason: Type.Optional(Type.String({ maxLength: 300, description: "For inferred: why, and where it came from." })),
-    }, { additionalProperties: false }),
-    async execute(_id, p, _signal, _update, ctx) {
-      recorded = true;
-      const m = mindOf(ctx);
-      const source = sessionId(ctx);
-      const told = p.origin === "told" && quotes(personSaid, p.quote);
-      if (p.op === "withdraw") {
-        if (!p.target) throw new Error("Name the proposal (target).");
-        return text((await m.dismiss(p.target)) ? `Withdrew ${p.target}.` : `No proposal ${p.target}.`);
-      }
-      if (p.op === "accept" || p.op === "reject") {
-        if (!p.target) throw new Error("Name the proposal (target).");
-        if (!told) throw new Error("Only the person accepts or rejects proposals: quote their words from this conversation, or they use /mind.");
-        if (p.op === "reject") return text((await m.dismiss(p.target)) ? `Rejected ${p.target}.` : `No proposal ${p.target}.`);
-        return text(await m.accept(p.target, source));
-      }
-      let item: Item | undefined;
-      if (p.op !== "remove") {
-        if (p.part === "charter") item = { part: "charter", section: p.section!, text: p.text ?? "" };
-        else if (p.part === "contract") item = { part: "contract", when: p.when ?? "", act: p.act!, what: p.what ?? "" };
-        else if (p.part === "knowledge") item = { part: "knowledge", claim: p.claim ?? "", why: p.why ?? "" };
-        else if (p.part === "skill") item = { part: "skill", name: p.name ?? "", description: p.description ?? "", body: p.body ?? "" };
-        else throw new Error("Say which part: charter, contract or knowledge.");
-      } else if (!p.target) throw new Error("Name the item to remove (target).");
-      if (p.op === "change" && !p.target) throw new Error("Name the item to change (target).");
-      let quote = p.quote;
-      if (p.origin === "ask") {
-        const question = askFor(p.op, item, p.target);
-        // Once per situation in a session: a no is not asked again.
-        if (asked.has(normal(question.text))) return text("Already asked in this session; not asking again.");
-        if (!ctx.hasUI) return text("No one to ask now. Not recorded.");
-        asked.add(normal(question.text));
-        const yes = await ctx.ui.confirm(question.title, question.text);
-        if (!yes) return text("The person said no. Not recorded.");
-        quote = `yes to: ${question.title} ${question.text}`;
-      }
-      if (told || p.origin === "ask") {
-        if (p.op === "remove") return text((await m.remove(p.target!)) ? `Removed ${p.target}.` : `No item ${p.target}.`);
-        const id = await m.apply(item!, { origin: "told", source, quote, at: new Date().toISOString() }, p.op === "change" ? p.target : undefined);
-        return text(`Recorded ${id}: ${itemText(item!)}`);
-      }
-      const reason = (p.reason ?? "").trim() || (p.origin === "told" ? "Said by the person, but not quoted from what they typed to start this run." : "");
-      if (!reason) throw new Error("Give a short reason for the proposal in the reason field: why, and where it came from.");
-      const id = await m.propose({ op: p.op as "add" | "change" | "remove", target: p.target, item, reason, source });
-      return text(`Proposed ${id} for the person to accept or reject (/mind). ${item ? itemText(item) : `Remove ${p.target}`}`);
-    },
-  });
-
-  pi.registerTool({
-    name: "mind_decide",
-    label: "Ask for a decision",
-    description:
-      "Ask the person for a decision you can't make under your contract. One short question, your recommendation, at most three options, and what happens if they don't answer (the safe default). Returns their choice. Don't use it for things the contract says you own.",
-    promptSnippet: "Ask the person for a decision: one question, a recommendation, few options.",
-    parameters: Type.Object({
-      question: Type.String({ minLength: 3, maxLength: 200 }),
-      recommended: Type.String({ minLength: 1, maxLength: 80, description: "The option you recommend; listed first." }),
-      others: Type.Array(Type.String({ minLength: 1, maxLength: 80 }), { maxItems: 2, description: "At most two other options." }),
-      ifNoAnswer: Type.String({ minLength: 3, maxLength: 160, description: "What you'll do if they don't answer: nothing risky." }),
-      routine: Type.Optional(Type.Object({
-        when: Type.String({ minLength: 3, maxLength: 200, description: "The kind of situation, in general terms." }),
-        what: Type.String({ minLength: 3, maxLength: 200, description: "The action as a noun phrase." }),
-      }, { additionalProperties: false, description: "If this is a routine call you could make yourself: if they approve your recommendation, they're offered once to let you handle it next time." })),
-    }, { additionalProperties: false }),
-    async execute(_id, p, signal, _update, ctx) {
-      if (!ctx.hasUI) return text(`No one to ask now. ${p.ifNoAnswer}`);
-      const recommended = `${p.recommended} (recommended)`;
-      const choice = await ctx.ui.select(`${p.question}\nIf no answer: ${p.ifNoAnswer}`, [recommended, ...p.others], { signal });
-      if (choice === undefined) return text(`No answer. ${p.ifNoAnswer}`, { answered: false });
-      const chosen = choice === recommended ? p.recommended : choice;
-      let handover = "";
-      // Autonomy is asked for, never inferred: one yes/no after they approve a routine call.
-      if (choice === recommended && p.routine) {
-        const rule = { part: "contract" as const, when: p.routine.when, act: "own" as const, what: p.routine.what };
-        const question = itemText(shaped(rule));
-        const situation = normal(p.routine.when);
-        const known = (await mindOf(ctx).read("contract")).rules.some((r) => normal(r.when) === situation);
-        if (!known && !asked.has(normal(question))) {
-          asked.add(normal(question));
-          if (await ctx.ui.confirm("Next time, handle this yourself?", question, { signal })) {
-            await mindOf(ctx).apply(rule, { origin: "told", source: sessionId(ctx), quote: `yes to: Next time, handle this yourself? ${question}`, at: new Date().toISOString() });
-            handover = " They said yes to handling it yourself next time; it's in the contract.";
-            await show(ctx);
-          } else handover = " They want to be asked again next time.";
-        }
-      }
-      return text(`The person chose: ${chosen}.${handover}`, { answered: true, chosen });
-    },
-  });
 
   pi.registerCommand("mind", {
-    description: "This place's mind: what's waiting on you. /mind accept <id>, /mind reject <id>, /mind audit",
+    description: `What this agent keeps for this place (${FOLDER}/): opens the Mind view. /mind tidy tidies it now.`,
     handler: async (args, ctx) => {
+      if (args.trim() === "tidy") return void pi.sendUserMessage(TIDY);
+      await show(ctx, true);
       const m = mindOf(ctx);
-      const [verb, id] = args.trim().split(/\s+/);
-      try {
-        if (verb === "accept" && id) return ctx.ui.notify(await m.accept(id, sessionId(ctx)), "info");
-        if (verb === "reject" && id) return ctx.ui.notify((await m.dismiss(id)) ? `Rejected ${id}.` : `No proposal ${id}.`, "info");
-        if (verb === "reflect") {
-          const closed = (await m.read("work")).cards.filter((c) => CLOSED.includes(c.stage));
-          if (!closed.length) return ctx.ui.notify("No closed cards wait for reflection.", "info");
-          const notes = await Promise.all(closed.map((card) => reflect(card, ctx, true)));
-          return ctx.ui.notify(notes.map((n) => n.trim()).join("\n"), "info");
-        }
-        if (verb === "sweep") return pi.sendUserMessage(SWEEP);
-        if (verb === "audit") {
-          const findings = await audit(m);
-          return ctx.ui.notify(findings.length ? findings.map((f) => `• ${f.text}`).join("\n") : "The mind is in shape.", findings.length ? "warning" : "info");
-        }
-        await show(ctx, true);
-        const parts = await m.readAll();
-        const waiting = parts.proposals.proposals.map((p) => `• ${p.id}: ${p.item ? itemText(p.item) : `remove ${p.target}`} (${p.reason})`);
-        ctx.ui.notify(
-          [
-            `Charter ${parts.charter.items.length} · contract ${parts.contract.rules.length} · knowledge ${parts.knowledge.notes.length} · active cards ${parts.work.cards.filter((c) => ACTIVE.includes(c.stage)).length}`,
-            waiting.length ? `Waiting on you:\n${waiting.join("\n")}\nAccept or reject with /mind accept <id>, /mind reject <id>.` : "Nothing is waiting on you.",
-          ].join("\n"),
-          "info",
-        );
-      } catch (error) {
-        ctx.ui.notify((error as Error).message, "error");
-      }
+      const waiting = questions((await m.text(TASKS)) ?? "").filter((q) => q.answer === undefined).length;
+      ctx.ui.notify(m.exists() ? `${waiting} waiting on you. The Mind view shows the rest.` : `Nothing is kept for this place yet.`, "info");
     },
   });
 }
-
-/**
- * Whether the person started this run: a prompt, not an extension's message, and not a wake
- * (PiSpark puts a `pispark:woken` entry just before a wake's message).
- */
-export function startedByPerson(messageType: string, branch: readonly { type: string; customType?: string }[]): boolean {
-  return messageType === "user" && !branch.slice(-2).some((e) => e.type === "custom" && e.customType === WOKEN_ENTRY);
-}
-
-/** A told item must quote what the person typed to start this run. */
-export function quotes(personSaid: string | undefined, quote: string | undefined): boolean {
-  return personSaid !== undefined && !!quote?.trim() && normal(personSaid).includes(normal(quote));
-}
-
-/**
- * The transcript of the session a card was worked on in: PiSpark keeps each session's Pi transcript
- * in a folder named after it, beside this one's. Falls back to this session's.
- */
-function transcriptOf(source: string, ctx: ExtensionContext): string | undefined {
-  const own = ctx.sessionManager.getSessionFile();
-  if (!own || !/^[\w-]+$/.test(source)) return own;
-  const folder = join(dirname(dirname(own)), source);
-  try {
-    const file = readdirSync(folder).find((name) => name.endsWith(".jsonl"));
-    return file ? join(folder, file) : own;
-  } catch {
-    return own;
-  }
-}
-
-/** What the Mind view shows: plain data, small enough for a view's props. */
-async function snapshotOf(m: Mind) {
-  const parts = await m.readAll();
-  const findings = await audit(m);
-  return {
-    charter: parts.charter.items,
-    contract: parts.contract.rules.map((r) => ({ ...r, text: `${ruleText(r)}.` })),
-    notes: parts.knowledge.notes,
-    skills: parts.knowledge.skills,
-    cards: parts.work.cards.map(({ id, goal, stage, doneWhen, state, next, waitingOn, authority }) => ({ id, goal, stage, doneWhen, state, next, waitingOn, authority })),
-    proposals: parts.proposals.proposals.map((p) => ({ id: p.id, text: p.item ? itemText(p.item) : `Forget ${p.target}`, reason: p.reason, at: p.at })),
-    findings: findings.map((f) => f.text),
-  };
-}
-
-/** The one yes/no question for a record the agent asks about. */
-function askFor(op: string, item: Item | undefined, target: string | undefined): { title: string; text: string } {
-  if (op === "remove") return { title: "Forget this?", text: `Remove ${target}.` };
-  if (!item) throw new Error("Say what to record.");
-  const title = item.part === "contract"
-    ? item.act === "own" ? "Next time, handle this yourself?" : "Keep this as a standing rule?"
-    : item.part === "charter" ? "Add this to what we're here for?" : "Remember this?";
-  return { title, text: itemText(shaped(item)) };
-}
-
-/** The pinned slice: guidance, charter, contract, active cards and the knowledge index. */
-export async function slice(m: Mind, sessionCard: Card | undefined, compacted: boolean): Promise<string> {
-  const parts = await m.readAll();
-  const findings = await audit(m);
-  const out = [GUIDANCE, ""];
-  out.push("## Charter");
-  if (parts.charter.items.length)
-    for (const section of CHARTER_SECTIONS) {
-      const items = parts.charter.items.filter((i) => i.section === section);
-      if (items.length) out.push(`${SECTION_LABEL[section]}: ${items.map((i) => i.text).join(" ")}`);
-    }
-  else out.push("(empty: finding out what you're here for is your first goal)");
-  out.push("", "## Contract");
-  out.push(...(parts.contract.rules.length ? parts.contract.rules.map((r) => `- ${ruleText(r)}.`) : ["(empty: ask before anything consequential)"]));
-  out.push("", "## Work");
-  if (sessionCard) out.push(`This session: ${cardText(sessionCard)}`);
-  const active = parts.work.cards.filter((c) => ACTIVE.includes(c.stage));
-  out.push(...active.map((c) => `- ${cardText(c)}`));
-  const ideas = parts.work.cards.filter((c) => c.stage === "idea").length;
-  const closed = parts.work.cards.filter((c) => CLOSED.includes(c.stage)).length;
-  if (closed) out.push(`${closed} closed card${closed === 1 ? " waits" : "s wait"} for reflection (/mind reflect).`);
-  if (!sessionCard && !active.length) out.push("(no active cards)");
-  if (ideas) out.push(`${ideas} idea${ideas === 1 ? "" : "s"} in ${FOLDER}/work.json.`);
-  out.push("", "## Knowledge");
-  out.push(...(parts.knowledge.notes.length ? parts.knowledge.notes.map((n) => `- [${n.id}] ${n.claim}`) : ["(empty)"]));
-  if (parts.knowledge.notes.length) out.push(`Why each matters, and where it came from: ${FOLDER}/knowledge.json.`);
-  const waiting = parts.proposals.proposals.length;
-  if (waiting) out.push("", `${waiting} proposal${waiting === 1 ? " is" : "s are"} waiting for the person (/mind).`);
-  if (findings.length) out.push("", `Audit: ${findings.map((f) => f.text).join(" ")}`);
-  if (compacted) out.push("", "The conversation was just compacted: re-read the active card and check your next step against it before going on.");
-  return out.join("\n");
-}
-

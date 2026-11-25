@@ -1,133 +1,59 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, join, relative, sep } from "node:path";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { check, FOLDER, kindOf, NOTES, pageHead, skillHead, TASKS } from "./layout.js";
+import { questions, trimDone } from "./tasks.js";
 
 /**
- * A place's mind: four parts kept in `<place>/.mind/` as plain JSON the person can read, plus
- * proposals waiting for the person and the place's own skills. Every write goes through here, so
- * the shapes, budgets and provenance hold whoever writes.
+ * A place's `.mind/` folder on disk: reading it, the extension's own few writes, the earlier
+ * versions kept so any change can be undone, and the mechanical cleaning. The agent writes its
+ * documents with its ordinary file tools; `index.ts` checks those writes against `layout.ts`.
  */
 
-export const FOLDER = ".mind";
-export const FILES = ["charter.json", "contract.json", "knowledge.json", "work.json", "proposals.json"] as const;
-/** Default budgets, in estimated tokens (decision 13). */
-export const BUDGET = { charter: 500, contract: 800, knowledge: 1000, cards: 1000, note: 300 } as const;
-/** About four characters per token: enough to keep parts small, not a tokenizer. */
-export const tokens = (text: string) => Math.ceil(text.length / 4);
+/** "Done lately" keeps this many lines. */
+export const DONE_KEPT = 30;
+/** An attachment nothing links to is removed after this long. */
+export const UNLINKED_DAYS = 7;
+/** Earlier versions kept, newest first, across all files. */
+export const HISTORY_KEPT = 200;
 
-export type Origin = "told" | "inferred";
-export interface Provenance {
-  origin: Origin;
-  /** The session it came from. */
-  source: string;
-  /** For told items: the person's own words. */
-  quote?: string;
-  at: string;
-}
-export const CHARTER_SECTIONS = ["purpose", "for-whom", "good", "off-limits"] as const;
-export type CharterSection = (typeof CHARTER_SECTIONS)[number];
-export interface CharterItem extends Provenance { id: string; section: CharterSection; text: string }
-export const ACTS = ["own", "tell", "ask", "never"] as const;
-export type Act = (typeof ACTS)[number];
-export interface Rule extends Provenance { id: string; when: string; act: Act; what: string }
-export interface Note extends Provenance { id: string; claim: string; why: string }
-/** A procedure ("how we do X here"): a Pi skill in `.mind/skills/<name>/`. Its provenance is kept here. */
-export interface SkillRecord extends Provenance { name: string; description: string }
-export const STAGES = ["idea", "committed", "active", "waiting", "done", "dropped"] as const;
-export type Stage = (typeof STAGES)[number];
-export interface Card {
+export interface Change {
   id: string;
-  goal: string;
-  doneWhen?: string;
-  stage: Stage;
-  state?: string;
-  next?: string;
-  waitingOn?: string;
-  /** Authority given for this goal only ("merge and release if good"); it ends with the goal. */
-  authority?: string;
-  source: string;
-  created: string;
-  updated: string;
-}
-export type Part = "charter" | "contract" | "knowledge" | "skill";
-export type Item =
-  | { part: "charter"; section: CharterSection; text: string }
-  | { part: "contract"; when: string; act: Act; what: string }
-  | { part: "knowledge"; claim: string; why: string }
-  | { part: "skill"; name: string; description: string; body: string };
-export interface Proposal {
-  id: string;
-  op: "add" | "change" | "remove";
-  /** The item a change or removal is about. */
-  target?: string;
-  item?: Item;
-  reason: string;
-  source: string;
+  /** The file as the person would name it: ".mind/notes.md", "AGENTS.md", "Instructions: Role.md". */
+  label: string;
   at: string;
+  /** The change created the file; undoing it removes the file. */
+  created: boolean;
+}
+interface Version extends Change {
+  file: string;
+  before: string | null;
 }
 
-interface Parts {
-  charter: { items: CharterItem[] };
-  contract: { rules: Rule[] };
-  knowledge: { notes: Note[]; skills: SkillRecord[] };
-  work: { cards: Card[] };
-  proposals: { proposals: Proposal[] };
+/**
+ * Replaces a file whole. On Windows a rename fails while another reader has the file open for a
+ * moment, so it is tried again a few times.
+ */
+export async function write(file: string, content: string): Promise<void> {
+  await mkdir(dirname(file), { recursive: true });
+  const temporary = `${file}.${process.pid}-${randomUUID().slice(0, 6)}.tmp`;
+  await writeFile(temporary, content, "utf8");
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await rename(temporary, file);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt >= 8 || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) {
+        await rm(temporary, { force: true });
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 15 * (attempt + 1)));
+    }
+  }
 }
-const EMPTY: Parts = {
-  charter: { items: [] },
-  contract: { rules: [] },
-  knowledge: { notes: [], skills: [] },
-  work: { cards: [] },
-  proposals: { proposals: [] },
-};
-type Name = keyof Parts;
-
-export const ACTIVE: Stage[] = ["committed", "active", "waiting"];
-const shortId = () => randomUUID().slice(0, 6);
-const now = () => new Date().toISOString();
-const line = (value: unknown, max: number, what: string): string => {
-  const text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
-  if (!text) throw new Error(`${what} is required.`);
-  if (text.length > max) throw new Error(`${what} is too long (at most ${max} characters): say it shorter.`);
-  return text;
-};
-
-/** Mid-sentence: a lowercase first letter (unless it starts an acronym or a name), no closing period. */
-const clause = (s: string) => s.replace(/[.\s]+$/, "").replace(/^[A-Z](?=[a-z\s])/, (c) => c.toLowerCase());
-export const ruleText = (r: { when: string; act: Act; what: string }) => `When ${clause(r.when)}, I ${r.act} ${clause(r.what)}`;
-export const itemText = (item: Item) =>
-  item.part === "charter" ? `${item.section}: ${item.text}`
-  : item.part === "contract" ? ruleText(item)
-  : item.part === "knowledge" ? `${item.claim} (why: ${item.why})`
-  : `skill ${item.name}: ${item.description}`;
-
-/** Checks an item's shape; returns it tidied. Shapes are what keep the parts apart. */
-export function shaped(item: Item): Item {
-  if (item.part === "charter") {
-    if (!CHARTER_SECTIONS.includes(item.section)) throw new Error(`A charter item belongs to one of: ${CHARTER_SECTIONS.join(", ")}.`);
-    return { part: "charter", section: item.section, text: line(item.text, 300, "The charter text") };
-  }
-  if (item.part === "contract") {
-    if (!ACTS.includes(item.act)) throw new Error(`A contract rule is "When <situation>, I <own|tell|ask|never> <action>".`);
-    return { part: "contract", when: line(item.when, 200, "The situation"), act: item.act, what: line(item.what, 200, "The action") };
-  }
-  if (item.part === "knowledge") {
-    const note = { part: "knowledge" as const, claim: line(item.claim, 240, "The claim"), why: line(item.why, 400, "Why it matters beyond this goal") };
-    if (tokens(note.claim + note.why) > BUDGET.note) throw new Error(`A note is at most about ${BUDGET.note} tokens.`);
-    return note;
-  }
-  if (item.part === "skill") {
-    const name = line(item.name, 40, "The skill name");
-    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) throw new Error("A skill name is lowercase words joined by hyphens.");
-    const body = typeof item.body === "string" ? item.body.trim() : "";
-    if (!body) throw new Error("The skill needs its steps (body).");
-    if (body.length > 6000) throw new Error("A skill is at most 6000 characters: keep it to the procedure.");
-    return { part: "skill", name, description: line(item.description, 300, "When to use the skill"), body };
-  }
-  throw new Error("Unknown part.");
-}
+const readText = (file: string) => readFile(file, "utf8").catch(() => undefined);
 
 export class Mind {
   readonly dir: string;
@@ -135,177 +61,182 @@ export class Mind {
     this.dir = join(place, FOLDER);
   }
 
-  exists() {
+  exists(): boolean {
     return existsSync(this.dir);
   }
+  /** A path's place inside the folder, with forward slashes; nothing when it is outside. */
+  rel(file: string): string | undefined {
+    const rel = relative(this.dir, file);
+    return !rel || rel.startsWith("..") || /^[A-Za-z]:/.test(rel) ? undefined : rel.split(sep).join("/");
+  }
+  text(rel: string): Promise<string | undefined> {
+    return readText(join(this.dir, rel));
+  }
 
-  async read<N extends Name>(name: N): Promise<Parts[N]> {
-    try {
-      const value = JSON.parse(await readFile(join(this.dir, `${name}.json`), "utf8"));
-      return { ...structuredClone(EMPTY[name]), ...value };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return structuredClone(EMPTY[name]);
-      throw new Error(`${FOLDER}/${name}.json could not be read: ${(error as Error).message}`);
+  /** Every file in the folder, as paths relative to it, without the extension's own. */
+  private async files(under = ""): Promise<string[]> {
+    const found: string[] = [];
+    for (const entry of await readdir(join(this.dir, under), { withFileTypes: true }).catch(() => [])) {
+      const rel = under ? `${under}/${entry.name}` : entry.name;
+      if (kindOf(rel) === "internal" || rel === ".history" || entry.name.endsWith(".tmp")) continue;
+      if (entry.isDirectory()) found.push(...(await this.files(rel)));
+      else found.push(rel);
     }
-  }
-
-  async readAll(): Promise<Parts> {
-    const [charter, contract, knowledge, work, proposals] = await Promise.all(
-      (["charter", "contract", "knowledge", "work", "proposals"] as const).map((name) => this.read(name)),
-    );
-    return { charter, contract, knowledge, work, proposals } as Parts;
-  }
-
-  /** Read, change and write one part under Pi's per-file queue, so parallel writes don't lose each other. */
-  async update<N extends Name, T>(name: N, change: (value: Parts[N]) => T): Promise<T> {
-    const file = join(this.dir, `${name}.json`);
-    return withFileMutationQueue(file, async () => {
-      await this.ensure();
-      const value = await this.read(name);
-      const result = change(value);
-      const temporary = `${file}.${process.pid}.tmp`;
-      await writeFile(temporary, JSON.stringify(value, null, 2) + "\n", "utf8");
-      await rename(temporary, file);
-      return result;
-    });
-  }
-
-  /** The folder, kept out of version control by a `.gitignore` that ignores everything in it. */
-  async ensure() {
-    await mkdir(join(this.dir, "skills"), { recursive: true });
-    const ignore = join(this.dir, ".gitignore");
-    if (!existsSync(ignore)) await writeFile(ignore, "# The agent's memory of this place (PiSpark mind). Not part of the project.\n*\n", "utf8");
-  }
-
-  // ---- Charter, contract, knowledge --------------------------------------------------------
-
-  /** Applies an item the person told or accepted, within budget. Returns its id. */
-  async apply(item: Item, provenance: Provenance, target?: string): Promise<string> {
-    const tidy = shaped(item);
-    const id = target ?? shortId();
-    if (tidy.part === "charter")
-      await this.update("charter", (c) => {
-        c.items = c.items.filter((i) => i.id !== id);
-        c.items.push({ id, section: tidy.section, text: tidy.text, ...provenance });
-        over("charter", tokens(c.items.map((i) => i.text).join("\n")), BUDGET.charter);
-      });
-    else if (tidy.part === "contract")
-      await this.update("contract", (c) => {
-        c.rules = c.rules.filter((r) => r.id !== id);
-        c.rules.push({ id, when: tidy.when, act: tidy.act, what: tidy.what, ...provenance });
-        over("contract", tokens(c.rules.map(ruleText).join("\n")), BUDGET.contract);
-      });
-    else if (tidy.part === "knowledge")
-      await this.update("knowledge", (k) => {
-        k.notes = k.notes.filter((n) => n.id !== id);
-        k.notes.push({ id, claim: tidy.claim, why: tidy.why, ...provenance });
-        over("knowledge index", indexTokens(k), BUDGET.knowledge);
-      });
-    else {
-      // A skill is named, not numbered: a change keeps its name.
-      const name = tidy.name;
-      await this.update("knowledge", (k) => {
-        k.skills = k.skills.filter((x) => x.name !== name && x.name !== target);
-        k.skills.push({ name, description: tidy.description, ...provenance });
-        over("knowledge index", indexTokens(k), BUDGET.knowledge);
-      });
-      if (target && target !== name) await rm(join(this.dir, "skills", target), { recursive: true, force: true });
-      await mkdir(join(this.dir, "skills", name), { recursive: true });
-      const front = `---\nname: ${name}\ndescription: ${JSON.stringify(tidy.description)}\n---\n\n`;
-      await writeFile(join(this.dir, "skills", name, "SKILL.md"), front + tidy.body + "\n", "utf8");
-      return name;
-    }
-    return id;
-  }
-
-  /** Removes an item from whichever part holds it. */
-  async remove(id: string): Promise<boolean> {
-    let found = false;
-    await this.update("charter", (c) => { const n = c.items.length; c.items = c.items.filter((i) => i.id !== id); found ||= n !== c.items.length; });
-    await this.update("contract", (c) => { const n = c.rules.length; c.rules = c.rules.filter((r) => r.id !== id); found ||= n !== c.rules.length; });
-    await this.update("knowledge", (k) => {
-      const n = k.notes.length + k.skills.length;
-      k.notes = k.notes.filter((x) => x.id !== id);
-      k.skills = k.skills.filter((x) => x.name !== id);
-      found ||= n !== k.notes.length + k.skills.length;
-    });
-    if (/^[a-z0-9]+(-[a-z0-9]+)*$/.test(id)) await rm(join(this.dir, "skills", id), { recursive: true, force: true });
     return found;
   }
 
-  async propose(proposal: Omit<Proposal, "id" | "at">): Promise<string> {
-    if (proposal.item) proposal.item = shaped(proposal.item);
-    const id = shortId();
-    await this.update("proposals", (p) => {
-      p.proposals.push({ id, at: now(), ...proposal });
-    });
-    return id;
+  async pages(): Promise<{ name: string; title: string; summary: string }[]> {
+    const pages = [];
+    for (const rel of (await this.files("notes")).filter((each) => kindOf(each) === "page").sort())
+      pages.push({ name: rel.slice("notes/".length, -".md".length), ...pageHead((await this.text(rel)) ?? "") });
+    return pages;
   }
 
-  /** Accepts a proposal on the person's word: it becomes a told item. */
-  async accept(id: string, source: string): Promise<string> {
-    const proposal = (await this.read("proposals")).proposals.find((p) => p.id === id);
-    if (!proposal) throw new Error(`No proposal ${id}.`);
-    let result: string;
-    if (proposal.op === "remove") {
-      if (!proposal.target || !(await this.remove(proposal.target))) throw new Error(`Nothing to remove: ${proposal.target} is gone.`);
-      result = `Removed ${proposal.target}.`;
-    } else {
-      if (!proposal.item) throw new Error(`Proposal ${id} has no item.`);
-      const itemId = await this.apply(proposal.item, { origin: "told", source, quote: `accepted proposal ${id}`, at: now() }, proposal.op === "change" ? proposal.target : undefined);
-      result = `Recorded ${itemId}: ${itemText(proposal.item)}`;
+  async skills(): Promise<{ name: string; description: string }[]> {
+    const skills = [];
+    for (const rel of (await this.files("skills")).filter((each) => kindOf(each) === "skill").sort()) {
+      const head = skillHead((await this.text(rel)) ?? "");
+      if (head) skills.push(head);
     }
-    await this.dismiss(id);
-    return result;
+    return skills;
   }
 
-  async dismiss(id: string): Promise<boolean> {
-    return this.update("proposals", (p) => {
-      const n = p.proposals.length;
-      p.proposals = p.proposals.filter((x) => x.id !== id);
-      return n !== p.proposals.length;
+  /** What breaks the layout now: files that don't belong, and documents out of shape. */
+  async problems(): Promise<string[]> {
+    const found: string[] = [];
+    for (const rel of await this.files()) {
+      const kind = kindOf(rel);
+      if (kind === "stray") found.push(`${FOLDER}/${rel} is not part of the layout: move it to ${FOLDER}/attachments/ or out of ${FOLDER}.`);
+      else if (kind === "notes" || kind === "tasks" || kind === "page" || kind === "skill") {
+        const reason = check(rel, (await this.text(rel)) ?? "");
+        if (reason) found.push(`${FOLDER}/${rel}: ${reason}`);
+      }
+    }
+    return found;
+  }
+
+  // ---- Earlier versions ---------------------------------------------------------------------
+
+  private get history(): string {
+    return join(this.dir, ".history");
+  }
+
+  /** Keeps what a file held before a change (nothing: the change created it). */
+  async keep(file: string, before: string | undefined, label: string): Promise<void> {
+    const at = new Date().toISOString();
+    const id = `${at.replace(/[:.]/g, "-")}-${randomUUID().slice(0, 4)}`;
+    const version: Version = { id, file, label, at, created: before === undefined, before: before ?? null };
+    await write(join(this.history, `${id}.json`), JSON.stringify(version));
+    await this.ignore();
+  }
+
+  private async versions(): Promise<string[]> {
+    return (await readdir(this.history).catch(() => [])).filter((name) => name.endsWith(".json")).sort().reverse();
+  }
+
+  /** The latest changes, newest first. */
+  async changes(limit = 20): Promise<Change[]> {
+    const changes: Change[] = [];
+    for (const name of (await this.versions()).slice(0, limit)) {
+      try {
+        const { id, label, at, created } = JSON.parse(await readFile(join(this.history, name), "utf8")) as Version;
+        changes.push({ id, label, at, created });
+      } catch {
+        // An unreadable version is skipped; the others still show.
+      }
+    }
+    return changes;
+  }
+
+  /** Puts a file back as it was before that change. The undo is itself kept, so it can be undone. */
+  async undo(id: string): Promise<string> {
+    if (!/^[\w-]+$/.test(id)) throw new Error("No such change.");
+    const version = await readFile(join(this.history, `${id}.json`), "utf8").then((text) => JSON.parse(text) as Version, () => undefined);
+    if (!version) throw new Error("No such change.");
+    await withFileMutationQueue(version.file, async () => {
+      await this.keep(version.file, await readText(version.file), version.label);
+      if (version.before === null) await rm(version.file, { force: true });
+      else await write(version.file, version.before);
+    });
+    return version.label;
+  }
+
+  /** The extension's own write of a document: checked like any other, with the earlier version kept. */
+  async save(rel: string, content: string): Promise<void> {
+    const reason = check(rel, content);
+    if (reason) throw new Error(reason);
+    const file = join(this.dir, rel);
+    await withFileMutationQueue(file, async () => {
+      await this.keep(file, await readText(file), `${FOLDER}/${rel}`);
+      await write(file, content);
     });
   }
 
-  // ---- Work ---------------------------------------------------------------------------------
+  /** The folder ignores itself in git: it is the agent's, not the project's. */
+  async ignore(): Promise<void> {
+    const file = join(this.dir, ".gitignore");
+    if (this.exists() && !existsSync(file)) await writeFile(file, "# The agent's own folder for this place (PiSpark mind). Remove this file to track it.\n*\n", "utf8");
+  }
 
-  async card(change: (cards: Card[]) => Card): Promise<Card> {
-    return this.update("work", (w) => {
-      const card = change(w.cards);
-      card.updated = now();
-      over("active cards", tokens(w.cards.filter((c) => ACTIVE.includes(c.stage)).map(cardText).join("\n")), BUDGET.cards);
-      return card;
+  // ---- Questions already shown to the person -------------------------------------------------
+
+  private get stateFile(): string {
+    return join(this.dir, ".state.json");
+  }
+  async asked(): Promise<Record<string, string>> {
+    try {
+      return (JSON.parse(await readFile(this.stateFile, "utf8")) as { asked?: Record<string, string> }).asked ?? {};
+    } catch {
+      return {};
+    }
+  }
+  /** Marks questions as shown; returns the ones that were not marked before. */
+  async markAsked(ids: string[]): Promise<string[]> {
+    if (!ids.length) return [];
+    return withFileMutationQueue(this.stateFile, async () => {
+      const asked = await this.asked();
+      const fresh = ids.filter((id) => !asked[id]);
+      if (fresh.length) {
+        for (const id of fresh) asked[id] = new Date().toISOString();
+        await write(this.stateFile, JSON.stringify({ asked }, null, 2) + "\n");
+      }
+      return fresh;
     });
+  }
+
+  // ---- Mechanical cleaning -------------------------------------------------------------------
+
+  /** Trims "Done lately", removes attachments nothing has linked to for a week, and old versions. */
+  async sweep(now = Date.now()): Promise<void> {
+    if (!this.exists()) return;
+    await this.ignore();
+    const tasks = join(this.dir, TASKS);
+    await withFileMutationQueue(tasks, async () => {
+      const content = await readText(tasks);
+      if (content === undefined) return;
+      const trimmed = trimDone(content, DONE_KEPT);
+      if (trimmed !== content) await write(tasks, trimmed);
+    });
+
+    const files = await this.files();
+    const attachments = files.filter((rel) => kindOf(rel) === "attachment");
+    if (attachments.length) {
+      const texts = (await Promise.all(files.filter((rel) => rel.endsWith(".md") && kindOf(rel) !== "attachment").map((rel) => this.text(rel)))).join("\n");
+      for (const rel of attachments) {
+        const name = rel.slice("attachments/".length);
+        if (texts.includes(name) || texts.includes(encodeURI(name))) continue;
+        const age = now - (await stat(join(this.dir, rel)).then((s) => s.mtimeMs, () => now));
+        if (age > UNLINKED_DAYS * 86_400_000) await rm(join(this.dir, rel), { force: true });
+      }
+    }
+
+    const open = new Set(questions((await this.text(TASKS)) ?? "").map((q) => q.id));
+    const asked = await this.asked();
+    if (Object.keys(asked).some((id) => !open.has(id)))
+      await withFileMutationQueue(this.stateFile, () => write(this.stateFile, JSON.stringify({ asked: Object.fromEntries(Object.entries(asked).filter(([id]) => open.has(id))) }, null, 2) + "\n"));
+
+    for (const name of (await this.versions()).slice(HISTORY_KEPT)) await rm(join(this.history, name), { force: true });
   }
 }
 
-/** Closed cards leave once reflection has looked at them: work ends with its goal. */
-export const CLOSED: Stage[] = ["done", "dropped"];
-
-export function newCard(goal: string, source: string, fields: Partial<Card> = {}): Card {
-  const at = now();
-  return { id: shortId(), goal: line(goal, 200, "The goal"), stage: "idea", source, created: at, updated: at, ...fields };
-}
-
-export function cardText(c: Card): string {
-  return [
-    `[${c.id}] ${c.goal}`,
-    c.doneWhen && `done when: ${c.doneWhen}`,
-    `stage: ${c.stage}`,
-    c.state && `state: ${c.state}`,
-    c.next && `next: ${c.next}`,
-    c.waitingOn && `waiting on: ${c.waitingOn}`,
-    c.authority && `authorised: ${c.authority}`,
-  ].filter(Boolean).join(" · ");
-}
-
-/** The knowledge index: note claims and skill descriptions, both always visible. */
-export const indexTokens = (k: { notes: Note[]; skills: SkillRecord[] }) =>
-  tokens([...k.notes.map((n) => n.claim), ...k.skills.map((x) => `${x.name}: ${x.description}`)].join("\n"));
-
-function over(what: string, used: number, budget: number) {
-  if (used > budget)
-    throw new Error(`The ${what} would be about ${used} tokens, over its ${budget}-token budget. Merge, generalise or remove something first.`);
-}
-
-export const field = line;
+export { NOTES, TASKS };

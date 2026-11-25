@@ -1,27 +1,61 @@
 # mind
 
-Memory and attention for any agent. Add it to an agent (`bundled:mind`) and the agent keeps four parts in `.mind/` inside the folder it works in:
+**Experimental.** What an agent keeps for itself in the place it works in, so that you don't repeat yourself and it can carry its own work across sessions and unattended runs. Add it to an agent with `bundled:mind`.
 
-| Part | Holds | Changed by |
-|---|---|---|
-| Charter | Why it's here, for whom, what good looks like, what's off-limits | The person |
-| Contract | What it owns, tells, asks about, never does | The person |
-| Knowledge | What's true here beyond any one goal, and skills for how things are done here | The person, or proposals they accept |
-| Work | Goals as cards, from idea to done or dropped | The agent, as it works |
+## What you say goes where you'd have put it yourself
 
-- **Pinned:** the charter, contract, active cards and knowledge index are pinned into the system prompt every run (one `mind` section, within small token budgets), so compaction and new sessions don't lose them. When the context nears PiSpark's compaction point, the agent is asked once to bring its card up to date; after a compaction it is told to reorient from it.
-- **Written only through its tools:**
-  - `mind_work` for cards.
-  - `mind_record` for the rest. What the person said in this conversation (quoted) is recorded. `ask` puts a yes/no question to them now. Anything inferred becomes a proposal.
-  - `mind_decide` asks for a decision: one question, a recommendation, at most three options and a safe default. For a routine call, approving the recommendation offers once to let the agent handle it next time; a yes becomes a contract rule.
-  - Raw writes into `.mind/` are refused.
-- **Learning:**
-  - When a card closes, a reflection runs in a child session with fresh context. It proposes what outlasts the goal (facts, skills, principles) and retires the card.
-  - A run whose words read like a correction or a standing preference gets one hidden reminder to keep the lesson.
-  - `/mind sweep` tidies ideas, proposals and closed cards. Schedule it to run periodically.
-- **The Mind view** (beside the conversation) shows what waits on you, the charter, contract, work and knowledge. Accept, reject or forget from there, or with `/mind accept <id>`, `/mind reject <id>`. Also: `/mind reflect`, `/mind audit`.
-- **Skills** in `.mind/skills/` load like any skill (Pi's `resources_discover`). Bundled skills:
-  - `discover` (a new place's charter),
-  - `adopt` (bring an existing system in once),
-  - `reflect` (reflection and the sweep).
-- `.mind/` ignores itself in git.
+There is no new store for your instructions. The agent edits the files PiSpark already loads into every session, and tells you in one line what it saved and where.
+
+| You say | It goes to |
+|---|---|
+| A rule for this project, for any agent | The project's `AGENTS.md` (when this agent reads it: a project agent) |
+| How this agent should work or talk with you | This agent's own instructions |
+| Something every agent should do | Default's instructions (it asks first) |
+| A fact about the place | `.mind/notes.md` |
+| Something to do | `.mind/tasks.md` |
+
+An agent with no instructions of its own starts `instructions/standing.md`, which is selected for it like any instruction you add in the editor.
+
+## What the agent produces lives in `.mind/`
+
+One folder per place (the session's working folder), with a fixed layout:
+
+```
+.mind/
+  notes.md          what's true about this place: the overview, read every run
+  notes/<topic>.md  detail, one topic per page: listed every run, read when needed
+  tasks.md          waiting on you · doing · to do · done lately
+  attachments/      files that a task or a note links to
+  skills/<name>/    steps the agent follows here: Pi skills, with their scripts
+```
+
+- **`notes.md`** has three sections: *What this is*, *How it's set up*, *Things to know*. It describes how things are now, is rewritten in place, and stays under 6,000 characters. Detail moves to a page, which starts with its title and a one-sentence summary.
+- **`tasks.md`** has four sections: *Waiting on you*, *Doing*, *To do*, *Done lately*. One bullet per item. A line under *Done lately* starts with its date (`- 2026-11-26: …`).
+- **`skills/`** holds ordinary Pi skills. They load through Pi's `resources_discover`, from the next session or after a reload.
+
+The agent writes these with its ordinary file tools. There are no special tools to learn.
+
+## How it stays clean
+
+- **Every write is checked** against the layout. One that breaks it is refused with the reason, and nothing else can be created in the folder.
+- **Earlier versions are kept** for every change to these documents and to your instruction files (the newest 200), so any change can be undone from the view.
+- **Mechanically:** *Done lately* keeps its newest 30 lines. An attachment nothing links to is removed after a week.
+- **Reminders:** at the end of a run that did work but kept nothing, and before PiSpark compacts the conversation, the agent is asked once to bring its tasks and notes up to date. After a compaction it is told to reorient from its tasks.
+- **Tidy:** `/mind tidy`, or weekly from the view, checks the notes against how things are and clears what's stale (the `mind-tidy` skill).
+
+## Asking without stopping
+
+When the agent needs you and can go on meanwhile, it writes the question under *Waiting on you* and carries on. When its run ends, each new question is put to you once as a question card, which also reaches your phone through PiSpark's "needs you" notification. Your answer is written under the question and given to the agent to act on.
+
+## The Mind view
+
+Beside the conversation: what waits on you (answer there), the tasks, the notes and their pages, the skills, and what changed lately with **Undo**. `/mind` opens it.
+
+## Skills that come with it
+
+- **`mind-skills`**: how to turn steps the agent has followed here into a skill in `.mind/skills/`, built from what actually happened, and how to improve one. Adapted from Anthropic's skill-creator (Apache-2.0).
+- **`mind-tidy`**: how to tidy the folder.
+
+## Files it keeps for itself
+
+`.mind/.gitignore` (the folder ignores itself in git; remove it to track the folder), `.mind/.history/` (earlier versions) and `.mind/.state.json` (which questions were already put to you).

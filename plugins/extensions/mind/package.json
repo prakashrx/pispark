@@ -1,12 +1,11 @@
 {
   "name": "mind",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Memory and attention for any agent: a charter, a contract, knowledge and work cards kept in the place it works in.",
+  "description": "Experimental. What an agent keeps for itself in the place it works in: notes, tasks, attachments and skills in .mind/, so you don't repeat yourself and it can carry its own work.",
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "typebox": "*"
+    "@earendil-works/pi-coding-agent": "*"
   },
   "pi": {
     "extensions": [

@@ -1,43 +1,57 @@
 <script lang="ts">
-  /** What the agent believes about this place, what it's working on, and what waits on the person. */
-  type Origin = { origin: "told" | "inferred"; quote?: string; at: string };
-  type Snapshot = {
-    charter: ({ id: string; section: string; text: string } & Origin)[];
-    contract: ({ id: string; text: string } & Origin)[];
-    notes: ({ id: string; claim: string; why: string } & Origin)[];
-    skills: ({ name: string; description: string } & Origin)[];
-    cards: { id: string; goal: string; stage: string; doneWhen?: string; state?: string; next?: string; waitingOn?: string; authority?: string }[];
-    proposals: { id: string; text: string; reason: string; at: string }[];
-    findings: string[];
-  };
-  let { snapshot, host }: { snapshot?: Snapshot; host: { call: (name: string, data?: unknown) => Promise<unknown> } } = $props();
+  import type { Component } from "svelte";
 
-  const SECTIONS: [string, string][] = [["purpose", "Purpose"], ["for-whom", "For whom"], ["good", "What good looks like"], ["off-limits", "Off-limits"]];
-  const STAGES: [string, string][] = [["active", "Active"], ["waiting", "Waiting"], ["committed", "Committed"], ["idea", "Ideas"], ["done", "Done, waiting for reflection"], ["dropped", "Dropped, waiting for reflection"]];
+  /** What the agent keeps for this place: what waits on the person first, then its tasks, notes, skills and recent changes. */
+  type Question = { id: string; text: string; detail: string; answer?: string };
+  type Snapshot = {
+    waiting: Question[];
+    doing: string;
+    todo: string;
+    done: string;
+    notes: string;
+    pages: { name: string; title: string; summary: string }[];
+    skills: { name: string; description: string }[];
+    changes: { id: string; label: string; at: string; created: boolean }[];
+    problems: string[];
+  };
+  type Host = { call: (name: string, data?: unknown) => Promise<unknown>; Markdown: Component<{ text: string }> };
+  let { snapshot, host }: { snapshot?: Snapshot; host: Host } = $props();
+
+  const AS_RECOMMENDED = "Yes, do as you recommend.";
+  const NO = "No, don't.";
+
   let busy = $state<string | undefined>();
   let error = $state<string | undefined>();
+  let notice = $state<string | undefined>();
+  let own = $state<Record<string, string>>({});
+  let pages = $state<Record<string, string>>({});
 
-  /** Runs a person's action; the row goes away, so focus moves to its section's heading. */
-  async function act(name: string, id: string, event: Event) {
-    const heading = (event.currentTarget as HTMLElement).closest("section")?.querySelector("h2");
-    busy = id;
+  /** Runs one of the person's actions; `after` gets what it returned. */
+  async function act(key: string, name: string, data?: unknown, after?: (result: unknown) => void) {
+    busy = key;
     error = undefined;
+    notice = undefined;
     try {
-      await host.call(name, { id });
-      heading?.focus();
+      after?.(await host.call(name, data));
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
       busy = undefined;
     }
   }
-  const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  function how(o: Origin): string {
-    if (o.origin !== "told") return `Inferred · ${day(o.at)}`;
-    if (o.quote?.startsWith("yes to:")) return `You said yes when asked · ${day(o.at)}`;
-    if (o.quote?.startsWith("accepted proposal")) return `You accepted it · ${day(o.at)}`;
-    return `You said${o.quote ? `: “${o.quote}”` : " this"} · ${day(o.at)}`;
+  /** Answers a question; it leaves the list, so focus goes to the section's heading. */
+  function answer(question: Question, text: string, event: Event) {
+    const heading = (event.currentTarget as HTMLElement).closest("section")?.querySelector("h2");
+    void act(question.id, "answer", { id: question.id, text }, () => heading?.focus());
   }
+  async function openPage(name: string, event: Event) {
+    if (!(event.currentTarget as HTMLDetailsElement).open || pages[name] !== undefined) return;
+    await act(`page:${name}`, "page", { name }, (text) => (pages[name] = String(text)));
+  }
+  const when = (iso: string) => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  const open = $derived(snapshot?.waiting.filter((q) => q.answer === undefined) ?? []);
+  const answered = $derived(snapshot?.waiting.filter((q) => q.answer !== undefined) ?? []);
+  const empty = $derived(!!snapshot && !snapshot.notes && !snapshot.waiting.length && !snapshot.doing && !snapshot.todo && !snapshot.done && !snapshot.skills.length);
 </script>
 
 <div class="mind">
@@ -45,122 +59,108 @@
     <p class="quiet">Loading…</p>
   {:else}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
+    {#if notice}<p class="quiet" role="status">{notice}</p>{/if}
+
+    {#if snapshot.problems.length}
+      <section aria-labelledby="mind-problems">
+        <h2 id="mind-problems" tabindex="-1">Out of shape</h2>
+        <ul class="plain">
+          {#each snapshot.problems as problem}<li>{problem}</li>{/each}
+        </ul>
+        <p class="quiet">The agent is told to fix these at its next run.</p>
+      </section>
+    {/if}
 
     <section aria-labelledby="mind-waiting">
       <h2 id="mind-waiting" tabindex="-1">Waiting on you</h2>
-      {#if snapshot.proposals.length}
+      {#if open.length}
         <ul class="list">
-          {#each snapshot.proposals as p (p.id)}
-            <li class="row">
-              <div class="body">
-                <p>{p.text}</p>
-                <p class="quiet">{p.reason} · {day(p.at)}</p>
-              </div>
+          {#each open as question (question.id)}
+            <li class="card">
+              <div class="doc"><host.Markdown text={question.text} /></div>
+              {#if question.detail}<div class="doc quiet"><host.Markdown text={question.detail} /></div>{/if}
               <div class="actions">
-                <button type="button" class="primary" disabled={busy === p.id} onclick={(e) => act("accept", p.id, e)} aria-label={`Accept: ${p.text}`}>Accept</button>
-                <button type="button" disabled={busy === p.id} onclick={(e) => act("reject", p.id, e)} aria-label={`Reject: ${p.text}`}>Reject</button>
+                <button type="button" class="primary" disabled={busy === question.id} onclick={(e) => answer(question, AS_RECOMMENDED, e)}>Do as recommended</button>
+                <button type="button" disabled={busy === question.id} onclick={(e) => answer(question, NO, e)}>No, don't</button>
               </div>
+              <form class="own" onsubmit={(e) => { e.preventDefault(); if (own[question.id]?.trim()) answer(question, own[question.id]!, e); }}>
+                <label class="quiet" for={`mind-own-${question.id}`}>Or answer in your own words</label>
+                <div class="row">
+                  <input id={`mind-own-${question.id}`} type="text" maxlength="2000" bind:value={own[question.id]} />
+                  <button type="submit" disabled={busy === question.id || !own[question.id]?.trim()}>Send</button>
+                </div>
+              </form>
             </li>
           {/each}
         </ul>
       {:else}
-        <p class="quiet">Nothing. The agent asks when it needs you.</p>
+        <p class="quiet">Nothing. The agent asks here when it needs you, and carries on meanwhile.</p>
       {/if}
-      {#if snapshot.findings.length}
-        <ul class="findings" aria-label="Audit">
-          {#each snapshot.findings as f}<li>{f}</li>{/each}
-        </ul>
-      {/if}
-    </section>
-
-    <section aria-labelledby="mind-charter">
-      <h2 id="mind-charter" tabindex="-1">Charter</h2>
-      {#if snapshot.charter.length}
-        <dl>
-          {#each SECTIONS as [key, label]}
-            {@const items = snapshot.charter.filter((i) => i.section === key)}
-            {#if items.length}
-              <dt>{label}</dt>
-              {#each items as i (i.id)}
-                <dd class="row">
-                  <div class="body"><p>{i.text}</p><p class="quiet">{how(i)}</p></div>
-                  <button type="button" class="forget" disabled={busy === i.id} onclick={(e) => act("forget", i.id, e)} aria-label={`Forget: ${i.text}`}>Forget</button>
-                </dd>
-              {/each}
-            {/if}
-          {/each}
-        </dl>
-      {:else}
-        <p class="quiet">Empty. The agent finds out what it's here for first.</p>
-      {/if}
-    </section>
-
-    <section aria-labelledby="mind-contract">
-      <h2 id="mind-contract" tabindex="-1">Contract</h2>
-      {#if snapshot.contract.length}
+      {#if answered.length}
         <ul class="list">
-          {#each snapshot.contract as r (r.id)}
-            <li class="row">
-              <div class="body"><p>{r.text}</p><p class="quiet">{how(r)}</p></div>
-              <button type="button" class="forget" disabled={busy === r.id} onclick={(e) => act("forget", r.id, e)} aria-label={`Forget: ${r.text}`}>Forget</button>
+          {#each answered as question (question.id)}
+            <li class="card">
+              <div class="doc"><host.Markdown text={question.text} /></div>
+              <p class="quiet">You answered: {question.answer}</p>
             </li>
           {/each}
         </ul>
-      {:else}
-        <p class="quiet">Empty. The agent asks before anything consequential.</p>
       {/if}
     </section>
 
-    <section aria-labelledby="mind-work">
-      <h2 id="mind-work" tabindex="-1">Work</h2>
-      {#if snapshot.cards.length}
-        {#each STAGES as [stage, label]}
-          {@const cards = snapshot.cards.filter((c) => c.stage === stage)}
-          {#if cards.length}
-            <h3>{label} <span class="count">{cards.length}</span></h3>
-            <ul class="list">
-              {#each cards as c (c.id)}
-                <li class="card">
-                  <p class="goal">{c.goal}</p>
-                  {#if c.doneWhen}<p class="quiet">Done when: {c.doneWhen}</p>{/if}
-                  {#if c.state}<p>{c.state}</p>{/if}
-                  {#if c.next}<p class="quiet">Next: {c.next}</p>{/if}
-                  {#if c.waitingOn}<p class="quiet">Waiting on: {c.waitingOn}</p>{/if}
-                  {#if c.authority}<p class="quiet">You allowed: {c.authority}</p>{/if}
-                </li>
-              {/each}
-            </ul>
-          {/if}
+    {#if empty}
+      <p class="quiet">Nothing is kept for this place yet. The agent writes its notes and tasks here as it works.</p>
+    {:else}
+      <section aria-labelledby="mind-tasks">
+        <h2 id="mind-tasks" tabindex="-1">Tasks</h2>
+        {#each [["Doing", snapshot.doing], ["To do", snapshot.todo], ["Done lately", snapshot.done]] as [label, text]}
+          <h3>{label}</h3>
+          {#if text}<div class="doc"><host.Markdown {text} /></div>{:else}<p class="quiet">Nothing.</p>{/if}
         {/each}
-      {:else}
-        <p class="quiet">No cards yet.</p>
-      {/if}
-    </section>
+      </section>
 
-    <section aria-labelledby="mind-knowledge">
-      <h2 id="mind-knowledge" tabindex="-1">Knowledge</h2>
-      {#if snapshot.notes.length || snapshot.skills.length}
+      <section aria-labelledby="mind-notes">
+        <h2 id="mind-notes" tabindex="-1">Notes</h2>
+        {#if snapshot.notes}<div class="doc"><host.Markdown text={snapshot.notes} /></div>{:else}<p class="quiet">Not written yet.</p>{/if}
+        {#each snapshot.pages as page (page.name)}
+          <details ontoggle={(e) => openPage(page.name, e)}>
+            <summary>{page.title || page.name} <span class="quiet">{page.summary}</span></summary>
+            {#if pages[page.name] !== undefined}<div class="doc"><host.Markdown text={pages[page.name]!} /></div>{:else}<p class="quiet">Loading…</p>{/if}
+          </details>
+        {/each}
+      </section>
+
+      {#if snapshot.skills.length}
+        <section aria-labelledby="mind-skills">
+          <h2 id="mind-skills" tabindex="-1">Skills</h2>
+          <ul class="plain">
+            {#each snapshot.skills as skill (skill.name)}<li><strong>{skill.name}</strong> <span class="quiet">{skill.description}</span></li>{/each}
+          </ul>
+        </section>
+      {/if}
+    {/if}
+
+    {#if snapshot.changes.length}
+      <section aria-labelledby="mind-changes">
+        <h2 id="mind-changes" tabindex="-1">Changed lately</h2>
         <ul class="list">
-          {#each snapshot.notes as n (n.id)}
+          {#each snapshot.changes as change (change.id)}
             <li class="row">
-              <details class="body">
-                <summary>{n.claim}</summary>
-                <p>{n.why}</p>
-                <p class="quiet">{how(n)}</p>
-              </details>
-              <button type="button" class="forget" disabled={busy === n.id} onclick={(e) => act("forget", n.id, e)} aria-label={`Forget: ${n.claim}`}>Forget</button>
-            </li>
-          {/each}
-          {#each snapshot.skills as s (s.name)}
-            <li class="row">
-              <div class="body"><p><span class="tag">Skill</span> {s.name}: {s.description}</p><p class="quiet">{how(s)}</p></div>
-              <button type="button" class="forget" disabled={busy === s.name} onclick={(e) => act("forget", s.name, e)} aria-label={`Forget skill ${s.name}`}>Forget</button>
+              <span>{change.label} <span class="quiet">{change.created ? "created" : "changed"} {when(change.at)}</span></span>
+              <button type="button" class="subtle" disabled={busy === change.id} aria-label={`Undo the change to ${change.label} of ${when(change.at)}`} onclick={() => act(change.id, "undo", { id: change.id }, (label) => (notice = `${label} was put back as it was before that change.`))}>Undo</button>
             </li>
           {/each}
         </ul>
-      {:else}
-        <p class="quiet">Nothing yet. It grows as goals close.</p>
-      {/if}
+      </section>
+    {/if}
+
+    <section aria-labelledby="mind-tidy">
+      <h2 id="mind-tidy" tabindex="-1">Tidy</h2>
+      <p class="quiet">The agent checks its notes against how things are, clears what's stale and tells you only what needs you.</p>
+      <div class="actions">
+        <button type="button" disabled={busy === "tidy"} onclick={() => act("tidy", "tidy", undefined, () => (notice = "Tidying started in the conversation."))}>Tidy now</button>
+        <button type="button" disabled={busy === "weekly"} onclick={() => act("weekly", "weekly", undefined, (text) => (notice = String(text)))}>Tidy every week…</button>
+      </div>
     </section>
   {/if}
 </div>
@@ -175,16 +175,20 @@
     display: grid;
     gap: 1.75rem;
   }
+  section {
+    display: grid;
+    gap: 0.6rem;
+  }
   h2 {
     font-size: 0.95rem;
     font-weight: 600;
-    margin: 0 0 0.5rem;
+    margin: 0;
   }
   h3 {
     font-size: 0.8rem;
     font-weight: 600;
     color: var(--muted-foreground);
-    margin: 0.75rem 0 0.35rem;
+    margin: 0.4rem 0 0;
   }
   p {
     margin: 0;
@@ -193,96 +197,94 @@
   .quiet {
     color: var(--muted-foreground);
     font-size: 0.85rem;
+    font-weight: 400;
   }
   .error {
     color: var(--danger);
     font-size: 0.9rem;
   }
-  .list {
-    list-style: none;
+  .doc {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  /* A document's own headings sit under this view's. */
+  .mind .doc :global(h1),
+  .mind .doc :global(h2),
+  .mind .doc :global(h3) {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0.7rem 0 0.2rem;
+  }
+  .mind .doc :global(:first-child) {
+    margin-top: 0;
+  }
+  .list,
+  .plain {
     margin: 0;
     padding: 0;
     display: grid;
     gap: 0.5rem;
   }
-  .row {
-    display: flex;
-    gap: 0.75rem;
-    align-items: flex-start;
-    justify-content: space-between;
+  .list {
+    list-style: none;
   }
-  .body {
-    min-width: 0;
-    flex: 1;
-    display: grid;
-    gap: 0.15rem;
-  }
-  dl {
-    margin: 0;
-    display: grid;
-    gap: 0.35rem;
-  }
-  dt {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--muted-foreground);
-    margin-top: 0.35rem;
-  }
-  dd {
-    margin: 0;
+  .plain {
+    padding-left: 1.1rem;
   }
   .card {
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: 0.6rem 0.75rem;
+    padding: 0.7rem 0.8rem;
     display: grid;
-    gap: 0.2rem;
+    gap: 0.5rem;
   }
-  .goal {
-    font-weight: 500;
-  }
-  .count,
-  .tag {
-    font-size: 0.75rem;
-    color: var(--muted-foreground);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-full);
-    padding: 0 0.4rem;
-  }
-  .findings {
-    margin: 0.5rem 0 0;
-    padding-left: 1.1rem;
-    color: var(--muted-foreground);
-    font-size: 0.85rem;
-  }
-  summary {
-    cursor: pointer;
+  .row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    justify-content: space-between;
   }
   .actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.4rem;
-    flex-shrink: 0;
+  }
+  .own {
+    display: grid;
+    gap: 0.25rem;
+  }
+  input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.35rem 0.55rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--background);
+    color: var(--foreground);
+  }
+  details {
+    border-top: 1px solid var(--border);
+    padding-top: 0.5rem;
+  }
+  summary {
+    cursor: pointer;
+    font-weight: 500;
   }
   button {
     font: inherit;
     font-size: 0.85rem;
-    padding: 0.3rem 0.7rem;
+    padding: 0.35rem 0.75rem;
     border-radius: var(--radius-md);
     border: 1px solid var(--border);
     background: transparent;
     color: var(--foreground);
     cursor: pointer;
+    flex-shrink: 0;
   }
   button:hover:not(:disabled) {
     background: var(--interactive-hover);
-  }
-  h2:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
-  }
-  button:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
   }
   button:disabled {
     opacity: 0.6;
@@ -297,17 +299,15 @@
     background: var(--accent-fill);
     filter: brightness(1.08);
   }
-  .forget {
+  .subtle {
     border-color: transparent;
     color: var(--muted-foreground);
   }
-  @media (max-width: 30rem) {
-    .row {
-      flex-direction: column;
-    }
-    .actions,
-    .forget {
-      align-self: flex-end;
-    }
+  button:focus-visible,
+  input:focus-visible,
+  summary:focus-visible,
+  h2:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 </style>
