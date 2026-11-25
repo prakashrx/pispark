@@ -93,9 +93,6 @@
     gap: 0.75rem;
     min-width: 0;
   }
-  .turn > :global(:not(.response)), .response > :global(:not(.segment)) {
-    width: min(100%, var(--conversation-reading-width));
-  }
   .foot {
     display: flex;
     align-items: center;
