@@ -53,7 +53,7 @@ Resource groups in JSON are `instructions`, `skills`, `prompts`, `extensions`, a
 }
 ```
 
-An extension folder with an index entry can carry its own skills under `skills/<name>/SKILL.md`. These skills follow the extension when the session loads or reloads. Tool and resource changes use the current session reload flow.
+An extension folder with an index entry can carry its own skills under `skills/<name>/SKILL.md`. These skills follow the extension when the session loads or reloads. An extension may also add skill and prompt folders at run time through Pi's `resources_discover` ([extensions](extensions.md#supported)); those belong to the session, not the agent, and the agent editor doesn't list them. Tool and resource changes use the current session reload flow.
 
 ### Migrating an existing installation
 

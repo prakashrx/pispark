@@ -262,6 +262,58 @@ test("an extension command's ctx.reload() is the session's reload; extensions se
   }
 });
 
+test("an extension adds skills and prompts to its session through Pi's resources_discover; new ones load on reload; the agent's own win a clash", async () => {
+  const f = await fixture();
+  const discovered: string[] = [];
+  (globalThis as { discovered?: string[] }).discovered = discovered;
+  const found = join(f.folder, ".found");
+  const files: Record<string, string> = {
+    "skills/notes/SKILL.md": "---\nname: notes\ndescription: FOUND-SKILL notes\n---\nSteps",
+    "skills/review/SKILL.md": "---\nname: review\ndescription: FOUND-REVIEW should lose\n---\n",
+    "prompts/brief.md": "---\ndescription: Brief\n---\nBRIEF-TEMPLATE about $1",
+    "prompts/outline.md": "FOUND-OUTLINE should lose",
+  };
+  for (const [path, text] of Object.entries(files)) {
+    await mkdir(join(found, path, ".."), { recursive: true });
+    await writeFile(join(found, path), text);
+  }
+  try {
+    await f.agent("dev", { name: "Dev" }, {
+      "skills/review/SKILL.md": "---\nname: review\ndescription: AGENT-REVIEW wins\n---\n",
+      "prompts/outline.md": "---\ndescription: Outline\n---\nAGENT-OUTLINE about $1",
+      "extensions/found.mjs": `export default pi => {
+        pi.registerCommand("refresh", { description: "Reload", handler: async (_, ctx) => { await ctx.reload(); } });
+        pi.on("resources_discover", (event) => { globalThis.discovered?.push(event.reason); return {
+          skillPaths: [${JSON.stringify(join(found, "skills"))}],
+          promptPaths: [${JSON.stringify(join(found, "prompts"))}],
+        }; });
+      }`,
+    });
+    const session = await f.runtime.create({ folder: f.folder, agent: "dev" });
+    await f.runtime.start(session.id, "/brief pancakes").completion;
+    assert.deepEqual(discovered, ["startup"]);
+    let request = f.provider.requests.at(-1)!;
+    assert.match(systemText(request), /FOUND-SKILL notes/);
+    assert.match(systemText(request), /AGENT-REVIEW wins/);
+    assert.doesNotMatch(systemText(request), /FOUND-REVIEW/);
+    assert.match(JSON.stringify(request.context.messages.at(-1)), /BRIEF-TEMPLATE about pancakes/);
+    await f.runtime.start(session.id, "/outline waffles").completion;
+    assert.match(JSON.stringify(f.provider.requests.at(-1)!.context.messages.at(-1)), /AGENT-OUTLINE about waffles/);
+    // A skill written while the session runs is there after a reload.
+    await mkdir(join(found, "skills", "later"), { recursive: true });
+    await writeFile(join(found, "skills", "later", "SKILL.md"), "---\nname: later\ndescription: LATER-SKILL added\n---\n");
+    await f.runtime.start(session.id, "/refresh").completion;
+    await eventually(now(() => discovered.includes("reload") && f.runtime.session(session.id).status === "idle"));
+    await f.runtime.start(session.id, "after").completion;
+    request = f.provider.requests.at(-1)!;
+    assert.match(systemText(request), /LATER-SKILL added/);
+    assert.match(systemText(request), /FOUND-SKILL notes/);
+  } finally {
+    delete (globalThis as { discovered?: string[] }).discovered;
+    await f.cleanup();
+  }
+});
+
 test("stopping the turn drops the reload its agent asked for", async () => {
   const f = await fixture();
   try {

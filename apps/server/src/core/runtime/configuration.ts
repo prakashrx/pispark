@@ -1,11 +1,13 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import {
   createEventBus,
   loadProjectContextFiles,
   loadSkills,
+  parseFrontmatter,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type {
@@ -110,6 +112,45 @@ function promptTemplates(setup: Setup): PromptTemplate[] {
       origin: "top-level",
     },
   })) as PromptTemplate[];
+}
+
+/**
+ * Prompt templates from paths an extension adds (Pi's `resources_discover`): a `.md` file, or a
+ * folder's `.md` files (not recursive). Named, described and hinted as Pi names them.
+ */
+function discoveredPrompts(paths: string[]): PromptTemplate[] {
+  const files = paths.flatMap((path) => {
+    try {
+      return statSync(path).isDirectory()
+        ? readdirSync(path, { withFileTypes: true })
+            .filter((entry) => entry.name.endsWith(".md") && statSync(join(path, entry.name)).isFile())
+            .map((entry) => join(path, entry.name))
+        : path.endsWith(".md") ? [path] : [];
+    } catch {
+      return [];
+    }
+  });
+  return files.flatMap((filePath) => {
+    try {
+      const { frontmatter, body } = parseFrontmatter<Record<string, unknown>>(readFileSync(filePath, "utf8"));
+      const firstLine = body.split("\n").find((line) => line.trim()) ?? "";
+      const description =
+        typeof frontmatter.description === "string" && frontmatter.description
+          ? frontmatter.description
+          : firstLine.length > 60 ? `${firstLine.slice(0, 60)}...` : firstLine;
+      const argumentHint = frontmatter["argument-hint"];
+      return [{
+        name: basename(filePath).replace(/\.md$/, ""),
+        description,
+        ...(typeof argumentHint === "string" ? { argumentHint } : {}),
+        content: body,
+        filePath,
+        sourceInfo: { path: filePath, source: "extension", scope: "temporary", origin: "top-level" },
+      } as PromptTemplate];
+    } catch {
+      return [];
+    }
+  });
 }
 
 export async function createSessionServices(options: {
@@ -225,13 +266,11 @@ export async function createSessionServices(options: {
     },
     { projectTrusted: false },
   );
-  const loadedSkills = loadSkills({
-    cwd,
-    agentDir,
-    // PiSpark's own skills come first: part of the system for every session, not an agent's items.
-    skillPaths: [...BUILT_IN_SKILLS, ...setup.skillDirs],
-    includeDefaults: false,
-  });
+  // PiSpark's own skills come first: part of the system for every session, not an agent's items.
+  // Paths an extension adds (Pi's `resources_discover`, at start and on reload) come last, so on a
+  // name clash the agent's own skill wins, as in Pi.
+  let skillPaths = [...BUILT_IN_SKILLS, ...setup.skillDirs];
+  let loadedSkills = loadSkills({ cwd, agentDir, skillPaths, includeDefaults: false });
   const builtIn = builtInExtension();
   const eventBus = createEventBus();
   // Before any extension loads, so none of its placements are missed.
@@ -295,7 +334,31 @@ export async function createSessionServices(options: {
     flags: new Map(),
     shortcuts: new Map(),
   });
-  const prompts = promptTemplates(setup);
+  const ownPrompts = promptTemplates(setup);
+  let prompts = ownPrompts;
+  let promptPaths: string[] = [];
+  const merge = (paths: string[], more: { path: string }[] | undefined) => [
+    ...paths,
+    ...(more ?? []).map((entry) => entry.path).filter((path) => !paths.includes(path)),
+  ];
+  /**
+   * Pi's `resources_discover`: skills and prompts an extension adds to its session, read from disk
+   * again on each call (at start and on reload), as Pi's own loader does.
+   */
+  const extendResources = (paths: Parameters<ResourceLoader["extendResources"]>[0]) => {
+    if (paths.skillPaths?.length) {
+      skillPaths = merge(skillPaths, paths.skillPaths);
+      loadedSkills = loadSkills({ cwd, agentDir, skillPaths, includeDefaults: false });
+    }
+    if (paths.promptPaths?.length) {
+      promptPaths = merge(promptPaths, paths.promptPaths);
+      const names = new Set(ownPrompts.map((prompt) => prompt.name));
+      prompts = [
+        ...ownPrompts,
+        ...discoveredPrompts(promptPaths).filter((prompt) => !names.has(prompt.name) && names.add(prompt.name)),
+      ];
+    }
+  };
   // A project agent's session reads its folder's context files (AGENTS.md) the way Pi does. The
   // agent folder is the session's own, so terminal Pi's global file is never among them.
   const agentsFiles = setup.folder ? loadProjectContextFiles({ cwd, agentDir }) : [];
@@ -310,7 +373,7 @@ export async function createSessionServices(options: {
     getSystemPromptSource: () => undefined,
     getAppendSystemPrompt: () => setup.instructions.map((i) => i.text),
     getAppendSystemPromptSources: () => [],
-    extendResources: unsupported,
+    extendResources,
     reload: unsupported,
   };
   // The agent's tool switches, in Pi's own terms: tools switched off are excluded (never
