@@ -4,7 +4,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import { audit } from "./audit.js";
 import {
-  ACTIVE, ACTS, CHARTER_SECTIONS, type Card, cardText, FOLDER, type Item, itemText, Mind, newCard, ruleText, field,
+  ACTIVE, ACTS, CHARTER_SECTIONS, type Card, cardText, FOLDER, type Item, itemText, Mind, newCard, ruleText, field, shaped,
 } from "./store.js";
 
 /**
@@ -17,6 +17,14 @@ const GUIDANCE = readFileSync(new URL("./guidance.md", import.meta.url), "utf8")
 const CARD_ENTRY = "mind-card";
 /** PiSpark marks a run that something other than the person started with this entry before its message. */
 const WOKEN_ENTRY = "pispark:woken";
+const LESSON_ENTRY = "mind-lesson";
+/** Words that usually carry a correction or a standing preference. */
+const LESSON = /\b(always|never|from now on|next time|every time|again|instead|don'?t|do not|stop|should(n'?t)?|make sure|remember|too (long|short|much|many|big|small)|keep (it|them|the|to)|i told you)\b/i;
+const LESSON_REMINDER =
+  "Before you finish: did the person's last message carry a lesson that should outlast this task, such as a correction or a standing preference? " +
+  "If they stated it as a rule (always, never, from now on), record it now with mind_record, origin 'told', quoting their words. " +
+  "If you changed course because they corrected you, offer the general lesson once with mind_record, origin 'ask'. " +
+  "If there is nothing lasting, end your turn without saying anything more.";
 const SECTION_LABEL: Record<string, string> = { purpose: "Purpose", "for-whom": "For whom", good: "What good looks like", "off-limits": "Off-limits" };
 
 const text = (value: string, details?: unknown) => ({ content: [{ type: "text" as const, text: value }], details });
@@ -29,6 +37,11 @@ export default function mind(pi: ExtensionAPI) {
   /** What the person typed to start this run; undefined when a wake or an extension started it. */
   let personSaid: string | undefined;
   let compacted = false;
+  /** Yes/no questions already asked in this session. */
+  const asked = new Set<string>();
+  /** Whether this run recorded something, and whether it was already reminded to. */
+  let recorded = false;
+  let nudged = false;
 
   const mindOf = (ctx: ExtensionContext) => (place && place.place === ctx.cwd ? place : (place = new Mind(ctx.cwd)));
   const sessionId = (ctx: ExtensionContext) => ctx.sessionManager.getSessionId();
@@ -51,7 +64,13 @@ export default function mind(pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
-    personSaid = event.messageType === "user" && startedByPerson(event.messageType, ctx.sessionManager.getBranch()) ? event.prompt : undefined;
+    // Our own reminder continues the person's run: what they said still counts.
+    const reminder = event.messageType === "custom" && event.message.customType === LESSON_ENTRY;
+    if (!reminder) {
+      personSaid = event.messageType === "user" && startedByPerson(event.messageType, ctx.sessionManager.getBranch()) ? event.prompt : undefined;
+      recorded = false;
+      nudged = false;
+    }
     event.systemPromptOptions.sections.mind = await slice(mindOf(ctx), sessionCard, compacted);
     compacted = false;
   });
@@ -74,6 +93,17 @@ export default function mind(pi: ExtensionAPI) {
         return { block: true, reason: `${FOLDER}/ is written only through the mind tools (mind_work, mind_record).` };
     }
     return undefined;
+  });
+
+  // A correction or a standing preference is easy to fix and forget: before the run ends, remind
+  // the agent once to keep the lesson. Only for runs the person started, when their words read like one.
+  pi.on("agent_before_settle", (event) => {
+    if (nudged || recorded || !personSaid || !LESSON.test(personSaid)) return undefined;
+    nudged = true;
+    return {
+      entries: [...event.entries, { type: "custom_message" as const, customType: LESSON_ENTRY, content: LESSON_REMINDER, display: false }],
+      continue: true,
+    };
   });
 
   pi.registerTool({
@@ -101,7 +131,7 @@ export default function mind(pi: ExtensionAPI) {
       const stageOf: Record<string, Card["stage"]> = { commit: "committed", start: "active", wait: "waiting", done: "done", drop: "dropped" };
 
       // This session's card lives in the session.
-      if (params.id === "session" || (params.action === "start" && !params.id && params.scope === "session")) {
+      if (params.id === "session" || (sessionCard && params.id === sessionCard.id) || (params.action === "start" && !params.id && params.scope === "session")) {
         if (params.action === "promote") {
           if (!sessionCard) throw new Error("This session has no card.");
           const promoted = await mindOf(ctx).card((cards) => {
@@ -150,24 +180,25 @@ export default function mind(pi: ExtensionAPI) {
     name: "mind_record",
     label: "Remember",
     description:
-      "Change the charter, contract or knowledge. origin 'told': the person said it in this conversation; quote their words and it is recorded. origin 'inferred': it becomes a proposal the person accepts or rejects. op 'remove' or 'change' name the item (target). Also accept or reject a proposal when the person says so (op 'accept'/'reject', target = proposal id, origin 'told', quote).",
+      "Change the charter, contract or knowledge. origin 'told': the person said it in this conversation; quote their words and it is recorded. origin 'ask': ask the person now, yes or no (after they corrected or repeated something: 'keep this as a standing rule?'; after approving something routine: a contract rule with act 'own', 'next time, handle this yourself?'); a yes records it. origin 'inferred': it becomes a proposal the person accepts or rejects later. op 'remove' or 'change' name the item (target). Also accept or reject a proposal when the person says so (op 'accept'/'reject', target = proposal id, origin 'told', quote).",
     promptSnippet: "Remember what the person tells you; propose what you infer.",
     parameters: Type.Object({
       op: Type.Union(["add", "change", "remove", "accept", "reject"].map((a) => Type.Literal(a))),
-      origin: Type.Union([Type.Literal("told"), Type.Literal("inferred")]),
+      origin: Type.Union([Type.Literal("told"), Type.Literal("ask"), Type.Literal("inferred")]),
       part: Type.Optional(Type.Union([Type.Literal("charter"), Type.Literal("contract"), Type.Literal("knowledge")])),
       target: Type.Optional(Type.String({ maxLength: 20, description: "The item (or proposal) this is about." })),
       section: Type.Optional(Type.Union(CHARTER_SECTIONS.map((s) => Type.Literal(s)), { description: "Charter section." })),
       text: Type.Optional(Type.String({ maxLength: 300, description: "Charter text." })),
       when: Type.Optional(Type.String({ maxLength: 200, description: "Contract: the situation." })),
       act: Type.Optional(Type.Union(ACTS.map((a) => Type.Literal(a)), { description: "Contract: own, tell, ask or never." })),
-      what: Type.Optional(Type.String({ maxLength: 200, description: "Contract: the action." })),
+      what: Type.Optional(Type.String({ maxLength: 200, description: "Contract: the action as a noun phrase, e.g. \"running the README examples\"." })),
       claim: Type.Optional(Type.String({ maxLength: 240, description: "Knowledge: the claim, one line." })),
       why: Type.Optional(Type.String({ maxLength: 400, description: "Knowledge: why it matters beyond any one goal." })),
       quote: Type.Optional(Type.String({ maxLength: 400, description: "For told: the person's own words." })),
       reason: Type.Optional(Type.String({ maxLength: 300, description: "For inferred: why, and where it came from." })),
     }, { additionalProperties: false }),
     async execute(_id, p, _signal, _update, ctx) {
+      recorded = true;
       const m = mindOf(ctx);
       const source = sessionId(ctx);
       const told = p.origin === "told" && quotes(personSaid, p.quote);
@@ -185,15 +216,48 @@ export default function mind(pi: ExtensionAPI) {
         else throw new Error("Say which part: charter, contract or knowledge.");
       } else if (!p.target) throw new Error("Name the item to remove (target).");
       if (p.op === "change" && !p.target) throw new Error("Name the item to change (target).");
-      if (told) {
+      let quote = p.quote;
+      if (p.origin === "ask") {
+        const question = askFor(p.op, item, p.target);
+        // Once per situation in a session: a no is not asked again.
+        if (asked.has(normal(question.text))) return text("Already asked in this session; not asking again.");
+        if (!ctx.hasUI) return text("No one to ask now. Not recorded.");
+        asked.add(normal(question.text));
+        const yes = await ctx.ui.confirm(question.title, question.text);
+        if (!yes) return text("The person said no. Not recorded.");
+        quote = `yes to: ${question.title} ${question.text}`;
+      }
+      if (told || p.origin === "ask") {
         if (p.op === "remove") return text((await m.remove(p.target!)) ? `Removed ${p.target}.` : `No item ${p.target}.`);
-        const id = await m.apply(item!, { origin: "told", source, quote: p.quote, at: new Date().toISOString() }, p.op === "change" ? p.target : undefined);
+        const id = await m.apply(item!, { origin: "told", source, quote, at: new Date().toISOString() }, p.op === "change" ? p.target : undefined);
         return text(`Recorded ${id}: ${itemText(item!)}`);
       }
       const reason = (p.reason ?? "").trim() || (p.origin === "told" ? "Said by the person, but not quoted from what they typed to start this run." : "");
       if (!reason) throw new Error("Give a short reason for the proposal.");
       const id = await m.propose({ op: p.op as "add" | "change" | "remove", target: p.target, item, reason, source });
       return text(`Proposed ${id} for the person to accept or reject (/mind). ${item ? itemText(item) : `Remove ${p.target}`}`);
+    },
+  });
+
+  pi.registerTool({
+    name: "mind_decide",
+    label: "Ask for a decision",
+    description:
+      "Ask the person for a decision you can't make under your contract. One short question, your recommendation, at most three options, and what happens if they don't answer (the safe default). Returns their choice. Don't use it for things the contract says you own.",
+    promptSnippet: "Ask the person for a decision: one question, a recommendation, few options.",
+    parameters: Type.Object({
+      question: Type.String({ minLength: 3, maxLength: 200 }),
+      recommended: Type.String({ minLength: 1, maxLength: 80, description: "The option you recommend; listed first." }),
+      others: Type.Array(Type.String({ minLength: 1, maxLength: 80 }), { maxItems: 2, description: "At most two other options." }),
+      ifNoAnswer: Type.String({ minLength: 3, maxLength: 160, description: "What you'll do if they don't answer: nothing risky." }),
+    }, { additionalProperties: false }),
+    async execute(_id, p, signal, _update, ctx) {
+      if (!ctx.hasUI) return text(`No one to ask now. ${p.ifNoAnswer}`);
+      const recommended = `${p.recommended} (recommended)`;
+      const choice = await ctx.ui.select(`${p.question}\nIf no answer: ${p.ifNoAnswer}`, [recommended, ...p.others], { signal });
+      if (choice === undefined) return text(`No answer. ${p.ifNoAnswer}`, { answered: false });
+      const chosen = choice === recommended ? p.recommended : choice;
+      return text(`The person chose: ${chosen}`, { answered: true, chosen });
     },
   });
 
@@ -236,6 +300,16 @@ export function startedByPerson(messageType: string, branch: readonly { type: st
 /** A told item must quote what the person typed to start this run. */
 export function quotes(personSaid: string | undefined, quote: string | undefined): boolean {
   return personSaid !== undefined && !!quote?.trim() && normal(personSaid).includes(normal(quote));
+}
+
+/** The one yes/no question for a record the agent asks about. */
+function askFor(op: string, item: Item | undefined, target: string | undefined): { title: string; text: string } {
+  if (op === "remove") return { title: "Forget this?", text: `Remove ${target}.` };
+  if (!item) throw new Error("Say what to record.");
+  const title = item.part === "contract"
+    ? item.act === "own" ? "Next time, handle this yourself?" : "Keep this as a standing rule?"
+    : item.part === "charter" ? "Add this to what we're here for?" : "Remember this?";
+  return { title, text: itemText(shaped(item)) };
 }
 
 /** The pinned slice: guidance, charter, contract, active cards and the knowledge index. */

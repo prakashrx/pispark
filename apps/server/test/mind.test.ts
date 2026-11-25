@@ -193,3 +193,64 @@ test("mind: after a compaction the card is still pinned and the agent is told to
     await f.cleanup();
   }
 });
+
+test("mind: a decision is one short question with a recommendation; a yes to 'handle it yourself' becomes a rule, asked once", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.place, agent: "mindful" });
+    const answer = async (value: string | boolean | null) => {
+      await eventually(() => f.runtime.session(session.id).extensions.dialogs.length === 1);
+      const dialog = f.runtime.session(session.id).extensions.dialogs[0]!;
+      f.runtime.answer(session.id, dialog.id, value);
+      return dialog;
+    };
+    let run = f.start(session.id, call("mind_decide", { question: "Rename the CLI flag?", recommended: "Keep --factor", others: ["Rename to --scale"], ifNoAnswer: "I keep --factor." }));
+    const dialog = await answer("Keep --factor (recommended)");
+    assert.equal(dialog.kind, "select");
+    await run;
+    assert.match(sessionText(f.runtime, session.id), /The person chose: Keep --factor/);
+    run = f.start(session.id, call("mind_decide", { question: "Delete the old fixtures?", recommended: "Keep them", others: [], ifNoAnswer: "I keep them." }));
+    await answer(null);
+    await run;
+    assert.match(sessionText(f.runtime, session.id), /No answer\. I keep them\./);
+
+    const own = { op: "add", origin: "ask", part: "contract", when: "tests fail on a typo", act: "own", what: "the fix without asking" };
+    run = f.start(session.id, call("mind_record", own));
+    const asked = await answer(true);
+    assert.equal(asked.kind, "confirm");
+    await run;
+    const rule = (await f.json("contract")).rules[0];
+    assert.equal(rule.origin, "told");
+    assert.match(rule.quote, /Next time, handle this yourself\?/);
+    // The same situation isn't asked twice in a session.
+    await f.start(session.id, call("mind_record", own));
+    assert.equal(f.runtime.session(session.id).extensions.dialogs.length, 0);
+    assert.match(sessionText(f.runtime, session.id), /Already asked in this session/);
+    // A no records nothing.
+    run = f.start(session.id, call("mind_record", { op: "add", origin: "ask", part: "knowledge", claim: "Fixtures are generated", why: "They must not be edited by hand" }));
+    await answer(false);
+    await run;
+    assert.equal((await f.json("knowledge")).notes.length, 0);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("mind: a run whose words read like a lesson gets one hidden reminder to keep it; others don't", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.place, agent: "mindful" });
+    await f.start(session.id, "hello there");
+    assert.equal(f.provider.requests.length, 1);
+    await f.start(session.id, "Docs should always state the Python version. Fix it.");
+    await eventually(() => f.provider.requests.length === 3);
+    assert.match(JSON.stringify(f.provider.requests.at(-1)!.context.messages.at(-1)), /Before you finish: did the person's last message carry a lesson/);
+    assert.doesNotMatch(sessionText(f.runtime, session.id), /"customType":"mind-lesson"/, "the reminder isn't shown");
+    // Recording in the run itself needs no reminder.
+    await f.start(session.id, call("mind_record", { op: "add", origin: "told", part: "contract", when: "docs change", act: "own", what: "stating the Python version", quote: "always" }));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(f.provider.requests.length, 5, "the tool call and its follow-up only");
+  } finally {
+    await f.cleanup();
+  }
+});
