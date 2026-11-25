@@ -3,7 +3,7 @@ import { bindingOf } from "../agents/resolve.js";
 import { validAgentId } from "../agents/format.js";
 import { validateText, type RunResult, type Session } from "./session.js";
 import { toolSessionTitle } from "./session-title.js";
-import type { SessionRequest } from "./session-tool.js";
+import type { SessionRequest, ToolAnswer } from "./session-tool.js";
 import { runtimeError } from "./errors.js";
 import type { SessionMetadata } from "./storage.js";
 import type { Wake } from "./wakes.js";
@@ -30,7 +30,7 @@ export class Children {
   }
 
   /** The session tool's requests (the agent's, or an extension's in that session): its own children only. */
-  async request(parentId: string, request: SessionRequest): Promise<{ ok: boolean; text: string }> {
+  async request(parentId: string, request: SessionRequest): Promise<ToolAnswer> {
     const { storage, admit, ensure, get, live, cancel } = this.sessions;
     const parent = storage.read(parentId);
     if (request.action === "inspect" || request.action === "reload") return { ok: false, text: "The calling session handles this itself." };
@@ -158,7 +158,7 @@ export class Children {
       status: "a line here says when it ends, and it raises anything that needs you.",
       none: "it does not report back (read shows its answer).",
     }[report];
-    return { ok: true, text: `Started "${titleOf(session.metadata)}" (id ${doc.id}). It works on its own; ${how}` };
+    return { ok: true, text: `Started "${titleOf(session.metadata)}" (id ${doc.id}). It works on its own; ${how}`, details: { id: doc.id } };
   }
 
   /** The parent of a child, while it can be told something: listed and itself not a child. */

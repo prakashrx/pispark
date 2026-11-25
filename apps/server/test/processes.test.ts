@@ -54,6 +54,8 @@ test("wait returns only status; search finds early literal evidence without cons
     };
     await run({ action: "start", command: SERVER, report: "none" });
     const [server] = f.runtime.listProcesses(session.id);
+    const started = f.runtime.items(session.id, {}).items.filter((item) => item.role === "toolResult").at(-1);
+    assert.deepEqual(started?.details, { id: server!.id });
     assert.equal(await run({ action: "wait", id: server!.id, timeout_seconds: 1 }), `${server!.id}: running (wait timed out)`);
     await run({ action: "stop", id: server!.id });
 

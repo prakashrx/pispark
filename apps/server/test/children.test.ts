@@ -45,6 +45,9 @@ test("a session starts a child; the child's answer comes back to the parent as a
     assert.ok(child);
     assert.equal(child.title, "Zustand research");
     assert.equal(child.folder, parent.folder);
+    // The tool call names the session it started in its details, for clients.
+    const started = f.runtime.items(parent.id, {}).items.find((item) => item.role === "toolResult");
+    assert.deepEqual(started?.details, { id: child.id });
 
     // The child's first message says it came from the parent; the child cannot start sessions.
     await eventually(() => f.runtime.list().find((s) => s.id === child.id)?.status === "idle");

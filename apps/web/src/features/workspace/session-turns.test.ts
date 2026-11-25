@@ -231,12 +231,14 @@ test("PiSpark's session tool: words for each action, and the session a start mad
     name: "pispark_session",
     args: { action: "start", prompt: "research", title: "Zustand research" },
     status: "done" as const,
-    result: item("toolResult", [{ type: "text", text: `Started "Zustand research" (id ${id}). It works on its own.` }]),
+    result: item("toolResult", [{ type: "text", text: `Started "Zustand research" (id ${id}). It works on its own.` }], { details: { id } }),
   };
   expect(describeCall(call).done).toBe("Started Zustand research");
   expect(summarizeCalls([call, call])).toBe("Started 2 sessions");
   expect(artifactsOf(call)).toEqual([{ kind: "session", key: "session.c1", sessionId: id, title: "Zustand research" }]);
   expect(artifactsOf({ ...call, args: { action: "list" } })).toEqual([]);
+  // The id comes from the call's details, not from its words.
+  expect(artifactsOf({ ...call, result: { ...call.result, details: undefined } })).toEqual([]);
 });
 
 test("sessions started one after another are one list under one activity line", () => {
@@ -247,8 +249,8 @@ test("sessions started one after another are one list under one activity line", 
     [
       item("user", [text("research both")]),
       item("assistant", [call("c1", "pispark_session", { action: "start", title: "Math" }), call("c2", "pispark_session", { action: "start", title: "Capital" })]),
-      item("toolResult", [text(`Started "Math" (id ${a}).`)], { callId: "c1", toolName: "pispark_session" }),
-      item("toolResult", [text(`Started "Capital" (id ${b}).`)], { callId: "c2", toolName: "pispark_session" }),
+      item("toolResult", [text(`Started "Math" (id ${a}).`)], { callId: "c1", toolName: "pispark_session", details: { id: a } }),
+      item("toolResult", [text(`Started "Capital" (id ${b}).`)], { callId: "c2", toolName: "pispark_session", details: { id: b } }),
     ],
     { running: false },
   );
@@ -292,7 +294,7 @@ test("the process tool: words, and the process a start made as a row", () => {
     name: "pispark_process",
     args: { action: "start", command: "npm run dev", title: "dev server" },
     status: "done" as const,
-    result: item("toolResult", [text(`Started ${id}: dev server (npm run dev) — running since now in /work.`)]),
+    result: item("toolResult", [text(`Started ${id}: dev server (npm run dev) — running since now in /work.`)], { details: { id } }),
   };
   expect(describeCall(started)).toEqual({ doing: "Starting", done: "Started", object: "dev server" });
   expect(summarizeCalls([started])).toBe("Started 1 process");

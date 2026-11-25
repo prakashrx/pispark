@@ -5,7 +5,7 @@ import { sessionTitle } from "../../contract/session-title.js";
 import { registerExtensionTool } from "../runtime/extension-tool.js";
 import { TITLE_TOOL } from "../runtime/session-title.js";
 import { SCHEDULE_CHANNEL, SCHEDULE_TOOL, type ScheduleAnswer, type ScheduleMessage, type ScheduleRequest } from "../runtime/schedule-tool.js";
-import { REPORT_TOOL, SESSION_CHANNEL, SESSION_TOOL, type SessionMessage, type SessionRequest } from "../runtime/session-tool.js";
+import { REPORT_TOOL, SESSION_CHANNEL, SESSION_TOOL, type SessionMessage, type SessionRequest, type ToolAnswer } from "../runtime/session-tool.js";
 import { PROCESS_CHANNEL, PROCESS_TOOL, type ProcessMessage, type ProcessRequest } from "../runtime/process-tool.js";
 
 /** "2026-11-13 14:30 (UTC+01:00)": the server's local time, for the agent to schedule by. */
@@ -156,13 +156,13 @@ export default function pispark(pi: ExtensionAPI): void {
         } else if (action === "read") request = { action, id: parameters.id, ...(parameters.run_id !== undefined ? { runId: parameters.run_id } : {}) };
         else request = { action, id: parameters.id };
       }
-      const answer = await new Promise<{ ok: boolean; text: string }>((reply) => {
+      const answer = await new Promise<ToolAnswer>((reply) => {
         const message: SessionMessage = { request, reply };
         pi.events.emit(SESSION_CHANNEL, message);
         if (!message.taken) reply({ ok: false, text: "Starting sessions is not available here." });
       });
       if (!answer.ok) throw new Error(answer.text);
-      return { content: [{ type: "text", text: answer.text }], details: undefined };
+      return { content: [{ type: "text", text: answer.text }], details: answer.details };
     },
   });
   pi.registerTool({
@@ -220,13 +220,13 @@ export default function pispark(pi: ExtensionAPI): void {
         request = { action: "watch", id: need(p.id, "the id"), pattern: need(p.pattern, "the pattern"), ...(p.report ? { report: p.report } : {}) };
       else if (p.action === "unwatch") request = { action: "unwatch", id: need(p.id, "the id"), pattern: need(p.pattern, "the pattern") };
       else request = { action: "stop", id: need(p.id, "the id") };
-      const answer = await new Promise<{ ok: boolean; text: string }>((reply) => {
+      const answer = await new Promise<ToolAnswer>((reply) => {
         const message: ProcessMessage = { request, reply, ...(signal ? { signal } : {}) };
         pi.events.emit(PROCESS_CHANNEL, message);
         if (!message.taken) reply({ ok: false, text: "Background processes are not available here." });
       });
       if (!answer.ok) throw new Error(answer.text);
-      return { content: [{ type: "text", text: answer.text }], details: undefined };
+      return { content: [{ type: "text", text: answer.text }], details: answer.details };
     },
   });
   pi.registerTool({

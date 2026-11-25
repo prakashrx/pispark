@@ -3,6 +3,7 @@ import type { ProcessInfo, ProcessList, ProcessOutput } from "../../contract/pro
 import type { StatusDetails } from "../../contract/wake-protocol.js";
 import type { Processes, ProcessEnd } from "./processes.js";
 import type { ProcessRequest } from "./process-tool.js";
+import type { ToolAnswer } from "./session-tool.js";
 import { RuntimeError } from "./errors.js";
 import { validateId, type SessionMetadata } from "./storage.js";
 import { titleOf, type SessionAccess } from "./session-access.js";
@@ -23,7 +24,7 @@ export class SessionProcesses {
   ) {}
 
   /** The process tool's requests (the agent's, or an extension's in that session). */
-  async request(sessionId: string, request: ProcessRequest, signal?: AbortSignal): Promise<{ ok: boolean; text: string }> {
+  async request(sessionId: string, request: ProcessRequest, signal?: AbortSignal): Promise<ToolAnswer> {
     const { storage } = this.sessions;
     const processes = this.processes;
     const metadata = storage.read(sessionId);
@@ -69,7 +70,7 @@ export class SessionProcesses {
         const process = processes.get(started.id, [sessionId]);
         // Its first output, or what it was asked to wait for.
         const note = request.waitFor !== undefined ? await waited(process, request, 0) : (await processes.wait(process, undefined, 0, 1000, signal), "");
-        return { ok: true, text: `Started ${describe(processes.get(started.id, [sessionId]))} in ${folder}.\n${note}${output(process)}` };
+        return { ok: true, text: `Started ${describe(processes.get(started.id, [sessionId]))} in ${folder}.\n${note}${output(process)}`, details: { id: started.id } };
       }
       case "list": {
         const all = visible().flatMap((id) => processes.list(id));

@@ -44,6 +44,7 @@ import {
   validSessionMessage,
   type ChildEnded,
   type SessionRequest,
+  type ToolAnswer,
 } from "./session-tool.js";
 
 export type SessionStatus =
@@ -142,7 +143,7 @@ export interface SessionHost {
   touched?(): void;
   /** The processes a session starts and follows, for its agent (`pispark_process`). */
   readonly processes?: {
-    request(sessionId: string, request: ProcessRequest, signal?: AbortSignal): Promise<{ ok: boolean; text: string }>;
+    request(sessionId: string, request: ProcessRequest, signal?: AbortSignal): Promise<ToolAnswer>;
   };
   /** The tools a running session of a setup has (`fingerprint`), from Pi's `getAllTools`. */
   toolsSeen?(fingerprint: string, extensionPaths: string[], tools: { name: string; description?: string; sourceInfo?: { path?: string } }[]): void;
@@ -164,7 +165,7 @@ export interface SessionHost {
   fork?(session: Session, entryId: string): Promise<string>;
   /** The sessions a session starts and follows, for its agent (`pispark_session`). */
   readonly sessions?: {
-    request(parentId: string, request: SessionRequest): Promise<{ ok: boolean; text: string }>;
+    request(parentId: string, request: SessionRequest): Promise<ToolAnswer>;
   };
   /** The schedules of a session, for its agent (`pispark_schedule`). */
   readonly schedules?: {
