@@ -55,7 +55,7 @@ test("normal status is quiet and cancellation/agent errors remain distinct", () 
   expect(sessionStatus({ status: "cancelling", interrupted: false })).toBe("Stopping");
   expect(sessionStatus({ status: "starting", interrupted: false })).toBe("Opening");
   expect(sessionStatus({ status: "error", interrupted: false })).toBe("Failed");
-  expect(sessionStatus({ status: "unloaded", interrupted: true })).toBe("Failed");
+  expect(sessionStatus({ status: "unloaded", interrupted: true })).toBe("Interrupted");
   // A question an extension asked comes first while the run waits on it.
   expect(sessionState({ status: "running", interrupted: false, waiting: true })).toBe("needs-you");
   expect(sessionStatus({ status: "running", interrupted: false, waiting: true })).toBe("Needs you");

@@ -150,6 +150,45 @@ test("accepted receipt polling loss is settlement uncertainty, not acceptance fa
   client.dispose();
 });
 
+test("one slow or failed receipt check is tried again, not a warning", async () => {
+  let checks = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      if (url === "/api/commands") return new Response(JSON.stringify({ commandId: "slow", sessionId: "origin", state: "accepted" }));
+      // A phone in the background: the first check times out, the next one answers.
+      if (++checks === 1) throw new Error("signal timed out");
+      return new Response(JSON.stringify({ commandId: "slow", sessionId: "origin", state: "settled", outcome: "completed" }));
+    }),
+  );
+  const client = new SessionClient();
+  const origin = client.session("origin");
+  await origin.stop();
+  expect(origin.error).toBe("");
+  expect(origin.errorKind).toBeUndefined();
+  expect(checks).toBe(2);
+  client.dispose();
+});
+
+test("a receipt the server no longer knows (PiSpark restarted) ends the warning: nothing runs for it", async () => {
+  const calls = vi.fn(async (url: string) => {
+    if (url === "/api/commands") return new Response(JSON.stringify({ commandId: "lost", sessionId: "origin", state: "accepted" }));
+    throw new Error("Failed to fetch");
+  });
+  vi.stubGlobal("fetch", calls);
+  const client = new SessionClient();
+  const origin = client.session("origin");
+  await origin.stop();
+  expect(origin.errorKind).toBe("settlement-unknown");
+  // Back again, the restarted server does not know the command.
+  calls.mockImplementation(async () => new Response(JSON.stringify({ error: "unknown-receipt" }), { status: 404 }));
+  await origin.recheckCommand();
+  expect(origin.error).toBe("");
+  expect(origin.errorKind).toBeUndefined();
+  expect(calls.mock.calls.filter(([url]) => url === "/api/commands")).toHaveLength(1);
+  client.dispose();
+});
+
 test("unknown initial create acceptance and settlement are explicit without an identified session", async () => {
   for (const accepted of [false, true]) {
     let commands = 0;

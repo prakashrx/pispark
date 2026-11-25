@@ -5,7 +5,7 @@ import type { ModelChoice } from "../../../../server/src/contract/provider-proto
 import { sessionName, sessionState, type CommandUncertaintyKind } from "./session-presentation";
 import { attention } from "../../shell/attention.svelte";
 import { forgetViewChoice, Session } from "./session.svelte";
-import { CommandFailed, CommandUncertainty, Transport } from "./transport";
+import { CommandFailed, CommandGone, CommandUncertainty, Transport } from "./transport";
 import { Attachments, BLOCKED } from "./attachments.svelte";
 import { ProviderClient } from "../settings/provider-client.svelte";
 import { AgentClient } from "../agent/agent-client.svelte";
@@ -94,6 +94,12 @@ export class SessionClient {
     }
   };
   private fail(error: unknown) {
+    // A command the server no longer knows no longer runs; there is nothing to warn about.
+    if (error instanceof CommandGone) {
+      this.error = "";
+      this.errorKind = undefined;
+      return;
+    }
     this.error = (error as Error).message;
     this.errorKind = error instanceof CommandUncertainty ? error.kind : undefined;
   }

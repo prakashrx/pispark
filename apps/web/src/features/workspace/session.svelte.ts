@@ -16,7 +16,7 @@ import type { CommandUncertaintyKind } from "./session-presentation";
 import { contributionsFor } from "./extension-views";
 import { LiveSession } from "./live-session.svelte";
 import { liveEvents } from "./live-stream";
-import { CommandFailed, CommandUncertainty, type Transport } from "./transport";
+import { CommandFailed, CommandGone, CommandUncertainty, type Transport } from "./transport";
 import { Attachments, BLOCKED } from "./attachments.svelte";
 
 /** What a session needs from the app that holds it. */
@@ -342,6 +342,8 @@ export class Session {
     this.connection = "Reconnecting";
   }
   fail(error: unknown) {
+    // Nothing runs for a command the server no longer knows: the session's own state says the rest.
+    if (error instanceof CommandGone) return this.clearError();
     this.error = (error as Error).message;
     this.errorKind = error instanceof CommandUncertainty ? error.kind : undefined;
     this.unsettled = error instanceof CommandUncertainty && error.receipt ? error : undefined;
@@ -362,7 +364,7 @@ export class Session {
       await this.transport.settled(pending.receipt, pending.longRunning);
       if (this.unsettled === pending) this.clearError();
     } catch (error) {
-      if (this.unsettled === pending && error instanceof CommandFailed) this.fail(error);
+      if (this.unsettled === pending && (error instanceof CommandFailed || error instanceof CommandGone)) this.fail(error);
     } finally {
       if (this.checking === pending) this.checking = undefined;
     }

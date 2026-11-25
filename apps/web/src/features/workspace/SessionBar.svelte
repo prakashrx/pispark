@@ -41,6 +41,7 @@
   const kinds: Record<Exclude<SessionState, "">, StatusKind> = {
     "needs-you": "attention",
     failed: "error",
+    interrupted: "error",
     working: "busy",
     opening: "busy",
     stopping: "busy",

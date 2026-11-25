@@ -12,6 +12,25 @@ export class CommandUncertainty extends Error {
     super(detail);
   }
 }
+/**
+ * A command the server no longer knows: it keeps a receipt while its command runs and for a while
+ * after, so nothing is running for it (PiSpark restarted, or it ended long ago). The session's own
+ * state says what became of it.
+ */
+export class CommandGone extends Error {
+  constructor(readonly receipt: Receipt) {
+    super("The server no longer knows this command.");
+  }
+}
+/** A request the server answered with an error: its status and code. */
+export class RequestFailed extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super(code);
+  }
+}
 /** A command the server refused or that failed there: its code, said in words. */
 export class CommandFailed extends Error {
   constructor(readonly code: string) {
@@ -57,7 +76,7 @@ export class Transport {
     const result = JSON.parse(text + decoder.decode());
     // A device removed while open: start again, at the pairing screen.
     if (response.status === 401 && result.error === "unpaired") location.reload();
-    if (!response.ok) throw new Error(result.error ?? "Request failed");
+    if (!response.ok) throw new RequestFailed(response.status, typeof result.error === "string" ? result.error : "Request failed");
     return result as T;
   }
   /** Sends a command once. A lost answer is uncertainty, never a reason to send it again. */
@@ -76,22 +95,26 @@ export class Transport {
       );
     }
   }
-  /** Waits for an accepted command to settle. */
+  /**
+   * Waits for an accepted command to settle. One check that fails or takes too long (a phone in
+   * the background, a dropped request) is tried again; two in a row make the outcome uncertain. A
+   * receipt the server no longer knows is a command that no longer runs.
+   */
   async settled(receipt: Receipt, longRunning = false): Promise<Receipt> {
     const started = Date.now();
+    const uncertain = (message: string) =>
+      new CommandUncertainty("settlement-unknown", `${message}${receipt.sessionId ? ` (session ${receipt.sessionId})` : ""}`, receipt, longRunning);
+    let failed = 0;
     while (receipt.state === "accepted") {
+      if (this.closed) throw uncertain("Client closed");
+      if (!longRunning && Date.now() - started > 310_000) throw uncertain(`Settlement unknown for ${receipt.commandId}; do not automatically retry.`);
+      await new Promise((resolve) => setTimeout(resolve, longRunning && Date.now() - started > 5_000 ? 2_000 : 250));
       try {
-        if (this.closed) throw new Error("Client closed");
-        if (!longRunning && Date.now() - started > 310_000) throw new Error(`Settlement unknown for ${receipt.commandId}; do not automatically retry.`);
-        await new Promise((resolve) => setTimeout(resolve, longRunning && Date.now() - started > 5_000 ? 2_000 : 250));
         receipt = await this.json<Receipt>(`/api/receipts/${receipt.commandId}`);
+        failed = 0;
       } catch (error) {
-        throw new CommandUncertainty(
-          "settlement-unknown",
-          `${(error as Error).message}${receipt.sessionId ? ` (session ${receipt.sessionId})` : ""}`,
-          receipt,
-          longRunning,
-        );
+        if (error instanceof RequestFailed && error.code === "unknown-receipt") throw new CommandGone(receipt);
+        if (++failed >= 2 || this.closed) throw uncertain((error as Error).message);
       }
     }
     if (receipt.error) throw new CommandFailed(receipt.error);
