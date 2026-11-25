@@ -6,7 +6,6 @@
   import type { ExtensionDialog } from "../../../../server/src/contract/protocol";
   import PromptFrame from "./PromptFrame.svelte";
   import SelectPrompt from "./SelectPrompt.svelte";
-  import { questionTone } from "./question-tone";
 
   /**
    * A question an extension asked through Pi's `ctx.ui`; the run waits for the answer. The frame
@@ -19,7 +18,6 @@
     onanswer,
   }: { dialog: ExtensionDialog; onanswer: (value: string | boolean | null) => void } = $props();
 
-  const tone = $derived(questionTone(dialog.title, dialog.kind === "confirm" ? dialog.message : undefined));
   // Each question mounts once (keyed by id); its editor starts from the prefill.
   let text = $state(untrack(() => (dialog.kind === "editor" ? (dialog.prefill ?? "") : "")));
   const hints = {
@@ -52,7 +50,6 @@
     title={dialog.title}
     expiresAt={dialog.expiresAt}
     hint={hints[dialog.kind]}
-    {tone}
     onskip={() => onanswer(null)}
   >
     {#if dialog.kind === "confirm"}
@@ -62,8 +59,7 @@
         <Button size="compact" onclick={() => onanswer(false)}>No</Button>
       </div>
     {:else if dialog.kind === "select"}
-      <!-- A dangerous question waits for a deliberate choice: no option has focus to start with. -->
-      <SelectPrompt options={dialog.options} {onanswer} autofocus={tone !== "danger"} />
+      <SelectPrompt options={dialog.options} {onanswer} />
     {:else}
       <form class="form" onsubmit={submit}>
         {#if dialog.kind === "input"}

@@ -26,7 +26,7 @@ test("an extension's notice and question appear around the session and answer by
   await reply.fill("ui-select");
   await reply.press("Enter");
   const question = page.getByRole("group", { name: "Pick one" });
-  // Its tone is in words as well as colour: an ordinary question just needs you.
+  // Every question says it needs you, in words.
   await expect(question).toContainText("Needs you");
   await expect(question.getByRole("button", { name: "one" })).toBeFocused();
   await page.keyboard.press("ArrowDown");
