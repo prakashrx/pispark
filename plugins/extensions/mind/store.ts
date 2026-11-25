@@ -91,7 +91,9 @@ const line = (value: unknown, max: number, what: string): string => {
   return text;
 };
 
-export const ruleText = (r: { when: string; act: Act; what: string }) => `When ${r.when}, I ${r.act} ${r.what}`;
+/** Mid-sentence: a lowercase first letter (unless it starts an acronym or a name), no closing period. */
+const clause = (s: string) => s.replace(/[.\s]+$/, "").replace(/^[A-Z](?=[a-z\s])/, (c) => c.toLowerCase());
+export const ruleText = (r: { when: string; act: Act; what: string }) => `When ${clause(r.when)}, I ${r.act} ${clause(r.what)}`;
 export const itemText = (item: Item) =>
   item.part === "charter" ? `${item.section}: ${item.text}`
   : item.part === "contract" ? ruleText(item)
