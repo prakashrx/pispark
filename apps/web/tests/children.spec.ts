@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { hostedTest } from "./isolated-host";
-import { openAgent } from "./agent-journey";
+import { openAgent, openTab } from "./agent-journey";
 
 // Each test gets its own data folder.
 const fresh = hostedTest;
@@ -58,11 +58,13 @@ fresh("a session starts a session; its answer comes back as a card; the child si
 fresh("the agent editor lists PiSpark's own tools, found in its built-in extension", async ({ page }) => {
   await page.goto("/#/agents");
   await openAgent(page, "Default");
-  const core = page.getByRole("list", { name: "PiSpark tools" });
-  await expect(core.getByRole("switch", { name: "Allow read" })).toBeVisible();
-  await expect(core.getByRole("switch", { name: "Allow Session tools" })).toBeChecked();
-  await expect(core.getByRole("switch", { name: "Allow Set session title" })).toBeChecked();
-  await expect(core.getByText("pispark_schedule")).toBeVisible();
+  await openTab(page, "Extensions");
+  await page.getByRole("button", { name: /^Built in/ }).click();
+  const core = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Built in", level: 2 }) });
+  await expect(core.getByRole("switch", { name: "read (read)" })).toBeVisible();
+  await expect(core.getByRole("switch", { name: "Session tools (pispark_session)" })).toBeChecked();
+  await expect(core.getByRole("switch", { name: "Set session title (pispark_set_title)" })).toBeChecked();
+  await expect(core.getByText("pispark_schedule", { exact: true })).toBeVisible();
 });
 
 fresh("manual forks appear beneath their source and are listed separately from sessions started by the agent", async ({ page }) => {
