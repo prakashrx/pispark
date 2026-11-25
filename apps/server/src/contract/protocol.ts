@@ -80,9 +80,20 @@ export interface HoldRequest {
 /**
  * A notice PiSpark showed in an open session (an extension's message or failure, an answered question),
  * kept as a custom entry of this type in Pi's session so it stays where it happened. Its item is an
- * `entry` whose `details` are `{ kind, lines, at }`.
+ * `entry` whose `details` are `{ kind, lines, at }`, plus `answered` for an answered question.
  */
 export const NOTICE_ENTRY = "pispark:notice";
+/**
+ * A question an extension asked and what the person answered: yes or no, the option they chose, that
+ * they answered (what they typed is not kept: it may be a name, a path or something private), or
+ * that they skipped it.
+ */
+export interface Answered {
+  question: string;
+  said: "yes" | "no" | "chose" | "answered" | "skipped";
+  /** The option chosen (`said: "chose"`). */
+  choice?: string;
+}
 /**
  * One thing in the session, projected from Pi's session: a message, a summary, or a custom entry.
  * Content keeps Pi's shape; what is large travels by reference and is read on demand.
@@ -197,11 +208,15 @@ export interface ExtensionView {
   dialogs: ExtensionDialog[];
   statuses: { key: string; line: StyledLine }[];
   widgets: { key: string; placement: "above" | "below"; lines: StyledLine[] }[];
-  /** `after`: the number of messages that preceded the notice; `at`: epoch milliseconds. */
+  /**
+   * `after`: the number of messages that preceded the notice; `at`: epoch milliseconds. An answered
+   * question is a notice with `answered` and no lines.
+   */
   notices: {
     id: number;
     kind: "info" | "warning" | "error";
     lines: StyledLine[];
+    answered?: Answered;
     after: number;
     at: number;
   }[];

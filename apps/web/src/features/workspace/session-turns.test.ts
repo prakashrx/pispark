@@ -351,3 +351,21 @@ test("a usage-limit card describes the terminal failure and disappears after a s
   expect(buildTurns([user, limit, done], { running: false })[0]?.segments.map((segment) => segment.kind))
     .toEqual(["text"]);
 });
+
+test("an answered question is its own item where it was asked, saved or live; a notice that only reads like one stays a notice", () => {
+  n = 0;
+  const [turn] = buildTurns(
+    [
+      item("user", [text("go")]),
+      item("assistant", [call("c1", "schedule")]),
+      result("c1"),
+      item("entry", [], { customType: "pispark:notice", details: { kind: "info", lines: [], answered: { question: "Schedule this?", said: "yes" }, at: 1 } }),
+      item("entry", [], { customType: "pispark:notice", details: { kind: "info", lines: [[{ text: "Disk — answered" }]], at: 2 } }),
+      item("assistant", [text("done")]),
+    ],
+    { running: false, notices: [{ id: 1, kind: "info", lines: [], answered: { question: "Pick one", said: "chose", choice: "two" }, after: 99, at: 3 }] },
+  );
+  expect(turn!.segments.map((s) => s.kind)).toEqual(["activity", "answered", "notice", "text", "answered"]);
+  expect(turn!.segments[1]).toMatchObject({ answered: { question: "Schedule this?", said: "yes" } });
+  expect(turn!.segments[4]).toMatchObject({ answered: { question: "Pick one", said: "chose", choice: "two" } });
+});

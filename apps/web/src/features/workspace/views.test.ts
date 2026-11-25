@@ -32,7 +32,7 @@ const turnWithHello = (details: unknown = { values: [1, 2, 3] }) =>
   )[0]!;
 
 test("the defaults are registered, and unknown things have a fallback", () => {
-  for (const kind of ["text", "thinking", "activity", "custom", "summary", "diff", "image", "svg", "notice", "stopped"])
+  for (const kind of ["text", "thinking", "activity", "custom", "summary", "diff", "image", "svg", "notice", "answered", "stopped"])
     expect(resolveSegmentView(kind), kind).toBeTruthy();
   expect(resolveToolView("edit").describe({ id: "x", name: "edit", args: { path: "a/b.ts" }, status: "done" }).object).toBe("b.ts");
   // A tool nobody described is described by its name.

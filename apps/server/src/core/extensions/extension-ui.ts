@@ -9,7 +9,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import type { ExtensionDialog, ExtensionView, StyledLine } from "../../contract/protocol.js";
+import type { Answered, ExtensionDialog, ExtensionView, StyledLine } from "../../contract/protocol.js";
 import { RuntimeError } from "../runtime/errors.js";
 import { renderComponent, styledLines, webTheme, webTui } from "./styled-text.js";
 
@@ -23,12 +23,12 @@ interface Widget {
 }
 type Notice = ExtensionView["notices"][number];
 
-/** What a question's answer is called in the line the session keeps, in plain words: what you said or chose. */
-function receipt(dialog: ExtensionDialog, answer: string | boolean | null): string {
-  if (answer === null) return "skipped";
-  if (dialog.kind === "confirm") return answer === true ? "you said yes" : "you said no";
-  if (dialog.kind === "select") return `you chose ${plain(String(answer), 120)}`;
-  return "answered";
+/** What the session keeps of an answer: yes or no, the option chosen, or only that it was answered. */
+function receipt(dialog: ExtensionDialog, answer: string | boolean | null): Pick<Answered, "said" | "choice"> {
+  if (answer === null) return { said: "skipped" };
+  if (dialog.kind === "confirm") return { said: answer === true ? "yes" : "no" };
+  if (dialog.kind === "select") return { said: "chose", choice: plain(String(answer), 120) };
+  return { said: "answered" };
 }
 type Question = ExtensionDialog extends infer D
   ? D extends ExtensionDialog
@@ -113,7 +113,7 @@ export class ExtensionUI {
       /** A question was answered or gave up: `go` lets the extension continue, once the run may. */
       resume?: (go: () => void) => void;
       /** Keeps a notice in the session's history; false while the session is still opening. */
-      save?: (notice: { kind: Notice["kind"]; lines: StyledLine[]; at: number }) => boolean;
+      save?: (notice: Omit<Notice, "id" | "after">) => boolean;
     },
   ) {}
 
@@ -203,11 +203,12 @@ export class ExtensionUI {
    * A notice in the session. Once the session is open it is saved in the session's history, so it stays
    * where it happened across reopening; notices raised while the session opens are shown only then.
    */
-  private notice(message: string, kind: Notice["kind"]) {
-    const lines = styledLines(String(message).slice(0, MAX_TEXT));
+  private notice(message: string, kind: Notice["kind"], answered?: Answered) {
+    const lines = answered ? [] : styledLines(String(message).slice(0, MAX_TEXT));
     const at = Date.now();
-    if (!this.closed && this.host.save?.({ kind, lines, at })) return;
-    this.notices = [...this.notices, { id: ++this.counter, kind, lines, after: this.host.position(), at }].slice(-MAX_NOTICES);
+    const saved = { kind, lines, ...(answered ? { answered } : {}), at };
+    if (!this.closed && this.host.save?.(saved)) return;
+    this.notices = [...this.notices, { id: ++this.counter, ...saved, after: this.host.position() }].slice(-MAX_NOTICES);
     this.changed();
   }
 
@@ -340,11 +341,10 @@ export class ExtensionUI {
     )
       throw new RuntimeError("invalid-input");
     pending.settle(answer ?? undefined);
-    // The session keeps a line of what was asked and answered, as terminal scrollback would. What a
-    // person typed is not echoed: it may be a name, a path or something private.
-    // Its title's first line without the colon that led into the question ("Dangerous command:").
-    const asked = plain(dialog.title, 120).split(String.fromCharCode(10))[0]!.replace(/\s*:\s*$/, "");
-    this.notice(`${asked} — ${receipt(dialog, answer)}`, "info");
+    // The session keeps what was asked and answered where it happened, as terminal scrollback would.
+    // The question is its title's first line without the colon that led into it ("Dangerous command:").
+    const question = plain(dialog.title, 120).split(String.fromCharCode(10))[0]!.replace(/\s*:\s*$/, "");
+    this.notice("", "info", { question, ...receipt(dialog, answer) });
     this.changed();
   }
 

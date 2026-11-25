@@ -376,15 +376,19 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
     assert.deepEqual(view.widgets, [{ key: "fixture", placement: "below", lines: [[{ text: "widget line" }]] }]);
     assert.equal(view.draft?.text, "drafted by fixture");
     const expectedNotices = [
-      // A line for each question a person answered or skipped; what they typed is not echoed.
-      ["info", "Proceed? — you said yes"],
-      ["info", "Pick one — you chose two"],
-      ["info", "Name — answered"],
-      ["info", "Pick one — skipped"],
+      // Each question a person answered or skipped, as data; what they typed is not kept.
+      { question: "Proceed?", said: "yes" },
+      { question: "Pick one", said: "chose", choice: "two" },
+      { question: "Name", said: "answered" },
+      { question: "Pick one", said: "skipped" },
       ["warning", "Heads up"],
       ["error", "The controlled extension failed in before_agent_start: fixture failure"],
     ];
-    assert.deepEqual(sessionNotices(f.runtime, a.id).map((n) => [n.kind, n.lines[0]![0]!.text]), expectedNotices);
+    assert.deepEqual(
+      sessionNotices(f.runtime, a.id).map((n) => n.answered ?? [n.kind, n.lines[0]![0]!.text]),
+      expectedNotices,
+    );
+    assert.ok(!JSON.stringify(sessionNotices(f.runtime, a.id)).includes("Ada"), "what a person typed is not kept");
     assert.deepEqual(view.notices, [], "notices of an open session are kept in its history");
     assert.equal(f.runtime.session(a.id).error, undefined);
     // Working indicator, thinking label, window title, one header and footer; Pi's session name is the session title.
@@ -407,7 +411,7 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
     await f.runtime.stop(a.id);
     // Reopened, the session still has its notices where they happened.
     await f.runtime.open(a.id);
-    assert.deepEqual(sessionNotices(f.runtime, a.id).map((n) => [n.kind, n.lines[0]![0]!.text]), expectedNotices);
+    assert.deepEqual(sessionNotices(f.runtime, a.id).map((n) => n.answered ?? [n.kind, n.lines[0]![0]!.text]), expectedNotices);
     await f.runtime.stop(a.id);
     f.provider.automatic = false;
     await stopAbortsBeforeShutdown(f);

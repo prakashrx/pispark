@@ -1,4 +1,4 @@
-import { NOTICE_ENTRY, type ExtensionView, type Item, type ItemPart, type ReplyFailure, type StyledLine, type ToolProgress } from "../../../../server/src/contract/protocol";
+import { NOTICE_ENTRY, type Answered, type ExtensionView, type Item, type ItemPart, type ReplyFailure, type StyledLine, type ToolProgress } from "../../../../server/src/contract/protocol";
 import type { Json } from "../../../../server/src/contract/stream-ops";
 import { STATUS_ENTRY, WOKEN_ENTRY, type WakeSource } from "../../../../server/src/contract/wake-protocol";
 import { TITLE_TOOL } from "../../../../server/src/contract/session-title";
@@ -11,6 +11,19 @@ export interface PartRef {
   part: number;
 }
 type Notice = ExtensionView["notices"][number];
+
+const SAID = new Set<unknown>(["yes", "no", "chose", "answered", "skipped"]);
+/** An answered question as the session kept it, when it is one. */
+function answeredOf(value: unknown): Answered | undefined {
+  const v = (value ?? {}) as Partial<Answered>;
+  if (typeof v.question !== "string" || !SAID.has(v.said)) return undefined;
+  return { question: v.question, said: v.said!, ...(typeof v.choice === "string" ? { choice: v.choice } : {}) };
+}
+/** A notice where it happened: an answered question, or an extension's message or failure. */
+function noticeSegment(key: string, notice: Pick<Notice, "kind" | "lines"> & { answered?: unknown }): Segment {
+  const answered = answeredOf(notice.answered);
+  return answered ? { kind: "answered", key, answered } : { kind: "notice", key, notice: { kind: notice.kind, lines: notice.lines } };
+}
 
 export interface ToolCall {
   /** Pi's (opaque) call id. */
@@ -47,6 +60,8 @@ export type Segment =
   /** ... or an SVG a tool wrote, drawn from the markup in its arguments. */
   | { kind: "svg"; key: string; markup: string; alt: string; /** The markup was cut to fit, so it is not drawn. */ clipped?: boolean }
   | { kind: "notice"; key: string; notice: Pick<Notice, "kind" | "lines"> }
+  /** A question an extension asked, and what the person answered. */
+  | { kind: "answered"; key: string; answered: Answered }
   /** A tool call drawn by the component its extension placed at `item.tool:<name>`. */
   | { kind: "view"; key: string; point: string; call: ToolCall }
   /**
@@ -184,7 +199,7 @@ export function buildTurns(
   const flush = (position: number | undefined) => {
     while (notice < notices.length && (position === undefined || notices[notice]!.after <= position)) {
       const next = notices[notice++]!;
-      emit(current(), { kind: "notice", key: `n${next.id}`, notice: next });
+      emit(current(), noticeSegment(`n${next.id}`, next));
     }
   };
 
@@ -290,8 +305,8 @@ export function buildTurns(
       });
     } else if (item.role === "entry" && item.customType === NOTICE_ENTRY) {
       // A notice the session kept in its history, where it happened.
-      const saved = (item.details ?? {}) as { kind?: Notice["kind"]; lines?: StyledLine[] };
-      emit(turn, { kind: "notice", key: item.key, notice: { kind: saved.kind ?? "info", lines: Array.isArray(saved.lines) ? saved.lines : [] } });
+      const saved = (item.details ?? {}) as { kind?: Notice["kind"]; lines?: StyledLine[]; answered?: unknown };
+      emit(turn, noticeSegment(item.key, { kind: saved.kind ?? "info", lines: Array.isArray(saved.lines) ? saved.lines : [], answered: saved.answered }));
     } else if (item.role === "custom" || item.role === "entry") {
       emit(turn, { kind: "custom", key: item.key, item });
     } else if (item.role === "summary") {
