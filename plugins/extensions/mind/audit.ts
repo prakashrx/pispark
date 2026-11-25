@@ -1,5 +1,5 @@
 import { readdir } from "node:fs/promises";
-import { ACTIVE, BUDGET, FILES, type Mind, ruleText, tokens } from "./store.js";
+import { ACTIVE, BUDGET, CLOSED, FILES, indexTokens, type Mind, ruleText, tokens } from "./store.js";
 
 /**
  * Plain checks, no model: the structure holds (nothing stray), parts stay within budget, and the
@@ -29,12 +29,13 @@ export async function audit(mind: Mind): Promise<Finding[]> {
   };
   budget("charter", tokens(parts.charter.items.map((i) => i.text).join("\n")), BUDGET.charter);
   budget("contract", tokens(parts.contract.rules.map(ruleText).join("\n")), BUDGET.contract);
-  budget("knowledge index", tokens(parts.knowledge.notes.map((n) => n.claim).join("\n")), BUDGET.knowledge);
+  budget("knowledge index", indexTokens(parts.knowledge), BUDGET.knowledge);
   for (const note of parts.knowledge.notes)
     if (GOAL_DETAIL.test(`${note.claim} ${note.why}`))
       findings.push({ kind: "goal-detail", text: `Note ${note.id} looks tied to one goal ("${note.claim.slice(0, 60)}"): keep it in the code or its history, not in knowledge.` });
   for (const card of parts.work.cards) {
     if (ACTIVE.includes(card.stage) && age(card.updated) > 14) findings.push({ kind: "stale", text: `Card ${card.id} (${card.stage}) hasn't moved in ${Math.floor(age(card.updated))} days.` });
+    if (CLOSED.includes(card.stage) && age(card.updated) > 7) findings.push({ kind: "stale", text: `Card ${card.id} closed ${Math.floor(age(card.updated))} days ago and still waits for reflection.` });
     if (card.stage === "idea" && age(card.updated) > 60) findings.push({ kind: "stale", text: `Idea ${card.id} is ${Math.floor(age(card.updated))} days old: commit to it or drop it.` });
   }
   for (const p of parts.proposals.proposals)

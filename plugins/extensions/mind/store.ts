@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 
@@ -33,6 +33,8 @@ export const ACTS = ["own", "tell", "ask", "never"] as const;
 export type Act = (typeof ACTS)[number];
 export interface Rule extends Provenance { id: string; when: string; act: Act; what: string }
 export interface Note extends Provenance { id: string; claim: string; why: string }
+/** A procedure ("how we do X here"): a Pi skill in `.mind/skills/<name>/`. Its provenance is kept here. */
+export interface SkillRecord extends Provenance { name: string; description: string }
 export const STAGES = ["idea", "committed", "active", "waiting", "done", "dropped"] as const;
 export type Stage = (typeof STAGES)[number];
 export interface Card {
@@ -49,11 +51,12 @@ export interface Card {
   created: string;
   updated: string;
 }
-export type Part = "charter" | "contract" | "knowledge";
+export type Part = "charter" | "contract" | "knowledge" | "skill";
 export type Item =
   | { part: "charter"; section: CharterSection; text: string }
   | { part: "contract"; when: string; act: Act; what: string }
-  | { part: "knowledge"; claim: string; why: string };
+  | { part: "knowledge"; claim: string; why: string }
+  | { part: "skill"; name: string; description: string; body: string };
 export interface Proposal {
   id: string;
   op: "add" | "change" | "remove";
@@ -68,14 +71,14 @@ export interface Proposal {
 interface Parts {
   charter: { items: CharterItem[] };
   contract: { rules: Rule[] };
-  knowledge: { notes: Note[] };
+  knowledge: { notes: Note[]; skills: SkillRecord[] };
   work: { cards: Card[] };
   proposals: { proposals: Proposal[] };
 }
 const EMPTY: Parts = {
   charter: { items: [] },
   contract: { rules: [] },
-  knowledge: { notes: [] },
+  knowledge: { notes: [], skills: [] },
   work: { cards: [] },
   proposals: { proposals: [] },
 };
@@ -97,7 +100,8 @@ export const ruleText = (r: { when: string; act: Act; what: string }) => `When $
 export const itemText = (item: Item) =>
   item.part === "charter" ? `${item.section}: ${item.text}`
   : item.part === "contract" ? ruleText(item)
-  : `${item.claim} (why: ${item.why})`;
+  : item.part === "knowledge" ? `${item.claim} (why: ${item.why})`
+  : `skill ${item.name}: ${item.description}`;
 
 /** Checks an item's shape; returns it tidied. Shapes are what keep the parts apart. */
 export function shaped(item: Item): Item {
@@ -113,6 +117,14 @@ export function shaped(item: Item): Item {
     const note = { part: "knowledge" as const, claim: line(item.claim, 240, "The claim"), why: line(item.why, 400, "Why it matters beyond this goal") };
     if (tokens(note.claim + note.why) > BUDGET.note) throw new Error(`A note is at most about ${BUDGET.note} tokens.`);
     return note;
+  }
+  if (item.part === "skill") {
+    const name = line(item.name, 40, "The skill name");
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) throw new Error("A skill name is lowercase words joined by hyphens.");
+    const body = typeof item.body === "string" ? item.body.trim() : "";
+    if (!body) throw new Error("The skill needs its steps (body).");
+    if (body.length > 6000) throw new Error("A skill is at most 6000 characters: keep it to the procedure.");
+    return { part: "skill", name, description: line(item.description, 300, "When to use the skill"), body };
   }
   throw new Error("Unknown part.");
 }
@@ -183,12 +195,26 @@ export class Mind {
         c.rules.push({ id, when: tidy.when, act: tidy.act, what: tidy.what, ...provenance });
         over("contract", tokens(c.rules.map(ruleText).join("\n")), BUDGET.contract);
       });
-    else
+    else if (tidy.part === "knowledge")
       await this.update("knowledge", (k) => {
         k.notes = k.notes.filter((n) => n.id !== id);
         k.notes.push({ id, claim: tidy.claim, why: tidy.why, ...provenance });
-        over("knowledge index", tokens(k.notes.map((n) => n.claim).join("\n")), BUDGET.knowledge);
+        over("knowledge index", indexTokens(k), BUDGET.knowledge);
       });
+    else {
+      // A skill is named, not numbered: a change keeps its name.
+      const name = tidy.name;
+      await this.update("knowledge", (k) => {
+        k.skills = k.skills.filter((x) => x.name !== name && x.name !== target);
+        k.skills.push({ name, description: tidy.description, ...provenance });
+        over("knowledge index", indexTokens(k), BUDGET.knowledge);
+      });
+      if (target && target !== name) await rm(join(this.dir, "skills", target), { recursive: true, force: true });
+      await mkdir(join(this.dir, "skills", name), { recursive: true });
+      const front = `---\nname: ${name}\ndescription: ${JSON.stringify(tidy.description)}\n---\n\n`;
+      await writeFile(join(this.dir, "skills", name, "SKILL.md"), front + tidy.body + "\n", "utf8");
+      return name;
+    }
     return id;
   }
 
@@ -197,7 +223,13 @@ export class Mind {
     let found = false;
     await this.update("charter", (c) => { const n = c.items.length; c.items = c.items.filter((i) => i.id !== id); found ||= n !== c.items.length; });
     await this.update("contract", (c) => { const n = c.rules.length; c.rules = c.rules.filter((r) => r.id !== id); found ||= n !== c.rules.length; });
-    await this.update("knowledge", (k) => { const n = k.notes.length; k.notes = k.notes.filter((x) => x.id !== id); found ||= n !== k.notes.length; });
+    await this.update("knowledge", (k) => {
+      const n = k.notes.length + k.skills.length;
+      k.notes = k.notes.filter((x) => x.id !== id);
+      k.skills = k.skills.filter((x) => x.name !== id);
+      found ||= n !== k.notes.length + k.skills.length;
+    });
+    if (/^[a-z0-9]+(-[a-z0-9]+)*$/.test(id)) await rm(join(this.dir, "skills", id), { recursive: true, force: true });
     return found;
   }
 
@@ -247,6 +279,9 @@ export class Mind {
   }
 }
 
+/** Closed cards leave once reflection has looked at them: work ends with its goal. */
+export const CLOSED: Stage[] = ["done", "dropped"];
+
 export function newCard(goal: string, source: string, fields: Partial<Card> = {}): Card {
   const at = now();
   return { id: shortId(), goal: line(goal, 200, "The goal"), stage: "idea", source, created: at, updated: at, ...fields };
@@ -263,6 +298,10 @@ export function cardText(c: Card): string {
     c.authority && `authorised: ${c.authority}`,
   ].filter(Boolean).join(" · ");
 }
+
+/** The knowledge index: note claims and skill descriptions, both always visible. */
+export const indexTokens = (k: { notes: Note[]; skills: SkillRecord[] }) =>
+  tokens([...k.notes.map((n) => n.claim), ...k.skills.map((x) => `${x.name}: ${x.description}`)].join("\n"));
 
 function over(what: string, used: number, budget: number) {
   if (used > budget)

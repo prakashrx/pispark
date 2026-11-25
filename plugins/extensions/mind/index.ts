@@ -1,10 +1,10 @@
-import { readFileSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { audit } from "./audit.js";
 import {
-  ACTIVE, ACTS, CHARTER_SECTIONS, type Card, cardText, FOLDER, type Item, itemText, Mind, newCard, ruleText, field, shaped,
+  ACTIVE, ACTS, CHARTER_SECTIONS, CLOSED, type Card, cardText, FOLDER, type Item, itemText, Mind, newCard, ruleText, field, shaped,
 } from "./store.js";
 
 /**
@@ -18,8 +18,13 @@ const CARD_ENTRY = "mind-card";
 /** PiSpark marks a run that something other than the person started with this entry before its message. */
 const WOKEN_ENTRY = "pispark:woken";
 const LESSON_ENTRY = "mind-lesson";
+/** PiSpark's bus channel for starting this session's own child sessions. */
+const SESSION_REQUEST = "pispark:session-request";
+const SWEEP =
+  "Sweep this place's mind, using the reflect skill's sweep section: review ideas that have aged, proposals that waited long or no longer apply, " +
+  "closed cards nobody reflected on, and anything over budget (/mind audit shows the audit). Tidy what you may; bring the person only what needs them, in a few lines.";
 /** Words that usually carry a correction or a standing preference. */
-const LESSON = /\b(always|never|from now on|next time|every time|again|instead|don'?t|do not|stop|should(n'?t)?|make sure|remember|too (long|short|much|many|big|small)|keep (it|them|the|to)|i told you)\b/i;
+const LESSON = /\b(always|never|from now on|next time|every|each time|in future|going forward|again|instead|don'?t|do not|stop|should(n'?t)?|make sure|remember|too (long|short|much|many|big|small)|keep (it|them|the|to)|i told you)\b/i;
 const LESSON_REMINDER =
   "Before you finish: did the person's last message carry a lesson that should outlast this task, such as a correction or a standing preference? " +
   "If they stated it as a rule (always, never, from now on), record it now with mind_record, origin 'told', quoting their words. " +
@@ -37,6 +42,27 @@ export default function mind(pi: ExtensionAPI) {
   /** What the person typed to start this run; undefined when a wake or an extension started it. */
   let personSaid: string | undefined;
   let compacted = false;
+  /**
+   * Starts a reflection on a closed card: a child session with fresh context, in the same place,
+   * that proposes what outlasts the goal and retires the card. Returns a line for the tool result.
+   */
+  async function reflect(card: Card, ctx: ExtensionContext, retire: boolean): Promise<string> {
+    const transcript = transcriptOf(card.source, ctx);
+    const prompt = [
+      `Reflect on this closed goal, using the reflect skill.`,
+      `Card: ${cardText(card)}`,
+      transcript ? `It was worked on in the session whose transcript is ${transcript} (JSON lines; read what you need).` : "",
+      retire ? `When you're done, retire the card: mind_work action "retire", id "${card.id}".` : "",
+    ].filter(Boolean).join("\n");
+    const answer = await new Promise<{ ok: boolean; text: string } | undefined>((resolve) => {
+      const message = { request: { action: "start", prompt, title: `Reflect · ${card.goal.slice(0, 60)}`, report: "none" }, reply: resolve, taken: false };
+      pi.events.emit(SESSION_REQUEST, message);
+      if (!message.taken) resolve(undefined);
+    });
+    if (!answer) return "";
+    return answer.ok ? " · Reflection started in the background." : ` · Reflection could not start: ${answer.text}`;
+  }
+
   /** Yes/no questions already asked in this session. */
   const asked = new Set<string>();
   /** Whether this run recorded something, and whether it was already reminded to. */
@@ -51,6 +77,47 @@ export default function mind(pi: ExtensionAPI) {
     sessionCard = undefined;
     for (const entry of ctx.sessionManager.getBranch())
       if (entry.type === "custom" && entry.customType === CARD_ENTRY) sessionCard = (entry.data as Card | null) ?? undefined;
+    await show(ctx);
+  });
+
+  /**
+   * The Mind view: what the agent believes here and what waits on the person. Offered beside the
+   * conversation (PiSpark's `session.view`); its actions are the person's, so they apply directly.
+   */
+  let viewing: ExtensionContext | undefined;
+  async function show(ctx: ExtensionContext, attention = false) {
+    viewing = ctx;
+    const m = mindOf(ctx);
+    let snapshot;
+    try {
+      snapshot = await snapshotOf(m);
+    } catch {
+      return;
+    }
+    const person = async (change: () => Promise<unknown>) => {
+      await change();
+      if (viewing) await show(viewing);
+    };
+    pi.events.emit("pispark:view", {
+      point: "session.view",
+      key: "mind",
+      title: "Mind",
+      component: new URL("./Mind.svelte", import.meta.url),
+      props: { snapshot },
+      ...(attention ? { attention: true } : {}),
+      calls: {
+        accept: ({ id }: { id: string }) => person(() => m.accept(id, sessionId(ctx))),
+        reject: ({ id }: { id: string }) => person(() => m.dismiss(id)),
+        forget: ({ id }: { id: string }) => person(() => m.remove(id)),
+      },
+    });
+  }
+  // Keep the view current as the agent works, and when another session (a reflection) changed it.
+  pi.on("tool_execution_end", async (event, ctx) => {
+    if (String(event.toolName).startsWith("mind_")) await show(ctx);
+  });
+  pi.on("agent_settled", async (_event, ctx) => {
+    await show(ctx);
   });
 
   // The place's own skills, loaded by Pi (and again on reload).
@@ -110,10 +177,10 @@ export default function mind(pi: ExtensionAPI) {
     name: "mind_work",
     label: "Work card",
     description:
-      "Keep goals on cards, from idea to done. add: an idea nobody has agreed to yet (not shown each run). commit: the person wants it done, not started yet. start: working on it now (without an id it creates the card; scope 'session' for a goal that lives only in this session). update: state, next step, what it waits on, done-when, authority given for this goal. wait/done/drop: move it. promote: this session's card becomes a card of the place.",
+      "Keep goals on cards, from idea to done. add: an idea nobody has agreed to yet (not shown each run). commit: the person wants it done, not started yet. start: working on it now (without an id it creates the card; scope 'session' for a goal that lives only in this session). update: state, next step, what it waits on, done-when, authority given for this goal. wait/done/drop: move it (closing a card starts a reflection in the background). promote: this session's card becomes a card of the place. retire: remove a closed card once reflected on.",
     promptSnippet: "Keep goals on work cards that survive compaction and new sessions.",
     parameters: Type.Object({
-      action: Type.Union(["add", "commit", "start", "update", "wait", "done", "drop", "promote"].map((a) => Type.Literal(a))),
+      action: Type.Union(["add", "commit", "start", "update", "wait", "done", "drop", "promote", "retire"].map((a) => Type.Literal(a))),
       id: Type.Optional(Type.String({ maxLength: 20, description: "The card, or 'session' for this session's card." })),
       scope: Type.Optional(Type.Union([Type.Literal("place"), Type.Literal("session")], { description: "For a new card: the place (default) or only this session." })),
       goal: Type.Optional(Type.String({ maxLength: 200 })),
@@ -149,13 +216,26 @@ export default function mind(pi: ExtensionAPI) {
           if (!sessionCard) throw new Error("This session has no card yet: start one.");
           sessionCard = { ...sessionCard, ...fields, ...(params.goal ? { goal: field(params.goal, 200, "The goal") } : {}), ...(stageOf[params.action] ? { stage: stageOf[params.action] } : {}), updated: new Date().toISOString() };
         }
-        const closed = sessionCard.stage === "done" || sessionCard.stage === "dropped";
+        const closed = CLOSED.includes(sessionCard.stage);
         const shown = sessionCard;
         pi.appendEntry(CARD_ENTRY, closed ? null : sessionCard);
         if (closed) sessionCard = undefined;
-        return text(`${closed ? "Closed" : "Session card"}: ${cardText(shown)}`, { card: shown });
+        const reflecting = closed ? await reflect(shown, ctx, false) : "";
+        return text(`${closed ? "Closed" : "Session card"}: ${cardText(shown)}${reflecting}`, { card: shown });
       }
 
+      if (params.action === "retire") {
+        if (!params.id) throw new Error("Name the card (id).");
+        const retired = await mindOf(ctx).update("work", (w) => {
+          const card = w.cards.find((c) => c.id === params.id);
+          if (!card) throw new Error(`No card ${params.id}.`);
+          if (!CLOSED.includes(card.stage)) throw new Error("Only a closed card (done or dropped) is retired.");
+          w.cards = w.cards.filter((c) => c !== card);
+          return card;
+        });
+        return text(`Retired: ${retired.goal}`);
+      }
+      const before = params.id ? (await mindOf(ctx).read("work")).cards.find((c) => c.id === params.id)?.stage : undefined;
       const card = await mindOf(ctx).card((cards) => {
         if (!params.id) {
           if (params.action !== "add" && params.action !== "start" && params.action !== "commit") throw new Error("Name the card (id).");
@@ -172,7 +252,10 @@ export default function mind(pi: ExtensionAPI) {
         if (stage) existing.stage = stage;
         return existing;
       });
-      return text(`${card.stage === "done" || card.stage === "dropped" ? "Closed" : "Card"}: ${cardText(card)}`, { card });
+      const closedNow = CLOSED.includes(card.stage) && !CLOSED.includes(before ?? "idea");
+      // An idea dropped before anyone took it on has nothing to teach.
+      const reflecting = closedNow && !(card.stage === "dropped" && before === "idea") ? await reflect(card, ctx, true) : "";
+      return text(`${closedNow ? "Closed" : "Card"}: ${cardText(card)}${reflecting}`, { card });
     },
   });
 
@@ -183,9 +266,12 @@ export default function mind(pi: ExtensionAPI) {
       "Change the charter, contract or knowledge. origin 'told': the person said it in this conversation; quote their words and it is recorded. origin 'ask': ask the person now, yes or no (after they corrected or repeated something: 'keep this as a standing rule?'; after approving something routine: a contract rule with act 'own', 'next time, handle this yourself?'); a yes records it. origin 'inferred': it becomes a proposal the person accepts or rejects later. op 'remove' or 'change' name the item (target). Also accept or reject a proposal when the person says so (op 'accept'/'reject', target = proposal id, origin 'told', quote).",
     promptSnippet: "Remember what the person tells you; propose what you infer.",
     parameters: Type.Object({
-      op: Type.Union(["add", "change", "remove", "accept", "reject"].map((a) => Type.Literal(a))),
+      op: Type.Union(["add", "change", "remove", "accept", "reject", "withdraw"].map((a) => Type.Literal(a))),
       origin: Type.Union([Type.Literal("told"), Type.Literal("ask"), Type.Literal("inferred")]),
-      part: Type.Optional(Type.Union([Type.Literal("charter"), Type.Literal("contract"), Type.Literal("knowledge")])),
+      part: Type.Optional(Type.Union([Type.Literal("charter"), Type.Literal("contract"), Type.Literal("knowledge"), Type.Literal("skill")])),
+      name: Type.Optional(Type.String({ maxLength: 40, description: "Skill: its name, lowercase-with-hyphens." })),
+      description: Type.Optional(Type.String({ maxLength: 300, description: "Skill: when to use it." })),
+      body: Type.Optional(Type.String({ maxLength: 6000, description: "Skill: the procedure, as Markdown steps." })),
       target: Type.Optional(Type.String({ maxLength: 20, description: "The item (or proposal) this is about." })),
       section: Type.Optional(Type.Union(CHARTER_SECTIONS.map((s) => Type.Literal(s)), { description: "Charter section." })),
       text: Type.Optional(Type.String({ maxLength: 300, description: "Charter text." })),
@@ -202,6 +288,10 @@ export default function mind(pi: ExtensionAPI) {
       const m = mindOf(ctx);
       const source = sessionId(ctx);
       const told = p.origin === "told" && quotes(personSaid, p.quote);
+      if (p.op === "withdraw") {
+        if (!p.target) throw new Error("Name the proposal (target).");
+        return text((await m.dismiss(p.target)) ? `Withdrew ${p.target}.` : `No proposal ${p.target}.`);
+      }
       if (p.op === "accept" || p.op === "reject") {
         if (!p.target) throw new Error("Name the proposal (target).");
         if (!told) throw new Error("Only the person accepts or rejects proposals: quote their words from this conversation, or they use /mind.");
@@ -213,6 +303,7 @@ export default function mind(pi: ExtensionAPI) {
         if (p.part === "charter") item = { part: "charter", section: p.section!, text: p.text ?? "" };
         else if (p.part === "contract") item = { part: "contract", when: p.when ?? "", act: p.act!, what: p.what ?? "" };
         else if (p.part === "knowledge") item = { part: "knowledge", claim: p.claim ?? "", why: p.why ?? "" };
+        else if (p.part === "skill") item = { part: "skill", name: p.name ?? "", description: p.description ?? "", body: p.body ?? "" };
         else throw new Error("Say which part: charter, contract or knowledge.");
       } else if (!p.target) throw new Error("Name the item to remove (target).");
       if (p.op === "change" && !p.target) throw new Error("Name the item to change (target).");
@@ -233,7 +324,7 @@ export default function mind(pi: ExtensionAPI) {
         return text(`Recorded ${id}: ${itemText(item!)}`);
       }
       const reason = (p.reason ?? "").trim() || (p.origin === "told" ? "Said by the person, but not quoted from what they typed to start this run." : "");
-      if (!reason) throw new Error("Give a short reason for the proposal.");
+      if (!reason) throw new Error("Give a short reason for the proposal in the reason field: why, and where it came from.");
       const id = await m.propose({ op: p.op as "add" | "change" | "remove", target: p.target, item, reason, source });
       return text(`Proposed ${id} for the person to accept or reject (/mind). ${item ? itemText(item) : `Remove ${p.target}`}`);
     },
@@ -269,10 +360,18 @@ export default function mind(pi: ExtensionAPI) {
       try {
         if (verb === "accept" && id) return ctx.ui.notify(await m.accept(id, sessionId(ctx)), "info");
         if (verb === "reject" && id) return ctx.ui.notify((await m.dismiss(id)) ? `Rejected ${id}.` : `No proposal ${id}.`, "info");
+        if (verb === "reflect") {
+          const closed = (await m.read("work")).cards.filter((c) => CLOSED.includes(c.stage));
+          if (!closed.length) return ctx.ui.notify("No closed cards wait for reflection.", "info");
+          const notes = await Promise.all(closed.map((card) => reflect(card, ctx, true)));
+          return ctx.ui.notify(notes.map((n) => n.trim()).join("\n"), "info");
+        }
+        if (verb === "sweep") return pi.sendUserMessage(SWEEP);
         if (verb === "audit") {
           const findings = await audit(m);
           return ctx.ui.notify(findings.length ? findings.map((f) => `• ${f.text}`).join("\n") : "The mind is in shape.", findings.length ? "warning" : "info");
         }
+        await show(ctx, true);
         const parts = await m.readAll();
         const waiting = parts.proposals.proposals.map((p) => `• ${p.id}: ${p.item ? itemText(p.item) : `remove ${p.target}`} (${p.reason})`);
         ctx.ui.notify(
@@ -300,6 +399,37 @@ export function startedByPerson(messageType: string, branch: readonly { type: st
 /** A told item must quote what the person typed to start this run. */
 export function quotes(personSaid: string | undefined, quote: string | undefined): boolean {
   return personSaid !== undefined && !!quote?.trim() && normal(personSaid).includes(normal(quote));
+}
+
+/**
+ * The transcript of the session a card was worked on in: PiSpark keeps each session's Pi transcript
+ * in a folder named after it, beside this one's. Falls back to this session's.
+ */
+function transcriptOf(source: string, ctx: ExtensionContext): string | undefined {
+  const own = ctx.sessionManager.getSessionFile();
+  if (!own || !/^[\w-]+$/.test(source)) return own;
+  const folder = join(dirname(dirname(own)), source);
+  try {
+    const file = readdirSync(folder).find((name) => name.endsWith(".jsonl"));
+    return file ? join(folder, file) : own;
+  } catch {
+    return own;
+  }
+}
+
+/** What the Mind view shows: plain data, small enough for a view's props. */
+async function snapshotOf(m: Mind) {
+  const parts = await m.readAll();
+  const findings = await audit(m);
+  return {
+    charter: parts.charter.items,
+    contract: parts.contract.rules.map((r) => ({ ...r, text: `${ruleText(r)}.` })),
+    notes: parts.knowledge.notes,
+    skills: parts.knowledge.skills,
+    cards: parts.work.cards.map(({ id, goal, stage, doneWhen, state, next, waitingOn, authority }) => ({ id, goal, stage, doneWhen, state, next, waitingOn, authority })),
+    proposals: parts.proposals.proposals.map((p) => ({ id: p.id, text: p.item ? itemText(p.item) : `Forget ${p.target}`, reason: p.reason, at: p.at })),
+    findings: findings.map((f) => f.text),
+  };
 }
 
 /** The one yes/no question for a record the agent asks about. */
@@ -331,6 +461,8 @@ export async function slice(m: Mind, sessionCard: Card | undefined, compacted: b
   const active = parts.work.cards.filter((c) => ACTIVE.includes(c.stage));
   out.push(...active.map((c) => `- ${cardText(c)}`));
   const ideas = parts.work.cards.filter((c) => c.stage === "idea").length;
+  const closed = parts.work.cards.filter((c) => CLOSED.includes(c.stage)).length;
+  if (closed) out.push(`${closed} closed card${closed === 1 ? " waits" : "s wait"} for reflection (/mind reflect).`);
   if (!sessionCard && !active.length) out.push("(no active cards)");
   if (ideas) out.push(`${ideas} idea${ideas === 1 ? "" : "s"} in ${FOLDER}/work.json.`);
   out.push("", "## Knowledge");

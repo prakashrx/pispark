@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { Mind } from "../../../plugins/extensions/mind/store.js";
 import { audit } from "../../../plugins/extensions/mind/audit.js";
@@ -253,4 +254,70 @@ test("mind: a run whose words read like a lesson gets one hidden reminder to kee
   } finally {
     await f.cleanup();
   }
+});
+
+test("mind: closing a card starts a reflection child in the same place; skills it proposes load once accepted; closed cards retire", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.place, agent: "mindful" });
+    await f.start(session.id, call("mind_work", { action: "start", goal: "Release 1.0" }));
+    const id = (await f.json("work")).cards[0].id;
+    await f.start(session.id, call("mind_work", { action: "done", id }));
+    await eventually(() => f.runtime.list().some((s) => s.parent === session.id));
+    const child = f.runtime.list().find((s) => s.parent === session.id)!;
+    assert.match(child.title ?? "", /^Reflect · Release 1\.0/);
+    assert.equal(child.folder, f.place);
+    assert.match(sessionText(f.runtime, session.id), /Reflection started in the background/);
+    await eventually(() => /Reflect on this closed goal, using the reflect skill/.test(sessionText(f.runtime, child.id)));
+    assert.match(sessionText(f.runtime, child.id), new RegExp(`retire the card: mind_work action \\\\"retire\\\\", id \\\\"${id}\\\\"`));
+    // Reflection proposes; the person accepts.
+    await eventually(() => f.runtime.list().find((s) => s.id === child.id)?.status === "idle");
+    await f.start(child.id, call("mind_record", { op: "add", origin: "inferred", part: "skill", name: "release", description: "How we release here", body: "1. Tag.\n2. Publish.", reason: "Worked out while releasing 1.0" }));
+    await f.start(child.id, call("mind_work", { action: "retire", id }));
+    assert.equal((await f.json("work")).cards.length, 0);
+    const [proposal] = (await f.json("proposals")).proposals;
+    assert.equal(proposal.item.part, "skill");
+    assert.ok(!existsSync(join(f.place, ".mind", "skills", "release")));
+    await f.start(session.id, `/mind accept ${proposal.id}`);
+    assert.match(await readFile(join(f.place, ".mind", "skills", "release", "SKILL.md"), "utf8"), /name: release\ndescription: "How we release here"[\s\S]*1\. Tag\./);
+    const other = await f.runtime.create({ folder: f.place, agent: "mindful" });
+    await f.start(other.id, "hello");
+    assert.match(JSON.stringify(f.provider.requests.at(-1)!.context.messages.filter((m) => m.role === "system")), /How we release here/);
+    // The child can't start reflections of its own.
+    await f.start(child.id, call("mind_work", { action: "start", goal: "Nested" }));
+    const nested = (await f.json("work")).cards[0].id;
+    await f.start(child.id, call("mind_work", { action: "done", id: nested }));
+    assert.match(sessionText(f.runtime, child.id), /Reflection could not start/);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("mind: the Mind view shows what waits on the person; accepting, rejecting and forgetting there apply at once", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.place, agent: "mindful" });
+    await f.start(session.id, call("mind_record", { op: "add", origin: "inferred", part: "knowledge", claim: "Fixtures are generated", why: "Editing them by hand is lost on the next run", reason: "Seen while testing" }));
+    await f.start(session.id, call("mind_record", { op: "add", origin: "inferred", part: "charter", section: "good", text: "Small diffs", reason: "Asked twice" }));
+    const view = () => f.runtime.session(session.id).extensions.views.find((v) => v.point === "session.view" && v.key === "mind");
+    await eventually(() => (view()?.props as { snapshot?: { proposals: unknown[] } } | undefined)?.snapshot?.proposals.length === 2);
+    assert.equal(view()!.title, "Mind");
+    const [first, second] = (await f.json("proposals")).proposals;
+    await f.runtime.call(session.id, "session.view", "mind", "accept", { id: first.id });
+    await f.runtime.call(session.id, "session.view", "mind", "reject", { id: second.id });
+    const snapshot = (view()!.props as { snapshot: { proposals: unknown[]; notes: { id: string; claim: string }[] } }).snapshot;
+    assert.equal(snapshot.proposals.length, 0);
+    assert.deepEqual(snapshot.notes.map((n) => n.claim), ["Fixtures are generated"]);
+    await f.runtime.call(session.id, "session.view", "mind", "forget", { id: snapshot.notes[0]!.id });
+    assert.equal((await f.json("knowledge")).notes.length, 0);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("mind: the Mind view compiles as PiSpark compiles extension views", async () => {
+  const { compileView, viewBundle } = await import("../src/core/extensions/view-compiler.js");
+  const folder = fileURLToPath(new URL("../../../plugins/extensions/mind/", import.meta.url));
+  const hash = await compileView(join(folder, "Mind.svelte"), folder);
+  assert.ok((viewBundle(hash) ?? "").length > 0);
 });
