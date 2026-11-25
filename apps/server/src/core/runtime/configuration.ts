@@ -70,9 +70,6 @@ export interface RuntimeConfiguration {
   now?: () => number;
 }
 
-/** The note a client sends with a prompt (`start {context}`): read by the model, not shown. */
-export const CONTEXT_MESSAGE = "pispark:context";
-
 /** PiSpark's own built-in extension (`extensions/pispark.ts`): loaded first in every session. */
 export function builtInExtension(): string {
   return fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../extensions/pispark.ts" : "../extensions/pispark.js", import.meta.url));
@@ -120,11 +117,8 @@ export async function createSessionServices(options: {
   fixed?: { provider: Provider; id: string };
   admission: {
     valid: () => boolean;
-    /**
-     * Before every agent run, whoever started it; the run starts when this resolves. A note sent
-     * with the prompt comes back, to go to the model as a message the conversation doesn't show.
-     */
-    beforeRun: () => Promise<string | undefined | void>;
+    /** Before every agent run, whoever started it; the run starts when this resolves. */
+    beforeRun: () => Promise<void>;
     beforeSettle: () => Promise<void>;
     beforeProviderDispatch: () => void;
   };
@@ -276,16 +270,8 @@ export async function createSessionServices(options: {
               : { action: "continue" },
         ],
       ],
-      // Returns no system prompt, so the one other handlers chained stays as it is.
-      [
-        "before_agent_start",
-        [
-          async () => {
-            const context = await admission.beforeRun();
-            return context ? { message: { customType: CONTEXT_MESSAGE, content: context, display: false } } : undefined;
-          },
-        ],
-      ],
+      // Returns nothing, so the system prompt other handlers chained stays as it is.
+      ["before_agent_start", [async () => void (await admission.beforeRun())]],
       ["agent_before_settle", [admission.beforeSettle]],
       ["model_select", [async () => host.modelSelected?.()]],
     ]),

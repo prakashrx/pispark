@@ -26,8 +26,8 @@ test("Preview reads; Edit is the whole text as written, and typing keeps the fil
 });
 
 test("an empty text says where to start, and Write it opens the editor", async () => {
-  render(MarkdownEditor, { value: "", label: "Skill", placeholder: "Ask Agent Builder, or write it yourself." });
-  expect(screen.getByText("Ask Agent Builder, or write it yourself.")).toBeTruthy();
+  render(MarkdownEditor, { value: "", label: "Skill", placeholder: "Write it yourself." });
+  expect(screen.getByText("Write it yourself.")).toBeTruthy();
   await fireEvent.click(screen.getByRole("button", { name: "Write it" }));
   await tick();
   expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Skill, Markdown" }));

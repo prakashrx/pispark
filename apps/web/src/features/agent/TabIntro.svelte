@@ -10,7 +10,7 @@
   import type { AvailableResource } from "../../../../server/src/contract/agent-protocol";
   import { KINDS, type AgentPage, type Kind } from "./agent-page.svelte";
 
-  let { page, kind, oncreate, createLabel = "Create", children }: { page: AgentPage; kind: Kind; oncreate?: () => void; createLabel?: string; children: Snippet } = $props();
+  let { page, kind, oncreate, children }: { page: AgentPage; kind: Kind; oncreate?: () => void; children: Snippet } = $props();
 
   let available = $state<AvailableResource[]>([]);
   let loading = $state(true);
@@ -50,10 +50,10 @@
   <p class="lead">{@render children()}</p>
   {#if !page.readOnly}
     <div class="actions">
-      <Selector label={`Add ${KINDS[kind].one}`} options={options} bind:value={chosen} searchable action {loading} error={error || undefined} emptyText={`Nothing else to add. Create one, or put one in the Shared library.`} disabled={page.client.busy}>
+      <Selector label={`Add ${KINDS[kind].one}`} options={options} bind:value={chosen} searchable action {loading} error={error || undefined} emptyText={oncreate ? "Nothing else to add. Create one, or put one in the Shared library." : "Nothing else to add. Put one in the Shared library."} disabled={page.client.busy}>
         {#snippet children()}<Icon name="plus" class="h-4 w-4" /><span>Add</span>{/snippet}
       </Selector>
-      {#if oncreate}<button type="button" class="ui-button create" data-variant="primary" data-size="compact" onclick={oncreate}><Icon name="plus" class="h-4 w-4" />{createLabel}</button>{/if}
+      {#if oncreate}<button type="button" class="ui-button create" data-variant="primary" data-size="compact" onclick={oncreate}><Icon name="plus" class="h-4 w-4" />Create</button>{/if}
     </div>
   {/if}
 </div>

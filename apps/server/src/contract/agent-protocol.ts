@@ -81,9 +81,6 @@ export interface AgentDefinition {
   routines?: RoutineDefinition[];
 }
 
-/** The agent PiSpark ships for building agents; the agent page opens it beside an agent. */
-export const AGENT_BUILDER = "agent-builder";
-
 /** An agent by ID, or the layer a session owns after an in-session edit. */
 export type AgentTarget = { agent: string } | { session: string };
 /**

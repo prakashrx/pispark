@@ -12,7 +12,7 @@
   import SaveBar from "./SaveBar.svelte";
   import { isFresh, keyOf, words, type AgentPage, type Row } from "./agent-page.svelte";
 
-  let { page, onai, narrow, name }: { page: AgentPage; onai?: () => void; narrow: boolean; name: string } = $props();
+  let { page, narrow, name }: { page: AgentPage; narrow: boolean; name: string } = $props();
 
   const all = $derived(page.rows("instructions"));
   // Read in this order; what's off comes last and isn't read.
@@ -37,7 +37,7 @@
         ]);
 </script>
 
-<TabIntro {page} kind="instructions" oncreate={() => { page.create("instructions"); onai?.(); }}>What {name} reads at the start of every session, top to bottom. Later parts win when they disagree.</TabIntro>
+<TabIntro {page} kind="instructions" oncreate={() => page.create("instructions")}>What {name} reads at the start of every session, top to bottom. Later parts win when they disagree.</TabIntro>
 
 <Split items={all} selected={open} showing={everything || !!open} {narrow} label="Instructions" onselect={(item) => page.show("instructions", item)} off={(item) => !isFresh(item) && !item.on}>
   {#snippet top()}

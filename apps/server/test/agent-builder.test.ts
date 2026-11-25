@@ -122,3 +122,22 @@ test("Agent Builder asks before writing outside the agent and never changes app 
   const elsewhere = (await handlers.get("before_agent_start")!({ systemPrompt: "" }, { cwd: root })) as { systemPrompt: string };
   assert.match(elsewhere.systemPrompt, /isn't an agent's folder/);
 });
+
+test("Agent Builder started in any folder knows where agents are and names them when it asks", async (t) => {
+  const { root, put } = await fixture(t);
+  await put("agents/shop/agent.json", "{}");
+  const vault = join(root, "vault");
+  await mkdir(vault);
+  const before = process.env.PISPARK_HOME;
+  process.env.PISPARK_HOME = root;
+  t.after(() => (before === undefined ? delete process.env.PISPARK_HOME : (process.env.PISPARK_HOME = before)));
+  const handlers = new Map<string, Handler>();
+  agentBuilder({ on: (name: string, handler: Handler) => handlers.set(name, handler) } as never);
+  const asked: string[] = [];
+  const ctx = { cwd: vault, ui: { confirm: async (_title: string, message: string) => (asked.push(message), true) } };
+  const prompt = (await handlers.get("before_agent_start")!({ systemPrompt: "" }, ctx)) as { systemPrompt: string };
+  assert.ok(prompt.systemPrompt.includes(`Each agent is a folder in ${join(root, "agents")}`));
+  assert.equal(await handlers.get("tool_call")!({ toolName: "write", input: { path: "notes.md" } }, ctx), undefined);
+  await handlers.get("tool_call")!({ toolName: "edit", input: { path: join(root, "agents", "shop", "agent.json") } }, ctx);
+  assert.match(asked[0]!, /in the agent "shop"\. It and every agent built on it change too/);
+});

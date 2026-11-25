@@ -36,13 +36,12 @@
   // Most recently active first (L-07): a session you just replied to is at the top, whenever it started.
   const newestFirst = $derived([...client.sessions].sort((a, b) => b.lastActivity.localeCompare(a.lastActivity)));
   // A session another one started is listed under it (when that one is listed), and an app's
-  // sessions under the app. An agent's Agent Builder session is on that agent's page instead; it
-  // still says when it needs you, and Background shows it.
+  // sessions under the app.
   const listed = $derived(new Set(client.sessions.map((session) => session.id)));
-  const roots = $derived(newestFirst.filter((session) => !session.agent?.home && !session.edits && !(session.parent && listed.has(session.parent))));
+  const roots = $derived(newestFirst.filter((session) => !session.agent?.home && !(session.parent && listed.has(session.parent))));
   $effect(() => { if (screen) client.phoneList.query = query; });
   const needle = $derived(query.trim().toLowerCase());
-  const found = $derived(needle ? newestFirst.filter((session) => !session.edits && sessionName(session).toLowerCase().includes(needle)) : []);
+  const found = $derived(needle ? newestFirst.filter((session) => sessionName(session).toLowerCase().includes(needle)) : []);
   const groups = $derived(dateGroups(roots));
   // The open session moves to the top when it does something (L-07): keep its row in sight.
   let sessionsNav = $state<HTMLElement>();

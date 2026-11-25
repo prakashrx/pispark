@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { AgentSummary, AgentView, ResolvedItem } from "../../../../server/src/contract/agent-protocol";
 import type { AgentClient } from "./agent-client.svelte";
 import { AgentPage, keyOf } from "./agent-page.svelte";
-import { builderNote, unsavedReason } from "./agent-builder";
 import { argumentNames, fieldOf, withField } from "./frontmatter";
 
 const item = (over: Partial<ResolvedItem> & Pick<ResolvedItem, "type" | "name">): ResolvedItem => ({
@@ -81,7 +80,7 @@ describe("agent page rules", () => {
   });
 });
 
-describe("agent page and Agent Builder", () => {
+describe("agent page menus", () => {
   const own = item({ type: "skills", name: "deploy", reference: "local:deploy", path: "skills/deploy/SKILL.md" });
   const shared = item({ type: "skills", name: "review", reference: "shared:review", path: "skills/review/SKILL.md", usedBy: 3 });
   const inherited = item({ type: "instructions", name: "style", reference: "local:style", path: "instructions/style.md", origin: { id: "writer", name: "Writer" } });
@@ -93,28 +92,6 @@ describe("agent page and Agent Builder", () => {
     expect(labels(shared)).toEqual(["Extra", "Make it this agent's own", "Remove from this agent"]);
     expect(labels(inherited)).toEqual(["Extra", "Make it this agent's own"]);
     expect(pageWith([own], { bundled: true }).entries(own)).toEqual([]);
-  });
-
-  it("Agent Builder works on saved files: unsaved text holds sending", () => {
-    const page = pageWith([own]);
-    page.texts[keyOf(own)] = { saved: "a", draft: "a", revision: "r", loading: false, error: "" };
-    expect(unsavedReason(page, own)).toBeUndefined();
-    page.setDraft(own, "b");
-    expect(unsavedReason(page, own)).toMatch(/Save or discard your changes to deploy/);
-    const fresh = page.create("skills");
-    expect(unsavedReason(page, fresh)).toBeUndefined();
-    page.setDraft(page.fresh.skills!, page.fresh.skills!.draft + "Steps.");
-    expect(unsavedReason(page, page.fresh.skills!)).toMatch(/Save or discard the new one/);
-  });
-
-  it("the note says what's open and where its file is, seen from the agent's folder", () => {
-    const page = pageWith([own, shared, inherited]);
-    expect(builderNote(page, "skills", shared)).toMatch(/Open: the skill "review" \(Shared · 3 agents\), file \.\.\/\.\.\/resources\/skills\/review\/SKILL\.md\. It's shared: 3 agents use it/);
-    expect(builderNote(page, "instructions", inherited)).toMatch(/file \.\.\/writer\/instructions\/style\.md/);
-    expect(builderNote(page, "skills", undefined)).toMatch(/Nothing is open: the request is about the agent as a whole/);
-    expect(builderNote(page, "skills", undefined)).not.toMatch(/new agent/);
-    expect(builderNote(pageWith([inherited]), "instructions", undefined)).toMatch(/It has nothing of its own yet: this is a new agent/);
-    expect(builderNote(page, "skills", own)).toMatch(/Its items\. Instructions: style \(From Writer\)\. Skills: deploy \(Only this agent\), review/);
   });
 });
 
