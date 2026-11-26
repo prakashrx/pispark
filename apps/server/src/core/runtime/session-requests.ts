@@ -207,10 +207,20 @@ export class SessionRequests {
       if (input.cron !== undefined ? !parseCron(input.cron) : Number.isNaN(new Date(input.at ?? "").getTime()) || new Date(input.at!).getTime() <= Date.now())
         return { ok: false, text: "That is not a time that can be scheduled." };
       const how = { ...(input.run !== undefined ? { run: input.run } : {}), ...(input.report !== undefined ? { report: input.report } : {}) };
+      const schedule = { ...when, ...how, prompt: input.prompt };
+      // Only a schedule that can be kept is put to the person.
+      try {
+        schedules.validate(id, schedule);
+      } catch {
+        return {
+          ok: false,
+          text: "That schedule can't be kept as given, so the person wasn't asked. `report` goes only with run 'new', a session started by another one can't use run 'new', and the time must be ahead.",
+        };
+      }
       const title = how.run === "new" ? "Schedule this as new sessions under this one?" : "Schedule this in this session?";
       const yes = await ui.context.confirm(title, `${describeSchedule(when)}: ${input.prompt ?? ""}`);
       if (!yes) return { ok: true, text: "The person declined; nothing was scheduled." };
-      const added = schedules.add(id, { ...when, ...how, prompt: input.prompt }, "agent");
+      const added = schedules.add(id, schedule, "agent");
       return {
         ok: true,
         text: `Scheduled: ${describeSchedule(added)}, ${where(added)} (id ${added.id}). The person can change it under Session info → Schedules.`,

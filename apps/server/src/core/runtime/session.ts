@@ -164,6 +164,8 @@ export interface SessionHost {
   /** The schedules of a session, for its agent (`pispark_schedule`). */
   readonly schedules?: {
     of(sessionId: string): Schedule[];
+    /** Throws as `add` would, without saving. */
+    validate(sessionId: string, input: ScheduleInput): void;
     add(sessionId: string, input: ScheduleInput, by: "agent"): Schedule;
     remove(id: string): void;
   };

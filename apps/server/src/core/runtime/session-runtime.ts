@@ -190,6 +190,7 @@ export class SessionRuntime {
       },
       schedules: {
         of: (sessionId) => this.schedules.of(sessionId),
+        validate: (sessionId, input) => void this.schedules.validate(sessionId, input),
         add: (sessionId, input, by) => this.schedules.add(sessionId, input, by),
         remove: (id) => this.schedules.remove(id),
       },

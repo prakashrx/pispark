@@ -317,6 +317,25 @@ test("the agent's schedule tool keeps run 'new' and its report mode", async () =
   }
 });
 
+test("the agent's schedule tool asks the person only about a schedule that can be kept", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    // A report belongs to runs in new sessions; with runs here it can't be kept, so nobody is asked.
+    const add = { action: "add", cron: "0 8 * * *", prompt: "standup", run: "here", report: "result" };
+    await f.runtime.start(session.id, `tool:pispark_schedule:${JSON.stringify(add)}`).completion;
+    assert.deepEqual(f.runtime.session(session.id).extensions.dialogs, []);
+    assert.deepEqual(f.runtime.listSchedules().schedules, []);
+    const result = f.runtime.items(session.id, {}).items.findLast((item) => item.role === "toolResult" && item.toolName === "pispark_schedule");
+    assert.equal(result?.isError, true);
+    assert.match((result?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""), /can't be kept as given, so the person wasn't asked/);
+    // Nothing was answered, so the session keeps no answered question either.
+    assert.ok(!JSON.stringify(f.runtime.items(session.id, {}).items).includes('"answered"'));
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("schedules over HTTP: list, add, change, run now and remove", async () => {
   const f = await fixture();
   const http = new SessionHttp(f.runtime);

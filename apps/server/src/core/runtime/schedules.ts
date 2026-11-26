@@ -216,18 +216,26 @@ export class Schedules {
     };
   }
   add(sessionId: string, input: ScheduleInput, by: "person" | "agent"): Schedule {
-    const session = this.host.sessions().find((s) => s.id === sessionId);
-    if (!session) throw new RuntimeError("not-found");
-    if (session.archived) throw new RuntimeError("busy");
-    const valid = this.validInput(input);
-    // A session another one started cannot start sessions, so its runs stay in it.
-    if (valid.run === "new" && (session.child || !this.host.spawn)) throw new RuntimeError("invalid-input");
+    const valid = this.validate(sessionId, input);
     const schedules = this.index.get(sessionId) ?? [];
     const now = new Date(this.now()).toISOString();
     const schedule: Stored = { id: randomUUID(), ...valid, createdAt: now, by, lastDue: now };
     this.save(sessionId, [...schedules, schedule]);
     this.logger.event("schedule.add", { sessionId, outcome: "completed" });
     return this.view(sessionId, schedule, false);
+  }
+  /**
+   * What `add` would save for this session, without saving it; throws as `add` would. So a person is
+   * asked only about a schedule that can be kept.
+   */
+  validate(sessionId: string, input: ScheduleInput): Pick<Stored, "cron" | "at" | "prompt" | "on" | "run" | "report"> {
+    const session = this.host.sessions().find((s) => s.id === sessionId);
+    if (!session) throw new RuntimeError("not-found");
+    if (session.archived) throw new RuntimeError("busy");
+    const valid = this.validInput(input);
+    // A session another one started cannot start sessions, so its runs stay in it.
+    if (valid.run === "new" && (session.child || !this.host.spawn)) throw new RuntimeError("invalid-input");
+    return valid;
   }
   /** Changes some fields. A new time, or switching on, starts counting from now: nothing is caught up. */
   update(id: string, input: ScheduleInput): Schedule {
