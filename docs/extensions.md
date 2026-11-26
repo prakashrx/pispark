@@ -30,6 +30,7 @@ Pi's terminal components are just `render(width)` → lines, so PiSpark calls an
 | `registerMessageRenderer` | Custom messages render in the conversation; `display: false` messages stay hidden. |
 | `registerEntryRenderer` | Custom entries render among the messages, placed where they were appended. |
 | `registerCommand` | An action of the session: listed under **Commands…** in the session's **⋯** menu in the top bar (`/name` and its description, filtered as you type), and typed as `/name` in the reply box. Choosing one from the menu sends `/name` exactly as typing it does, so it is available when a reply is. Prompt templates and skills are not listed. |
+| `resources_discover` | The skill and prompt paths an extension returns join its session, as in Pi. They are read when the session starts and again on every reload, so a skill written while the session runs is there after the next reload. On a name clash the agent's own skill or prompt wins. Theme paths are ignored: PiSpark draws with its own themes (`core/runtime/configuration.ts`). |
 | Handler errors | A notice; the session keeps working, as in Pi. |
 
 ## Svelte components: an extension's own web views

@@ -1,0 +1,18 @@
+{
+  "name": "mind",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "What an agent keeps for itself in the place it works in: notes, tasks, attachments and skills in .mind/, so you don't repeat yourself and it can carry its own work.",
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  }
+}

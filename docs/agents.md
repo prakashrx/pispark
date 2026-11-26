@@ -37,7 +37,9 @@
 
 The editor's **+** picker lists available resources. A file becomes active through a selection or an inherited selection.
 
-- `bundled:<name>` refers to a resource shipped in the running app's `plugins/` directory, for example `plugins/extensions/web-research/`. An app update supplies the new copy. A newly bundled plugin is available to select.
+- `bundled:<name>` refers to a resource shipped in the running app's `plugins/` directory, for example `plugins/extensions/web-research/`. An app update supplies the new copy. A newly bundled plugin is available to select. Bundled extensions:
+  - `web-research`: web search and reading (needs `TAVILY_API_KEY`).
+  - `mind`: what an agent keeps for itself in its working folder (`.mind/`: notes, tasks, attachments and skills), so you don't repeat yourself and it can carry its own work. Your lasting instructions go into `AGENTS.md` or the agent's own instructions. See [its README](../plugins/extensions/mind/README.md).
 - `shared:<name>` refers to a resource you install under `<data folder>/resources/`. Several agents can use one copy.
 - `local:<name>` refers to a resource in the declaring agent or session layer. An inherited local reference still points to its owner.
 
@@ -53,7 +55,7 @@ Resource groups in JSON are `instructions`, `skills`, `prompts`, `extensions`, a
 }
 ```
 
-An extension folder with an index entry can carry its own skills under `skills/<name>/SKILL.md`. These skills follow the extension when the session loads or reloads. Tool and resource changes use the current session reload flow.
+An extension folder with an index entry can carry its own skills under `skills/<name>/SKILL.md`. These skills follow the extension when the session loads or reloads. An extension may also add skill and prompt folders at run time through Pi's `resources_discover` ([extensions](extensions.md#supported)); those belong to the session, not the agent, and the agent editor doesn't list them. Tool and resource changes use the current session reload flow.
 
 ### Selections
 
