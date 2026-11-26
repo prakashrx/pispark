@@ -787,11 +787,6 @@ export class SessionHttp {
       else sendJson(response, error instanceof RuntimeError && error.code === "not-found" ? 404 : 400, { error: failure(error) });
     }
   }
-  /** An image part's bytes, or a chunk of a clipped text part (`?offset=`). */
-  /**
-   * An extension component's `host.file(path)`: a file in the folder its own placement named, as
-   * it is now. Served as inert data.
-   */
   /**
    * A file a person attaches: the raw bytes as the body, the name in `X-File-Name` (URI-encoded). Stored
    * in the session's `files/` folder under a free name, which is returned.
@@ -831,6 +826,10 @@ export class SessionHttp {
     if (!size) return void response.end();
     await pipeline(createReadStream(file, { end: size - 1 }), response).catch(() => response.destroy());
   }
+  /**
+   * An extension component's `host.file(path)`: a file in the folder its own placement named, as
+   * it is now. Served as inert data.
+   */
   private async file(id: string, query: URLSearchParams, response: ServerResponse) {
     const { point, key, path } = Object.fromEntries(query);
     if (
@@ -861,6 +860,7 @@ export class SessionHttp {
     // A file that changes or goes away while it is read ends the response; nothing else is affected.
     await pipeline(createReadStream(file, { end: size - 1 }), response).catch(() => response.destroy());
   }
+  /** An image part's bytes, or a chunk of a clipped text part (`?offset=`). */
   private async part(id: string, itemId: string, part: number, query: URLSearchParams, response: ServerResponse) {
     const offset = query.get("offset");
     if ([...query.keys()].some((key) => key !== "offset") || (offset !== null && !/^\d{1,9}$/.test(offset)))

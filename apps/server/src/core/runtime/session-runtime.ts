@@ -31,7 +31,7 @@ import { attachmentPath, filesFolder, forkAttachmentTags, placeAttachments, save
 import { Schedules } from "./schedules.js";
 import { ToolDiscovery } from "./tool-discovery.js";
 import { Wakes } from "./wakes.js";
-import { reloads, SetupChanges, type SetupChange, type Waiting } from "./setup-changes.js";
+import { reloads, SetupChanges, type Waiting } from "./setup-changes.js";
 import type { Routine, RoutineList, ScheduleInput, ScheduleList } from "../../contract/schedule-protocol.js";
 import { switchName } from "../../contract/agent-protocol.js";
 import { Routines } from "./routines.js";
@@ -105,7 +105,7 @@ export class SessionRuntime {
   constructor(
     private readonly configuration: RuntimeConfiguration,
     private readonly providers?: ProviderSettings,
-    private readonly logger: SafeLogger = silentLogger,
+    logger: SafeLogger = silentLogger,
   ) {
     const paths = homePaths(configuration.home);
     this.tools = new ToolDiscovery(configuration.home);

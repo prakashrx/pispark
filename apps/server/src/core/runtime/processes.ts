@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, closeSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { getShellConfig } from "@earendil-works/pi-coding-agent";
 import type { ProcessInfo, ProcessOutput } from "../../contract/process-protocol.js";
 import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";

@@ -407,7 +407,3 @@ export type LiveEvent =
   | { type: "ops"; sessionId: string; seq: number; ops: LiveOp[] }
   /** The session is not loaded (it unloaded while idle): open it, then reconnect. */
   | { type: "unloaded"; sessionId: string };
-export interface ProtocolError {
-  error: string;
-  commandId?: string;
-}
