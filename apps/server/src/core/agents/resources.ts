@@ -55,7 +55,7 @@ export function resource(root: string, type: ItemType, name: string): LayerItem 
     return { type, name, location: base, path: "skills/" + name + "/SKILL.md", description };
   }
   if (type === "extensions") {
-    // Match the legacy sorted inventory, where a same-name entry file wins over a folder.
+    // A same-name entry file wins over a folder.
     const loose = EXTENSIONS.map((suffix) => base + suffix).find((path) => stat(path)?.isFile());
     if (loose) return { type, name, location: loose };
     if (!stat(base)?.isDirectory()) return;
@@ -104,7 +104,7 @@ function promptDescription(text: string): string | undefined {
   return (data.description || body.split(/\r?\n/).find((line) => line.trim())?.trim())?.slice(0, 200);
 }
 
-/** Files here are candidates. Only an explicit reference (or the legacy reader) selects them. */
+/** Files here are candidates. Only an explicit reference selects them. */
 export function inventory(root: string, type: ItemType): LayerItem[] {
   if (!stat(root)?.isDirectory()) return [];
   const names = new Set<string>();

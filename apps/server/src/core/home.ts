@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   closeSync,
+  existsSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -9,7 +10,6 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import { upgradeToLayout2 } from "./home-upgrade.js";
 
 /** Every PiSpark folder comes from one data root. Nothing is read from terminal Pi. */
 export interface HomePaths {
@@ -73,8 +73,9 @@ export function prepareHome(root: string): HomePaths {
     throw new Error(
       `${paths.root} was written by a newer PiSpark (data layout ${format}; this version reads up to ${HOME_FORMAT}). Update PiSpark, or point PISPARK_HOME at another folder.`,
     );
-  // Layout 1, or a folder from before layouts were recorded: upgrade it, then record the layout.
-  if (format !== HOME_FORMAT) upgradeToLayout2(paths.root);
+  // Layout 1 (agents and sessions under their old names) is no longer read.
+  if (format === 1 || (format === undefined && ["personas", "chats"].some((old) => existsSync(join(paths.root, old)))))
+    throw new Error(`${paths.root} was written by an older PiSpark (data layout 1), which this version no longer reads. Point PISPARK_HOME at another folder.`);
   for (const dir of [paths.sessions, paths.agents, paths.providers]) mkdirSync(dir, { recursive: true, mode: 0o700 });
   if (format !== HOME_FORMAT) writeFileSync(file, JSON.stringify({ format: HOME_FORMAT }, null, 2) + "\n");
   return paths;

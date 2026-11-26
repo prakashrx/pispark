@@ -55,11 +55,9 @@ Resource groups in JSON are `instructions`, `skills`, `prompts`, `extensions`, a
 
 An extension folder with an index entry can carry its own skills under `skills/<name>/SKILL.md`. These skills follow the extension when the session loads or reloads. Tool and resource changes use the current session reload flow.
 
-### Migrating an existing installation
+### Selections
 
-The server continues to read older definitions without a `resources` field. To convert them, stop the server and run `node apps/server/dist/core/agents/migrate-cli.js` with the same `PISPARK_HOME`. This previews the number of conversions. Run it again with `--apply` to back up the original definitions and convert discovered resources to local references. The report names the backup directory relative to the data folder. Repeat runs skip converted definitions.
-
-Older app versions that predate explicit references need their original definitions. To go back after migration, stop PiSpark and restore the backed-up definitions before starting the older app. Keep the backup private, like the original config. Files owned by existing agents stay in their directories.
+A layer selects only what its definition's `resources` names; a file in its folder that no reference names is a candidate, not a selection. A definition without `resources` selects nothing. Older definitions that relied on every file in the folder being selected are no longer read that way.
 
 ## Default and layering
 

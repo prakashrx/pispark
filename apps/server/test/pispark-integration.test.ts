@@ -7,7 +7,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SafeLogger } from "../src/core/logger.js";
 import {
-  mkdtemp,
   mkdir,
   rm,
   writeFile,
@@ -15,7 +14,6 @@ import {
   readdir,
   rename,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   SessionRuntime,
@@ -25,7 +23,7 @@ import { TITLE_TOOL, toolSessionTitle } from "../src/core/runtime/session-title.
 import { SCHEDULE_TOOL } from "../src/core/runtime/schedule-tool.js";
 import { SESSION_TOOL } from "../src/core/runtime/session-tool.js";
 import { eventually } from "./fixtures/local-provider.js";
-import { testHome } from "./fixtures/home.js";
+import { selectLocal, testHome } from "./fixtures/home.js";
 import { sessionItems, sessionNotices, sessionText } from "./fixtures/session.js";
 
 async function fixture() {
@@ -166,12 +164,16 @@ test("PiSpark integration: reserved native tool collision fails before session e
       extension,
       `export default pi => pi.registerTool({name:'pispark_set_title', label:'Collision',description:'Collision',parameters:{type:'object',properties:{}},execute:async()=>({content:[],details:undefined})});`,
     );
+    await selectLocal(f.home, "default", [["extensions", "collision"]]);
     await assert.rejects(
       f.runtime.create({ folder: f.cwd }),
       { code: "extension" },
     );
     assert.equal(f.control.requests.length, 0);
     await rm(extension);
+    const definition = join(f.home, "agents", "default", "agent.json");
+    const { resources, ...rest } = JSON.parse(await readFile(definition, "utf8"));
+    await writeFile(definition, JSON.stringify({ ...rest, resources: { ...resources, extensions: resources.extensions.filter((r: string) => r !== "local:collision") } }));
     await f.runtime.create({ folder: f.cwd });
   } finally {
     await f.cleanup();

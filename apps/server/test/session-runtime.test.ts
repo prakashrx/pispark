@@ -24,7 +24,7 @@ import {
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { assertPiBoundary } from "../src/core/runtime/pi-boundary.js";
 import { eventually } from "./fixtures/local-provider.js";
-import { addControlledExtension, testHome } from "./fixtures/home.js";
+import { addControlledExtension, selectLocal, testHome } from "./fixtures/home.js";
 import { sessionItems, sessionNotices, sessionText, inFlight } from "./fixtures/session.js";
 
 const hasCode = (code: string) => (error: unknown) =>
@@ -73,6 +73,7 @@ async function fixture(logger?: SafeLogger) {
     const dir = join(h.home, "agents", agent, "extensions");
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, name), source);
+    await selectLocal(h.home, agent, [["extensions", name.replace(/\.[^.]+$/, "")]]);
   };
   return {
     root: h.root,

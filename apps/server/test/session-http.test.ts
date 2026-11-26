@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import { once, EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { request, type IncomingMessage, type ServerResponse } from "node:http";
 import { observeLive } from "./fixtures/live-client.js";
 import { SessionRuntime, type RuntimeConfiguration } from "../src/core/runtime/session-runtime.js";
@@ -12,7 +11,7 @@ import { SessionHttp } from "../src/http/session-http.js";
 import { createAppServer } from "../src/http/server.js";
 import { bundledTransportPatched } from "../src/core/runtime/transport-gate.js";
 import { eventually } from "./fixtures/local-provider.js";
-import { testHome } from "./fixtures/home.js";
+import { selectLocal, testHome } from "./fixtures/home.js";
 import type { ItemsPage, PartPage, Receipt } from "../src/contract/protocol.js";
 
 /** An ordinary Pi extension whose tool returns far more than a session shows inline. */
@@ -493,6 +492,7 @@ for (const boundary of ["retained", "pending"] as const) {
         join(dir, "pending-input.mjs"),
         `export default pi => pi.on('input', async event => { if(event.text === 'pending') await globalThis[${JSON.stringify(key)}](); return {action:'continue'}; });`,
       );
+      await selectLocal(f.home, "default", [["extensions", "pending-input"]]);
       t.after(() => {
         release();
         delete globals[key];

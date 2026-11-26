@@ -64,7 +64,7 @@ export interface AgentDefinition {
   off?: string[];
   /** Pi `mcp.json` server entries. Resolved, not yet connected. */
   mcpServers?: Record<string, Record<string, unknown>>;
-  /** Explicit direct selections. Missing on legacy definitions until converted. */
+  /** What this layer selects, by type. Nothing is selected without it. */
   resources?: AgentResources;
   settings?: { model?: string; thinking?: ThinkingLevel };
   /**

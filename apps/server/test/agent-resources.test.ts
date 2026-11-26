@@ -4,7 +4,6 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { AgentStore } from "../src/core/agents/store.js";
-import { migrateAgentResources } from "../src/core/agents/migrate.js";
 import { resolveSetup } from "../src/core/agents/resolve.js";
 
 async function fixture(t: TestContext) {
@@ -76,50 +75,4 @@ test("the inventory spans three sources; only explicit declarations and their co
   store.select(research, "extensions", "shared:research", false, store.read(research).revision);
   assert.deepEqual(resolveSetup(store, research).extensionPaths, []);
   assert.ok(await readFile(shared, "utf8"));
-});
-
-test("migration preserves resolved setup, backs up definitions and can be repeated", async (t) => {
-  const { root, store, put } = await fixture(t);
-  const named = { agent: "author" };
-  const session = { session: "b666f724-2b98-4a39-81c3-787339d794c3" };
-  const original = '{ "name": "Author", "off": ["skill:unused"], "mcpServers": {"jira":{"url":"https://example.com"}} }\n';
-  const override = '{ "base": ["author"], "off": ["instruction:tone"] }\n';
-  const definition = await put("agents/author/agent.json", original);
-  await put("agents/author/instructions/tone.md", "Use active voice.");
-  await put("agents/author/skills/unused/SKILL.md", skill("unused"));
-  const layer = await put("sessions/" + session.session + "/agent/agent.json", override);
-  await put("sessions/" + session.session + "/agent/prompts/review.md", "Review this.");
-  const before = [named, session].map((target) => resolveSetup(store, target).fingerprint);
-
-  assert.deepEqual(migrateAgentResources(store, false), { definitions: 3, pending: 2, converted: 0 });
-  assert.equal(await readFile(definition, "utf8"), original);
-  const converted = migrateAgentResources(store, true);
-  assert.equal(converted.converted, 2);
-  assert.deepEqual([named, session].map((target) => resolveSetup(store, target).fingerprint), before);
-  assert.deepEqual(store.read(named).definition.resources, {
-    instructions: ["local:tone"], skills: ["local:unused"], mcp: ["local:jira"],
-  });
-  assert.deepEqual(store.read(session).definition.resources, { prompts: ["local:review"] });
-  assert.equal(await readFile(join(root, converted.backup!, "agents/author/agent.json"), "utf8"), original);
-  assert.equal(await readFile(join(root, converted.backup!, "sessions", session.session, "agent/agent.json"), "utf8"), override);
-  assert.notEqual(await readFile(layer, "utf8"), override);
-  assert.deepEqual(migrateAgentResources(store, true), { definitions: 3, pending: 0, converted: 0 });
-});
-
-test("a failed conversion restores definitions it already rewrote", async (t) => {
-  const { store, put } = await fixture(t);
-  const original = (name: string) => JSON.stringify({ name }) + "\n";
-  const first = await put("agents/alpha/agent.json", original("Alpha"));
-  const second = await put("agents/beta/agent.json", original("Beta"));
-  const save = store.save.bind(store);
-  const attempt = t.mock.method(store, "save", (...args: Parameters<AgentStore["save"]>) => {
-    const [target] = args;
-    if ("agent" in target && target.agent === "beta") throw new Error("fixture write failure");
-    return save(...args);
-  });
-  assert.throws(() => migrateAgentResources(store, true), /migration failed/);
-  assert.equal(await readFile(first, "utf8"), original("Alpha"));
-  assert.equal(await readFile(second, "utf8"), original("Beta"));
-  attempt.mock.restore();
-  assert.equal(migrateAgentResources(store, true).converted, 2);
 });

@@ -413,23 +413,10 @@ export class AgentStore {
     return { ...item, reference };
   }
 
-  /** Each layer declares its selections. Folder discovery still reads unconverted definitions. */
+  /** What a layer selects: only what its definition declares. */
   items(target: AgentTarget, definition: AgentDefinition): LayerItem[] {
-    if (definition.resources)
-      return ITEM_TYPES.flatMap((type) =>
-        (definition.resources![type] ?? []).map((reference) => this.find(target, definition, type, reference)));
     return ITEM_TYPES.flatMap((type) =>
-      type === "mcp"
-        ? Object.entries(definition.mcpServers ?? {}).map(([name, config]) => ({ type, name, config }))
-        : inventory(this.dir(target), type));
-  }
-
-  declarations(target: AgentTarget, definition: AgentDefinition): AgentResources {
-    if (definition.resources) return structuredClone(definition.resources);
-    const resources: AgentResources = {};
-    for (const item of this.items(target, definition))
-      (resources[item.type] ??= []).push(`local:${item.name}`);
-    return resources;
+      (definition.resources?.[type] ?? []).map((reference) => this.find(target, definition, type, reference)));
   }
 
   available(target: AgentTarget, type: ItemType): AvailableResource[] {
@@ -541,7 +528,7 @@ export class AgentStore {
     if (!parsed) return fail("invalid-input");
     const { definition, revision } = this.read(target);
     if (revision !== expectedRevision) return fail("revision-conflict", 409);
-    const resources = this.declarations(target, definition);
+    const resources: AgentResources = structuredClone(definition.resources ?? {});
     const before = resources[type] ?? [];
     if (on) {
       if (this.find(target, definition, type, reference).unavailable) return fail("missing-resource", 404, reference);
