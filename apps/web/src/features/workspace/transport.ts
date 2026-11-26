@@ -22,13 +22,20 @@ export class CommandGone extends Error {
     super("The server no longer knows this command.");
   }
 }
-/** A request the server answered with an error: its status and code. */
+/** A request the server answered with an error: its status, and the code and detail it gave. */
 export class RequestFailed extends Error {
   constructor(
     readonly status: number,
-    readonly code: string,
+    readonly code?: string,
+    readonly detail?: string,
   ) {
-    super(code);
+    super(code ?? "Request failed");
+  }
+}
+/** A response larger than the request allowed: refused before it is parsed. */
+export class ResponseTooLarge extends Error {
+  constructor() {
+    super("Response limit");
   }
 }
 /** A command the server refused or that failed there: its code, said in words. */
@@ -37,6 +44,46 @@ export class CommandFailed extends Error {
     super(commandError(code));
   }
 }
+/** How long a JSON request may take and how large its answer may be. */
+export interface JsonOptions {
+  /** Bytes; 1 MB unless given. */
+  limit?: number;
+  /** Milliseconds; 12 seconds unless given. */
+  timeout?: number;
+}
+
+/**
+ * A bounded JSON request: the answer is refused past its limit, and the request past its time or when
+ * `init.signal` aborts. An error answer throws `RequestFailed`; a removed device reloads the page.
+ */
+export async function requestJson<T>(path: string, init: RequestInit = {}, { limit = 1024 * 1024, timeout = 12_000 }: JsonOptions = {}): Promise<T> {
+  const timer = AbortSignal.timeout(timeout);
+  const response = await fetch(path, { ...init, signal: init.signal ? AbortSignal.any([init.signal, timer]) : timer });
+  // The host bounds every response. Refuse unexpectedly large payloads before JSON parsing too.
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("No server response");
+  let text = "";
+  let size = 0;
+  const decoder = new TextDecoder();
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) throw new ResponseTooLarge();
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    await reader.cancel();
+  }
+  const result = JSON.parse(text + decoder.decode());
+  // A device removed while open: start again, at the pairing screen.
+  if (response.status === 401 && result.error === "unpaired") location.reload();
+  if (!response.ok)
+    throw new RequestFailed(response.status, typeof result.error === "string" ? result.error : undefined, typeof result.detail === "string" ? result.detail : undefined);
+  return result as T;
+}
+
 export type InputCommand = Command extends infer C ? (C extends Command ? Omit<C, "commandId"> : never) : never;
 
 /**
@@ -51,33 +98,10 @@ export class Transport {
   get signal(): AbortSignal {
     return this.controller.signal;
   }
-  async json<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(path, {
-      ...init,
-      signal: AbortSignal.any([this.controller.signal, AbortSignal.timeout(12_000)]),
-    });
-    // The host bounds every response. Refuse unexpectedly large payloads before JSON parsing too.
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("No server response");
-    let text = "";
-    let size = 0;
-    const decoder = new TextDecoder();
-    try {
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        size += value.byteLength;
-        if (size > 1024 * 1024) throw new Error("Response limit");
-        text += decoder.decode(value, { stream: true });
-      }
-    } finally {
-      await reader.cancel();
-    }
-    const result = JSON.parse(text + decoder.decode());
-    // A device removed while open: start again, at the pairing screen.
-    if (response.status === 401 && result.error === "unpaired") location.reload();
-    if (!response.ok) throw new RequestFailed(response.status, typeof result.error === "string" ? result.error : "Request failed");
-    return result as T;
+  /** A JSON request that ends with the transport too. */
+  json<T>(path: string, init?: RequestInit, options?: JsonOptions): Promise<T> {
+    const signals = [this.controller.signal, ...(init?.signal ? [init.signal] : [])];
+    return requestJson<T>(path, { ...init, signal: AbortSignal.any(signals) }, options);
   }
   /** Sends a command once. A lost answer is uncertainty, never a reason to send it again. */
   async submit(command: InputCommand): Promise<Receipt> {

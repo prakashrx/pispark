@@ -4,50 +4,36 @@ import type {
   AuthView,
 } from "../../../../server/src/contract/provider-protocol";
 import { providerErrorMessages } from "../../../../server/src/contract/provider-protocol";
+import { RequestFailed, ResponseTooLarge, requestJson } from "../workspace/transport";
 export async function providerRequest<T>(
   path: string,
   value?: unknown,
   token?: string,
   signal?: AbortSignal,
 ): Promise<T> {
-  const response = await fetch(`/api/providers${path}`, {
-    method: value === undefined ? "GET" : "POST",
-    headers: {
-      ...(value === undefined ? {} : { "Content-Type": "application/json" }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: value === undefined ? undefined : JSON.stringify(value),
-    signal: signal
-      ? AbortSignal.any([signal, AbortSignal.timeout(20_000)])
-      : AbortSignal.timeout(20_000),
-  });
-  const reader = response.body?.getReader();
-  if (!reader)
-    throw new Error(
-      "Provider settings unavailable. No successful change is confirmed.",
-    );
-  let text = "";
-  let size = 0;
-  const decoder = new TextDecoder();
   try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      size += value.length;
-      if (size > 2 * 1024 * 1024)
-        throw new Error("Provider catalog exceeds the display limit.");
-      text += decoder.decode(value, { stream: true });
-    }
-  } finally {
-    await reader.cancel();
-  }
-  const data = JSON.parse(text + decoder.decode());
-  if (!response.ok)
-    throw new Error(
-      providerErrorMessages[data.error] ??
-        "Provider settings request failed. Reload status before trying again; no successful change is confirmed.",
+    return await requestJson<T>(
+      `/api/providers${path}`,
+      {
+        method: value === undefined ? "GET" : "POST",
+        headers: {
+          ...(value === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: value === undefined ? undefined : JSON.stringify(value),
+        ...(signal ? { signal } : {}),
+      },
+      { limit: 2 * 1024 * 1024, timeout: 20_000 },
     );
-  return data as T;
+  } catch (error) {
+    if (error instanceof ResponseTooLarge) throw new Error("Provider catalog exceeds the display limit.");
+    if (error instanceof RequestFailed)
+      throw new Error(
+        providerErrorMessages[error.code ?? ""] ??
+          "Provider settings request failed. Reload status before trying again; no successful change is confirmed.",
+      );
+    throw error;
+  }
 }
 export class ProviderClient {
   catalog = $state<ProviderCatalog>({
