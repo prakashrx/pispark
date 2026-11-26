@@ -1,10 +1,11 @@
 import { realpathSync, statSync } from "node:fs";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EventBus } from "@earendil-works/pi-coding-agent";
 import type { ExtensionContribution } from "../../contract/protocol.js";
 import type { Json } from "../../contract/stream-ops.js";
 import { RuntimeError } from "../runtime/errors.js";
+import { isInside } from "../files.js";
 import { compileView } from "./view-compiler.js";
 
 /** The one event an extension uses to show a component: `pi.events.emit(VIEW_EVENT, {...})`. */
@@ -158,11 +159,7 @@ export class ExtensionViews {
     } catch {
       throw new Error(`${path} does not exist`);
     }
-    const inside = (root: string) => {
-      const rel = relative(root, real);
-      return rel && !rel.startsWith("..") && !isAbsolute(rel);
-    };
-    const root = this.roots.find(inside);
+    const root = this.roots.find((folder) => isInside(folder, real) && folder !== real);
     if (!root) throw new Error(`${path} is not inside an extension this session loads`);
     return { file: real, root };
   }
@@ -311,8 +308,7 @@ export class ExtensionViews {
       throw new RuntimeError("not-found");
     try {
       const real = realpathSync.native(resolve(root, path));
-      const rel = relative(root, real);
-      if (rel && !rel.startsWith("..") && !isAbsolute(rel) && statSync(real).isFile()) return real;
+      if (isInside(root, real) && root !== real && statSync(real).isFile()) return real;
     } catch {
       /* Not there. */
     }

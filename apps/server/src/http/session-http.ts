@@ -322,7 +322,7 @@ export class SessionHttp {
     if (endpoint === null) throw new RuntimeError("invalid-input");
     switch (path) {
       case "/api/notifications/state":
-        return sendJson(response, 200, { publicKey: this.notifications.keys.publicKey, ...this.notifications.state(endpoint) } satisfies NotificationState);
+        return sendJson(response, 200, { publicKey: this.notifications.keys.publicKey, ...this.notifications.state(device, endpoint) } satisfies NotificationState);
       case "/api/notifications/subscribe":
         if (!endpoint || !validEvents(input.events)) throw new RuntimeError("invalid-input");
         this.notifications.subscribe(device, endpoint, input.events);
@@ -330,15 +330,15 @@ export class SessionHttp {
         return sendJson(response, 200, {});
       case "/api/notifications/unsubscribe":
         if (!endpoint) throw new RuntimeError("invalid-input");
-        this.notifications.unsubscribe(endpoint);
+        this.notifications.unsubscribe(device, endpoint);
         this.watchForNotifications();
         return sendJson(response, 200, {});
       case "/api/notifications/test":
         if (!endpoint) throw new RuntimeError("invalid-input");
-        return sendJson(response, 200, { sent: await this.notifications.test(endpoint) });
+        return sendJson(response, 200, { sent: await this.notifications.test(device, endpoint) });
       case "/api/notifications/pending":
         if (!endpoint) throw new RuntimeError("invalid-input");
-        return sendJson(response, 200, { notifications: this.notifications.take(endpoint) });
+        return sendJson(response, 200, { notifications: this.notifications.take(device, endpoint) });
       case "/api/notifications/presence":
         if (typeof input.page !== "string" || !/^[\w-]{1,64}$/.test(input.page) || typeof input.visible !== "boolean") throw new RuntimeError("invalid-input");
         this.notifications.present(device, input.page, input.visible);

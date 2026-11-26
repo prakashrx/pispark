@@ -16,7 +16,7 @@ import type { CommandUncertaintyKind } from "./session-presentation";
 import { contributionsFor } from "./extension-views";
 import { LiveSession } from "./live-session.svelte";
 import { liveEvents } from "./live-stream";
-import { CommandFailed, CommandGone, CommandUncertainty, type Transport } from "./transport";
+import { CommandFailed, CommandGone, CommandUncertainty, RequestFailed, type Transport } from "./transport";
 import { Attachments, BLOCKED } from "./attachments.svelte";
 
 /** What a session needs from the app that holds it. */
@@ -235,14 +235,18 @@ export class Session {
    */
   async call(point: string, key: string, name: string, data?: unknown): Promise<unknown> {
     const request: CallRequest = { point, key, name, ...(data === undefined ? {} : { data: data as Json }) };
-    const response = await fetch(`/api/sessions/${this.id}/calls`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
-      signal: AbortSignal.any([this.transport.signal, AbortSignal.timeout(40_000)]),
-    });
-    const answer = (await response.json()) as CallResponse;
-    if (!response.ok || answer.error) throw new Error(answer.detail ?? answer.error ?? "The call failed");
+    // The extension's own error comes as an answer; the host's as a failed request. Either is its words.
+    const answer = await this.transport
+      .json<CallResponse>(
+        `/api/sessions/${this.id}/calls`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) },
+        { timeout: 40_000 },
+      )
+      .catch((error: unknown): CallResponse => {
+        if (error instanceof RequestFailed) return { error: error.code ?? "The call failed", ...(error.detail ? { detail: error.detail } : {}) };
+        throw error;
+      });
+    if (answer.error) throw new Error(answer.detail ?? answer.error);
     return answer.result;
   }
   /** An extension component's `host.file(path)`: the address of a file in the folder its placement named. */

@@ -351,9 +351,12 @@ test("schedules over HTTP: list, add, change, run now and remove", async () => {
     assert.equal(added.status, 201);
     const { id } = (await added.json()) as Schedule;
     assert.equal((await post("/api/schedules", { sessionId: session.id, cron: "nope", prompt: "hi" })).status, 400);
+    for (const invalid of [{ cron: 9 }, { at: 9 }, { cron: "0 9 * * *", prompt: 3 }, { cron: "0 9 * * *", on: "no" }, { cron: "0 9 * * *", extra: true }])
+      assert.deepEqual(await (await post("/api/schedules", { sessionId: session.id, prompt: "hi", ...invalid })).json(), { error: "invalid-input" }, JSON.stringify(invalid));
     const list = await (await fetch(base + "/api/schedules")).json();
     assert.equal(list.schedules.length, 1);
     assert.equal((await (await post(`/api/schedules/${id}`, { on: false })).json()).on, false);
+    assert.deepEqual(await (await post(`/api/schedules/${id}`, { cron: 9 })).json(), { error: "invalid-input" });
     assert.equal((await post(`/api/schedules/${id}/run`)).status, 202);
     await eventually(() => f.one().runs.length === 1);
     assert.equal((await post(`/api/schedules/${id}/remove`)).status, 200);

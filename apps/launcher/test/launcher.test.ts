@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { Install, NAME, Release, ensureWindowless, identity, windows } from "../src/install.ts";
 import { expectedSum, find, pick } from "../src/updates.ts";
+import { openLog, trimLog } from "../src/supervisor.ts";
 
 const release = (tag: string, prerelease: boolean, names = ["linux-x64", "win-x64"]) => ({
   tag_name: `v${tag}`,
@@ -62,8 +63,16 @@ test("install folder: current points at a version, choices persist, old versions
   assert.equal(Install.of(Release.at(install.release("0.4.2")))?.root, root);
 
   assert.deepEqual(install.choices(), { channel: "stable", port: 3000, autoUpdate: false });
-  install.choose({ channel: "latest", port: 3100, home: "/data" });
-  assert.deepEqual(install.choices(), { channel: "latest", port: 3100, autoUpdate: false, home: "/data" });
+  install.choose({ channel: "latest", port: 3100, home: "/data", releases: "https://releases.example.test/list" });
+  assert.deepEqual(install.choices(), { channel: "latest", port: 3100, autoUpdate: false, home: "/data", releases: "https://releases.example.test/list" });
+  for (const releases of ["http://releases.example.test/list", "https://example.test@evil.test/list"]) {
+    writeFileSync(join(root, "state.json"), JSON.stringify({ releases }));
+    assert.equal(install.choices().releases, undefined);
+  }
+  for (const releases of ["http://127.0.0.1:1234/list", "http://localhost/list"]) {
+    writeFileSync(join(root, "state.json"), JSON.stringify({ releases }));
+    assert.equal(install.choices().releases, releases);
+  }
   writeFileSync(join(root, "state.json"), JSON.stringify({ channel: "beta", port: 99999, autoUpdate: "yes" }));
   assert.deepEqual(install.choices(), { channel: "stable", port: 3000, autoUpdate: false });
 
@@ -136,4 +145,23 @@ test("a named install is called apart from the main one everywhere it registers"
   assert.deepEqual(identity("dev"), { label: "PiSpark (dev)", run: "PiSpark-dev", unit: "pispark-dev.service", command: "pispark-dev" });
   for (const good of ["dev", "test-2", "a"]) assert.ok(NAME.test(good), good);
   for (const bad of ["", "Dev", "-dev", "dev/x", "a".repeat(21), "dev test"]) assert.ok(!NAME.test(bad), bad);
+});
+
+test("a log past 5 MB moves to .1 while its writer keeps appending at the start", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "pispark-log-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = join(root, "server.log");
+  const log = openLog(file);
+  try {
+    writeSync(log, "x".repeat(5 * 1024 * 1024));
+    trimLog(file);
+    assert.equal(existsSync(`${file}.1`), false, "not past the limit yet");
+    writeSync(log, "y");
+    trimLog(file);
+    assert.equal(statSync(`${file}.1`).size, 5 * 1024 * 1024 + 1);
+    writeSync(log, "after");
+    assert.equal(readFileSync(file, "utf8"), "after");
+  } finally {
+    closeSync(log);
+  }
 });

@@ -194,7 +194,7 @@ export async function attachedImages(sessionFolder: string, text: string): Promi
   for (const [, path] of text.matchAll(TAG)) {
     if (!path || !isAbsolute(path)) continue;
     const inside = relative(folder, resolve(path));
-    if (!inside || inside.startsWith("..") || inside.includes(sep) || isAbsolute(inside)) continue;
+    if (!inside || inside === ".." || inside.includes(sep) || isAbsolute(inside)) continue;
     let file: string;
     try {
       file = realpathSync.native(path);

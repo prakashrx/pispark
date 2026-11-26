@@ -6,7 +6,7 @@ import type { HostAction, LauncherStatus, RunningWork, ServerMessage, UpdateStat
 import { callControl, serveControl, type ControlRequest, type ControlStatus } from "./control.ts";
 import { autostartEnabled, openFolder, openWindow, underSystemd } from "./desktop.ts";
 import { Install, LAUNCHER_VERSION, Release, VERSION, identity, windows } from "./install.ts";
-import { Supervisor, killTree } from "./supervisor.ts";
+import { Supervisor, killTree, trimLog } from "./supervisor.ts";
 import { Tray, type TrayChoice } from "./tray.ts";
 import { RELEASES_URL, check, fetchRelease, find, listReleases, type Available } from "./updates.ts";
 
@@ -69,6 +69,10 @@ export class Daemon {
       process.exit(0);
     }
     this.note(`launcher ${this.own.info.version} (launcher ${LAUNCHER_VERSION}) starting`);
+    // Both logs keep growing while PiSpark runs (the server's output goes straight to its file).
+    const trimLogs = () => [this.log, join(this.install.logs, "server.log")].forEach(trimLog);
+    trimLogs();
+    setInterval(trimLogs, 10 * 60_000).unref();
     this.readRollback();
     // Versions that failed here are never used again.
     for (const version of this.install.failed()) if (version !== this.own.info.version && this.install.installed().includes(version)) this.install.remove(version);

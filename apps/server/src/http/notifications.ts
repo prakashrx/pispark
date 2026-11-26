@@ -57,8 +57,12 @@ export class Notifications {
   get active(): boolean {
     return this.subscriptions.length > 0;
   }
-  state(endpoint: string | undefined): { subscribed: boolean; events: NotifyEvent[] } {
-    const subscription = endpoint ? this.subscriptions.find((each) => each.endpoint === endpoint) : undefined;
+  /** A device's own subscription: a device acts only on the endpoints it subscribed. */
+  private mine(device: string, endpoint: string | undefined): Subscription | undefined {
+    return this.subscriptions.find((each) => each.device === device && each.endpoint === endpoint);
+  }
+  state(device: string, endpoint: string | undefined): { subscribed: boolean; events: NotifyEvent[] } {
+    const subscription = this.mine(device, endpoint);
     return { subscribed: !!subscription, events: subscription?.events ?? [...NOTIFY_EVENTS] };
   }
   subscribe(device: string, endpoint: string, events: NotifyEvent[]): void {
@@ -68,8 +72,10 @@ export class Notifications {
     ].slice(-64);
     this.save();
   }
-  unsubscribe(endpoint: string): void {
-    this.subscriptions = this.subscriptions.filter((each) => each.endpoint !== endpoint);
+  unsubscribe(device: string, endpoint: string): void {
+    const subscription = this.mine(device, endpoint);
+    if (!subscription) return;
+    this.subscriptions = this.subscriptions.filter((each) => each !== subscription);
     this.pending.delete(endpoint);
     this.save();
   }
@@ -94,14 +100,15 @@ export class Notifications {
     return pages.size > 0;
   }
   /** What a device's service worker shows for the pushes it got; read once. */
-  take(endpoint: string): PendingNotification[] {
+  take(device: string, endpoint: string): PendingNotification[] {
+    if (!this.mine(device, endpoint)) return [];
     const list = this.pending.get(endpoint) ?? [];
     this.pending.delete(endpoint);
     return list;
   }
   /** "Send a test": to this endpoint, whether or not PiSpark is in view. */
-  async test(endpoint: string): Promise<boolean> {
-    if (!this.subscriptions.some((each) => each.endpoint === endpoint)) return false;
+  async test(device: string, endpoint: string): Promise<boolean> {
+    if (!this.mine(device, endpoint)) return false;
     this.queue(endpoint, { title: "PiSpark", body: "Notifications work on this device.", url: "/#/", tag: "test" });
     return (await this.keys.send(endpoint, this.fetcher)) === "sent";
   }
@@ -131,9 +138,9 @@ export class Notifications {
   private async tell(event: NotifyEvent, sessionId: string, title: string, body: string): Promise<void> {
     const to = this.subscriptions.filter((each) => each.events.includes(event) && !this.inView(each.device));
     await Promise.all(
-      to.map(async ({ endpoint }) => {
+      to.map(async ({ endpoint, device }) => {
         this.queue(endpoint, { title, body, url: `/#/s/${sessionId}`, tag: `${sessionId}:${event}` });
-        if ((await this.keys.send(endpoint, this.fetcher)) === "gone") this.unsubscribe(endpoint);
+        if ((await this.keys.send(endpoint, this.fetcher)) === "gone") this.unsubscribe(device, endpoint);
       }),
     );
   }

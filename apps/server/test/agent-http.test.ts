@@ -138,6 +138,10 @@ test("agent HTTP: strict inputs, same-origin guard and content-free failure logs
     ["create", { name: "X", tools: ["bash"] }],
     ["save", { target: { agent: "default" }, expectedRevision: "nope", definition: {} }],
     ["file/read", { target: { agent: "default" }, path: "../../etc/passwd" }],
+    ["file/read", { target: { agent: "default" }, path: 4 }],
+    ["file/write", { target: { agent: "default" }, path: "x", expectedRevision: null, text: 4 }],
+    ["create", { name: "X", description: 4 }],
+    ["create", { name: "X", base: ["valid", 4] }],
     ["file/write", { target: { agent: "default" }, path: "agent.json", expectedRevision: null, text: "{}" }],
   ] as const) {
     const response = await f.post(operation, value);

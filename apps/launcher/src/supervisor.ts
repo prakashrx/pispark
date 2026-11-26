@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, renameSync, statSync } from "node:fs";
+import { closeSync, copyFileSync, mkdirSync, openSync, statSync, truncateSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { LauncherMessage, ServerMessage } from "../../server/src/contract/host-protocol.ts";
 import { windows, type Release } from "./install.ts";
@@ -9,7 +9,7 @@ export type ServerState = "starting" | "running" | "stopping" | "stopped" | "cra
 export interface SupervisorOptions {
   port: number;
   home?: string;
-  /** The server's output goes here (the newest 5 MB, then one older file). */
+  /** The server's output goes here (see `trimLog`). */
   logFile: string;
   onMessage: (message: ServerMessage) => void;
   onState: (state: ServerState) => void;
@@ -186,13 +186,27 @@ export function killTree(pid: number | undefined) {
   }
 }
 
-/** Opens a log for appending, moving it aside first when it has grown past 5 MB. */
+/** A log keeps its newest 5 MB, then one older file. */
+const LOG_LIMIT = 5 * 1024 * 1024;
+
+/** Opens a log for appending, moving it aside first when it has grown past the limit. */
 export function openLog(file: string): number {
   mkdirSync(dirname(file), { recursive: true });
-  try {
-    if (existsSync(file) && statSync(file).size > 5 * 1024 * 1024) renameSync(file, `${file}.1`);
-  } catch {
-    /* Keep appending. */
-  }
+  trimLog(file);
   return openSync(file, "a");
+}
+
+/**
+ * Moves a log that has grown past the limit to `<file>.1`. It is copied, then emptied in place, so a
+ * process still appending to it (the server writes its output straight to `server.log`) carries on
+ * at the start of the emptied file.
+ */
+export function trimLog(file: string): void {
+  try {
+    if (statSync(file).size <= LOG_LIMIT) return;
+    copyFileSync(file, `${file}.1`);
+    truncateSync(file);
+  } catch {
+    /* Missing, or busy: keep appending. */
+  }
 }

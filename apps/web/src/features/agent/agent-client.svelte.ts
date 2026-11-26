@@ -13,28 +13,19 @@ import {
 } from "../../../../server/src/contract/agent-protocol";
 import { agentError } from "./agent-presentation";
 import { go } from "../../routes";
+import { RequestFailed, requestJson } from "../workspace/transport";
 
-export async function agentRequest<T>(
-  operation: string,
-  input?: unknown,
-): Promise<T> {
-  const response = await fetch(
-    `/api/agents${operation ? `/${operation}` : ""}`,
-    input === undefined
-      ? { signal: AbortSignal.timeout(12_000) }
-      : {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(input),
-          signal: AbortSignal.timeout(12_000),
-        },
-  );
-  const text = await response.text();
-  if (text.length > 512 * 1024) throw new Error("Response limit");
-  const result = JSON.parse(text || "{}");
-  if (!response.ok)
-    throw new Error(agentError(result.error ?? "storage", result.detail));
-  return result as T;
+export async function agentRequest<T>(operation: string, input?: unknown): Promise<T> {
+  try {
+    return await requestJson<T>(
+      `/api/agents${operation ? `/${operation}` : ""}`,
+      input === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) },
+      { limit: 512 * 1024 },
+    );
+  } catch (error) {
+    if (error instanceof RequestFailed) throw new Error(agentError(error.code ?? "storage", error.detail));
+    throw error;
+  }
 }
 
 export const sameTarget = (a?: AgentTarget, b?: AgentTarget) =>

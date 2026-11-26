@@ -91,7 +91,7 @@ export function writeStartScript(install: Install) {
     file,
     `#!/bin/sh
 # Written by PiSpark setup; updates never change it. Runs the current version's launcher.
-ROOT='${install.root.replace(/'/g, "'\\''")}'
+ROOT=${shellQuote(install.root)}
 U="$ROOT/update"
 if [ -f "$U/trying" ] && [ -f "$U/previous" ]; then
   if [ -f "$U/trying.started" ]; then
@@ -109,6 +109,9 @@ exec "$ROOT/current/node/bin/node" "$ROOT/current/app/apps/launcher/dist/pispark
   chmodSync(file, 0o755);
 }
 
+/** A word for a POSIX shell script, taken literally. */
+const shellQuote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+
 /** The `pispark` command: `~/.local/bin/pispark` on Linux, `<install>\\bin\\pispark.cmd` on Windows. */
 export function installCommand(install: Install): string {
   const { exe, args } = launcherCommand(install, "");
@@ -122,7 +125,7 @@ export function installCommand(install: Install): string {
   }
   mkdirSync(binDir(), { recursive: true });
   const file = join(binDir(), names(install).command);
-  writeFileSync(file, `#!/bin/sh\nexec "${exe}" "${args[0]}" "$@"\n`);
+  writeFileSync(file, `#!/bin/sh\nexec ${shellQuote(exe)} ${shellQuote(args[0]!)} "$@"\n`);
   chmodSync(file, 0o755);
   return binDir();
 }

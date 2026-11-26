@@ -75,8 +75,9 @@ test("a device is told what newly happened, as it asked, unless PiSpark is in vi
     n.sessionsChanged();
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.deepEqual(pushed, [PHONE]);
-    assert.deepEqual(n.take(PHONE), [{ title: "Session a", body: "Needs you: Overwrite package.json?", url: "/#/s/a", tag: "a:needs-you" }]);
-    assert.deepEqual(n.take(PHONE), [], "read once");
+    assert.deepEqual(n.take("local", PHONE), [], "another device can't read the phone's");
+    assert.deepEqual(n.take("phone", PHONE), [{ title: "Session a", body: "Needs you: Overwrite package.json?", url: "/#/s/a", tag: "a:needs-you" }]);
+    assert.deepEqual(n.take("phone", PHONE), [], "read once");
 
     // A long run finishes and another fails, while PiSpark is in view on the phone: only this computer hears of the failure.
     sessions = [session("a", { status: "running", waiting: true }), session("b", { status: "running", workingSince: new Date(now - 5 * 60_000).toISOString() }), session("c", { status: "running" })];
@@ -87,7 +88,7 @@ test("a device is told what newly happened, as it asked, unless PiSpark is in vi
     n.sessionsChanged();
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.deepEqual(pushed, [ENDPOINT]);
-    assert.deepEqual(n.take(ENDPOINT).map((each) => each.body), ["The run failed"]);
+    assert.deepEqual(n.take("local", ENDPOINT).map((each) => each.body), ["The run failed"]);
 
     // Out of view (the page's word expires), a scheduled run fails and the phone's subscription is gone.
     now += 2 * 60_000;
@@ -99,13 +100,18 @@ test("a device is told what newly happened, as it asked, unless PiSpark is in vi
     n.sessionsChanged();
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.deepEqual(pushed, [PHONE]);
-    assert.equal(n.state(PHONE).subscribed, false, "dropped when the push service says it's gone");
-    assert.equal(n.state(ENDPOINT).subscribed, true);
+    assert.equal(n.state("phone", PHONE).subscribed, false, "dropped when the push service says it's gone");
+    assert.equal(n.state("local", ENDPOINT).subscribed, true);
+    // Only the device that subscribed an endpoint can test it, see it or remove it.
+    assert.equal(await n.test("phone", ENDPOINT), false);
+    assert.equal(n.state("phone", ENDPOINT).subscribed, false);
+    n.unsubscribe("phone", ENDPOINT);
+    assert.equal(n.state("local", ENDPOINT).subscribed, true);
 
     // A removed device takes its subscriptions along; they are saved.
     n.subscribe("phone", PHONE, ["needs-you"]);
     n.forgetDevice("phone");
-    assert.equal(n.state(PHONE).subscribed, false);
+    assert.equal(n.state("phone", PHONE).subscribed, false);
     assert.deepEqual(JSON.parse(await readFile(join(folder, "subscriptions.json"), "utf8")).map((each: { device: string }) => each.device), ["local"]);
   } finally {
     await rm(folder, { recursive: true, force: true });

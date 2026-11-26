@@ -93,6 +93,8 @@ test("Agent Builder asks before writing outside the agent and never changes app 
 
   assert.equal(await call("skills/new/SKILL.md"), undefined);
   assert.equal(await call(join(agent, "agent.json"), "edit"), undefined);
+  await put("agents/shop/..notes", "x");
+  assert.equal(await call(join(root, "agents", "shop", "..notes"), "edit"), undefined);
   assert.equal(await call(shared, "read"), undefined);
   assert.deepEqual(asked, []);
 
