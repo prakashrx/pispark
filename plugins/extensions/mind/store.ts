@@ -19,6 +19,12 @@ export const UNLINKED_DAYS = 7;
 /** Earlier versions kept, newest first, across all files. */
 export const HISTORY_KEPT = 200;
 
+/** When each waiting question was first put to the person, and until when it is put off. */
+export interface QuestionState {
+  asked: Record<string, string>;
+  later: Record<string, string>;
+}
+
 export interface Change {
   id: string;
   /** The file as the person would name it: ".mind/notes.md", "AGENTS.md", "Instructions: Role.md". */
@@ -199,29 +205,50 @@ export class Mind {
     if (this.exists() && !existsSync(file)) await writeFile(file, "# The agent's own folder for this place (PiSpark mind). Remove this file to track it.\n*\n", "utf8");
   }
 
-  // ---- Questions already shown to the person -------------------------------------------------
+  // ---- When each question was put to the person, and when it may be again -------------------
 
   private get stateFile(): string {
     return join(this.dir, ".state.json");
   }
-  async asked(): Promise<Record<string, string>> {
+  async questionState(): Promise<QuestionState> {
     try {
-      return (JSON.parse(await readFile(this.stateFile, "utf8")) as { asked?: Record<string, string> }).asked ?? {};
+      const state = JSON.parse(await readFile(this.stateFile, "utf8")) as Partial<QuestionState>;
+      return { asked: state.asked ?? {}, later: state.later ?? {} };
     } catch {
-      return {};
+      return { asked: {}, later: {} };
     }
   }
-  /** Marks questions as shown; returns the ones that were not marked before. */
-  async markAsked(ids: string[]): Promise<string[]> {
-    if (!ids.length) return [];
-    return withFileMutationQueue(this.stateFile, async () => {
-      const asked = await this.asked();
-      const fresh = ids.filter((id) => !asked[id]);
-      if (fresh.length) {
-        for (const id of fresh) asked[id] = new Date().toISOString();
-        await write(this.stateFile, JSON.stringify({ asked }, null, 2) + "\n");
+  private async changeState(change: (state: QuestionState) => boolean): Promise<void> {
+    await withFileMutationQueue(this.stateFile, async () => {
+      const state = await this.questionState();
+      if (change(state)) await write(this.stateFile, JSON.stringify(state, null, 2) + "\n");
+    });
+  }
+  /**
+   * Of these questions, the ones to put to the person now: never put to them before, or put off
+   * until a time that has passed. They are marked as put to them.
+   */
+  async takeDue(ids: string[], now = Date.now()): Promise<string[]> {
+    let due: string[] = [];
+    await this.changeState((state) => {
+      due = ids.filter((id) => !state.asked[id] || (state.later[id] !== undefined && Date.parse(state.later[id]!) <= now));
+      for (const id of due) {
+        state.asked[id] = new Date(now).toISOString();
+        delete state.later[id];
       }
-      return fresh;
+      return due.length > 0;
+    });
+    return due;
+  }
+  /** Puts questions off: they are not put to the person again before `until`. */
+  async defer(ids: string[], until: number, now = Date.now()): Promise<void> {
+    if (!ids.length) return;
+    await this.changeState((state) => {
+      for (const id of ids) {
+        state.asked[id] ??= new Date(now).toISOString();
+        state.later[id] = new Date(until).toISOString();
+      }
+      return true;
     });
   }
 
@@ -251,10 +278,18 @@ export class Mind {
       }
     }
 
+    // Only questions still waiting are remembered.
     const open = new Set(questions((await this.text(TASKS)) ?? "").map((q) => q.id));
-    const asked = await this.asked();
-    if (Object.keys(asked).some((id) => !open.has(id)))
-      await withFileMutationQueue(this.stateFile, () => write(this.stateFile, JSON.stringify({ asked: Object.fromEntries(Object.entries(asked).filter(([id]) => open.has(id))) }, null, 2) + "\n"));
+    await this.changeState((state) => {
+      let changed = false;
+      for (const map of [state.asked, state.later])
+        for (const id of Object.keys(map))
+          if (!open.has(id)) {
+            delete map[id];
+            changed = true;
+          }
+      return changed;
+    });
 
     for (const name of (await this.versions()).slice(HISTORY_KEPT)) await rm(join(this.history, name), { force: true });
   }

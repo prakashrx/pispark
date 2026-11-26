@@ -43,13 +43,33 @@ The agent writes these with its ordinary file tools. There are no special tools 
 - **Reminders:** at the end of a run that did work but kept nothing, and before PiSpark compacts the conversation, the agent is asked once to bring its tasks and notes up to date. After a compaction it is told to reorient from its tasks.
 - **Tidy:** `/mind tidy`, or weekly from the view, checks the notes against how things are and clears what's stale (the `mind-tidy` skill).
 
-## Asking without stopping
+## Asking without being in your face
 
-When the agent needs you and can go on meanwhile, it writes the question under *Waiting on you* and carries on. When its run ends, each new question is put to you once as a question card, which also reaches your phone through PiSpark's "needs you" notification. Your answer is written under the question and given to the agent to act on.
+When the agent needs you, it writes the question under *Waiting on you*, with what it recommends and what it does meanwhile, and carries on with what it safely can.
+
+- **A run you started:** you're there, so it asks in its reply. No question card appears. If you don't answer, the question is put to you once more after about a day.
+- **A run nobody watched** (a schedule, a child's report): when the run ends, each new question becomes a question card, which also reaches your phone through PiSpark's "needs you" notification. The card offers four answers:
+  - **Do it** and **No** go to the agent, which acts and updates the entry.
+  - **Later** keeps the question waiting.
+  - **Discuss in the conversation** keeps it waiting and puts the question in your reply box, so you talk it over normally.
+  - Skipping counts as *Later*.
+  - A question put off is put to you once more after about a day.
+- **A session another session started** (a worker) asks nobody and doesn't edit `tasks.md`: it puts decisions in its report, and the session that started it keeps the tasks.
+
+## Weight
+
+What's read at the start of every run is shown in the view (History → Tidy). Nothing new is refused:
+- When it passes about 6,000 tokens, the agent is asked to tidy.
+- A very large `tasks.md` (over 30,000 characters) is given with *Waiting on you* and *Doing* in full and the rest counted.
 
 ## The Mind view
 
-Beside the conversation: what waits on you (answer there), the tasks, the notes and their pages, the skills, and what changed lately with **Undo**. `/mind` opens it.
+Beside the conversation, in three tabs:
+- **Now:** what waits on you, answered with Do it, No, Later or Discuss; what's in progress; what's to do. The tab shows how many questions wait.
+- **Notes:** the notes, their pages and the skills.
+- **History:** done lately, what changed lately with **Undo**, the weight, and tidying.
+
+`/mind` opens it.
 
 ## Skills that come with it
 
@@ -58,4 +78,4 @@ Beside the conversation: what waits on you (answer there), the tasks, the notes 
 
 ## Files it keeps for itself
 
-`.mind/.gitignore` (the folder ignores itself in git; remove it to track the folder), `.mind/.history/` (earlier versions) and `.mind/.state.json` (which questions were already put to you).
+`.mind/.gitignore` (the folder ignores itself in git; remove it to track the folder), `.mind/.history/` (earlier versions) and `.mind/.state.json` (when each question was put to you, and until when it is put off).

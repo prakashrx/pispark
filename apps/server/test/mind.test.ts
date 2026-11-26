@@ -302,62 +302,184 @@ test("mind: close to compaction the agent is asked once to bring its tasks up to
   }
 });
 
-test("mind: a question under Waiting on you doesn't stop the run; it reaches the person afterwards, once, and their answer wakes the agent", async () => {
+/** A run nobody watched: a schedule sends the session a message. */
+const wake = (f: Awaited<ReturnType<typeof fixture>>, id: string, text: string) =>
+  (f.runtime as unknown as { wakes: { deliver(id: string, wake: object): Promise<void> } }).wakes.deliver(id, {
+    source: { kind: "schedule", id: "morning", label: "Every morning" },
+    text,
+    due: new Date().toISOString(),
+    policy: "queue",
+  });
+/** Lets a put-off question be put to the person again, as if its time had passed. */
+async function timePasses(f: Awaited<ReturnType<typeof fixture>>) {
+  const state = JSON.parse(await f.read(".state.json"));
+  for (const id of Object.keys(state.later)) state.later[id] = new Date(Date.now() - 1000).toISOString();
+  await writeFile(f.file(".state.json"), JSON.stringify(state));
+}
+const QUESTION = "Rotate the notes password?";
+
+test("mind: a question from a run the person started isn't pushed at them; a run nobody watched puts it to them once, and their answer wakes the agent", async () => {
   const f = await fixture();
   try {
     const session = await f.create();
     const dialogs = (id: string) => f.runtime.session(id).extensions.dialogs;
+    const settled = async (id: string) => {
+      await eventually(() => f.runtime.session(id).status === "idle");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    };
+    // The person is here: the question stays under Waiting on you, with no card.
     await f.start(session.id, call("write", { path: ".mind/tasks.md", content: TASKS }));
-    // The run is over; the question is now a card, and the session shows as waiting for the person.
+    await settled(session.id);
+    assert.equal(dialogs(session.id).length, 0);
+    const [question] = questions(TASKS);
+    assert.ok(Date.parse(JSON.parse(await f.read(".state.json")).later[question!.id]) > Date.now() + 19 * 3_600_000, "put off for most of a day");
+
+    // A run nobody watched, before that time: still nothing.
+    await wake(f, session.id, "morning check");
+    await settled(session.id);
+    assert.equal(dialogs(session.id).length, 0);
+
+    // Once the time has passed, a run nobody watched puts it to them, once, with four answers.
+    await timePasses(f);
+    await wake(f, session.id, "morning check");
     await eventually(() => dialogs(session.id).length === 1);
     const dialog = dialogs(session.id)[0]!;
     assert.equal(dialog.kind, "select");
     assert.match(JSON.stringify(dialog), /Rotate the notes password\? I recommend rotating it tonight\./);
-    assert.match(JSON.stringify(dialog), /Do as recommended/);
+    assert.deepEqual((dialog as { options?: string[] }).options, ["Do it", "No", "Later", "Discuss in the conversation"]);
     assert.equal(f.runtime.list().find((s) => s.id === session.id)!.waiting, true);
-    assert.equal(f.runtime.session(session.id).status, "idle");
 
-    // Another session in the same place doesn't ask again.
-    const other = await f.create();
-    await f.start(other.id, "hello");
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    assert.equal(dialogs(other.id).length, 0);
-
-    f.runtime.answer(session.id, dialog.id, "Do as recommended");
+    f.runtime.answer(session.id, dialog.id, "Do it");
     await eventually(() => /nothing changes\.\n  - Answer \(\d{4}-\d{2}-\d{2}\): Yes, do as you recommend\./.test(readFileSync(f.file("tasks.md"), "utf8")));
-    await eventually(() => f.provider.requests.some((r) => /My answer to \\"Rotate the notes password\?/.test(lastOf(r))));
-    await eventually(() => f.runtime.session(session.id).status === "idle");
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await eventually(() => f.provider.requests.some((r) => lastOf(r).includes("My answer to") && lastOf(r).includes(QUESTION)));
+    const message = lastOf(f.provider.requests.find((r) => lastOf(r).includes("My answer to"))!);
+    assert.match(message, /If that settles it, act on it and update the entry\. If I'm putting it off or want to talk it over first, don't act yet: keep it waiting\./);
+    await settled(session.id);
     assert.equal(dialogs(session.id).length, 0, "an answered question isn't asked again");
   } finally {
     await f.cleanup();
   }
 });
 
-test("mind: the view answers a question too, and a question can't be answered twice", async () => {
+test("mind: Later, Discuss and skipping keep a question waiting and put it to the person once more later; Discuss starts the reply", async () => {
   const f = await fixture();
   try {
     await f.put("tasks.md", TASKS);
     const session = await f.create();
-    await f.start(session.id, "hello");
+    const dialogs = () => f.runtime.session(session.id).extensions.dialogs;
+    const card = async () => {
+      await eventually(() => dialogs().length === 1);
+      return dialogs()[0]!;
+    };
+    const quiet = async () => {
+      await eventually(() => f.runtime.session(session.id).status === "idle");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      assert.equal(dialogs().length, 0);
+    };
+
+    // Never put to them before: the first run nobody watched asks.
+    await wake(f, session.id, "morning check");
+    f.runtime.answer(session.id, (await card()).id, "Later");
+    await wake(f, session.id, "another check");
+    await quiet();
+    assert.ok(!f.provider.requests.some((r) => lastOf(r).includes("My answer to")), "nothing is sent for Later");
+    assert.equal(questions(await f.read("tasks.md"))[0]!.answer, undefined, "it keeps waiting");
+
+    await timePasses(f);
+    await wake(f, session.id, "next morning");
+    f.runtime.answer(session.id, (await card()).id, "Discuss in the conversation");
+    await eventually(() => f.runtime.session(session.id).extensions.draft?.text === `About "${QUESTION}": `);
+    await wake(f, session.id, "a check");
+    await quiet();
+
+    await timePasses(f);
+    await wake(f, session.id, "the morning after");
+    f.runtime.answer(session.id, (await card()).id, null);
+    await wake(f, session.id, "a check");
+    await quiet();
+    await timePasses(f);
+    await wake(f, session.id, "once more");
+    await card();
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("mind: the view answers a question or puts it off, and a question can't be answered twice", async () => {
+  const f = await fixture();
+  try {
+    await f.put("tasks.md", TASKS);
+    const session = await f.create();
+    await wake(f, session.id, "morning check");
     const view = () => f.runtime.session(session.id).extensions.views.find((v) => v.point === "session.view" && v.key === "mind")!;
-    type Snapshot = { waiting: { id: string; text: string; answer?: string }[]; doing: string; done: string };
+    type Snapshot = { waiting: { id: string; text: string; answer?: string }[]; doing: string; done: string; weight: number };
     const snapshot = () => (view().props as { snapshot: Snapshot }).snapshot;
     // The view is offered once its component has compiled.
     await eventually(() => !!view() && snapshot().waiting.length === 1, 20_000);
     assert.equal(view().title, "Mind");
     assert.match(snapshot().doing, /Watching nginx restarts/);
     assert.match(snapshot().done, /2026-11-25: Fixed the backup path/);
-    // The question was put to the person when the run ended; answering in the view closes that card.
+    assert.ok(snapshot().weight > 500 && snapshot().weight < 3000, `weight ${snapshot().weight}`);
+    // The question was put to the person when the run ended; putting it off in the view closes that card.
     await eventually(() => f.runtime.session(session.id).extensions.dialogs.length === 1);
     const id = snapshot().waiting[0]!.id;
+    await f.runtime.call(session.id, "session.view", "mind", "later", { id });
+    await eventually(() => f.runtime.session(session.id).extensions.dialogs.length === 0);
+    assert.ok(Date.parse(JSON.parse(await f.read(".state.json")).later[id]) > Date.now());
+
     await f.runtime.call(session.id, "session.view", "mind", "answer", { id, text: "Not tonight, do it on Sunday." });
     assert.equal(snapshot().waiting[0]!.answer, "Not tonight, do it on Sunday.");
-    await eventually(() => f.runtime.session(session.id).extensions.dialogs.length === 0);
     await eventually(() => f.provider.requests.some((r) => /My answer to .*Not tonight, do it on Sunday\./.test(lastOf(r))));
     const refused = (detail: RegExp) => (error: { code?: string; detail?: string }) => error.code === "extension" && detail.test(error.detail ?? "");
     await assert.rejects(f.runtime.call(session.id, "session.view", "mind", "answer", { id, text: "Again" }), refused(/already answered/));
     await assert.rejects(f.runtime.call(session.id, "session.view", "mind", "answer", { id: "nope", text: "x" }), refused(/no longer waiting/));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("mind: a session another session started reports instead of keeping the tasks, and asks nobody", async () => {
+  const f = await fixture();
+  try {
+    await f.put("tasks.md", TASKS);
+    const parent = await f.create();
+    const brief = call("write", { path: ".mind/tasks.md", content: TASKS.replace("- Add TLS.", "- Add TLS.\n- Worker wrote this.") });
+    await f.start(parent.id, call("pispark_session", { action: "start", prompt: brief, title: "Worker" }));
+    await eventually(() => f.runtime.list().some((s) => s.parent === parent.id));
+    const child = f.runtime.list().find((s) => s.parent === parent.id)!;
+    await eventually(() => /kept by the session that started you: put this in your report/.test(sessionText(f.runtime, child.id)), 10_000);
+    assert.doesNotMatch(await f.read("tasks.md"), /Worker wrote this/);
+    const childRequest = f.provider.requests.find((r) => /Worker wrote this/.test(lastOf(r)) && !/pispark_session/.test(lastOf(r)))!;
+    assert.match(briefOf(childRequest), /is kept by the session that started you\. Read it, but don't edit it/);
+    assert.match(briefOf(childRequest), /Put anything that needs a decision in your report to it/);
+    await eventually(() => f.runtime.list().find((s) => s.id === child.id)?.status === "idle");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(f.runtime.session(child.id).extensions.dialogs.length, 0, "a worker asks nobody");
+    // The parent still keeps them.
+    assert.match(briefOf(f.provider.requests.find((r) => lastOf(r).includes("pispark_session"))!), /2\. Anything not finished: `\.mind\/tasks\.md`\. Move its entry/);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("mind: a heavy front page asks for a tidy; a very large tasks file gives what matters now and counts the rest", async () => {
+  const f = await fixture();
+  try {
+    const many = Array.from({ length: 160 }, (_, i) => `- Idea ${i}: ${"something worth doing later ".repeat(7)}`);
+    await f.put("tasks.md", TASKS.replace("- Add TLS.", `- Add TLS.\n${many.join("\n")}`));
+    const session = await f.create();
+    await f.start(session.id, "hello");
+    let brief = briefOf(f.provider.requests.at(-1)!);
+    assert.match(brief, /- Watching nginx restarts\. Next: check the logs at the next run\./);
+    assert.match(brief, /\*\*Rotate the notes password\?\*\*/);
+    assert.match(brief, /## To do\n\(161 entries: read `\.mind\/tasks\.md` when you need them\)/);
+    assert.doesNotMatch(brief, /Idea 12:/);
+    // Under the safety net but heavy: everything is given, with one line asking for a tidy.
+    await f.put("tasks.md", TASKS.replace("- Add TLS.", `- Add TLS.\n${many.slice(0, 110).join("\n")}`));
+    await f.start(session.id, "again");
+    brief = briefOf(f.provider.requests.at(-1)!);
+    assert.match(brief, /Idea 12:/);
+    assert.match(brief, /What you keep here is getting heavy to read at the start of every run/);
   } finally {
     await f.cleanup();
   }
@@ -396,14 +518,19 @@ test("mind store: Done lately is trimmed, unlinked attachments go after a week, 
     assert.deepEqual((await readdir(join(m.dir, "attachments"))).sort(), ["linked report.txt", "new.txt"]);
     assert.deepEqual(await m.problems(), [".mind/stray.txt is not part of the layout: move it to .mind/attachments/ or out of .mind."]);
     assert.match(await readFile(join(m.dir, ".gitignore"), "utf8"), /^\*$/m);
-    // Questions already shown are remembered only while they are still waiting.
+    // A question is due once; put off, it is due again when its time has passed; remembered only while waiting.
     await writeFile(join(m.dir, "tasks.md"), TASKS);
     const [question] = questions(TASKS);
-    assert.deepEqual(await m.markAsked([question!.id]), [question!.id]);
-    assert.deepEqual(await m.markAsked([question!.id]), []);
+    const id = question!.id;
+    assert.deepEqual(await m.takeDue([id]), [id]);
+    assert.deepEqual(await m.takeDue([id]), []);
+    await m.defer([id], Date.now() + 60_000);
+    assert.deepEqual(await m.takeDue([id]), []);
+    assert.deepEqual(await m.takeDue([id], Date.now() + 61_000), [id]);
+    assert.deepEqual(await m.takeDue([id], Date.now() + 120_000), []);
     await writeFile(join(m.dir, "tasks.md"), EMPTY_TASKS);
     await m.sweep();
-    assert.deepEqual(await m.asked(), {});
+    assert.deepEqual(await m.questionState(), { asked: {}, later: {} });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

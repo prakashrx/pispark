@@ -105,3 +105,12 @@ export function section(content: string, heading: string): string {
 
 /** A question as one line of plain text, for a notification or a dialog title. */
 export const spoken = (text: string) => plain(text.replace(/\*\*/g, ""));
+
+/** Just the question: its bold part, else up to its question mark, else its first words. */
+export function headline(text: string): string {
+  const bold = /\*\*(.+?)\*\*/.exec(text)?.[1];
+  if (bold) return spoken(bold);
+  const said = spoken(text);
+  const mark = said.indexOf("?");
+  return mark > 0 && mark < 200 ? said.slice(0, mark + 1) : said.length > 120 ? `${said.slice(0, 117)}…` : said;
+}
