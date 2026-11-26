@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { check, FOLDER, kindOf, NOTES, pageHead, skillHead, TASKS } from "./layout.js";
 import { questions, trimDone } from "./tasks.js";
@@ -30,6 +30,28 @@ export interface Change {
 interface Version extends Change {
   file: string;
   before: string | null;
+}
+
+/**
+ * One spelling for one file: its real path, through links and Windows short names. For a file
+ * that isn't there yet, its nearest existing folder's real path and then its name.
+ */
+export function canonical(path: string): string {
+  const full = resolve(path);
+  let real: string;
+  try {
+    real = realpathSync.native(full);
+  } catch {
+    const parent = dirname(full);
+    real = parent === full ? full : join(canonical(parent), basename(full));
+  }
+  return real;
+}
+
+/** Where a path is inside a folder, with forward slashes; nothing when it is outside (or is the folder). Case is ignored on Windows, as Node's `relative` does there. */
+export function within(dir: string, path: string): string | undefined {
+  const rel = relative(canonical(dir), canonical(path));
+  return !rel || rel.startsWith("..") || /^[A-Za-z]:/.test(rel) ? undefined : rel.split(sep).join("/");
 }
 
 /**
@@ -66,8 +88,7 @@ export class Mind {
   }
   /** A path's place inside the folder, with forward slashes; nothing when it is outside. */
   rel(file: string): string | undefined {
-    const rel = relative(this.dir, file);
-    return !rel || rel.startsWith("..") || /^[A-Za-z]:/.test(rel) ? undefined : rel.split(sep).join("/");
+    return within(this.dir, file);
   }
   text(rel: string): Promise<string | undefined> {
     return readText(join(this.dir, rel));

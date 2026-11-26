@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { readFile, rename, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { basename, dirname, join, relative } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { canonical, within, write } from "./store.js";
 
 /**
  * Where what the person says already belongs. Their lasting instructions go into the files they
@@ -24,12 +25,9 @@ const SESSION_REQUEST = "pispark:session-request";
 /** The instruction file started for an agent that has none of its own. */
 const STARTED = "standing";
 
-const key = (file: string) => (process.platform === "win32" ? resolve(file).toLowerCase() : resolve(file));
+const key = (file: string) => (process.platform === "win32" ? canonical(file).toLowerCase() : canonical(file));
 const samePath = (a: string, b: string) => key(a) === key(b);
-const inside = (dir: string, file: string) => {
-  const rel = relative(key(dir), key(file));
-  return !!rel && !rel.startsWith("..") && !/^[a-z]:/i.test(rel);
-};
+const inside = (dir: string, file: string) => within(dir, file) !== undefined;
 
 /** The agent this session uses, as PiSpark names it. Nothing outside PiSpark. */
 function agentId(pi: ExtensionAPI): string | undefined {
@@ -107,7 +105,5 @@ export async function select(file: string): Promise<void> {
   const selected = Array.isArray(definition.resources.instructions) ? definition.resources.instructions : [];
   if (selected.includes(`local:${name}`)) return;
   definition.resources.instructions = [...selected, `local:${name}`];
-  const temporary = `${definitionFile}.${process.pid}.tmp`;
-  await writeFile(temporary, JSON.stringify(definition, null, 2) + "\n", "utf8");
-  await rename(temporary, definitionFile);
+  await write(definitionFile, JSON.stringify(definition, null, 2) + "\n");
 }

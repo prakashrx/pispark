@@ -1,10 +1,10 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { brief } from "./brief.js";
 import { findHomes, homeOf, type Homes, select } from "./homes.js";
 import { check, FOLDER, NOTES, refusePath, TASKS } from "./layout.js";
-import { Mind } from "./store.js";
+import { Mind, write } from "./store.js";
 import { questions, section, spoken, withAnswer } from "./tasks.js";
 
 /**
@@ -156,7 +156,7 @@ export default function mind(pi: ExtensionAPI) {
     const reason = change.rel && after !== undefined ? check(change.rel, after) : undefined;
     if (reason) {
       if (change.before === undefined) await rm(change.file, { force: true });
-      else await writeFile(change.file, change.before, "utf8");
+      else await write(change.file, change.before);
       return { content: [{ type: "text" as const, text: `Not saved: the file was put back as it was. ${reason}` }], isError: true };
     }
     await m.keep(change.file, change.before, change.label);

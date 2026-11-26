@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -186,6 +186,24 @@ test("mind: writes are checked against the layout and refused with the reason; g
     assert.match(brief, /- nginx\.md: nginx\. How nginx is set up here and why\./);
     assert.match(brief, /- Watching nginx restarts\. Next: check the logs at the next run\./);
     assert.doesNotMatch(brief, /Not written yet/);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("mind: a write through another name for the same folder is checked and kept the same way", async () => {
+  const f = await fixture();
+  try {
+    // A second name for the place, like a link or a Windows short name.
+    const alias = join(f.root, "alias");
+    await symlink(f.place, alias, "junction");
+    const session = await f.create();
+    await f.start(session.id, call("write", { path: join(alias, ".mind", "notes.md"), content: "# Notes\nNot the layout.\n" }));
+    assert.match(sessionText(f.runtime, session.id), /Not saved\. notes\.md has exactly these sections/);
+    assert.ok(!existsSync(f.file("notes.md")));
+    await f.start(session.id, call("write", { path: join(alias, ".mind", "notes.md"), content: NOTES }));
+    await f.start(session.id, call("edit", { path: join(alias, ".mind", "notes.md"), edits: [{ oldText: "port 8080", newText: "port 9090" }] }));
+    assert.deepEqual((await new Mind(f.place).changes()).map((c) => [c.label, c.created]), [[".mind/notes.md", false], [".mind/notes.md", true]]);
   } finally {
     await f.cleanup();
   }
