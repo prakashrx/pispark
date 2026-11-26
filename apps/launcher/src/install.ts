@@ -10,6 +10,17 @@ export const VERSION = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
 /** An install's name: lowercase letters, digits and dashes. */
 export const NAME = /^[a-z0-9][a-z0-9-]{0,19}$/;
 
+/** A release list is fetched over HTTPS; plain HTTP only from this machine, for test feeds. */
+function safeReleasesUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.username || url.password) return false;
+    return url.protocol === "https:" || (url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost"));
+  } catch {
+    return false;
+  }
+}
+
 /** How an install is called on the machine: the main one "PiSpark", a named one "PiSpark (dev)". */
 export function identity(name?: string) {
   return {
@@ -165,7 +176,7 @@ export class Install {
         ...(typeof saved.home === "string" && saved.home ? { home: saved.home } : {}),
         ...(typeof saved.kept === "string" && VERSION.test(saved.kept) ? { kept: saved.kept } : {}),
         ...(typeof saved.name === "string" && NAME.test(saved.name) ? { name: saved.name } : {}),
-        ...(typeof saved.releases === "string" && /^https?:\/\//.test(saved.releases) ? { releases: saved.releases } : {}),
+        ...(typeof saved.releases === "string" && safeReleasesUrl(saved.releases) ? { releases: saved.releases } : {}),
       };
     } catch {
       return fallback;

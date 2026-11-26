@@ -62,8 +62,16 @@ test("install folder: current points at a version, choices persist, old versions
   assert.equal(Install.of(Release.at(install.release("0.4.2")))?.root, root);
 
   assert.deepEqual(install.choices(), { channel: "stable", port: 3000, autoUpdate: false });
-  install.choose({ channel: "latest", port: 3100, home: "/data" });
-  assert.deepEqual(install.choices(), { channel: "latest", port: 3100, autoUpdate: false, home: "/data" });
+  install.choose({ channel: "latest", port: 3100, home: "/data", releases: "https://releases.example.test/list" });
+  assert.deepEqual(install.choices(), { channel: "latest", port: 3100, autoUpdate: false, home: "/data", releases: "https://releases.example.test/list" });
+  for (const releases of ["http://releases.example.test/list", "https://example.test@evil.test/list"]) {
+    writeFileSync(join(root, "state.json"), JSON.stringify({ releases }));
+    assert.equal(install.choices().releases, undefined);
+  }
+  for (const releases of ["http://127.0.0.1:1234/list", "http://localhost/list"]) {
+    writeFileSync(join(root, "state.json"), JSON.stringify({ releases }));
+    assert.equal(install.choices().releases, releases);
+  }
   writeFileSync(join(root, "state.json"), JSON.stringify({ channel: "beta", port: 99999, autoUpdate: "yes" }));
   assert.deepEqual(install.choices(), { channel: "stable", port: 3000, autoUpdate: false });
 
