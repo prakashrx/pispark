@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, parse, relative, resolve } from "node:path";
 import { RELEASE_CHANNELS, type ReleaseChannel } from "../../server/src/contract/host-protocol.ts";
 import { callControl, type ControlStatus } from "./control.ts";
 import { Daemon } from "./daemon.ts";
@@ -143,8 +143,18 @@ async function setup(args: string[]) {
   if (!flag(args, "no-open") && !openWindow(s.address)) console.log(`Open ${s.address} in your browser.`);
 }
 
+/** The data folder `--purge` may delete: an absolute folder that is not a drive root and does not hold the home folder. */
+function purgeable(folder: string): string {
+  const data = resolve(folder);
+  const toHome = relative(data, homedir());
+  const holdsHome = !toHome || (!toHome.startsWith("..") && !isAbsolute(toHome));
+  if (!isAbsolute(folder) || data === parse(data).root || holdsHome) throw new Error(`Refusing to delete the data folder ${folder}: it must be a folder of its own`);
+  return data;
+}
+
 async function uninstall(args: string[]) {
   const { install } = located();
+  const data = flag(args, "purge") ? purgeable(install.choices().home ?? join(homedir(), ".pispark")) : undefined;
   if (underSystemdInstalled(install)) systemd(install, "stop");
   if (await status(install)) {
     await callControl(install.root, { cmd: "stop" });
@@ -153,10 +163,8 @@ async function uninstall(args: string[]) {
   disableAutostart(install);
   removeStartMenu(install);
   removeCommand(install);
-  const home = install.choices().home;
   console.log(`Removing ${install.root}`);
-  if (flag(args, "purge")) {
-    const data = home ?? join(process.env.USERPROFILE ?? process.env.HOME ?? "", ".pispark");
+  if (data) {
     console.log(`Removing your data in ${data}`);
     rmSync(data, { recursive: true, force: true });
   } else console.log("Your data (sessions, agents, settings) is kept.");
