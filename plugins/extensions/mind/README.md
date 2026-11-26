@@ -1,6 +1,6 @@
 # mind
 
-**Experimental.** What an agent keeps for itself in the place it works in, so that you don't repeat yourself and it can carry its own work across sessions and unattended runs. Add it to an agent with `bundled:mind`.
+What an agent keeps for itself in the place it works in, so that you don't repeat yourself and it can carry its own work across sessions and unattended runs. Add it to an agent with `bundled:mind`.
 
 ## What you say goes where you'd have put it yourself
 
