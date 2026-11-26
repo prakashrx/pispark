@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { Install, NAME, Release, ensureWindowless, identity, windows } from "../src/install.ts";
 import { expectedSum, find, pick } from "../src/updates.ts";
+import { openLog, trimLog } from "../src/supervisor.ts";
 
 const release = (tag: string, prerelease: boolean, names = ["linux-x64", "win-x64"]) => ({
   tag_name: `v${tag}`,
@@ -144,4 +145,23 @@ test("a named install is called apart from the main one everywhere it registers"
   assert.deepEqual(identity("dev"), { label: "PiSpark (dev)", run: "PiSpark-dev", unit: "pispark-dev.service", command: "pispark-dev" });
   for (const good of ["dev", "test-2", "a"]) assert.ok(NAME.test(good), good);
   for (const bad of ["", "Dev", "-dev", "dev/x", "a".repeat(21), "dev test"]) assert.ok(!NAME.test(bad), bad);
+});
+
+test("a log past 5 MB moves to .1 while its writer keeps appending at the start", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "pispark-log-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = join(root, "server.log");
+  const log = openLog(file);
+  try {
+    writeSync(log, "x".repeat(5 * 1024 * 1024));
+    trimLog(file);
+    assert.equal(existsSync(`${file}.1`), false, "not past the limit yet");
+    writeSync(log, "y");
+    trimLog(file);
+    assert.equal(statSync(`${file}.1`).size, 5 * 1024 * 1024 + 1);
+    writeSync(log, "after");
+    assert.equal(readFileSync(file, "utf8"), "after");
+  } finally {
+    closeSync(log);
+  }
 });
