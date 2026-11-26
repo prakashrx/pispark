@@ -577,6 +577,17 @@ async function workspaceStream(base: string) {
   return { events, close: () => controller.abort() };
 }
 
+test("open workspace streams leave room for session streams", async (t) => {
+  const f = await fixture(t);
+  const id = await f.create("a");
+  const workspace = await Promise.all(Array.from({ length: 16 }, () => workspaceStream(f.base)));
+  t.after(() => workspace.forEach((stream) => stream.close()));
+  const controller = new AbortController();
+  const session = await fetch(`${f.base}/api/sessions/${id}/live`, { signal: controller.signal });
+  controller.abort();
+  assert.equal(session.status, 200);
+});
+
 test("the workspace stream says which areas changed, soon after a session changes, and nothing while nothing does", async (t) => {
   const f = await fixture(t);
   const stream = await workspaceStream(f.base);

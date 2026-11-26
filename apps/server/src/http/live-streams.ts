@@ -22,6 +22,7 @@ export class LiveStreams {
   /** Open streams, and the paired device each one is for. */
   private readonly streams = new Map<ServerResponse, string | undefined>();
   private workspaceStreams = 0;
+  private sessionStreams = 0;
 
   constructor(
     private readonly runtime: SessionRuntime,
@@ -43,8 +44,7 @@ export class LiveStreams {
    * reconnects, gets a fresh snapshot and fetches only the history it is missing.
    */
   async session(id: string, response: ServerResponse, device?: string) {
-    // Session streams count every open stream, workspace ones included.
-    if (this.streams.size >= MAX_STREAMS) throw new RuntimeError("limit");
+    if (this.sessionStreams >= MAX_STREAMS) throw new RuntimeError("limit");
     let observation;
     try {
       observation = this.runtime.observeLive(id);
@@ -55,6 +55,7 @@ export class LiveStreams {
       response.end(frame("unloaded", { type: "unloaded", sessionId: id } satisfies LiveEvent));
       return;
     }
+    this.sessionStreams++;
     this.streams.set(response, device);
     const close = () => observation.events.close();
     response.once("close", close);
@@ -98,6 +99,7 @@ export class LiveStreams {
       clearTimeout(timer);
       clearTimeout(lifetime);
       close();
+      this.sessionStreams--;
       this.streams.delete(response);
       response.off("close", close);
     }
