@@ -33,8 +33,8 @@ interface Version extends Change {
 }
 
 /**
- * Replaces a file whole. On Windows a rename fails while another reader has the file open for a
- * moment, so it is tried again a few times.
+ * Replaces a file whole. On Windows a rename fails while another reader (an indexer, a virus
+ * scanner) has the file open for a moment, so it is tried again for up to about four seconds.
  */
 export async function write(file: string, content: string): Promise<void> {
   await mkdir(dirname(file), { recursive: true });
@@ -45,11 +45,11 @@ export async function write(file: string, content: string): Promise<void> {
       return await rename(temporary, file);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (attempt >= 8 || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) {
+      if (attempt >= 20 || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) {
         await rm(temporary, { force: true });
         throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, 15 * (attempt + 1)));
+      await new Promise((resolve) => setTimeout(resolve, Math.min(250, 25 * (attempt + 1))));
     }
   }
 }

@@ -167,8 +167,11 @@ test("mind: writes are checked against the layout and refused with the reason; g
     const view = () => f.runtime.session(session.id).extensions.views.find((v) => v.point === "session.view" && v.key === "mind")!;
     type Snapshot = { changes: { id: string; label: string; created: boolean }[]; pages: { name: string; summary: string }[]; notes: string };
     const snapshot = () => (view().props as { snapshot: Snapshot }).snapshot;
-    await eventually(() => snapshot().changes.length === 5);
-    assert.deepEqual(snapshot().changes.map((c) => [c.label, c.created]), [[".mind/attachments/report.txt", true], [".mind/notes/nginx.md", true], [".mind/notes.md", false], [".mind/tasks.md", true], [".mind/notes.md", true]]);
+    const expected = [[".mind/attachments/report.txt", true], [".mind/notes/nginx.md", true], [".mind/notes.md", false], [".mind/tasks.md", true], [".mind/notes.md", true]];
+    assert.deepEqual((await new Mind(f.place).changes()).map((c) => [c.label, c.created]), expected, "every change is kept");
+    // The view shows them once its component has compiled, which can take a while on a cold machine.
+    await eventually(() => !!view() && snapshot().changes.length === 5, 20_000);
+    assert.deepEqual(snapshot().changes.map((c) => [c.label, c.created]), expected);
     assert.deepEqual(snapshot().pages, [{ name: "nginx", title: "nginx", summary: "How nginx is set up here and why." }]);
     assert.equal(await f.runtime.call(session.id, "session.view", "mind", "page", { name: "nginx" }), "# nginx\nHow nginx is set up here and why.\n\nDetail.\n");
     assert.equal(await f.runtime.call(session.id, "session.view", "mind", "undo", { id: snapshot().changes[2]!.id }), ".mind/notes.md");
@@ -323,7 +326,7 @@ test("mind: the view answers a question too, and a question can't be answered tw
     type Snapshot = { waiting: { id: string; text: string; answer?: string }[]; doing: string; done: string };
     const snapshot = () => (view().props as { snapshot: Snapshot }).snapshot;
     // The view is offered once its component has compiled.
-    await eventually(() => !!view() && snapshot().waiting.length === 1);
+    await eventually(() => !!view() && snapshot().waiting.length === 1, 20_000);
     assert.equal(view().title, "Mind");
     assert.match(snapshot().doing, /Watching nginx restarts/);
     assert.match(snapshot().done, /2026-11-25: Fixed the backup path/);
