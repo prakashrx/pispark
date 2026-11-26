@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, EventBus, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage, Provider } from "@earendil-works/pi-ai";
-import { HOLD_CHANNEL, NOTICE_ENTRY, type HoldRequest, type ReadOnlyReason, type ItemsPage, type LiveDoc, type PartPage, type PendingSetup, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
+import { NOTICE_ENTRY, type ReadOnlyReason, type ItemsPage, type LiveDoc, type PartPage, type PendingSetup, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
 import { ExtensionUI } from "../extensions/extension-ui.js";
 import { ExtensionRendering } from "../extensions/extension-render.js";
 import { ExtensionViews } from "../extensions/views.js";
@@ -15,11 +15,11 @@ import type { ModelChoice } from "../../contract/provider-protocol.js";
 import { sessionTitle } from "../../contract/session-title.js";
 import { toolSessionTitle } from "./session-title.js";
 import { attachedImages, sentAttachmentNames, namingFiles } from "./attachments.js";
-import { validItemName } from "../agents/format.js";
-import { PROCESS_CHANNEL, validProcessMessage, type ProcessRequest } from "./process-tool.js";
-import { ExtensionRevisions, extensionNameValid, type ExtensionChange } from "./extension-revisions.js";
+import type { ProcessRequest } from "./process-tool.js";
+import { ExtensionRevisions, type ExtensionChange } from "./extension-revisions.js";
+import { SessionRequests } from "./session-requests.js";
 import type { SetupChange } from "./setup-changes.js";
-import { EXTENSION_CHANNEL, EXTENSION_TOOL, type ExtensionMessage } from "./extension-tool.js";
+import { EXTENSION_TOOL } from "./extension-tool.js";
 import { createSessionServices, resolveFolder } from "./configuration.js";
 import { providerUsageLimited, deadline, replyFailure, RuntimeError, runtimeError, unsupported } from "./errors.js";
 import type { RuntimeErrorCode } from "./errors.js";
@@ -33,15 +33,9 @@ import type { RunSlots } from "./run-slots.js";
 import type { SessionMetadata, SessionStorage } from "./storage.js";
 import { STATUS_ENTRY, WOKEN_ENTRY, type StatusDetails, type WokenDetails } from "../../contract/wake-protocol.js";
 import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
-import { describeSchedule, parseCron } from "../../contract/cron.js";
-import { SCHEDULE_CHANNEL, validMessage, type ScheduleAnswer, type ScheduleMessage } from "./schedule-tool.js";
 import {
   CHILD_ENDED_CHANNEL,
   REPORT_TOOL,
-  RESULT_CHANNEL,
-  SESSION_CHANNEL,
-  validResultData,
-  validSessionMessage,
   type ChildEnded,
   type SessionRequest,
   type ToolAnswer,
@@ -288,6 +282,8 @@ export class Session {
   resultData?: unknown;
   /** An extension asked to keep this session loaded; the agent does not allow it yet. */
   holdAsked?: { extension: string; reason: string };
+  /** What its tools and extensions ask of PiSpark on its bus. */
+  private readonly requests: SessionRequests;
 
   constructor(
     private readonly host: SessionHost,
@@ -298,6 +294,12 @@ export class Session {
   ) {
     this.metadata = metadata;
     this.published = reopening;
+    this.requests = new SessionRequests(this, host, {
+      ui: () => this.ui,
+      closed: () => this.closed,
+      cancelled: () => !!this.run?.cancelled,
+      inspect: () => this.inspect(),
+    });
   }
 
   get id(): string {
@@ -490,27 +492,60 @@ export class Session {
     }
   }
 
+  /**
+   * Opens the session: what it needs to run (folder, agent, model), its history, its extensions and
+   * Pi's agent session, then the extensions bound in Pi's mode for clients that are not a terminal.
+   */
   private async initialize(): Promise<SessionDoc> {
-    const { metadata, host } = this;
     const reopening = this.published;
-    // What the session needs to run. When one of them can't be had, a session with a past opens to be read.
+    const needs = await this.needs(reopening);
+    if (typeof needs === "string") return this.openReadOnly(needs);
+    const { cwd, setup, model } = needs;
+    const { dir, manager } = this.openHistory(cwd, setup, model, reopening);
+    // Before extensions load: they may place components and raise notices while loading.
+    const ui = this.createUi(cwd);
+    const { extensionPaths, views } = this.loadExtensions(setup, ui);
+    const services = await this.services(setup, extensionPaths, views, cwd, dir, model);
+    const session = await this.createPi(services, manager, setup, cwd, dir, reopening);
+    this.unsubscribe = session.subscribe((event) => this.onEvent(event));
+    const rendering = new ExtensionRendering(session, () => this.changed());
+    this.items = new ItemProjector(session, rendering, (customType) => views.has(`item.custom:${customType}`));
+    await this.bindExtensions(session, ui);
+    await views.finishActivation().catch(() => {
+      throw new RuntimeError("extension");
+    });
+    if (this.error) throw new RuntimeError(this.error);
+    if (this.closed) throw new RuntimeError("timeout");
+    return this.opened(setup, services.resourceLoader, reopening);
+  }
+
+  /**
+   * The folder, agent and model the session runs with. When one of them can't be had, a session with a
+   * past opens to be read: the answer is which one.
+   */
+  private async needs(reopening: boolean): Promise<{ cwd: string; setup: Setup; model: Awaited<ReturnType<SessionHost["model"]>> } | ReadOnlyReason> {
+    const { metadata, host } = this;
     let step: ReadOnlyReason = "folder";
-    let cwd: string, setup: Setup, model: Awaited<ReturnType<SessionHost["model"]>>;
     try {
-      cwd = await resolveFolder(metadata.cwd);
+      const cwd = await resolveFolder(metadata.cwd);
       step = "agent";
+      let setup: Setup;
       try {
         setup = host.setup(metadata);
       } catch {
         throw new RuntimeError("agent");
       }
       step = "model";
-      model = await host.model(metadata, setup);
+      return { cwd, setup, model: await host.model(metadata, setup) };
     } catch (error) {
-      if (reopening && host.accepting()) return this.openReadOnly(step);
+      if (reopening && host.accepting()) return step;
       throw error;
     }
-    const { managed, fixed } = model;
+  }
+
+  /** Records what the session runs with and opens Pi's transcript of it, or a new one. */
+  private openHistory(cwd: string, setup: Setup, { managed, fixed }: Awaited<ReturnType<SessionHost["model"]>>, reopening: boolean) {
+    const { metadata, host } = this;
     metadata.model = managed ? managed.choice : { provider: fixed!.provider.id, id: fixed!.id };
     metadata.cwd = cwd;
     const dir = host.storage.prepare(metadata.id);
@@ -524,8 +559,12 @@ export class Session {
     metadata.active = true;
     metadata.setup = setup.fingerprint;
     if (reopening) host.storage.write(metadata);
-    // Before extensions load: they may place components and raise notices while loading.
-    const ui = (this.ui = new ExtensionUI({
+    return { dir, manager };
+  }
+
+  /** What its extensions show and ask through Pi's `ctx.ui`; notices are kept in the session's history once it is open. */
+  private createUi(cwd: string): ExtensionUI {
+    return (this.ui = new ExtensionUI({
       changed: () => this.changed(),
       position: () => this.pi?.messages.length ?? 0,
       cwd,
@@ -539,31 +578,41 @@ export class Session {
         return true;
       },
     }));
+  }
+
+  /** The extensions to load: the agent's, and the session's own active (or about to be activated) revisions. */
+  private loadExtensions(setup: Setup, ui: ExtensionUI): { extensionPaths: string[]; views: ExtensionViews } {
+    const { host } = this;
     const revisions = this.extensionRevisions;
     const candidates = host.extensionCandidate?.(this.id);
     const active = candidates ?? revisions.read().active;
     const activating = candidates?.find((change) => change.revision === host.extensionPending?.(this.id));
     for (const change of active) revisions.verify(change);
     const extensionPaths = [...setup.extensionPaths, ...active.map((change) => revisions.loadPath(change))];
-    const development = !setup.toolsOff.includes(EXTENSION_TOOL);
     const views = (this.views = new ExtensionViews(
       extensionPaths.map((path) => dirname(path)),
       {
-        changed: () => this.changed(), failed: (message) => ui.failed(message),
-        callTimeoutMs: host.callTimeout, points: host.points,
+        changed: () => this.changed(),
+        failed: (message) => ui.failed(message),
+        callTimeoutMs: host.callTimeout,
+        points: host.points,
         ...(activating ? { activationFolder: dirname(revisions.loadPath(activating)) } : {}),
       },
     ));
-    const services = await createSessionServices({
+    return { extensionPaths, views };
+  }
+
+  /** Pi's services for this session, with PiSpark's admission hooks and its requests on the session's bus. */
+  private services(setup: Setup, extensionPaths: string[], views: ExtensionViews, cwd: string, dir: string, { managed, fixed }: Awaited<ReturnType<SessionHost["model"]>>) {
+    const { metadata, host } = this;
+    const development = !setup.toolsOff.includes(EXTENSION_TOOL);
+    return createSessionServices({
       // A session started by another session cannot start sessions: one level only. Only one in
       // status mode raises things with its parent.
       setup: {
         ...setup,
         extensionPaths,
-        toolsOff: [
-          ...setup.toolsOff,
-          ...(metadata.parent && metadata.report === "status" ? [] : [REPORT_TOOL]),
-        ],
+        toolsOff: [...setup.toolsOff, ...(metadata.parent && metadata.report === "status" ? [] : [REPORT_TOOL])],
       },
       cwd,
       agentDir: join(dir, "pi"),
@@ -599,25 +648,20 @@ export class Session {
           this.changed();
         },
         views,
-        schedules: { bind: (bus) => bus.on(SCHEDULE_CHANNEL, (message) => this.scheduleRequest(message)) },
+        schedules: { bind: (bus) => this.requests.bindSchedules(bus) },
         sessions: {
           bind: (bus) => {
             this.bus = bus;
-            const off = [
-              bus.on(SESSION_CHANNEL, (message) => this.sessionRequest(message)),
-              ...(development ? [bus.on(EXTENSION_CHANNEL, (message) => void this.extensionRequest(message))] : []),
-              bus.on(HOLD_CHANNEL, (message) => this.holdRequest(message)),
-              bus.on(PROCESS_CHANNEL, (message) => this.processRequest(message)),
-              bus.on(RESULT_CHANNEL, (message) => {
-                const data = (message as { data?: unknown } | undefined)?.data;
-                if (validResultData(data)) this.resultData = structuredClone(data);
-              }),
-            ];
-            return () => off.forEach((each) => each());
+            return this.requests.bind(bus, development);
           },
         },
       },
     });
+  }
+
+  /** Pi's agent session on the transcript, at the session's model and thinking level. */
+  private async createPi(services: Awaited<ReturnType<typeof createSessionServices>>, manager: SessionManager, setup: Setup, cwd: string, dir: string, reopening: boolean): Promise<AgentSession> {
+    const { metadata } = this;
     // The level chosen for this session wins over its agent's.
     const thinkingLevel = metadata.thinking ?? setup.settings.thinking ?? "off";
     let session: AgentSession;
@@ -642,13 +686,13 @@ export class Session {
       throw error;
     }
     this.pi = session;
-    if (session.model?.provider !== metadata.model.provider || session.model?.id !== metadata.model.id)
-      throw new RuntimeError("configuration");
+    if (session.model?.provider !== metadata.model!.provider || session.model?.id !== metadata.model!.id) throw new RuntimeError("configuration");
     if (this.error) throw new RuntimeError(this.error);
-    this.unsubscribe = session.subscribe((event) => this.onEvent(event));
-    const rendering = new ExtensionRendering(session, () => this.changed());
-    this.items = new ItemProjector(session, rendering, (customType) => views.has(`item.custom:${customType}`));
-    // Pi's mode for clients that are not a terminal: dialogs and notices work, terminal components don't.
+    return session;
+  }
+
+  /** Binds the extensions in Pi's mode for clients that are not a terminal: dialogs and notices work, terminal components don't. */
+  private async bindExtensions(session: AgentSession, ui: ExtensionUI): Promise<void> {
     await session.bindExtensions({
       mode: "rpc",
       uiContext: ui.context,
@@ -686,18 +730,20 @@ export class Session {
         this.changed();
       },
     });
-    await views.finishActivation().catch(() => { throw new RuntimeError("extension"); });
-    if (this.error) throw new RuntimeError(this.error);
-    if (this.closed) throw new RuntimeError("timeout");
+  }
+
+  /** The session is open: what it loaded is noted, it is saved and published, and a waiting prompt rejoins the queue. */
+  private opened(setup: Setup, resources: Awaited<ReturnType<typeof createSessionServices>>["resourceLoader"], reopening: boolean): SessionDoc {
+    const { metadata, host } = this;
     this.extensionPaths = setup.extensionPaths;
-    const resources = services.resourceLoader;
     this.resources = {
       skills: resources.getSkills().skills.map(({ name, filePath }) => ({ name, filePath })),
       prompts: resources.getPrompts().prompts.map(({ name }) => name),
       context: resources.getAgentsFiles().agentsFiles.map(({ path }) => path),
-      extensions: resources.getExtensions().extensions.filter((extension) => !extension.path.startsWith("<inline:")).map((extension) => ({
-        path: extension.path, tools: [...extension.tools.keys()], commands: [...extension.commands.keys()],
-      })),
+      extensions: resources
+        .getExtensions()
+        .extensions.filter((extension) => !extension.path.startsWith("<inline:"))
+        .map((extension) => ({ path: extension.path, tools: [...extension.tools.keys()], commands: [...extension.commands.keys()] })),
       instructionLayers: setup.instructions.length,
     };
     this.reportTools();
@@ -731,58 +777,6 @@ export class Session {
     return this.doc();
   }
 
-  /** An extension asks to keep this session loaded, or lets go (`HOLD_CHANNEL`). */
-  private holdRequest(value: unknown): void {
-    const message = value as HoldRequest | undefined;
-    const reply = typeof message?.reply === "function" ? message.reply : () => {};
-    if (
-      !message ||
-      typeof message !== "object" ||
-      !validItemName(message.extension) ||
-      typeof message.hold !== "boolean" ||
-      (message.hold && (typeof message.reason !== "string" || !message.reason.trim() || message.reason.length > 200))
-    )
-      return reply({ state: "refused", text: "Give the extension's name, hold, and (to hold) a short reason." });
-    const answer = this.host.hold?.(this, { extension: message.extension, hold: message.hold, reason: message.reason?.trim() ?? "" }) ?? {
-      state: "refused" as const,
-      text: "Holding is not available here.",
-    };
-    reply(answer);
-  }
-  /** The built-in process tool (or an extension in this session): its own processes and its children's. */
-  private processRequest(value: unknown): void {
-    if (!validProcessMessage(value)) return;
-    value.taken = true;
-    const processes = this.host.processes;
-    void (processes ? processes.request(this.id, value.request, value.signal) : Promise.resolve({ ok: false, text: "Background processes are not available here." }))
-      .catch((error: unknown) => ({ ok: false, text: `That did not work (${runtimeError(error, "execution").code}).` }))
-      .then((answer) => value.reply(answer));
-  }
-  /** The built-in session tool (or an extension in this session): its own children only. */
-  private sessionRequest(value: unknown): void {
-    if (!validSessionMessage(value)) return;
-    value.taken = true;
-    if (value.request.action === "inspect") {
-      try { value.reply({ ok: true, text: this.inspect() }); }
-      catch { value.reply({ ok: false, text: "Cannot read this session's extension state." }); }
-      return;
-    }
-    if (value.request.action === "reload") {
-      const scheduled = !this.closed && this.published && !!this.host.requestSetup?.(this, { asked: "pispark_session (reload)" });
-      value.reply(scheduled
-        ? { ok: true, text: "The session reloads when this turn ends, picking up its agent's current setup, and you get the outcome as a new message. End your turn now rather than checking." }
-        : { ok: false, text: "This session cannot reload now." });
-      return;
-    }
-    if (this.metadata.parent && value.request.action !== "report") {
-      value.reply({ ok: false, text: "Child sessions cannot manage other sessions." });
-      return;
-    }
-    const sessions = this.host.sessions;
-    void (sessions ? sessions.request(this.id, value.request) : Promise.resolve({ ok: false, text: "Starting sessions is not available here." }))
-      .catch((error: unknown) => ({ ok: false, text: `That did not work (${runtimeError(error, "execution").code}).` }))
-      .then((answer) => value.reply(answer));
-  }
   /**
    * Tells this session's extensions that one of its children ended or raised something, before the
    * agent hears of it. Their synchronous reply decides (see `CHILD_ENDED_CHANNEL`).
@@ -827,63 +821,6 @@ export class Session {
       viewStatus: "Contributions only; browser mounting is not verified.",
     }, null, 2);
   }
-  private async extensionRequest(value: unknown): Promise<void> {
-    const message = value as ExtensionMessage;
-    if (!message?.request || typeof message.reply !== "function") return;
-    message.taken = true;
-    const { request, signal, reply } = message;
-    const revisions = this.extensionRevisions;
-    try {
-      if (signal?.aborted || this.closed || !this.published || this.status !== "running") throw new Error("No active run.");
-      if (this.host.extensionPending?.(this.id)) throw new Error("A reload is already pending.");
-      if (this.extensionApproval) throw new Error("A revision is awaiting approval.");
-      const folder = this.host.storage.directory(this.id);
-      const draftRoot = join(folder, "extension-drafts");
-      const assertQueue = () => {
-        if (signal?.aborted || this.closed || this.run?.cancelled) throw new Error("The extension change cannot be scheduled while this turn is stopping.");
-      };
-      let change = revisions.read().staged;
-      if (request.action === "apply" || request.action === "unload") {
-        assertQueue();
-        if (!extensionNameValid(request.name)) throw new Error("Invalid extension name.");
-        const active = revisions.read().active.find((item) => item.name === request.name);
-        if (request.action === "unload" && !active) return reply("That extension is already unloaded.");
-        change = request.action === "apply"
-          ? revisions.stage(draftRoot, request.name, request.name, folder)
-          : revisions.stage(this.metadata.cwd, request.name);
-        if (active && change.snapshot === active.snapshot) {
-          const { staged, ...state } = revisions.read();
-          revisions.write(state);
-          return reply(`${change.name} is already active at revision ${active.revision}.`);
-        }
-      } else if (request.action === "stage" || request.action === "remove") {
-        if (!extensionNameValid(request.name) || (request.action === "stage" && !request.source)) throw new Error("Invalid extension name or source.");
-        const local = request.action === "stage" && request.scope === "session";
-        change = revisions.stage(local ? draftRoot : this.metadata.cwd, request.name, request.action === "stage" ? request.source : undefined, local ? folder : undefined);
-        return reply(`Staged ${change.name} at revision ${change.revision}. Active code has not changed.`);
-      }
-      if (!change || (request.action === "reload" && change.revision !== request.revision))
-        throw new Error("Give the exact currently staged revision.");
-      revisions.verify(change);
-      if (change.snapshot && change.scope !== "session") {
-        this.extensionApproval = true;
-        try {
-          const yes = await this.ui?.context.confirm("Activate this project extension in the session?", [
-            `${change.name} (${change.source})`,
-            `Revision: ${change.revision}`,
-            "Extension code runs with the host user's permissions.",
-          ].join("\n"));
-          if (!yes) return reply("Activation declined. The active revision is unchanged.");
-        } finally { this.extensionApproval = false; }
-      }
-      assertQueue();
-      const what = `${change.snapshot ? "activation" : "unload"} of ${change.name}`;
-      if (!this.host.requestSetup?.(this, { extension: change.revision, asked: `pispark_extension (${what} at revision ${change.revision})` }))
-        throw new Error("A reload is already pending.");
-      reply(`Scheduled ${what} when this turn ends. The session then reloads and you get the outcome as a new message; end your turn now rather than checking.`);
-    } catch (error) { reply((error as Error).message.slice(0, 500), true); }
-  }
-  private extensionApproval = false;
   /** The last run was cancelled or failed: what was asked for from inside it is not carried out. */
   get lastRunStopped(): boolean { return this.lastRunCancelled; }
   private lastRunCancelled = false;
@@ -928,51 +865,6 @@ export class Session {
     if (!result || !["completed", "cancelled", "failed"].includes(result.outcome)) return undefined;
     const answer = result.answerId ? answerOf(manager.getEntry(result.answerId)) : undefined;
     return { ...result, ...(answer ? { answer } : {}) };
-  }
-
-  /** The built-in schedule tool: list, remove, or add after the person says yes. */
-  private scheduleRequest(value: unknown): void {
-    if (!validMessage(value)) return;
-    const message: ScheduleMessage = value;
-    message.taken = true;
-    const schedules = this.host.schedules;
-    // Where each run goes and how it reports, as saved: the agent sees what was made, not what it asked for.
-    const where = (s: Schedule) => (s.run === "new" ? `as a new session, reports ${s.report ?? "status"}` : "in this session");
-    const answer = async (): Promise<ScheduleAnswer> => {
-      if (!schedules || !this.ui) return { ok: false, text: "Scheduling is not available here." };
-      const { request } = message;
-      const mine = schedules.of(this.id);
-      if (request.action === "list")
-        return {
-          ok: true,
-          text: mine.length
-            ? mine.map((s) => `${s.id}: ${describeSchedule(s)}, ${where(s)} (${s.on ? "on" : "off"}): ${s.prompt}`).join("\n")
-            : "This session has no schedules.",
-          schedules: mine,
-        };
-      if (request.action === "remove") {
-        if (!mine.some((s) => s.id === request.id)) return { ok: false, text: "This session has no schedule with that id." };
-        schedules.remove(request.id);
-        return { ok: true, text: "Schedule removed." };
-      }
-      const { input } = request;
-      const when = { cron: input.cron, at: input.at };
-      if (input.cron !== undefined ? !parseCron(input.cron) : Number.isNaN(new Date(input.at ?? "").getTime()) || new Date(input.at!).getTime() <= Date.now())
-        return { ok: false, text: "That is not a time that can be scheduled." };
-      const how = { ...(input.run !== undefined ? { run: input.run } : {}), ...(input.report !== undefined ? { report: input.report } : {}) };
-      const title = how.run === "new" ? "Schedule this as new sessions under this one?" : "Schedule this in this session?";
-      const yes = await this.ui.context.confirm(title, `${describeSchedule(when)}: ${input.prompt ?? ""}`);
-      if (!yes) return { ok: true, text: "The person declined; nothing was scheduled." };
-      const added = schedules.add(this.id, { ...when, ...how, prompt: input.prompt }, "agent");
-      return {
-        ok: true,
-        text: `Scheduled: ${describeSchedule(added)}, ${where(added)} (id ${added.id}). The person can change it under Session info → Schedules.`,
-        schedule: added,
-      };
-    };
-    void answer()
-      .catch((error: unknown) => ({ ok: false, text: `Scheduling failed (${runtimeError(error, "execution").code}).` }))
-      .then((result) => message.reply(result));
   }
 
   private onEvent(event: Parameters<Parameters<AgentSession["subscribe"]>[0]>[0]): void {
