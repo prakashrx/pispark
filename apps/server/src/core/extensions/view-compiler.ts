@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
-import { basename, dirname, extname, isAbsolute, relative } from "node:path";
+import { basename, dirname, extname } from "node:path";
 import { build, transform, type Plugin } from "esbuild";
 import { compile, compileModule } from "svelte/compiler";
 import { SHARED_SVELTE } from "../../contract/shared-svelte.js";
+import { isInside } from "../files.js";
 
 /**
  * Turns an extension's Svelte component (and what it imports) into one browser module. Imports of
@@ -65,8 +66,7 @@ const assetFiles = (root: string): Plugin => ({
   setup(build) {
     build.onLoad({ filter: ASSET_FILTER }, async (args) => {
       const real = await realpath(args.path);
-      const rel = relative(root, real);
-      if (!rel || rel.startsWith("..") || isAbsolute(rel))
+      if (real === root || !isInside(root, real))
         return { errors: [{ text: `${basename(args.path)} is outside the extension's folder` }] };
       const data = await readFile(real);
       if (data.length > MAX_ASSET) return { errors: [{ text: `${basename(args.path)} is too large to load` }] };

@@ -36,7 +36,7 @@ function real(path: string): string {
 
 export function inside(path: string, folder: string): boolean {
   const rel = relative(folder, path);
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
 export function target(path: string, cwd: string): string {

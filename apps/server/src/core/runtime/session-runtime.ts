@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
 import { constants, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { copyFile } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { Provider } from "@earendil-works/pi-ai";
 import type { HostSettings, ItemsPage, LiveDoc, PartPage, SessionDoc, SessionFile } from "../../contract/protocol.js";
@@ -13,6 +13,7 @@ import type { SessionAgent, AgentSummary, AgentTarget } from "../../contract/age
 import type { ModelChoice } from "../../contract/provider-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { homePaths } from "../home.js";
+import { isInside } from "../files.js";
 import { AgentStore } from "../agents/store.js";
 import { bindingOf, listAgents, resolveSetup, type Setup } from "../agents/resolve.js";
 import { DEFAULT_AGENT, validAgentId } from "../agents/format.js";
@@ -295,12 +296,8 @@ export class SessionRuntime {
     } catch {
       /* No app has a folder yet. */
     }
-    const inApps = (folder: string) => {
-      const path = relative(apps, folder);
-      return !path.startsWith("..") && !isAbsolute(path);
-    };
     for (const session of this.storage.list().sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
-      if (session.cwd && !folders.includes(session.cwd) && !inApps(session.cwd)) {
+      if (session.cwd && !folders.includes(session.cwd) && !isInside(apps, session.cwd)) {
         folders.push(session.cwd);
         if (folders.length >= limit) break;
       }

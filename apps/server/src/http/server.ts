@@ -1,9 +1,10 @@
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { readFile, realpath, stat } from "node:fs/promises";
-import { extname, isAbsolute, relative, resolve } from "node:path";
+import { extname, resolve } from "node:path";
 
 import type { SessionHttp } from "./session-http.js";
 import { silentLogger, type SafeLogger } from "../core/logger.js";
+import { isInside } from "../core/files.js";
 
 const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -22,16 +23,6 @@ function json(response: ServerResponse, status: number, body: unknown) {
     "Content-Type": "application/json; charset=utf-8",
   });
   response.end(JSON.stringify(body));
-}
-
-function isInside(root: string, file: string) {
-  const path = relative(root, file);
-  return (
-    path !== ".." &&
-    !path.startsWith("../") &&
-    !path.startsWith("..\\") &&
-    !isAbsolute(path)
-  );
 }
 
 async function serveStatic(

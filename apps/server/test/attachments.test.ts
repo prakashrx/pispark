@@ -144,9 +144,12 @@ test("only images inside the session's own files folder are read as content", as
   const session = join(f.sessions, f.id);
   const outside = join(f.sessions, "outside.png");
   writeFileSync(outside, PNG);
-  const text = `${placeAttachments(session, "", ["in.png"])} <file name="${outside}"></file> <file name="relative.png"></file>`;
+  // A name that starts with two dots is still in the folder.
+  const dotted = join(session, "files", "..dots.png");
+  writeFileSync(dotted, PNG);
+  const text = `${placeAttachments(session, "", ["in.png"])} <file name="${outside}"></file> <file name="relative.png"></file> <file name="${dotted}"></file>`;
   const images = await attachedImages(session, text);
-  assert.equal(images.length, 1);
+  assert.equal(images.length, 2);
   assert.ok(existsSync(join(session, "files", "in.png")));
 });
 
