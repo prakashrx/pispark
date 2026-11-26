@@ -193,6 +193,7 @@ export class Schedules {
     if (Object.keys(input).some((key) => !allowed.includes(key))) throw new RuntimeError("invalid-input");
     const whenGiven = input.cron !== undefined || input.at !== undefined;
     if (input.cron !== undefined && input.at !== undefined) throw new RuntimeError("invalid-input");
+    if (input.cron !== undefined && typeof input.cron !== "string") throw new RuntimeError("invalid-input");
     if (!base && !whenGiven) throw new RuntimeError("invalid-input");
     const cron = input.cron !== undefined ? input.cron.trim().replace(/\s+/g, " ") : whenGiven ? undefined : base?.cron;
     const at = input.at !== undefined ? input.at : whenGiven ? undefined : base?.at;

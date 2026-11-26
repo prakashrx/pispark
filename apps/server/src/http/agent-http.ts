@@ -109,12 +109,13 @@ export class AgentHttp {
             case "create": {
               const i = input(value, ["name"], ["description", "base"]);
               if (typeof i.name !== "string") throw new AgentError("invalid-input");
+              // The definition check refuses bad values; a wrong type is refused here, not dropped.
+              if (i.description !== undefined && typeof i.description !== "string") throw new AgentError("invalid-input");
+              if (i.base !== undefined && !Array.isArray(i.base)) throw new AgentError("invalid-input");
               result = this.store.create({
                 name: i.name,
-                ...(typeof i.description === "string"
-                  ? { description: i.description }
-                  : {}),
-                ...(Array.isArray(i.base) ? { base: i.base as string[] } : {}),
+                ...(i.description !== undefined ? { description: i.description } : {}),
+                ...(i.base !== undefined ? { base: i.base as string[] } : {}),
               });
               break;
             }
