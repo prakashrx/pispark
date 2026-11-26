@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { body, sendJson } from "./session-http.js";
+import { body, sendJson } from "./io.js";
 import { validHostAction, type HostStatus } from "../contract/host-protocol.js";
 import type { HostLink } from "../core/host-link.js";
 import type { RunningWork } from "../contract/host-protocol.js";

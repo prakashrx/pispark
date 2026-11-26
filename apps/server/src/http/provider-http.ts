@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { body, sendJson } from "./session-http.js";
+import { body, sendJson } from "./io.js";
 import { ProviderAuth } from "../core/runtime/provider-auth.js";
 import type { ProviderSettings } from "../core/runtime/provider-settings.js";
 import { ProviderError, providerFailure } from "../core/runtime/provider-errors.js";

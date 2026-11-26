@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { body, sendJson } from "./session-http.js";
+import { body, sendJson } from "./io.js";
 import {
   validPairRequest,
   validRemoteAction,

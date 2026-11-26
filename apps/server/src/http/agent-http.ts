@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { body, sendJson } from "./session-http.js";
+import { body, sendJson } from "./io.js";
 import { correlated } from "../core/logger.js";
 import type { DiscoveredTool, AgentTarget, ItemTarget, ItemType, ResourceReference } from "../contract/agent-protocol.js";
 import type { AgentStore } from "../core/agents/store.js";
