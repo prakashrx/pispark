@@ -59,6 +59,13 @@ export class Children implements Kind {
   under(id: string): SessionMetadata[] {
     return this.sessions.storage.list().filter((metadata) => metadata.parent === id);
   }
+  /**
+   * A child put away when it was done, rather than by the person: one a session started and did
+   * not keep, with nothing left to answer. A schedule's run is not such a child.
+   */
+  away(child: SessionMetadata): boolean {
+    return !!child.archived && !!child.parent && !child.schedule && !child.keep && !child.ask;
+  }
 
   // ---- Down: what a parent does to its children -------------------------------------------------
 
@@ -173,7 +180,8 @@ export class Children implements Kind {
     const child = this.child(owner, id);
     if (!child) return this.gone;
     if (text === undefined) return { ok: false, text: "A session is sent text; raise_on is for a process." };
-    if (child.archived) return { ok: false, text: "That session was put away when it was done, so it cannot be told more. Start a session with keep: true to tell it more after its answer." };
+    if (child.archived)
+      return { ok: false, text: "That session was put away when it was done, so it cannot be told more. Start a new one with what it needs to know, and pass keep: true if you will tell it more after its answer." };
     this.sessions.admit();
     await this.sessions.ensure(child.id);
     validateText(text);

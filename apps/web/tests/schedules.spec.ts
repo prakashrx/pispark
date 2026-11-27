@@ -18,7 +18,7 @@ fresh("a session's schedules: a dialog from Details, run now, switch off, on Bac
 
   // Details, beside the conversation, have none yet; + opens the Schedule dialog.
   const panel = page.getByRole("complementary", { name: "Details" });
-  await expect(panel.getByText(/^Nothing yet\./)).toBeVisible();
+  await expect(panel.getByText(/^Nothing open\./)).toBeVisible();
   const add = panel.getByRole("button", { name: "Add a schedule" });
   await add.click();
   const dialog = page.getByRole("dialog", { name: "Add a schedule" });

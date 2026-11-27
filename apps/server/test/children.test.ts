@@ -169,6 +169,8 @@ test("a child notes (a line, no turn) and raises (its parent is woken); it waits
     assert.equal(f.metadata(child.id).ask, undefined);
     await pause(300);
     assert.equal(f.heard(parent.id, child.id).length, 1);
+    // It was not kept: now that it is done, it is put away.
+    await eventually(() => f.children(parent.id).length === 0);
   } finally {
     await f.cleanup();
   }
@@ -464,7 +466,7 @@ test("a child that is not kept is put away once it is done: its answer still arr
     await f.idle(parent.id);
     assert.equal(await f.answer(parent.id, say("look")), "Everything this session started is done and put away.");
     assert.equal(await f.answer(parent.id, say("look", { id: "session-1" })), '"Helper" — put away');
-    assert.match(await f.answer(parent.id, say("send", { id: "session-1", text: "second" })), /^That session was put away when it was done, so it cannot be told more\. Start a session with keep: true/);
+    assert.match(await f.answer(parent.id, say("send", { id: "session-1", text: "second" })), /^That session was put away when it was done, so it cannot be told more\. Start a new one with what it needs to know, and pass keep: true/);
     assert.equal(await f.answer(parent.id, say("stop", { id: "session-1" })), "It is already put away.");
 
     // The person brings it back: it is at rest, can be told more, and is put away again when it has answered.

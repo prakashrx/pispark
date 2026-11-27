@@ -325,7 +325,7 @@ export class SessionRuntime {
     const all = this.storage.list();
     const inUse = new Set(all.filter((metadata) => !metadata.archived).map((metadata) => metadata.id));
     return all
-      .filter((metadata) => metadata.archived && !(metadata.parent && !metadata.schedule && inUse.has(metadata.parent)))
+      .filter((metadata) => metadata.archived && !(this.children.away(metadata) && inUse.has(metadata.parent!)))
       .map((metadata) => this.summary(metadata));
   }
   get unreadableSessions(): number {
@@ -830,13 +830,13 @@ export class SessionRuntime {
     this.storage.write({ ...this.storage.read(id), title, renamed: true });
   }
   /**
-   * Brings a session back, with the children it still had: those it kept, those that still owe it
-   * an answer, and a schedule's runs. A child put away when it was done stays put away; its row in
-   * the conversation brings it back.
+   * Brings a session back, with what was put away along with it: a schedule's runs, and the
+   * children it kept or that still owe it an answer. A child put away when it was done stays
+   * put away; its row in the conversation brings it back.
    */
   restore(id: string): void {
     validateId(id);
-    const had = this.children.under(id).filter((child) => child.keep || child.schedule || child.ask);
+    const had = this.children.under(id).filter((child) => !this.children.away(child));
     for (const each of [id, ...had.map((child) => child.id)]) {
       const { archived, ...metadata } = this.storage.read(each);
       if (archived) this.storage.write(metadata);
