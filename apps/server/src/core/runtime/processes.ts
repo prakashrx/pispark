@@ -47,6 +47,8 @@ interface Stored extends ProcessInfo {
   cursors: Record<string, number>;
   /** Its end was not told yet (PiSpark stopped while it ran). */
   untold?: true;
+  /** Its own session has seen that it ended (read its output or state since), so its end is not told again. */
+  seen?: true;
 }
 interface Live {
   child: ChildProcess;
@@ -61,7 +63,7 @@ interface Live {
 }
 
 const view = (s: Stored): ProcessInfo => {
-  const { offset: _offset, cursors: _cursors, untold: _untold, ...info } = s;
+  const { offset: _offset, cursors: _cursors, untold: _untold, seen: _seen, ...info } = s;
   return structuredClone(info);
 };
 const clean = (text: string) => text.replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]|\x1b\[[0-9;?]*[A-Za-z]/g, "");
@@ -359,8 +361,19 @@ export class Processes {
     const since = process.cursors[reader] ?? Math.max(0, process.written - max);
     const out = this.read(process, since, max);
     process.cursors[reader] = out.next;
-    this.save(process.sessionId);
+    if (!this.sawEnd(process, reader)) this.save(process.sessionId);
     return out;
+  }
+  /** `reader` was shown that the process ended. When it is the process's own session, that end is taken. */
+  sawEnd(process: Stored, reader: string): boolean {
+    if (process.seen || process.state === "running" || reader !== process.sessionId) return false;
+    process.seen = true;
+    this.save(process.sessionId);
+    return true;
+  }
+  /** Whether its own session has already seen that this process ended. */
+  endSeen(id: string): boolean {
+    return this.find(id)?.process.seen === true;
   }
   /**
    * Waits until output after `since` matches `pattern` (or any output, without one), the process

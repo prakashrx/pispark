@@ -142,6 +142,7 @@ export class SessionRuntime {
       archive: (id) => this.archive(id),
       create: (request, origin) => this.createSession(request, origin),
       deliver: (id, wake) => this.wakes.deliver(id, wake),
+      pending: (id) => this.wakes.waiting(id) || this.processes.list(id).some((p) => p.state === "running" && p.report === "result"),
     };
     this.children = new Children(access);
     this.holds = new Holds(access, () => this.unattendedPaused);
@@ -210,6 +211,8 @@ export class SessionRuntime {
         },
         run: async (id, wake, details) => {
           this.admit();
+          // An answer already taken is not delivered again: the session has seen that this process ended.
+          if (wake.processEnd && this.processes.endSeen(wake.source.id)) return { handled: true as const };
           await this.ensure(id);
           let text = wake.text;
           // A child's report: the session's extensions see it first and may take it or reword it.
@@ -223,7 +226,15 @@ export class SessionRuntime {
         },
         paused: () => this.unattendedPaused,
       },
-      { now: configuration.now, logger, settled: (sessionId, sourceId) => this.schedules.settled(sessionId, sourceId) },
+      {
+        now: configuration.now,
+        logger,
+        settled: (sessionId, sourceId) => {
+          this.schedules.settled(sessionId, sourceId);
+          // What a child waited for is settled: it may be at rest now, and owe its parent an answer.
+          void this.children.rested(sessionId);
+        },
+      },
     );
     this.schedules = new Schedules({ ...sessions, spawn: (owner, run) => this.runs.schedule(owner, run) }, this.wakes, { now: configuration.now, logger });
     this.routines = new Routines(
@@ -449,6 +460,8 @@ export class SessionRuntime {
         seenAt: createdAt,
         active: false,
         interrupted: false,
+        // A session started by another one is asked from its first message.
+        ...(child.parent ? { ask: { from: 0 } } : {}),
         ...child,
       },
       false,

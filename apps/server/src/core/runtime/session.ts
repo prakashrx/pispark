@@ -841,6 +841,29 @@ export class Session {
       /* Only a listing. */
     }
   }
+  /** Its parent asks it something: what it says from here until it is at rest is its answer. A message while an ask is open is part of that ask. */
+  openAsk(): void {
+    if (this.metadata.ask) return;
+    this.metadata = { ...this.metadata, ask: { from: this.pi?.sessionManager.getEntries().length ?? 0 } };
+    this.host.storage.write(this.metadata);
+  }
+  /** Its answer goes to its parent: what the agent said at the end of each of its turns since it was asked, in order. */
+  closeAsk(): string[] {
+    const { ask, ...rest } = this.metadata;
+    if (!ask) return [];
+    const replies: string[] = [];
+    let last: string | undefined;
+    for (const entry of this.pi?.sessionManager.getEntries().slice(ask.from) ?? []) {
+      if (entry.type === "message" && entry.message.role === "user") {
+        if (last) replies.push(last);
+        last = undefined;
+      } else last = answerOf(entry) ?? last;
+    }
+    if (last) replies.push(last);
+    this.metadata = rest;
+    this.host.storage.write(this.metadata);
+    return replies;
+  }
   /** The agent's last answer in this session: the text of its last reply that has any. */
   lastReply(): string | undefined {
     const messages = (this.pi?.messages ?? []) as { role?: string; content?: unknown }[];

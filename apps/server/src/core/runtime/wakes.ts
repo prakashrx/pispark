@@ -27,6 +27,8 @@ export interface Wake {
   policy: "latest" | "queue";
   /** It came due while PiSpark was not running. */
   late?: true;
+  /** It says a process ended. It is dropped if the session has seen that by the time it would be sent. */
+  processEnd?: true;
   /**
    * A child's report: what the session's extensions are offered before its agent hears of it (see
    * `CHILD_ENDED_CHANNEL`), with the data an extension in the child set.
@@ -110,6 +112,7 @@ function validWake(value: unknown): value is Wake {
     validTime(value.due) &&
     (value.policy === "latest" || value.policy === "queue") &&
     (value.late === undefined || value.late === true) &&
+    (value.processEnd === undefined || value.processEnd === true) &&
     (value.report === undefined || validReport(value.report)) &&
     (value.card === undefined || validCard(value.card, value.text as string))
   );

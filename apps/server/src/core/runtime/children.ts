@@ -4,7 +4,7 @@ import { validAgentId } from "../agents/format.js";
 import { validateText, type RunResult, type Session } from "./session.js";
 import { toolSessionTitle } from "./session-title.js";
 import type { SessionRequest, ToolAnswer } from "./session-tool.js";
-import { runtimeError } from "./errors.js";
+import { RuntimeError, runtimeError } from "./errors.js";
 import type { SessionMetadata } from "./storage.js";
 import type { Wake } from "./wakes.js";
 import { titleOf, type SessionAccess } from "./session-access.js";
@@ -65,7 +65,11 @@ export class Children {
     await ensure(child.id);
     validateText(request.text);
     try {
-      void get(child.id).start(request.text, this.from(parent)).completion.catch(() => {});
+      const session = get(child.id);
+      if (!session.settled) throw new RuntimeError("busy");
+      // A message to a child at rest is a new ask: its answer comes back once.
+      session.openAsk();
+      void session.start(request.text, this.from(parent)).completion.catch(() => {});
     } catch (error) {
       if (runtimeError(error, "execution").code === "busy") return { ok: false, text: "It is still working; its answer will come back here." };
       throw error;
@@ -73,15 +77,41 @@ export class Children {
     return { ok: true, text: "Sent." };
   }
 
-  /** A child's run ended: its parent is told as the child's mode says. */
+  /**
+   * A child's run ended. Its parent hears once per ask, not once per run: when the child is at
+   * rest (nothing it started is still due to wake it), or at once when it was stopped or failed,
+   * since it will not get there by itself. A run nobody asked for (the person's, a late wake's)
+   * tells the parent nothing.
+   */
   ended(session: Session, result: RunResult): void {
+    if (!session.metadata.ask) return;
+    if (result.outcome === "completed" && this.sessions.pending(session.id)) return;
+    this.answer(session, result);
+  }
+
+  /** Something a session waited for is settled without a run of its own: a child may be at rest now. */
+  async rested(sessionId: string): Promise<void> {
+    try {
+      if (!this.sessions.storage.read(sessionId).ask || this.sessions.pending(sessionId) || !this.sessions.accepting()) return;
+      await this.sessions.ensure(sessionId);
+      const session = this.sessions.get(sessionId);
+      if (session.metadata.ask && session.settled && !this.sessions.pending(sessionId)) this.answer(session, { outcome: "completed" });
+    } catch (error) {
+      this.sessions.logger.event("wake.failure", { sessionId, outcome: "failed", code: runtimeError(error, "execution").code });
+    }
+  }
+
+  /** The child's answer to its open ask goes to its parent, as the child's mode says, and the ask is closed. */
+  private answer(session: Session, result: RunResult): void {
+    // Everything it said since it was asked, so a summary given before its last process ended is not lost.
+    const said = session.closeAsk().join("\n\n");
     const mode = session.metadata.report ?? "result";
     const parent = this.parentOf(session.metadata);
     if (!parent || mode === "none" || !this.sessions.accepting()) return;
     const title = titleOf(session.metadata);
     const how = result.outcome === "completed" ? "finished" : result.outcome === "cancelled" ? "stopped" : "failed";
     const exact = result.childResult;
-    const answer = mode === "notice" ? exact?.answer : result.outcome === "completed" ? session.lastReply() : undefined;
+    const answer = mode === "notice" ? exact?.answer : said || undefined;
     const body = answer ? (answer.length > 8192 ? `${answer.slice(0, 8192)}…\n(cut; read shows all of it)` : answer) : `It ${how} without an answer.`;
     const data = mode === "notice" ? exact?.data : session.resultData;
     const report = { session: session.id, title, how, mode, text: body, ...(exact ? { runId: exact.id } : {}), ...(data !== undefined ? { data } : {}) };

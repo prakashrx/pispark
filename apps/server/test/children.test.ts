@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { RuntimeError } from "../src/core/runtime/errors.js";
 import { REPORT_TOOL, SESSION_TOOL } from "../src/core/runtime/session-tool.js";
+import { PROCESS_TOOL } from "../src/core/runtime/process-tool.js";
 import { STATUS_ENTRY, WOKEN_ENTRY } from "../src/contract/wake-protocol.js";
 import type { LocalRequest } from "./fixtures/local-provider.js";
 import { eventually } from "./fixtures/local-provider.js";
@@ -270,3 +271,111 @@ test("a manual fork inherits history and runs independently from its source", as
     await f.cleanup();
   }
 });
+
+// ---- One ask, one answer: the parent hears when the child is at rest, not at every run's end ----
+
+const processCall = (args: object) => `tool:${PROCESS_TOOL}:${JSON.stringify(args)}`;
+const pause = (ms: number) => new Promise((done) => setTimeout(done, ms));
+/** What a parent was sent by one of its children: each report's body. */
+function reportsFrom(f: Awaited<ReturnType<typeof fixture>>, parentId: string, childId: string): string[] {
+  const items = f.runtime.items(parentId, {}).items;
+  return items.flatMap((item, i) => (item.customType === WOKEN_ENTRY && (item.details as { source: { id: string } }).source.id === childId ? [text(items[i + 1]!)] : []));
+}
+
+test("a child answers once, when at rest: a process it still waits for holds the answer, and what it said before is in it", async () => {
+  const f = await fixture();
+  try {
+    const parent = await f.runtime.create({ folder: f.folder });
+    // The child's first turn starts a process that outlives the turn.
+    const slow = `node -e "setTimeout(() => console.log('tests passed'), 3000)"`;
+    await f.runtime.start(parent.id, call({ action: "start", prompt: processCall({ action: "start", command: slow, title: "tests" }), title: "Builder" })).completion;
+    const [child] = f.children(parent.id);
+    assert.ok(child);
+    await eventually(() => f.runtime.list().find((s) => s.id === child.id)?.status === "idle");
+    assert.equal(f.runtime.listProcesses(child.id)[0]?.state, "running");
+    // Its run ended, but it is not at rest: nothing reaches the parent.
+    await pause(300);
+    assert.deepEqual(reportsFrom(f, parent.id, child.id), []);
+
+    // The process ends and wakes the child. That run leaves nothing to wait for: one answer.
+    await eventually(() => reportsFrom(f, parent.id, child.id).length === 1, 20_000);
+    const [body] = reportsFrom(f, parent.id, child.id);
+    assert.match(body!, /^The session "Builder" you started finished:\n\n/);
+    // Everything it said since it was asked: its first turn's closing words, then its second's.
+    const first = body!.indexOf("local:[");
+    const second = body!.indexOf('local:The process "tests" exited 0');
+    assert.ok(first > 0 && second > first, body);
+    await pause(300);
+    assert.equal(reportsFrom(f, parent.id, child.id).length, 1);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a process end the child has already seen is not told again: one run, one answer", async () => {
+  const f = await fixture();
+  try {
+    const parent = await f.runtime.create({ folder: f.folder });
+    // The child waits for the process's output in its turn, and is shown that it has ended.
+    const quick = `node -e "console.log('done')"`;
+    await f.runtime.start(parent.id, call({ action: "start", prompt: processCall({ action: "start", command: quick, title: "quick", wait_for: "done", timeout_seconds: 20 }), title: "Checker" })).completion;
+    const [child] = f.children(parent.id);
+    assert.ok(child);
+    await eventually(() => reportsFrom(f, parent.id, child.id).length === 1, 20_000);
+    await pause(400);
+    // The end was not sent to the child as a second message, so the child ran once.
+    const childItems = f.runtime.items(child.id, {}).items;
+    assert.equal(childItems.filter((item) => item.customType === WOKEN_ENTRY && (item.details as { source: { kind: string } }).source.kind === "process").length, 0);
+    assert.equal(childItems.filter((item) => item.role === "assistant" && text(item).startsWith("local:")).length, 1);
+    assert.equal(reportsFrom(f, parent.id, child.id).length, 1);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a run its parent did not ask for tells the parent nothing; a new message from the parent is a new ask", async () => {
+  const f = await fixture();
+  try {
+    const parent = await f.runtime.create({ folder: f.folder });
+    await f.runtime.start(parent.id, call({ action: "start", prompt: "look into it", title: "Looker" })).completion;
+    const [child] = f.children(parent.id);
+    assert.ok(child);
+    await eventually(() => reportsFrom(f, parent.id, child.id).length === 1);
+    await eventually(() => f.runtime.list().find((s) => s.id === parent.id)?.status === "idle");
+
+    // The person talks to the child: its answer is theirs, in the child's conversation.
+    await f.runtime.start(child.id, "and one more thing").completion;
+    await pause(300);
+    assert.equal(reportsFrom(f, parent.id, child.id).length, 1);
+
+    // The parent sends again: one more answer, holding only what was said since.
+    await f.runtime.start(parent.id, call({ action: "send", id: child.id, text: "second question" })).completion;
+    await eventually(() => reportsFrom(f, parent.id, child.id).length === 2);
+    assert.match(reportsFrom(f, parent.id, child.id)[1]!, /finished:\n\nlocal:second question$/);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("the real case in small: several processes, some already seen, one answer to the parent", async () => {
+  const f = await fixture();
+  try {
+    const parent = await f.runtime.create({ folder: f.folder });
+    // Two checks the child watches to their end in its turn, and one that ends after the turn.
+    const seen = (title: string) => ({ name: PROCESS_TOOL, args: { action: "start", command: `node -e "console.log('done')"`, title, wait_for: "done", timeout_seconds: 20 } });
+    const late = { name: PROCESS_TOOL, args: { action: "start", command: `node -e "setTimeout(() => console.log('late'), 3000)"`, title: "late check" } };
+    const prompt = `tools:${JSON.stringify([seen("typecheck"), seen("unit tests"), late])}`;
+    await f.runtime.start(parent.id, call({ action: "start", prompt, title: "Implementer" })).completion;
+    const [child] = f.children(parent.id);
+    assert.ok(child);
+    await eventually(() => reportsFrom(f, parent.id, child.id).length === 1, 20_000);
+    await pause(400);
+    // Only the end it had not seen was sent to it; its parent heard once.
+    const woken = f.runtime.items(child.id, {}).items.filter((item) => item.customType === WOKEN_ENTRY).map((item) => (item.details as { source: { kind: string; label: string } }).source);
+    assert.deepEqual(woken.filter((source) => source.kind === "process").map((source) => source.label), ["late check · exited 0"]);
+    assert.equal(reportsFrom(f, parent.id, child.id).length, 1);
+  } finally {
+    await f.cleanup();
+  }
+});
+

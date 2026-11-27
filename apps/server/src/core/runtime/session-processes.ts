@@ -74,6 +74,7 @@ export class SessionProcesses {
       }
       case "list": {
         const all = visible().flatMap((id) => processes.list(id));
+        for (const p of all) processes.sawEnd(processes.get(p.id, [p.sessionId]), sessionId);
         return { ok: true, text: all.length ? all.map(describe).join("\n") : "No processes." };
       }
       case "output": {
@@ -84,6 +85,7 @@ export class SessionProcesses {
       case "wait": {
         const process = processes.get(request.id, visible());
         const result = await processes.waitForExit(process, request.timeoutSeconds * 1000, signal);
+        processes.sawEnd(process, sessionId);
         const note = result === "timeout" ? (signal?.aborted ? " (wait cancelled)" : " (wait timed out)") : "";
         const state = process.ended ?? process.state;
         const exit = process.exitCode === undefined ? "" : ` (exit ${process.exitCode})`;
@@ -135,6 +137,7 @@ export class SessionProcesses {
       card: { title: short, how: end.how.slice(0, 200), start: heading.length },
       due: new Date(this.sessions.now()).toISOString(),
       policy: "queue",
+      ...(end.watch ? {} : { processEnd: true as const }),
     });
   }
 

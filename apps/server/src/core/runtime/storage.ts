@@ -48,6 +48,11 @@ export interface SessionMetadata {
   parent?: string;
   /** Source of a manual fork, for navigation only. */
   forkOf?: string;
+  /**
+   * An ask its parent made that it has not answered yet, and where in its transcript the ask
+   * began. Its parent hears once per ask, when the child is at rest (see `Children`).
+   */
+  ask?: { from: number };
   /** How it tells its parent when a run ends; `result` when not given. */
   report?: ChildReportMode;
   /** The schedule or app routine this session is one run of, and when that run was due. */
@@ -117,6 +122,7 @@ export class SessionStorage {
         (value.forkOf !== undefined && (typeof value.forkOf !== "string" || !UUID.test(value.forkOf) || value.forkOf === id)) ||
         (value.parent !== undefined && (typeof value.parent !== "string" || !UUID.test(value.parent))) ||
         (value.report !== undefined && (value.report as unknown) !== false && !validChildReportMode(value.report)) ||
+        (value.ask !== undefined && (!value.ask || !Number.isSafeInteger(value.ask.from) || value.ask.from < 0)) ||
         (value.schedule !== undefined &&
           (!value.schedule ||
             typeof value.schedule.id !== "string" ||
