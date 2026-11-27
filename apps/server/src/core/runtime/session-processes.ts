@@ -47,8 +47,12 @@ export class SessionProcesses implements Kind {
   }
 
   of(owner: string): Listed[] {
-    // Open until its end is taken: one that ended while nobody looked still has its answer to give.
-    return this.processes.list(owner).map((p) => ({ id: p.id, line: this.describe(p), open: !this.processes.endTaken(p.id) }));
+    // Open while it runs, or while its end still waits to be taken: one that ended while nobody looked has its answer to give.
+    return this.processes.list(owner).map((p) => ({
+      id: p.id,
+      line: this.describe(p),
+      open: p.state === "running" || (!this.processes.endTaken(p.id) && this.sessions.waiting(owner, p.id)),
+    }));
   }
 
   async look(owner: string, id: string, find?: string): Promise<Answer> {

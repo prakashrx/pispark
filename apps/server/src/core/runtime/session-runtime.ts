@@ -218,29 +218,27 @@ export class SessionRuntime {
           const session = this.live.get(id);
           return !this.setup.has(id) && !this.extensionCandidates.has(id) && (!session || (session.ready && session.settled));
         },
-        run: async (id, wake, details) => {
+        settle: async (id, wake) => {
           this.admit();
-          // An answer already taken is not delivered again: the session read or waited for this process's end.
-          const ended = wake.word === "answer" && wake.source.kind === "process";
-          if (ended && this.processes.endTaken(wake.source.id)) return { handled: true as const };
+          // An answer already taken is not sent as well: the session read or waited for this process's end.
+          if (wake.word === "answer" && wake.source.kind === "process" && this.processes.endTaken(wake.source.id)) return undefined;
           await this.ensure(id);
           let text = wake.text;
           // A child's answer or raise: the session's extensions see it first and may take it or reword it.
           let quiet = wake.quiet;
           if (wake.report) {
             const answer = this.get(id).offerChildEnded(wake.report);
-            if (answer?.action === "skip") return { handled: true as const };
+            if (answer?.action === "skip") return undefined;
             if (answer?.action === "send") [text, quiet] = [answer.text, undefined];
           }
-          if (quiet) {
-            const { title = wake.source.label, how = "ended" } = wake.report ?? {};
-            await this.get(id).addStatus(text, { session: wake.source.id, title, how, ok: how === "finished" });
-            return { handled: true as const };
-          }
+          if (!quiet) return text;
+          const { title = wake.source.label, how = "ended" } = wake.report ?? {};
+          await this.get(id).addStatus(text, { session: wake.source.id, title, how, ok: how === "finished" });
+          return undefined;
+        },
+        send: (id, text, details) => {
           validateText(text);
-          const run = this.get(id).start(text, details);
-          if (ended) this.processes.takeEnd(wake.source.id);
-          return run;
+          return this.get(id).start(text, details);
         },
         paused: () => this.unattendedPaused,
       },

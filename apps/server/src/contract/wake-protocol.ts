@@ -49,6 +49,12 @@ export interface WokenDetails {
   due: string;
   /** A report from a session or process this one started, as its card shows it. */
   card?: WokenCard;
+  /**
+   * Set when several messages that waited for the session arrived together, as one message and one
+   * run: each one's source and card, and where its text starts in the message (`at`), in order.
+   * A card's `start` counts from there. `source` and `card` above are the first one's.
+   */
+  together?: { source: WakeSource; card?: WokenCard; at: number }[];
 }
 /**
  * How a report's card reads: whose it is, how it ended, and where the report itself starts in the

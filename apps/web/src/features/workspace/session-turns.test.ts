@@ -301,6 +301,44 @@ test("a status line is its own segment; a report card is drawn from what the ser
   expect(wokenFrom({ source, due: "x" })).toEqual({ ...source, title: "tests · exited 1", start: 0 });
 });
 
+test("several messages that arrived as one are one turn, with each sender and where its part starts", () => {
+  n = 0;
+  const lint = { kind: "process", id: "p1", label: "lint · exited 0" };
+  const reviewer = { kind: "session", id: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b", label: "Reviewer · finished" };
+  const first = 'The process "lint" (process-1) exited 0.\n\nLast output:\nclean';
+  const second = 'The session "Reviewer" (session-2) you started finished:\n\nLooks good.';
+  const turns = buildTurns(
+    [
+      item("entry", [], {
+        customType: "pispark:woken",
+        details: {
+          source: lint,
+          due: "x",
+          card: { title: "lint", how: "exited 0", start: 55 },
+          together: [
+            { source: lint, card: { title: "lint", how: "exited 0", start: 55 }, at: 0 },
+            { source: reviewer, card: { title: "Reviewer", how: "finished", start: 58 }, at: first.length + 2 },
+          ],
+        },
+      }),
+      item("user", [text(`${first}\n\n${second}`)]),
+      item("assistant", [text("Both are in.")]),
+    ],
+    { running: false },
+  );
+  expect(turns).toHaveLength(1);
+  const { together } = turns[0]!;
+  expect(together!.map((part) => [part.kind, part.title, part.how])).toEqual([
+    ["process", "lint", "exited 0"],
+    ["session", "Reviewer", "finished"],
+  ]);
+  // Each part's report is its text after the line the agent needs, up to where the next part starts.
+  const whole = `${first}\n\n${second}`;
+  expect(together!.map((part, index) => whole.slice(part.at + part.start, together![index + 1]?.at).trimEnd())).toEqual(["clean", "Looks good."]);
+  // A message of one has no parts.
+  expect(buildTurns([item("entry", [], { customType: "pispark:woken", details: { source: lint, due: "x" } }), item("user", [text(first)])], { running: false })[0]!.together).toBeUndefined();
+});
+
 test("starting a process: its words, and the process it made as a row", () => {
   const id = "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b";
   const started = {

@@ -55,10 +55,13 @@ export interface WakeHost {
   /** Whether a message could be sent now: the session is not loaded, or loaded with nothing going on. */
   free(sessionId: string): boolean;
   /**
-   * Loads the session if needed and sends the message, which then runs (or waits for a run slot).
-   * Throws `busy`. `handled`: an extension in the session took it, and nothing ran.
+   * What a wake sends, now that its session is free: its text (an extension may have reworded it),
+   * or nothing when it is settled without a message: the session has it already, an extension took
+   * it, or it is a line. Loads the session if needed. Throws `busy`.
    */
-  run(sessionId: string, wake: Wake, details: WokenDetails): Promise<{ completion: Promise<RunResult> } | { handled: true }>;
+  settle(sessionId: string, wake: Wake): Promise<string | undefined>;
+  /** Sends one message to the session, which then runs (or waits for a run slot). Throws `busy`. */
+  send(sessionId: string, text: string, details: WokenDetails): { completion: Promise<RunResult> };
   /** Pause all unattended runs, from the host's settings. */
   paused(): boolean;
 }
@@ -78,6 +81,23 @@ const REASONS = ["busy", "off", "paused", "full"];
 
 /** A source in a session, for the runs in flight. */
 const key = (sessionId: string, sourceId: string) => `${sessionId}/${sourceId}`;
+/** Messages that arrive together are one message of at most this much text; the rest follow in the next. */
+const MAX_TOGETHER = MAX_TEXT / 2;
+
+/** One message for what arrives together: each part's text in order, and what the conversation needs to show each. */
+export function together(parts: { wake: Wake; text: string }[]): [string, WokenDetails] {
+  // A reworded part has no line of its own before the report, so its card starts at the beginning.
+  const card = ({ wake, text }: (typeof parts)[number]) => (wake.card ? { card: text === wake.text ? wake.card : { ...wake.card, start: 0 } } : {});
+  const first = parts[0]!;
+  const details: WokenDetails = { source: first.wake.source, due: first.wake.due, ...card(first) };
+  if (parts.length === 1) return [first.text, details];
+  let message = "";
+  const each = parts.map((part) => {
+    message += (message ? "\n\n" : "") + part.text;
+    return { source: part.wake.source, ...card(part), at: message.length - part.text.length };
+  });
+  return [message, { ...details, together: each }];
+}
 const time = (value: string) => new Date(value).getTime();
 const validTime = (value: unknown): value is string => typeof value === "string" && value.length <= 40 && !Number.isNaN(time(value));
 const shortString = (value: unknown, max: number): value is string => typeof value === "string" && value.length > 0 && value.length <= max;
@@ -147,7 +167,8 @@ function readState(value: unknown): State {
  * Delivers wakes to sessions, whatever their source, by one set of rules: paused, nothing runs
  * unattended; while the session is busy or
  * archived, the wake waits (one per `latest` source, in order for `queue` ones); otherwise the
- * message is sent with a `WOKEN_ENTRY` before it. Every outcome is recorded by source. Kept in each
+ * message is sent with a `WOKEN_ENTRY` before it. Messages that waited arrive together, as one
+ * message and one run. Every outcome is recorded by source. Kept in each
  * session's `wakes.json`; waiting wakes are looked at by `drain`, which the runtime calls once a
  * minute and delivery calls after each run.
  */
@@ -209,12 +230,12 @@ export class Wakes {
     if (paused && wake.policy === "latest") return this.note(sessionId, wake.source.id, { due: wake.due, outcome: "missed", reason: "paused" });
     // Wakes reach a session in order: behind any already waiting for it.
     const first = !paused && !this.state(sessionId).waiting.length;
-    if (!first || !(await this.attempt(sessionId, wake, false))) this.wait(sessionId, wake);
+    if (!first || !(await this.attempt(sessionId, [wake], false))) this.wait(sessionId, wake);
   }
   /** Run now, with the person watching: refused while the session is busy or archived. */
   async runNow(sessionId: string, wake: Wake): Promise<void> {
     if (this.archived(sessionId) || this.running.has(key(sessionId, wake.source.id)) || !this.host.free(sessionId)) throw new RuntimeError("busy");
-    await this.fire(sessionId, wake, { manual: true });
+    await this.fire(sessionId, [wake], { manual: true });
   }
   /** Looks at every waiting wake; overlapping calls share one pass. */
   drain(): Promise<void> {
@@ -233,46 +254,74 @@ export class Wakes {
         continue;
       }
       while (state.waiting.length && !this.closed) {
-        const wake = state.waiting[0]!;
         try {
-          if (!(await this.attempt(sessionId, wake, true))) break;
+          if (!(await this.attempt(sessionId, this.next(state.waiting), true))) break;
         } catch (error) {
           this.logger.event("wake.failure", { sessionId, outcome: "failed", code: runtimeError(error, "execution").code });
           break;
         }
-        this.remove(sessionId, wake);
       }
     }
   }
-  /** Sends the wake if nothing stops it; `false` means it has to wait. */
-  private async attempt(sessionId: string, wake: Wake, waited: boolean): Promise<boolean> {
-    if (this.archived(sessionId) || this.running.has(key(sessionId, wake.source.id)) || !this.host.free(sessionId)) return false;
-    return this.fire(sessionId, wake, waited ? { reason: "busy" } : wake.late ? { reason: "off" } : {});
+  /** What goes to the session next: a clock's run by itself, or the messages that wait together, as far as one message holds them. */
+  private next(waiting: Wake[]): Wake[] {
+    const first = waiting[0]!;
+    if (first.policy === "latest") return [first];
+    let size = first.text.length;
+    const end = waiting.findIndex((wake, index) => index > 0 && (wake.policy !== "queue" || (size += wake.text.length) > MAX_TOGETHER));
+    return waiting.slice(0, end < 0 ? waiting.length : end);
   }
-  /** Sends the message. The run is recorded when it ends. `false`: the session turned busy meanwhile. */
-  private async fire(sessionId: string, wake: Wake, how: { reason?: "busy" | "off"; manual?: true }): Promise<boolean> {
-    const running = key(sessionId, wake.source.id);
+  /** Sends the wakes if nothing stops it; `false` means they have to wait. */
+  private async attempt(sessionId: string, wakes: Wake[], waited: boolean): Promise<boolean> {
+    if (this.archived(sessionId) || wakes.some((wake) => this.running.has(key(sessionId, wake.source.id))) || !this.host.free(sessionId)) return false;
+    return this.fire(sessionId, wakes, waited ? { reason: "busy" } : wakes[0]!.late ? { reason: "off" } : {});
+  }
+  /**
+   * Settles each wake and sends what is left as one message. A wake it has dealt with no longer
+   * waits; a run is recorded when it ends. `false`: the session turned busy meanwhile, and what was
+   * not dealt with still waits.
+   */
+  private async fire(sessionId: string, wakes: Wake[], how: { reason?: "busy" | "off"; manual?: true }): Promise<boolean> {
     const at = this.iso();
-    this.running.add(running);
-    let completion: Promise<RunResult>;
+    const record = (wake: Wake, result: Pick<WakeRecord, "outcome" | "error">) => this.note(sessionId, wake.source.id, { due: wake.due, at, ...result, ...how });
+    const keys = (of: Wake[]) => new Set(of.map((wake) => key(sessionId, wake.source.id)));
+    const flying = keys(wakes);
+    for (const each of flying) this.running.add(each);
+    const parts: { wake: Wake; text: string }[] = [];
+    const handled: Wake[] = [];
+    let completion: Promise<RunResult> | undefined;
+    let failure: unknown;
     try {
-      const sent = await this.host.run(sessionId, wake, { source: wake.source, due: wake.due, ...(wake.card ? { card: wake.card } : {}) });
-      if ("handled" in sent) {
-        this.running.delete(running);
-        this.note(sessionId, wake.source.id, { due: wake.due, at, outcome: "handled", ...how });
-        this.options.settled?.(sessionId, wake.source.id);
-        return true;
+      for (const wake of wakes) {
+        const text = await this.host.settle(sessionId, wake);
+        if (text === undefined) handled.push(wake);
+        else parts.push({ wake, text });
       }
-      ({ completion } = sent);
+      if (parts.length) ({ completion } = this.host.send(sessionId, ...together(parts)));
     } catch (error) {
-      this.running.delete(running);
-      if (how.manual) throw error;
-      const code = runtimeError(error, "execution").code;
-      // Busy, or PiSpark is stopping: it waits.
+      failure = error;
+    }
+    // Only what was sent is still in flight.
+    const sent = completion ? keys(parts.map((part) => part.wake)) : new Set<string>();
+    for (const each of flying) if (!sent.has(each)) this.running.delete(each);
+    for (const wake of handled) {
+      this.remove(sessionId, wake);
+      record(wake, { outcome: "handled" });
+      this.options.settled?.(sessionId, wake.source.id);
+    }
+    if (failure !== undefined) {
+      if (how.manual) throw failure;
+      const code = runtimeError(failure, "execution").code;
+      // Busy, or PiSpark is stopping: what was not dealt with waits.
       if (code === "busy" || code === "closed") return false;
-      this.note(sessionId, wake.source.id, { due: wake.due, at, outcome: "failed", error: code });
+      for (const wake of wakes.filter((each) => !handled.includes(each))) {
+        this.remove(sessionId, wake);
+        record(wake, { outcome: "failed", error: code });
+      }
       return true;
     }
+    if (!completion) return true;
+    for (const { wake } of parts) this.remove(sessionId, wake);
     this.logger.event("wake.run", { sessionId, outcome: "completed" });
     void completion
       .then(
@@ -284,9 +333,12 @@ export class Wakes {
       )
       .then((result) => {
         // A source removed while its run was going has nothing left to record to.
-        if (!this.running.delete(running)) return;
-        this.note(sessionId, wake.source.id, { due: wake.due, at, ...result, ...how });
-        this.options.settled?.(sessionId, wake.source.id);
+        const kept = parts.filter(({ wake }) => this.running.has(key(sessionId, wake.source.id)));
+        for (const each of sent) this.running.delete(each);
+        for (const { wake } of kept) {
+          record(wake, result);
+          this.options.settled?.(sessionId, wake.source.id);
+        }
         void this.drain();
       });
     return true;

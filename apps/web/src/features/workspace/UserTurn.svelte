@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from "../../lib/ui/Icon.svelte";
-  import type { Turn } from "./session-turns";
+  import type { From, Turn } from "./session-turns";
   import type { Item } from "../../../../server/src/contract/protocol";
   import { useSession, useSessions } from "./session-client.svelte";
   import { namedFiles } from "./attachments.svelte";
@@ -8,16 +8,12 @@
   /**
    * Your message, or (`woken`) one something else sent, labelled as such. One another session sent
    * (`from`: its report, or a parent's message to its child) is not yours, so it is not your bubble.
+   * Several that arrived as one message (`together`) are shown one under the other.
    */
-  let { text, woken, from, item }: { text: string; woken?: string; from?: Turn["from"]; item?: Item } = $props();
+  let { text, woken, from, together, item }: { text: string; woken?: string; from?: Turn["from"]; together?: Turn["together"]; item?: Item } = $props();
   const client = useSessions();
   const session = useSession();
-  // "‹title› · finished": the title is what links to the session. The card shows the report after
-  // the line the agent needs, which it says already.
-  const title = $derived(from?.title ?? "");
-  const rest = $derived(from?.how ? ` · ${from.how}` : "");
-  const body = $derived(from ? text.slice(from.start) : text);
-  const known = $derived(from?.kind === "session" && client.sessions.some((session) => session.id === from.id));
+  const known = (from: From) => from.kind === "session" && client.sessions.some((session) => session.id === from.id);
   // Your own saved message can be edited and sent again, between replies; its versions switch then too.
   const free = $derived(!!session && !session.doc?.readOnly && (session.doc?.status === "idle" || session.doc?.status === "error"));
   const editable = $derived(!woken && !!item?.id && free);
@@ -25,21 +21,35 @@
   const versions = $derived(item?.versions);
 </script>
 
-{#if from?.kind === "process" || from?.kind === "reload"}
-  {@const what = from.kind === "process" ? "output" : "details"}
-  <details class="process-report" data-purpose="session-turn">
-    <summary class="woken">{from.label} <span class="disclosure"><span class="closed">▸ Show {what}</span><span class="opened">▾ Hide {what}</span></span></summary>
-    <div class="report output">{body}</div>
-  </details>
-{:else if from}
-  <div class="flex flex-col items-start gap-1.5" data-purpose="session-turn">
-    <p class="woken">
-      <Icon name="sessionBack" class="h-3.5 w-3.5" /><span
-        >From {#if known}<button type="button" class="link" onclick={() => client.open(from.id)}>{title}</button>{:else}{title}{/if}{rest}</span
-      >
-    </p>
-    <div class="report markdown"><SessionMarkdown text={body} /></div>
+<!-- What a session or a process sent: whose it is and how it ended ("‹title› · finished", the title linking to
+     the session), then the report itself, after the line the agent needs, which the heading says already. -->
+{#snippet sent(from: From, body: string)}
+  {#if from.kind === "process" || from.kind === "reload"}
+    {@const what = from.kind === "process" ? "output" : "details"}
+    <details class="process-report" data-purpose="session-turn">
+      <summary class="woken">{from.label} <span class="disclosure"><span class="closed">▸ Show {what}</span><span class="opened">▾ Hide {what}</span></span></summary>
+      <div class="report output">{body}</div>
+    </details>
+  {:else}
+    <div class="flex flex-col items-start gap-1.5" data-purpose="session-turn">
+      <p class="woken">
+        <Icon name="sessionBack" class="h-3.5 w-3.5" /><span
+          >From {#if known(from)}<button type="button" class="link" onclick={() => client.open(from.id)}>{from.title}</button>{:else}{from.title}{/if}{from.how
+            ? ` · ${from.how}`
+            : ""}</span
+        >
+      </p>
+      <div class="report markdown"><SessionMarkdown text={body} /></div>
+    </div>
+  {/if}
+{/snippet}
+
+{#if together}
+  <div class="flex w-full flex-col items-start gap-3" data-purpose="together">
+    {#each together as part, index (index)}{@render sent(part, text.slice(part.at + part.start, together[index + 1]?.at).trimEnd())}{/each}
   </div>
+{:else if from}
+  {@render sent(from, text.slice(from.start))}
 {:else}
   <div class="flex flex-col items-end gap-1.5" data-purpose="user-turn">
     {#if woken}<p class="woken"><Icon name="clock" class="h-3.5 w-3.5" /><span>{woken}</span></p>{/if}

@@ -94,3 +94,23 @@ fresh("a completed process discloses its original output on demand", async ({ pa
   await summary.press("Enter");
   await expect(output).toBeHidden();
 });
+
+fresh("process ends that waited for a working session arrive as one turn, each with its own output", async ({ page }) => {
+  await page.goto("/#/new");
+  const box = page.getByRole("textbox", { name: "Ask anything", exact: true });
+  const quick = (title: string) => ({ name: "pispark_start_process", args: { command: `node -e "console.log('${title} ok')"`, title } });
+  const slow = { name: "pispark_start_process", args: { command: 'node -e "setTimeout(() => {}, 2500)"', title: "slow" } };
+  // The session waits for the slow one in its turn, while the two quick ones end.
+  await box.fill(`steps:${JSON.stringify([quick("lint"), quick("types"), slow, { name: "pispark_wait", args: { ids: ["process-3"] } }])}`);
+  await box.press("Enter");
+  const together = page.locator('[data-purpose="together"]');
+  await expect(together).toHaveCount(1, { timeout: 30_000 });
+  const reports = together.locator("details");
+  await expect(reports).toHaveCount(2);
+  await expect(reports.nth(0).locator("summary")).toContainText("lint · exited 0");
+  await expect(reports.nth(1).locator("summary")).toContainText("types · exited 0");
+  // Each opens on its own output, not on the whole message.
+  await reports.nth(1).locator("summary").click();
+  await expect(reports.nth(1).locator(".output")).toHaveText(/^types ok\s*$/);
+  await expect(reports.nth(0).locator(".output")).toBeHidden();
+});

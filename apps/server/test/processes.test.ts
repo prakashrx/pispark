@@ -281,3 +281,29 @@ test("an extension says a verb on the bus; a line it causes survives reload and 
     await f.cleanup();
   }
 });
+
+test("three process ends that waited for a working session reach it together: one message, one run", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    const quick = (title: string): ["start_process", object] => ["start_process", { command: `node -e "console.log('${title} ok')"`, title }];
+    const hold: ["start_process", object] = ["start_process", { command: `node -e "setTimeout(() => {}, 2500)"`, title: "hold" }];
+    // The session stays in its turn, waiting for the slow one, while the three quick ones end.
+    await f.run(session.id, steps(quick("lint"), quick("types"), quick("unit"), hold, ["wait", { ids: ["process-4"] }]));
+    const woken = () => f.runtime.items(session.id, {}).items.filter((item) => item.customType === WOKEN_ENTRY);
+    await eventually(() => woken().length === 1, 15_000);
+    await eventually(() => f.runtime.list().find((s) => s.id === session.id)?.status === "idle");
+    await new Promise((done) => setTimeout(done, 400));
+    // One delivery that names each of the three, and one run for it.
+    assert.equal(woken().length, 1);
+    const { together } = woken()[0]!.details as { together: { source: { label: string }; at: number }[] };
+    assert.deepEqual(together.map((part) => part.source.label), ["lint · exited 0", "types · exited 0", "unit · exited 0"]);
+    const items = f.runtime.items(session.id, {}).items;
+    const at = items.findIndex((item) => item.customType === WOKEN_ENTRY);
+    const message = text(items[at + 1]!);
+    assert.deepEqual(together.map((part) => message.slice(part.at).split("\n")[0]), ['The process "lint" (process-1) exited 0.', 'The process "types" (process-2) exited 0.', 'The process "unit" (process-3) exited 0.']);
+    assert.equal(items.slice(at).filter((item) => item.role === "assistant").length, 1);
+  } finally {
+    await f.cleanup();
+  }
+});

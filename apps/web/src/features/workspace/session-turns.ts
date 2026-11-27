@@ -89,7 +89,9 @@ export interface Turn {
    * report says whose it is and how it ended (`title`, `how`), and where in the message the report
    * itself starts (`start`); a message without that shows its label and all of its text.
    */
-  from?: { id: string; label: string; kind: "session" | "process" | "reload"; title: string; how?: string; start: number };
+  from?: From;
+  /** Several messages that waited arrived as one: each one's sender, and where it starts in the message (`at`). */
+  together?: (From & { at: number })[];
   segments: Segment[];
   /** The agent is still working on this turn. */
   running: boolean;
@@ -98,6 +100,16 @@ export interface Turn {
   /** When your message was recorded (epoch ms), and when the last of the response ended. */
   startedAt?: number;
   endedAt?: number;
+}
+
+/** Who sent a message that the person did not: a session, a process or a reload. */
+export interface From {
+  id: string;
+  label: string;
+  kind: "session" | "process" | "reload";
+  title: string;
+  how?: string;
+  start: number;
 }
 
 const textOf = (part: ItemPart) => (part.type === "text" || part.type === "thinking" ? part.text : "");
@@ -125,14 +137,25 @@ export function wokenLabel(details: unknown): string {
   return [kind, label].filter(Boolean).join(" · ");
 }
 /** The session, process or reload a turn came from, when it was not the person or a schedule. */
-export function wokenFrom(details: unknown): Turn["from"] {
+export function wokenFrom(details: unknown): From | undefined {
   const { source, card } = (details ?? {}) as { source?: { kind?: unknown; id?: unknown; label?: unknown }; card?: Partial<WokenCard> };
   if (!(source?.kind === "session" || source?.kind === "process" || source?.kind === "reload") || typeof source.id !== "string" || typeof source.label !== "string")
     return undefined;
-  const from: NonNullable<Turn["from"]> = { id: source.id, label: source.label, kind: source.kind, title: source.label, start: 0 };
+  const from: From = { id: source.id, label: source.label, kind: source.kind, title: source.label, start: 0 };
   return card && typeof card.title === "string" && typeof card.how === "string" && Number.isSafeInteger(card.start) && card.start! >= 0
     ? { ...from, title: card.title, how: card.how, start: card.start! }
     : from;
+}
+
+/** The senders of a turn whose message is several that arrived together, each with where it starts. */
+export function wokenTogether(details: unknown): Turn["together"] {
+  const { together } = (details ?? {}) as { together?: unknown };
+  if (!Array.isArray(together)) return undefined;
+  const parts = together.flatMap((part: { at?: unknown }) => {
+    const from = wokenFrom(part);
+    return from && Number.isSafeInteger(part.at) && (part.at as number) >= 0 ? [{ ...from, at: part.at as number }] : [];
+  });
+  return parts.length === together.length && parts.length > 1 ? parts : undefined;
 }
 
 const summaryOf = (item: Item, between: boolean): Segment => ({
@@ -188,6 +211,7 @@ export function buildTurns(
   /** A wake's marker, waiting for the message it sent. */
   let woken: string | undefined;
   let from: Turn["from"];
+  let together: Turn["together"];
 
   const current = (): Turn => turns.at(-1) ?? turns[turns.push({ key: "earlier", segments: [], running: false }) - 1]!;
   const emit = (turn: Turn, segment: Segment) => turn.segments.push(segment);
@@ -208,17 +232,18 @@ export function buildTurns(
         user: item,
         ...(woken ? { woken } : {}),
         ...(from ? { from } : {}),
+        ...(together ? { together } : {}),
         ...(item.at ? { startedAt: item.at } : {}),
         segments: [],
         running: false,
       });
-      woken = undefined;
-      from = undefined;
+      woken = from = together = undefined;
       continue;
     }
     if (item.role === "entry" && item.customType === WOKEN_ENTRY) {
       woken = wokenLabel(item.details);
       from = wokenFrom(item.details);
+      together = wokenTogether(item.details);
       continue;
     }
     if (item.role === "summary" && between.has(item)) {
