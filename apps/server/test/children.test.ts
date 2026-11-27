@@ -402,13 +402,13 @@ test("a parent stops a child and what it started; it knows, so no answer comes b
     await f.idle(child.id);
     await eventually(() => f.runtime.listProcesses(child.id)[0]?.state === "running");
     // Its run ended with a process still running: it is not at rest.
-    assert.equal(await f.answer(parent.id, say("look")), 'session-1: "Runner" — waiting for what it started');
+    assert.equal(await f.answer(parent.id, say("look")), 'session-1: "Runner" — waiting for server');
 
     assert.equal(await f.answer(parent.id, say("stop", { id: "session-1" })), "Stopped.");
     await eventually(() => f.runtime.listProcesses(child.id)[0]?.state === "stopped", 20_000);
     await pause(300);
     assert.equal(f.runtime.items(parent.id, {}).items.filter((item) => item.customType === WOKEN_ENTRY).length, 0);
-    assert.equal(await f.answer(parent.id, say("look")), 'session-1: "Runner" — at rest');
+    assert.equal(await f.answer(parent.id, say("look")), 'session-1: "Runner" — stopped');
   } finally {
     await f.cleanup();
   }
@@ -708,6 +708,53 @@ test("reaching in: telling a child that works for its parent is noted for the pa
     await pause(300);
     assert.equal(lines().length, 1);
     assert.equal(f.heard(parent.id, child.id).length, 1);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+// ---- For clients: where each child's ask stands, from the session list alone ----
+
+test("the session list says where each child's ask stands: working, waiting and for what, asked, answered, stopped and by whom", async () => {
+  const f = await fixture();
+  try {
+    const parent = await f.runtime.create({ folder: f.folder });
+    const ask = (title: string) => f.runtime.list().find((session) => session.title === title)?.ask;
+
+    // Working, then waiting for what it started, then answered.
+    const slow = `node -e "setTimeout(() => console.log('ok'), 2500)"`;
+    await f.answer(parent.id, say("start_session", { brief: steps(["note", { text: "starting the tests" }], ["start_process", { command: slow, title: "tests" }]), title: "Tester" }));
+    assert.equal(ask("Tester")?.state, "working");
+    await eventually(() => ask("Tester")?.state === "waiting");
+    assert.deepEqual(ask("Tester"), { state: "waiting", detail: "for tests", note: "starting the tests" });
+    await eventually(() => ask("Tester")?.state === "answered", 20_000);
+    assert.deepEqual(ask("Tester"), { state: "answered", note: "starting the tests" });
+
+    // Asked: it raised a question with its parent, and waits for the answer.
+    await f.answer(parent.id, say("start_session", { brief: say("raise", { text: "Postgres or SQLite?" }), title: "Asker" }));
+    await eventually(() => ask("Asker")?.state === "asked");
+    assert.deepEqual(ask("Asker"), { state: "asked", question: "Postgres or SQLite?" });
+    await f.answer(parent.id, say("send", { id: "session-2", text: "SQLite" }));
+    await eventually(() => ask("Asker")?.state === "answered");
+
+    // Stopped by its parent's agent, and stopped by the person.
+    const long = steps(["start_process", { command: `node -e "setTimeout(() => {}, 20000)"`, title: "long job" }], ["wait"]);
+    await f.answer(parent.id, steps(["start_session", { brief: long, title: "One" }], ["start_session", { brief: long, title: "Two" }]));
+    const two = f.children(parent.id).find((child) => child.title === "Two")!;
+    await eventually(() => f.runtime.listProcesses(two.id).length === 1);
+    await f.answer(parent.id, say("stop", { id: "session-3" }));
+    assert.deepEqual(ask("One"), { state: "stopped" });
+    await f.runtime.cancel(two.id);
+    await eventually(() => ask("Two")?.state === "stopped");
+    assert.deepEqual(ask("Two"), { state: "stopped", detail: "by you" });
+    f.runtime.stopProcess(two.id, f.runtime.listProcesses(two.id)[0]!.id);
+
+    // A session the person started has no ask; what it raises with them shows on it until they answer.
+    assert.equal(f.runtime.list().find((session) => session.id === parent.id)?.ask, undefined);
+    await f.answer(parent.id, say("raise", { text: "Ship it today?" }));
+    assert.equal(f.runtime.list().find((session) => session.id === parent.id)?.raised, "Ship it today?");
+    await f.runtime.start(parent.id, "yes").completion;
+    assert.equal(f.runtime.list().find((session) => session.id === parent.id)?.raised, undefined);
   } finally {
     await f.cleanup();
   }

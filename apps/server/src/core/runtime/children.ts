@@ -1,7 +1,7 @@
 import type { Answer, Heard, Verb } from "../../contract/verbs.js";
 import type { StatusDetails, WokenDetails } from "../../contract/wake-protocol.js";
 import { isAbsolute, join } from "node:path";
-import type { SessionDoc } from "../../contract/protocol.js";
+import type { Ask, SessionDoc } from "../../contract/protocol.js";
 import { AgentError } from "../agents/format.js";
 import { validateText, type RunResult, type Session } from "./session.js";
 import { toolSessionTitle } from "./session-title.js";
@@ -144,7 +144,7 @@ export class Children implements Kind {
     const working = !(this.sessions.live(child.id)?.settled ?? true);
     if (!working && !child.ask) return { ok: true, text: "It is not working." };
     await this.sessions.ensure(child.id);
-    this.sessions.get(child.id).closeAsk();
+    this.sessions.get(child.id).closeAsk({ state: "stopped" });
     this.sessions.take(owner, from(child.id));
     this.sessions.stopProcesses(child.id);
     if (working) await this.sessions.cancel(child.id);
@@ -272,7 +272,8 @@ export class Children implements Kind {
   /** The child's answer to its open ask goes to its parent, and the ask is closed. */
   private answer(session: Session, result: RunResult): void {
     // Everything it said since it was asked, so a summary given before its last process ended is not lost.
-    const said = session.closeAsk().join("\n\n");
+    const ended = result.outcome === "completed" ? "answered" : result.outcome === "failed" ? "failed" : "stopped";
+    const said = session.closeAsk({ state: ended, ...(result.by === "person" ? { detail: "by you" } : {}) }).join("\n\n");
     const child = session.metadata;
     const parent = this.parentOf(child);
     if (!parent || !this.sessions.accepting()) return;
@@ -336,15 +337,25 @@ export class Children implements Kind {
     return !!child.raise || this.sessions.pending(child.id);
   }
 
+  /** Where a child's ask stands, for whoever looks at it: its parent's views, and (in words) its parent's agent. */
+  stand(child: SessionMetadata): Ask {
+    const session = this.sessions.live(child.id);
+    const note = child.note ? { note: child.note } : {};
+    if (session?.asking) return { state: "waiting", detail: "for you, in it", ...note };
+    if (session && !session.settled) return { state: "working", ...note };
+    if (child.raise) return { state: "asked", question: child.raise, ...note };
+    const due = child.ask ? this.sessions.waitingFor(child.id) : undefined;
+    if (due) return { state: "waiting", detail: due, ...note };
+    if (session?.status === "error" || child.interrupted) return { state: "failed", ...note };
+    return { ...(child.ended ?? { state: "answered" }), ...note };
+  }
+
   private state(child: SessionMetadata): string {
     if (child.archived) return "archived";
-    const session = this.sessions.live(child.id);
-    if (session?.asking) return "waiting for the person";
-    if (session && !session.settled) return "working";
-    if (child.raise) return "waiting for your answer";
-    if (child.ask && this.sessions.pending(child.id)) return "waiting for what it started";
-    if (session?.status === "error" || child.interrupted) return "failed";
-    return "at rest";
+    const { state, detail } = this.stand(child);
+    if (state === "waiting") return this.sessions.live(child.id)?.asking ? "waiting for the person" : `waiting ${detail}`;
+    if (state === "stopped") return detail === "by you" ? "stopped by the person" : "stopped";
+    return { working: "working", asked: "waiting for your answer", answered: "at rest", failed: "failed" }[state];
   }
 
   private due(): string {

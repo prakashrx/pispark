@@ -46,6 +46,8 @@ export interface SessionAccess {
   drain(): void;
   /** Something the session started is still due to wake it: a message waiting to be sent to it, or a process still running. */
   pending(sessionId: string): boolean;
+  /** What a session's run ended waiting for, in words for the person: "for tests", "for 2 processes", "for a message". */
+  waitingFor(sessionId: string): string | undefined;
   /** Stops the processes a session started, quietly. */
   stopProcesses(sessionId: string): void;
 }

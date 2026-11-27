@@ -153,6 +153,11 @@ export class SessionRuntime {
       arrival: (id, signal) => this.arrivals.next(id, signal),
       drain: () => void this.wakes.drain(),
       pending: (id) => this.wakes.owed(id) || this.processes.runningIn(id) > 0,
+      waitingFor: (id) => {
+        const running = this.processes.list(id).filter((p) => p.state === "running");
+        if (running.length) return running.length === 1 ? `for ${running[0]!.title ?? "a process"}` : `for ${running.length} processes`;
+        return this.wakes.owed(id) ? "for a message" : undefined;
+      },
       stopProcesses: (id) => this.processes.stopSession(id),
     };
     this.handles = new Handles((id) => this.storage.directory(id));
@@ -365,7 +370,8 @@ export class SessionRuntime {
       ...(session?.workingSince ? { workingSince: new Date(session.workingSince).toISOString() } : {}),
       ...(session?.waitingForSlot || (!session && metadata.queued !== undefined) ? { queued: true } : {}),
       ...(metadata.forkOf ? { parent: metadata.forkOf, forkOf: metadata.forkOf }
-        : metadata.parent ? { parent: metadata.parent } : {}),
+        : metadata.parent ? { parent: metadata.parent, ask: this.children.stand(metadata) }
+        : metadata.raise ? { raised: metadata.raise } : {}),
       ...(metadata.schedule ? { schedule: { ...metadata.schedule } } : {}),
       ...(metadata.held ? { held: { ...metadata.held } } : {}),
       ...(this.processes?.runningIn(metadata.id) ? { processes: this.processes.runningIn(metadata.id) } : {}),

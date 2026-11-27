@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, EventBus, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage, Provider } from "@earendil-works/pi-ai";
-import { NOTICE_ENTRY, type ReadOnlyReason, type ItemsPage, type LiveDoc, type PartPage, type PendingSetup, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
+import { NOTICE_ENTRY, type Ask, type ReadOnlyReason, type ItemsPage, type LiveDoc, type PartPage, type PendingSetup, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
 import { ExtensionUI } from "../extensions/extension-ui.js";
 import { ExtensionRendering } from "../extensions/extension-render.js";
 import { ExtensionViews } from "../extensions/views.js";
@@ -76,6 +76,10 @@ export interface SessionSummary {
   queued?: boolean;
   /** The session that started this one. */
   parent?: string;
+  /** For a session another one started: where what it was asked stands. */
+  ask?: Ask;
+  /** What it raised with the person, until they answer. */
+  raised?: string;
   /** The schedule or app routine this session is one run of. */
   schedule?: { id: string; due: string };
   /** Kept loaded while no one watches, by one of its extensions. */
@@ -839,9 +843,10 @@ export class Session {
   /** Its parent asks it something: what it says from here until it is at rest is its answer. A message while an ask is open is part of that ask. */
   openAsk(): void {
     if (this.metadata.ask) return;
-    const { note: _note, ...rest } = this.metadata;
+    const { note: _note, ended: _ended, ...rest } = this.metadata;
     this.metadata = { ...rest, ask: { from: this.pi?.sessionManager.getEntries().length ?? 0 } };
     this.host.storage.write(this.metadata);
+    this.changed();
   }
   /** It notes or raises with whoever asked it: kept for whoever looks at it, a raise until it is answered. */
   up(word: "raise" | "note", text: string): void {
@@ -857,10 +862,10 @@ export class Session {
     this.host.storage.write(this.metadata);
   }
   /**
-   * Its answer goes to its parent: what the agent said at the end of each of its turns since it
-   * was asked, in order. Closing the ask closes what it raised under it.
+   * Its ask is closed, and `ended` says how. Its answer is what the agent said at the end of each
+   * of its turns since it was asked, in order. Closing the ask closes what it raised under it.
    */
-  closeAsk(): string[] {
+  closeAsk(ended: NonNullable<SessionMetadata["ended"]>): string[] {
     const { ask, raise: _raise, ...rest } = this.metadata;
     if (!ask) return [];
     const replies: string[] = [];
@@ -872,8 +877,9 @@ export class Session {
       } else last = answerOf(entry) ?? last;
     }
     if (last) replies.push(last);
-    this.metadata = rest;
+    this.metadata = { ...rest, ended };
     this.host.storage.write(this.metadata);
+    this.changed();
     return replies;
   }
   /** The agent's last answer in this session: the text of its last reply that has any. */

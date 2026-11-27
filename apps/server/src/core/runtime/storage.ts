@@ -1,5 +1,6 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "../../contract/agent-protocol.js";
+import type { Ask } from "../../contract/protocol.js";
 import {
   existsSync,
   lstatSync,
@@ -52,6 +53,8 @@ export interface SessionMetadata {
    * began. Its parent hears once per ask, when the child is at rest (see `Children`).
    */
   ask?: { from: number };
+  /** How its last ask ended, until it is asked again. */
+  ended?: Pick<Ask, "state" | "detail">;
   /** Its last note to whoever asked it, since it was last asked. */
   note?: string;
   /** What it raised with whoever asked it, until that is answered: it is owed an answer. */
@@ -124,6 +127,7 @@ export class SessionStorage {
         (value.archived !== undefined && value.archived !== true) ||
         (value.forkOf !== undefined && (typeof value.forkOf !== "string" || !UUID.test(value.forkOf) || value.forkOf === id)) ||
         (value.parent !== undefined && (typeof value.parent !== "string" || !UUID.test(value.parent))) ||
+        (value.ended !== undefined && (!value.ended || typeof value.ended.state !== "string")) ||
         (value.note !== undefined && typeof value.note !== "string") ||
         (value.raise !== undefined && typeof value.raise !== "string") ||
         (value.collect !== undefined && value.collect !== true) ||
