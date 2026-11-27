@@ -2,7 +2,7 @@
   import Icon from "../../../lib/ui/Icon.svelte";
   import { useSessions } from "../session-client.svelte";
   import type { Segment } from "../session-turns";
-  // Something this session started ended, said in one line without a turn (status mode). Its mark
+  // Something this session started ended, said in one line without a turn. Its mark
   // follows whether it went as it should; a line that does not say (a watch, an older line) has none.
   let { segment }: { segment: Extract<Segment, { kind: "status" }> } = $props();
   const client = useSessions();

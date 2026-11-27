@@ -37,7 +37,7 @@ class Details {
     const open = layout.panelFits ? (this.choice ?? true) : this.over === sessionId;
     return open ? "details" : undefined;
   }
-  /** What the view opened on: a process for Background tasks. */
+  /** What the view opened on: a process, for its output. */
   focus(sessionId: string): string | undefined {
     return this.opened?.sessionId === sessionId ? this.opened.focus : undefined;
   }

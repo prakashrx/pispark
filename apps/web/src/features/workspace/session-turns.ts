@@ -152,7 +152,7 @@ export function wokenFrom(details: unknown): From | undefined {
 }
 
 /** The senders of a turn whose message is several that arrived together, each with where it starts. */
-export function wokenTogether(details: unknown): Turn["together"] {
+function wokenTogether(details: unknown): Turn["together"] {
   const { together } = (details ?? {}) as { together?: unknown };
   if (!Array.isArray(together)) return undefined;
   const parts = together.flatMap((part: { at?: unknown }) => {
