@@ -12,6 +12,8 @@ export function pattern(source: string): RegExp | undefined {
     return undefined;
   }
 }
+/** A model as an agent's settings name one: `provider/id`. */
+const MODEL = /^[^/\s]{1,128}\/[^\s]{1,256}$/;
 const expression = (value: unknown) => value === undefined || (text(value, 200) && !!pattern(value as string));
 
 /** Whether a request is one of the ten verbs, well formed. Whoever sent it (a tool, an extension) is checked the same way. */
@@ -20,7 +22,14 @@ export function validVerb(value: unknown): value is Verb {
   if (!r || typeof r !== "object" || !VERBS.includes(r.verb as Verb["verb"])) return false;
   switch (r.verb as Verb["verb"]) {
     case "start_session":
-      return text(r.brief, 64 * 1024) && optional(r.title, 4096) && optional(r.agent, 64);
+      // An agent by its id, or a definition made for the session, which the agent store checks when it is saved.
+      return (
+        text(r.brief, 64 * 1024) &&
+        optional(r.title, 4096) &&
+        (optional(r.agent, 64) || (!!r.agent && typeof r.agent === "object" && !Array.isArray(r.agent))) &&
+        optional(r.folder, 4096) &&
+        (r.model === undefined || (typeof r.model === "string" && MODEL.test(r.model)))
+      );
     case "start_process":
       return text(r.command, 8192) && optional(r.title, 120) && optional(r.folder, 4096) && seconds(r.stop_after_seconds, 7 * 86_400) && expression(r.raise_on);
     case "schedule":

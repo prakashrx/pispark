@@ -1,7 +1,8 @@
 import type { Answer, ChildEnded, Verb } from "../../contract/verbs.js";
 import type { StatusDetails, WokenDetails } from "../../contract/wake-protocol.js";
-import { bindingOf } from "../agents/resolve.js";
-import { validAgentId } from "../agents/format.js";
+import { isAbsolute, join } from "node:path";
+import type { SessionDoc } from "../../contract/protocol.js";
+import { AgentError } from "../agents/format.js";
 import { validateText, type RunResult, type Session } from "./session.js";
 import { toolSessionTitle } from "./session-title.js";
 import { runtimeError } from "./errors.js";
@@ -21,6 +22,15 @@ function dataText(data: unknown, room: number): string {
 /** What a child said, short enough for its parent's agent. */
 const cut = (text: string) => (text.length > 8192 ? `${text.slice(0, 8192)}…\n(cut; pispark_look shows what it last said)` : text);
 const short = (text: string) => (text.length > 160 ? `${text.slice(0, 159)}…` : text);
+
+/** Why a session could not be started, for the agent that asked for it. */
+function notStarted(error: unknown): string {
+  if (error instanceof AgentError) return `That agent definition cannot be used: ${error.code}${error.detail ? ` (${error.detail})` : ""}.`;
+  const { code } = runtimeError(error, "execution");
+  if (code === "agent") return "There is no such agent, or it cannot be used now.";
+  if (code === "invalid-input" || code === "folder") return "That folder cannot be used: it must exist, and a project agent works only in its own.";
+  return `The session could not be started (${code}).`;
+}
 
 type Report = Omit<ChildEnded, "reply">;
 /** Picks, among what waits for a parent, one child's messages of one kind. */
@@ -48,21 +58,14 @@ export class Children implements Kind {
   // ---- Down: what a parent does to its children -------------------------------------------------
 
   /**
-   * A session started by another one: in the parent's folder (or its agent's own), with the
-   * parent's agent and model unless another agent is named, and the brief as its first message.
+   * A session started by another one, set up as the person sets one up: where it works (its
+   * parent's folder unless given, or its agent's own), its agent (Default unless one is named, or
+   * one made for it, kept as its own layer), its model (the agent's own unless given), and the
+   * brief as its first message. It is named by its parent, or from the brief.
    */
   async start(owner: string, request: Omit<Extract<Verb, { verb: "start_session" }>, "verb">): Promise<Answer> {
     const parent = this.sessions.storage.read(owner);
     if (parent.parent) return { ok: false, text: "A session started by another session cannot start sessions." };
-    const { agents } = this.sessions;
-    const agent = request.agent ?? parent.agent;
-    if (!validAgentId(agent) || !agents.exists({ agent })) return { ok: false, text: `There is no agent "${agent}".` };
-    let ownFolder: boolean;
-    try {
-      ownFolder = !!bindingOf(agents, { agent }).folder;
-    } catch {
-      return { ok: false, text: `The agent "${agent}" cannot be used now.` };
-    }
     validateText(request.brief);
     let title: string | undefined;
     try {
@@ -70,10 +73,21 @@ export class Children implements Kind {
     } catch {
       /* Named from its first message instead. */
     }
-    const doc = await this.sessions.create(
-      { ...(ownFolder ? {} : { folder: parent.cwd }), agent, ...(agent === parent.agent && parent.model ? { model: parent.model } : {}) },
-      { parent: parent.id, ...(title ? { title } : {}) },
-    );
+    const { agent, folder, model } = request;
+    const slash = model?.indexOf("/") ?? -1;
+    let doc: SessionDoc;
+    try {
+      doc = await this.sessions.create(
+        {
+          ...(folder ? { folder: isAbsolute(folder) ? folder : join(parent.cwd, folder) } : {}),
+          ...(typeof agent === "string" ? { agent } : agent ? { layer: agent } : {}),
+          ...(model ? { model: { provider: model.slice(0, slash), id: model.slice(slash + 1) } } : {}),
+        },
+        { parent: parent.id, ...(title ? { title } : {}) },
+      );
+    } catch (error) {
+      return { ok: false, text: notStarted(error) };
+    }
     const session = this.sessions.get(doc.id);
     void session.start(request.brief, this.from(parent)).completion.catch(() => {});
     return {

@@ -1,3 +1,5 @@
+import type { AgentDefinition } from "./agent-protocol.js";
+
 /**
  * What a session says to PiSpark about the things it started: ten verbs, one per word of the
  * language (docs/session-runtime.md#the-ten-verbs). A child is anything the session started, of
@@ -16,8 +18,13 @@ export const toolOf = (verb: VerbName) => `pispark_${verb}` as const;
 
 /** A request: the verb and its fields, named as the tool's parameters are. */
 export type Verb =
-  /** Ask: hand work to a new session. `brief` is its first message, complete on its own. */
-  | { verb: "start_session"; brief: string; title?: string; agent?: string }
+  /**
+   * Ask: hand work to a new session, set up as the person sets one up. `brief` is its first
+   * message, complete on its own. `agent`: an agent's id, or an agent definition made for this
+   * session (kept as its own layer); the Default agent when left out. `folder`: where it works;
+   * the caller's when left out. `model`: `provider/id`; the agent's own when left out.
+   */
+  | { verb: "start_session"; brief: string; title?: string; agent?: string | AgentDefinition; folder?: string; model?: string }
   /** Ask: run a command in the background. `raise_on`: a regular expression; a matching line of output is raised. */
   | { verb: "start_process"; command: string; title?: string; folder?: string; stop_after_seconds?: number; raise_on?: string }
   /** Ask, with a time: send `prompt` later, once (`in_minutes` or `at`) or repeating (`cron`). The person is asked first. */

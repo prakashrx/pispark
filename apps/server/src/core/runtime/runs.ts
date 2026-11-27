@@ -1,5 +1,5 @@
 import type { RoutineRun } from "../../contract/schedule-protocol.js";
-import { bindingOf, listAgents, unattendedOf } from "../agents/resolve.js";
+import { listAgents, unattendedOf } from "../agents/resolve.js";
 import { RuntimeError } from "./errors.js";
 import type { SessionAccess } from "./session-access.js";
 
@@ -18,19 +18,10 @@ export class Runs {
    * model, named for the run. The clock sends it the prompt.
    */
   async schedule(owner: string, run: { title: string; schedule: { id: string; due: string } }): Promise<string> {
-    const { storage, agents, create } = this.sessions;
+    const { storage, create } = this.sessions;
     const parent = storage.read(owner);
     if (parent.parent || parent.archived) throw new RuntimeError("busy");
-    let ownFolder = false;
-    try {
-      ownFolder = !!bindingOf(agents, { agent: parent.agent }).folder;
-    } catch {
-      throw new RuntimeError("agent");
-    }
-    const doc = await create(
-      { ...(ownFolder ? {} : { folder: parent.cwd }), agent: parent.agent, ...(parent.model ? { model: parent.model } : {}) },
-      { parent: owner, title: run.title, schedule: run.schedule },
-    );
+    const doc = await create({ agent: parent.agent, ...(parent.model ? { model: parent.model } : {}) }, { parent: owner, title: run.title, schedule: run.schedule });
     await this.prune(run.schedule.id, doc.id);
     return doc.id;
   }

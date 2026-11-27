@@ -444,7 +444,8 @@ test("mind: a session another session started reports instead of keeping the tas
     await f.put("tasks.md", TASKS);
     const parent = await f.create();
     const brief = call("write", { path: ".mind/tasks.md", content: TASKS.replace("- Add TLS.", "- Add TLS.\n- Worker wrote this.") });
-    await f.start(parent.id, call("pispark_start_session", { brief, title: "Worker" }));
+    // The worker keeps a mind too, so the parent gives it its own agent.
+    await f.start(parent.id, call("pispark_start_session", { brief, title: "Worker", agent: "mindful" }));
     await eventually(() => f.runtime.list().some((s) => s.parent === parent.id));
     const child = f.runtime.list().find((s) => s.parent === parent.id)!;
     await eventually(() => /kept by the session that started you: put this in your report/.test(sessionText(f.runtime, child.id)), 10_000);

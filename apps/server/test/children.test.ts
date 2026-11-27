@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { RuntimeError } from "../src/core/runtime/errors.js";
@@ -203,6 +203,76 @@ test("what a parent already has is not sent again: a raise it answered, an answe
     assert.deepEqual(f.heard(parent.id, child.id), []);
     const records = JSON.parse(readFileSync(join(f.home, "sessions", parent.id, "wakes.json"), "utf8")).records[child.id] as { outcome: string }[];
     assert.deepEqual(records.map((record) => record.outcome), ["handled", "handled"]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+// ---- Setup: a parent sets up a child the way the person sets up a session ----
+
+test("setup: the Default agent unless one is named, the parent's folder unless one is given, a title from the brief", async () => {
+  const f = await fixture();
+  try {
+    await f.agent("dev", { name: "Dev" }, { "instructions/a.md": "DEV-INSTRUCTIONS" });
+    const parent = await f.runtime.create({ folder: f.folder, agent: "dev" });
+    const other = join(f.root, "other");
+    mkdirSync(other);
+    mkdirSync(join(f.folder, "packages"));
+    const child = (title: string) => f.children(parent.id).find((each) => each.title === title)!;
+
+    // Nothing but a brief: Default, where the parent works, named from the brief.
+    assert.match(await f.answer(parent.id, say("start_session", { brief: "Summarise the README" })), /^Started "Summarise the README" \(session-1\)/);
+    assert.equal(child("Summarise the README").agent.id, "default");
+    assert.equal(child("Summarise the README").folder, parent.folder);
+    // "Another me": the parent names its own agent, which its own guidance tells it.
+    await f.answer(parent.id, say("start_session", { brief: "b", title: "Same agent", agent: "dev" }));
+    assert.equal(child("Same agent").agent.id, "dev");
+    const told = f.provider.requests.map((request) => JSON.stringify(request.context.messages)).find((messages) => messages.includes("to pass when it should work as you do"))!;
+    assert.match(told, /this session's agent is \\"dev\\" and its model is \\"[^"\\]+\/[^"\\]+\\"/);
+    // A folder of its own, absolute or relative to the parent's.
+    await f.answer(parent.id, say("start_session", { brief: "c", title: "Elsewhere", folder: other }));
+    assert.equal(child("Elsewhere").folder, other);
+    await f.answer(parent.id, say("start_session", { brief: "d", title: "Inside", folder: "packages" }));
+    assert.equal(child("Inside").folder, join(parent.folder, "packages"));
+    // A child is named by its parent or from its brief: it has no tool to name itself.
+    await f.idle(child("Inside").id);
+    const childRequest = f.provider.requests.find((request) => JSON.stringify(request.context.messages).includes("started this one and gave it its first message"))!;
+    assert.ok(!toolsOf(childRequest).includes("pispark_set_title"));
+
+    // What can't be used is said, and nothing is started for it.
+    const before = f.children(parent.id).length;
+    assert.equal(await f.answer(parent.id, say("start_session", { brief: "e", agent: "nobody" })), "There is no such agent, or it cannot be used now.");
+    assert.match(await f.answer(parent.id, say("start_session", { brief: "f", folder: join(f.folder, "missing") })), /^That folder cannot be used/);
+    assert.match(await f.answer(parent.id, say("start_session", { brief: "g", model: "no-slash" })), /not well formed/);
+    assert.equal(f.children(parent.id).length, before);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("setup: an agent made for the child is its own layer, as Edit agent for this session makes one", async () => {
+  const f = await fixture();
+  try {
+    await f.agent("dev", { name: "Dev" }, { "instructions/a.md": "DEV-INSTRUCTIONS" });
+    const parent = await f.runtime.create({ folder: f.folder });
+    // A reviewer: Dev's instructions, and no shell.
+    const reviewer = { base: ["dev"], off: ["tool:bash"] };
+    await f.answer(parent.id, say("start_session", { brief: "review the change", title: "Reviewer", agent: reviewer }));
+    const [child] = f.children(parent.id);
+    assert.ok(child);
+    assert.deepEqual(child.agent, { id: "dev", name: "Dev", layered: true });
+    assert.deepEqual(f.runtime.agents.read({ session: child.id }).definition, { ...reviewer, resources: {} });
+    await f.idle(child.id);
+    const childRequest = f.provider.requests.find((request) => JSON.stringify(request.context.messages).includes("review the change") && !toolsOf(request).includes(toolOf("start_session")))!;
+    assert.match(JSON.stringify(childRequest.context.messages), /DEV-INSTRUCTIONS/);
+    assert.ok(!toolsOf(childRequest).includes("bash") && toolsOf(childRequest).includes("read"));
+
+    // A definition that is not one is refused with why, and leaves nothing behind.
+    const sessions = () => readdirSync(join(f.home, "sessions")).length;
+    const before = sessions();
+    assert.equal(await f.answer(parent.id, say("start_session", { brief: "x", agent: { code: "console.log(1)" } })), "That agent definition cannot be used: invalid-definition (code).");
+    assert.match(await f.answer(parent.id, say("start_session", { brief: "x", agent: { base: ["nobody"] } })), /^There is no such agent/);
+    assert.equal(sessions(), before);
   } finally {
     await f.cleanup();
   }
@@ -416,7 +486,8 @@ test("the parent's extensions see a child's answer first: they may take it or re
     await f.agent("orchestrator", { name: "Orchestrator" }, { "extensions/orchestrate.mjs": ORCHESTRATE });
     const parent = await f.runtime.create({ folder: f.folder, agent: "orchestrator" });
     const submit = `tool:submit:${JSON.stringify({ value: "42" })}`;
-    await f.runtime.start(parent.id, say("start_session", { brief: submit, title: "Reword" })).completion;
+    // The child needs the orchestrator's own tool, so the parent gives it its own agent.
+    await f.runtime.start(parent.id, say("start_session", { brief: submit, title: "Reword", agent: "orchestrator" })).completion;
     await eventually(() => f.runtime.items(parent.id, {}).items.some((item) => item.customType === WOKEN_ENTRY));
     const items = f.runtime.items(parent.id, {}).items;
     const woken = items.findIndex((item) => item.customType === WOKEN_ENTRY);

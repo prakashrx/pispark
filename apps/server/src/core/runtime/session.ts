@@ -13,7 +13,7 @@ import type { Setup } from "../agents/resolve.js";
 import type { SessionAgent, ThinkingLevel } from "../../contract/agent-protocol.js";
 import type { ModelChoice } from "../../contract/provider-protocol.js";
 import { sessionTitle } from "../../contract/session-title.js";
-import { toolSessionTitle } from "./session-title.js";
+import { TITLE_TOOL, toolSessionTitle } from "./session-title.js";
 import { attachedImages, sentAttachmentNames, namingFiles } from "./attachments.js";
 import { ExtensionRevisions, type ExtensionChange } from "./extension-revisions.js";
 import { SessionRequests } from "./session-requests.js";
@@ -36,9 +36,10 @@ import { CHILD_ENDED_CHANNEL, toolOf, type Answer, type ChildEnded, type Verb } 
 
 /**
  * A session started by another one is a worker. It keeps the six verbs a worker needs (start a
- * process, wait, look, stop, raise, note) and has none of these: it starts no sessions.
+ * process, wait, look, stop, raise, note) and has none of these: it starts no sessions, and it is
+ * named by its parent or from its brief, so it does not name itself.
  */
-const NOT_FOR_CHILDREN = (["start_session", "schedule", "send", "self"] as const).map(toolOf);
+const NOT_FOR_CHILDREN = [TITLE_TOOL, ...(["start_session", "schedule", "send", "self"] as const).map(toolOf)];
 
 export type SessionStatus =
   | "starting"
@@ -793,7 +794,8 @@ export class Session {
   private resources?: object;
   private inspect(): string {
     return JSON.stringify({
-      session: this.id, startedBy: this.startedBy, agent: this.metadata.agent, cwd: this.metadata.cwd, status: this.status,
+      session: this.id, startedBy: this.startedBy, agent: this.metadata.agent, model: this.metadata.model && `${this.metadata.model.provider}/${this.metadata.model.id}`,
+      cwd: this.metadata.cwd, status: this.status,
       setupChanged: this.setupChanged, resources: this.resources, activeTools: this.pi?.getActiveToolNames(),
       local: this.extensionRevisions.read(), pending: this.host.pendingSetup?.(this.id) ?? null,
       offeredViews: this.views?.view().map(({ point, key, title }) => ({ point, key, title })),

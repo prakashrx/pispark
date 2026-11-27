@@ -1,6 +1,6 @@
 import type { SessionDoc } from "../../contract/protocol.js";
 import type { ModelChoice } from "../../contract/provider-protocol.js";
-import type { AgentTarget } from "../../contract/agent-protocol.js";
+import type { AgentDefinition, AgentTarget } from "../../contract/agent-protocol.js";
 import type { SafeLogger } from "../logger.js";
 import type { AgentStore } from "../agents/store.js";
 import type { Session } from "./session.js";
@@ -8,8 +8,8 @@ import type { SessionMetadata, SessionStorage } from "./storage.js";
 import type { Wake } from "./wakes.js";
 import type { Arrival } from "./arrivals.js";
 
-/** A new session's request: Ask's, or another session's. */
-export type NewSession = { folder?: string; model?: ModelChoice; agent?: string };
+/** A new session's request: Ask's, or another session's, which may bring an agent made for it (`layer`, the session's own layer). */
+export type NewSession = { folder?: string; model?: ModelChoice; agent?: string; layer?: AgentDefinition };
 /** What a session started by another one, or by a schedule, records of where it came from. */
 export type Origin = Pick<SessionMetadata, "parent" | "title" | "schedule" | "ask">;
 

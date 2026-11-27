@@ -62,11 +62,18 @@ export default function pispark(pi: ExtensionAPI): void {
   tool(
     "start_session",
     "Start a session",
-    "Hand work to another PiSpark session, which runs on its own while this one carries on. It sees only the brief. It answers once, when it is done, and its answer arrives here as a message.",
+    "Hand work to another PiSpark session, which runs on its own while this one carries on. It sees only the brief. It answers once, when it is done, and its answer arrives here as a message. Set it up as a person sets up a new session: a folder, an agent and a model.",
     {
       brief: Type.String({ maxLength: 65536, description: "Its first message, complete on its own: the outcome, the limits, and what done means." }),
-      title: Type.Optional(Type.String({ maxLength: 200, description: "A short title for it." })),
-      agent: Type.Optional(Type.String({ maxLength: 64, description: "An agent id; this session's agent when left out." })),
+      title: Type.Optional(Type.String({ maxLength: 200, description: "A short title for it; named from the brief when left out." })),
+      agent: Type.Optional(
+        Type.Union([Type.String({ maxLength: 64 }), Type.Object({}, { additionalProperties: true })], {
+          description:
+            "An agent id, or an agent definition made for this session, in the shape of an agent.json (base, on, off, resources, settings): it names agents, skills, extensions and prompts that exist, and holds no code. The Default agent when left out.",
+        }),
+      ),
+      folder: Type.Optional(Type.String({ maxLength: 4096, description: "Where it works, absolute or relative to this session's folder; this session's folder when left out." })),
+      model: Type.Optional(Type.String({ maxLength: 400, description: "As provider/id; its agent's own model when left out." })),
     },
   );
   tool(
@@ -145,18 +152,18 @@ export default function pispark(pi: ExtensionAPI): void {
     { action: Type.Union([Type.Literal("inspect"), Type.Literal("reload")]) },
   );
 
-  /** The title of the session that started this one, if one did: PiSpark knows, the extension asks. */
-  const startedBy = async (): Promise<string | undefined> => {
+  /** What PiSpark knows of this session that its agent is told: who started it, if a session did, and its own agent and model. */
+  const self = async (): Promise<{ startedBy?: string; agent?: string; model?: string }> => {
     try {
-      return (JSON.parse((await say.self("inspect")).text) as { startedBy?: string }).startedBy;
+      return JSON.parse((await say.self("inspect")).text) as { startedBy?: string; agent?: string; model?: string };
     } catch {
-      return undefined;
+      return {};
     }
   };
   pi.on("before_agent_start", async (event, ctx) => {
     const active = pi.getActiveTools();
     const has = (verb: VerbName) => active.includes(toolOf(verb));
-    const parent = await startedBy();
+    const { startedBy: parent, agent, model } = await self();
     const guidance = [
       pisparkContext(ctx.sessionManager.getSessionDir()),
       active.includes(TITLE_TOOL)
@@ -166,7 +173,9 @@ export default function pispark(pi: ExtensionAPI): void {
         ? `When the person asks to do something later or repeatedly in this session, use pispark_schedule; PiSpark asks them to confirm. The server's local time now is ${localNow()}.`
         : "",
       has("start_session")
-        ? "For work that can run on its own (research, a long job, one of several parallel parts), hand it to another session with pispark_start_session and carry on. Each session answers once, when it is done. To use the answers in this turn, call pispark_wait (all of them, or the first with for 'any'); otherwise end your turn and each answer arrives here as a message. What this session starts gets a short id such as session-1 or process-2: pispark_look shows them, pispark_send tells one something, pispark_stop stops one."
+        ? `For work that can run on its own (research, a long job, one of several parallel parts), hand it to another session with pispark_start_session and carry on. Each session answers once, when it is done. To use the answers in this turn, call pispark_wait (all of them, or the first with for 'any'); otherwise end your turn and each answer arrives here as a message. What this session starts gets a short id such as session-1 or process-2: pispark_look shows them, pispark_send tells one something, pispark_stop stops one.${
+            agent ? ` A session you start uses the Default agent and that agent's model unless you say otherwise; this session's agent is "${agent}"${model ? ` and its model is "${model}"` : ""}, to pass when it should work as you do.` : ""
+          }`
         : "",
       has("start_process")
         ? "For commands that run long or never end on their own (dev servers, watchers, long builds or test runs), use pispark_start_process instead of bash. When one ends this session is told once, so don't check on it repeatedly: pispark_wait blocks until it ends or its output shows something (until), and pispark_look is for a deliberate look at its output."

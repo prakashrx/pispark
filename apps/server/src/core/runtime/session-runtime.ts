@@ -449,41 +449,51 @@ export class SessionRuntime {
       this.admit();
     }
     if (request.model !== undefined && !validChoice(request.model)) throw new RuntimeError("invalid-input");
-    const agent = request.agent ?? DEFAULT_AGENT;
+    // An agent made for this session builds on the agents it names, like any session's own layer.
+    const agent = request.agent ?? request.layer?.base?.[0] ?? DEFAULT_AGENT;
     if (!validAgentId(agent)) throw new RuntimeError("invalid-input");
     if (!this.agents.exists({ agent })) throw new RuntimeError("agent");
-    let bound: ReturnType<typeof bindingOf>;
+    const id = randomUUID();
     try {
-      bound = bindingOf(this.agents, { agent });
-    } catch {
-      throw new RuntimeError("agent");
+      if (request.layer) this.agents.save({ session: id }, "", request.layer);
+      let bound: ReturnType<typeof bindingOf>;
+      try {
+        bound = bindingOf(this.agents, request.layer ? { session: id } : { agent });
+      } catch {
+        throw new RuntimeError("agent");
+      }
+      // A project agent decides the folder; nobody else may. A session another one started works
+      // where that one does, unless it is given a folder. An app without one has its own place.
+      const inherited = child.parent ? this.storage.read(child.parent).cwd : undefined;
+      const folder = bound.folder ?? request.folder ?? inherited ?? (bound.home ? this.appFolder(agent) : undefined);
+      if ((bound.folder && request.folder !== undefined) || typeof folder !== "string" || !isAbsolute(folder) || folder.length > 4096)
+        throw new RuntimeError("invalid-input");
+      // The folder is checked and made canonical during setup, after the session is reserved.
+      const createdAt = new Date().toISOString();
+      return await this.load(
+        {
+          version: 2,
+          id,
+          tracksUploads: true,
+          cwd: folder,
+          agent,
+          ...(request.model ? { model: request.model } : {}),
+          createdAt,
+          // Nothing to read yet: it becomes unread when it does something no one has looked at.
+          seenAt: createdAt,
+          active: false,
+          interrupted: false,
+          // A session started by another one is asked from its first message.
+          ...(child.parent ? { ask: { from: 0 } } : {}),
+          ...child,
+        },
+        false,
+      );
+    } catch (error) {
+      // Nothing is kept of a session that did not start, the layer made for it included.
+      if (request.layer) this.storage.discardUnpublished(id);
+      throw error;
     }
-    // A project agent decides the folder; nobody else may. An app without one has its own place
-    // unless it is given another. Any other agent is given a folder.
-    const folder = bound.folder ?? request.folder ?? (bound.home ? this.appFolder(agent) : undefined);
-    if ((bound.folder && request.folder !== undefined) || typeof folder !== "string" || !isAbsolute(folder) || folder.length > 4096)
-      throw new RuntimeError("invalid-input");
-    // The folder is checked and made canonical during setup, after the session is reserved.
-    const createdAt = new Date().toISOString();
-    return this.load(
-      {
-        version: 2,
-        id: randomUUID(),
-        tracksUploads: true,
-        cwd: folder,
-        agent,
-        ...(request.model ? { model: request.model } : {}),
-        createdAt,
-        // Nothing to read yet: it becomes unread when it does something no one has looked at.
-        seenAt: createdAt,
-        active: false,
-        interrupted: false,
-        // A session started by another one is asked from its first message.
-        ...(child.parent ? { ask: { from: 0 } } : {}),
-        ...child,
-      },
-      false,
-    );
   }
   private appFolder(agent: string): string {
     const dir = join(this.appsDir, agent);
