@@ -7,14 +7,15 @@
   import InlineEdit from "../../lib/ui/InlineEdit.svelte";
   import SessionMark from "./SessionMark.svelte";
   import { useSessions } from "./session-client.svelte";
-  import { canArchive, sessionState, type SessionState } from "./session-presentation";
-  import { describeSchedule } from "../../../../server/src/contract/cron";
+  import { canArchive, parentState, type SessionState } from "./session-presentation";
+  import { sourcesOf, startedBy, summary } from "../started/work";
   import { DEFAULT_AGENT } from "../../../../server/src/contract/agent-protocol";
   import type { SessionInfo } from "../../../../server/src/contract/protocol";
   import { href } from "../../routes";
   /**
-   * A session in the sidebar, on one line: its agent's mark when it isn't Default, its name, what
-   * runs in the background for it, and its state. Rename (in place) and Archive show on hover or
+   * A session in the sidebar, on one line: its agent's mark when it isn't Default, its name, how
+   * many of the sessions and processes it started are still going, and its state, which speaks for
+   * the sessions it started too (they have no rows of their own). Rename (in place) and Archive show on hover or
    * focus; on a touch screen a long press (or a right-click anywhere) opens the row's actions in a sheet.
    */
   let {
@@ -37,7 +38,9 @@
   } = $props();
   const client = useSessions();
   const archivable = $derived(canArchive(session));
-  const scheduled = $derived(client.schedules.active(session.id));
+  // What it started that is still going: the sessions and processes, which "Started here" lists.
+  const going = $derived(startedBy(session, sourcesOf(client), Date.now()).filter((work) => work.open && (work.kind === "session" || work.kind === "process")));
+  const shown = $derived(status ?? parentState(session, client.sessions.filter((each) => each.parent === session.id && each.ask)));
   // An app's sessions are listed under the app, so its mark would only repeat it.
   const agent = $derived(session.agent && session.agent.id !== DEFAULT_AGENT && !session.agent.home ? session.agent.name : undefined);
   let row = $state<HTMLElement>();
@@ -110,19 +113,11 @@
     {#if agent}<span class="inline-flex" title={agent}><IdentityMark name={agent} /><span class="sr-only">{agent}:</span></span>{/if}
     <span class="min-w-0 flex-1 truncate" class:text-muted-foreground={muted} class:unread={session.unread}>{name}</span>
   </a>{/if}
-  {#if scheduled}<span class="background" title={`Scheduled: ${describeSchedule(scheduled)}`}
-      ><Icon name="clock" class="h-3.5 w-3.5" /><span class="sr-only">Scheduled: {describeSchedule(scheduled)}</span></span
+  {#if going.length}<span class="going" title={`Still going: ${summary(going)}`}
+      ><span aria-hidden="true">{going.length}</span><span class="sr-only">Still going: {summary(going)}</span></span
     >{/if}
-  {#if session.held}<span class="background" title={`Kept running by ${session.held.extension}: ${session.held.reason}`}
-      ><Icon name="pin" class="h-3.5 w-3.5" /><span class="sr-only">Kept running by {session.held.extension}</span></span
-    >{/if}
-  {#if session.processes}<span class="background" title={`${session.processes} ${session.processes === 1 ? "background task" : "background tasks"} running`}
-      ><Icon name="terminal" class="h-3.5 w-3.5" /><span class="sr-only"
-        >{session.processes} {session.processes === 1 ? "background task" : "background tasks"} running</span
-      ></span
-    >{/if}
-  <SessionMark state={status ?? sessionState(session)} />
-  {#if session.unread && !(status ?? sessionState(session))}<span class="unread-dot" title="New since you looked"
+  <SessionMark state={shown} />
+  {#if session.unread && !shown}<span class="unread-dot" title="New since you looked"
       ><span class="sr-only">New since you looked</span></span
     >{/if}
   {#if !renaming}<span class="row-actions">
@@ -162,11 +157,11 @@
     border-radius: var(--radius-full);
     background: var(--interactive);
   }
-  .background {
+  .going {
     flex-shrink: 0;
-    display: inline-grid;
-    place-items: center;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
   }
   .session-row:focus-within {
     background: var(--sidebar-hover);

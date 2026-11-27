@@ -23,10 +23,6 @@ export class ScheduleClient {
   of(sessionId: string): ScheduleSummary[] {
     return this.schedules.filter((schedule) => schedule.sessionId === sessionId);
   }
-  /** A schedule that can wake the session, for the sidebar's clock. */
-  active(sessionId: string): ScheduleSummary | undefined {
-    return this.schedules.find((schedule) => schedule.sessionId === sessionId && schedule.on && !schedule.held);
-  }
   add(input: ScheduleInput & { sessionId: string }): Promise<unknown> {
     return this.post("/api/schedules", input);
   }

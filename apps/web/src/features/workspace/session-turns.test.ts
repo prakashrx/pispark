@@ -246,6 +246,10 @@ test("starting a session: its words, and the session it made as a row, with its 
   expect(describeCall(verb("stop", { id: "process-2" }))).toEqual({ doing: "Stopping", done: "Stopped", object: "process-2" });
   expect(describeCall(verb("raise", { text: "Postgres or SQLite?" }))).toEqual({ doing: "Raising", done: "Raised", object: "Postgres or SQLite?" });
   expect(describeCall(verb("note", { text: "half way" }))).toEqual({ doing: "Noting", done: "Noted", object: "half way" });
+  // What goes up is read in the conversation itself, once it was sent.
+  expect(artifactsOf(verb("raise", { text: "Postgres or SQLite?" }))).toEqual([{ kind: "up", key: "up.c1", what: "raise", text: "Postgres or SQLite?" }]);
+  expect(artifactsOf(verb("note", { text: "half way" }))).toEqual([{ kind: "up", key: "up.c1", what: "note", text: "half way" }]);
+  expect(artifactsOf({ ...verb("note", { text: "half way" }), status: "error" as const })).toEqual([]);
   expect(describeCall(verb("self", { action: "reload" })).done).toBe("Asked to reload");
   expect(artifactsOf(verb("stop", { id: "session-1" }))).toEqual([]);
   expect(summarizeCalls([verb("note", { text: "a" }), verb("note", { text: "b" }), verb("look", {})])).toBe("Left 2 notes, looked 1 time");

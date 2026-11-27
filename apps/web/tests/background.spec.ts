@@ -13,11 +13,11 @@ fresh("a process the agent starts: a row in the reply, on Background with its se
   await box.fill(start({ command: SERVER, title: "dev server" }));
   await box.press("Enter");
 
-  // The reply shows the process with its state; the sidebar row says one is running.
+  // The reply shows the process with its state; the session's row in the sidebar counts what is still going.
   const row = page.locator('[data-purpose="process-row"]');
   await expect(row).toContainText("dev server");
   await expect(row).toContainText("Running");
-  await expect(page.getByRole("navigation", { name: "Sessions" }).getByText("1 background task running")).toBeAttached();
+  await expect(page.getByRole("navigation", { name: "Sessions" }).getByText("Still going: 1 process")).toBeAttached();
 
   // Background lists it under its session, among what is running; Show output there opens the session on it.
   const session = page.url();

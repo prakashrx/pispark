@@ -6,7 +6,7 @@ import { openAgent, openTab } from "./agent-journey";
 const fresh = hostedTest;
 const start = (args: object) => `tool:pispark_start_session:${JSON.stringify(args)}`;
 
-fresh("a session starts a session: one row for the ask, its answer folded inside; the child sits under its parent", async ({ page }) => {
+fresh("a session starts a session: one row for the ask, its answer folded inside; the child is never a row in the session list", async ({ page }) => {
   await page.goto("/");
   const box = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await box.fill(start({ brief: "research zustand", title: "Zustand research" }));
@@ -26,12 +26,11 @@ fresh("a session starts a session: one row for the ask, its answer folded inside
   await expect(row.locator(".prose")).toHaveText("local:research zustand");
   await expect(row).not.toContainText("you started finished");
 
-  // In the sidebar the child is under its parent, behind a toggle once it is done.
+  // The session list shows conversations the person started: the child is not a row, and nothing unfolds under its parent.
   const sessions = page.getByRole("navigation", { name: "Sessions" });
-  const toggle = sessions.getByRole("button", { name: /^Sessions started by / });
-  await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  await toggle.click();
-  await expect(sessions.getByRole("group", { name: /^Started by / }).getByRole("link", { name: "Zustand research" })).toBeVisible();
+  await expect(sessions.getByRole("link")).toHaveCount(1);
+  await expect(sessions.getByRole("link", { name: "Zustand research" })).toHaveCount(0);
+  await expect(sessions.getByRole("button", { name: /^Sessions (started by|under) / })).toHaveCount(0);
 
   // "Started here" keeps it under Finished once it has answered; its row opens it.
   const details = page.getByRole("complementary", { name: "Details" });
@@ -41,13 +40,17 @@ fresh("a session starts a session: one row for the ask, its answer folded inside
   await expect(finished).toContainText("answered");
   await finished.getByRole("button", { name: /Zustand research/ }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Zustand research" })).toBeVisible();
-  // Details say where it came from, with a way back.
-  await expect(page.getByRole("complementary", { name: "Details" }).getByText("Started by", { exact: true })).toBeVisible();
-  await expect(page.locator('[data-purpose="session-turn"]')).toContainText("research zustand");
-  await expect(sessions.getByRole("group", { name: /^Started by / }).getByRole("link", { name: "Zustand research" })).toHaveAttribute("aria-current", "page");
+  // Inside the child: who asked and the brief it was given, and that it has answered.
+  const brief = page.locator('[data-purpose="session-turn"]');
+  await expect(brief).toContainText("Asked by");
+  await expect(brief).toContainText("research zustand");
+  await expect(page.locator('[data-purpose="sent-up"]')).toHaveText(/^Answered tool:pispark_start_session/);
+  // It is still not a row in the list, and once it has answered its parent is no longer told what changes here.
+  await expect(sessions.getByRole("link", { name: "Zustand research" })).toHaveCount(0);
+  await expect(page.getByText(/is told what you change here/)).toHaveCount(0);
 
-  // Back to the parent from the header link.
-  await page.getByRole("button", { name: /^tool:pispark_start_session/ }).first().click();
+  // Its parent is the way back, in the header.
+  await page.getByRole("banner").getByRole("link", { name: /^tool:pispark_start_session/ }).click();
   await expect(page.locator('[data-purpose="ask-row"]')).toContainText("answered");
 
   await page.setViewportSize({ width: 390, height: 844 });

@@ -42,9 +42,9 @@ fresh("a session's schedules: a dialog from Details, run now, switch off, on Bac
   await expect(row).toHaveCount(1);
   await expect(row.getByText("Every weekday at 9:30 am")).toBeVisible();
   await expect(row.getByText(/^Next /)).toBeVisible();
-  // A switched-on schedule marks its session in the sidebar.
+  // A schedule is listed where it belongs, in "Started here" and on Background; the session's row carries no mark for it.
   const sessions = page.getByRole("navigation", { name: "Sessions" });
-  await expect(sessions.getByText("Scheduled: Every weekday at 9:30 am")).toHaveCount(1);
+  await expect(sessions.getByText(/Scheduled|Still going/)).toHaveCount(0);
 
   // Run now, in the schedule's dialog, sends the prompt at once; the run is recorded and the turn says it was scheduled.
   await row.getByRole("button", { name: /^Every weekday at 9:30 am/ }).click();
@@ -56,10 +56,9 @@ fresh("a session's schedules: a dialog from Details, run now, switch off, on Bac
   await expect(page.getByText(/^Scheduled · Every weekday at 9:30 am · /)).toBeVisible();
   await expect(page.getByText("local:summarise the day", { exact: true })).toBeVisible();
 
-  // Switched off in its row: no next run, no clock in the sidebar.
+  // Switched off in its row: no next run.
   await row.getByRole("switch", { name: "Run Every weekday at 9:30 am" }).click();
   await expect(row.getByText("Off", { exact: true })).toBeVisible();
-  await expect(sessions.getByText(/^Scheduled:/)).toHaveCount(0);
 
   // Background lists it under its session; Pause all is saved and says so in the sidebar.
   await page.goto("/#/background");

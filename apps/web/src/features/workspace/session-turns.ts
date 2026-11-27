@@ -69,14 +69,15 @@ export type Segment =
    * the session's last reply, which Retry can follow.
    */
   | { kind: "stopped"; key: string; reason: "aborted" | ReplyFailure; error?: string; provider?: string; latest: boolean }
-  /** A session this one started, shown with its live state. */
   /** A session this one started: one row for the ask, with the child's answer folded inside once it has reached this conversation. */
   | { kind: "session"; key: string; sessionId: string; title: string; answer?: string }
   /** A process this one started, shown with its live state. */
   | { kind: "process"; key: string; processId: string; title: string }
   /** A schedule the agent added, as it was saved. */
   | { kind: "schedule"; key: string; schedule: Schedule }
-  /** A line saying something this session started ended, without a turn (status mode). */
+  /** What this session sent up to whoever asked it: a note, or a raise. */
+  | { kind: "up"; key: string; what: "note" | "raise"; text: string }
+  /** A line about something this session started, added without a turn: a scheduled run ended, the person stopped a process. */
   | { kind: "status"; key: string; title: string; how: string; ok?: boolean; session?: string; process?: string };
 
 /** Your message and everything the agent did and said in answer to it. */

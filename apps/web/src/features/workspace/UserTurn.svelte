@@ -14,6 +14,8 @@
   const client = useSessions();
   const session = useSession();
   const known = (from: From) => from.kind === "session" && client.sessions.some((session) => session.id === from.id);
+  // In a child, what its parent sent is what it was asked.
+  const lead = (from: From) => (from.id === session?.info?.parent && session.info.ask ? "Asked by" : "From");
   // Your own saved message can be edited and sent again, between replies; its versions switch then too.
   const free = $derived(!!session && !session.doc?.readOnly && (session.doc?.status === "idle" || session.doc?.status === "error"));
   const editable = $derived(!woken && !!item?.id && free);
@@ -43,7 +45,7 @@
     <div class="flex flex-col items-start gap-1.5" data-purpose="session-turn">
       <p class="woken">
         <Icon name="sessionBack" class="h-3.5 w-3.5" /><span
-          >From {#if known(from)}<button type="button" class="link" onclick={() => client.open(from.id)}>{from.title}</button>{:else}{from.title}{/if}{from.how
+          >{lead(from)} {#if known(from)}<button type="button" class="link" onclick={() => client.open(from.id)}>{from.title}</button>{:else}{from.title}{/if}{from.how
             ? ` · ${from.how}`
             : ""}</span
         >

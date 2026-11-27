@@ -159,8 +159,13 @@ verb(
 );
 verb("look", words("Looking at", "Looked at", (call) => arg(call, "id") ?? "what it started"), (calls) => `looked ${noun(calls.length, "time")}`);
 verb("stop", words("Stopping", "Stopped", argOf("id")), (calls) => `stopped ${noun(calls.length, "thing")}`);
-verb("raise", words("Raising", "Raised", said), () => "raised a question");
-verb("note", words("Noting", "Noted", said), (calls) => `left ${noun(calls.length, "note")}`);
+// What goes up is read in the conversation itself: a line (or, when it needs you, a card) with its words.
+const sentUp = (what: "note" | "raise") => (call: ToolCall): Segment[] => {
+  const words = arg(call, "text");
+  return call.status === "done" && words ? [{ kind: "up", key: `up.${call.id}`, what, text: words }] : [];
+};
+verb("raise", words("Raising", "Raised", said), () => "raised a question", sentUp("raise"));
+verb("note", words("Noting", "Noted", said), (calls) => `left ${noun(calls.length, "note")}`, sentUp("note"));
 verb(
   "self",
   (call) => (arg(call, "action") === "reload" ? { doing: "Asking to reload", done: "Asked to reload" } : { doing: "Inspecting this session", done: "Inspected this session" }),

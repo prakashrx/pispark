@@ -101,10 +101,11 @@ export const STATE_WORDS: Record<Exclude<SessionState, "">, string> = {
   opening: "Opening",
   stopping: "Stopping",
 };
-type StateFields = Pick<SessionInfo, "status" | "interrupted" | "waiting" | "queued">;
+type StateFields = Pick<SessionInfo, "status" | "interrupted" | "waiting" | "queued" | "raised">;
 export function sessionState(session?: StateFields): SessionState {
   const status = session?.status;
-  if (session?.waiting && status === "running") return "needs-you";
+  // It needs you when an extension's question waits, or when it raised something with you.
+  if ((session?.waiting && status === "running") || session?.raised) return "needs-you";
   if (session?.queued || status === "queued") return "queued";
   if (status === "cancelling" || status === "stopping") return "stopping";
   if (status === "running") return "working";
@@ -113,6 +114,16 @@ export function sessionState(session?: StateFields): SessionState {
   // PiSpark stopped in the middle of a run (a restart): nothing failed, and Continue picks it up.
   if (session?.interrupted) return "interrupted";
   return "";
+}
+/**
+ * A session's mark speaks for the sessions it started, which have no rows of their own: it needs
+ * you when one of them does, and it is working while any of them still has its ask open.
+ */
+export function parentState(session: StateFields, children: Pick<SessionInfo, keyof StateFields | "ask">[]): SessionState {
+  const own = sessionState(session);
+  if (own === "needs-you" || children.some((child) => sessionState(child) === "needs-you")) return "needs-you";
+  if (own) return own;
+  return children.some((child) => child.ask && ["working", "waiting", "asked"].includes(child.ask.state)) ? "working" : "";
 }
 /** A session's state in words; empty when there is nothing to say. */
 export function sessionStatus(session?: StateFields): string {

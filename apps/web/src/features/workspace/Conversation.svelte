@@ -6,11 +6,21 @@
   import { buildTurns } from "./session-turns";
   import UserTurn from "./UserTurn.svelte";
   import { placedPoints } from "./extension-views";
-  import { useSession } from "./session-client.svelte";
+  import { useSession, useSessions } from "./session-client.svelte";
+  import { sessionName } from "./session-presentation";
+  import Icon from "../../lib/ui/Icon.svelte";
 
   /** PiSpark's own conversation: the session's items as turns, in one continuous scroll. */
   const session = useSession();
   const doc = $derived(session.doc);
+  const client = useSessions();
+  // A child that has answered says so at the end of what it did: the name of the session it answered.
+  const answered = $derived.by(() => {
+    const info = session.info;
+    if (info?.ask?.state !== "answered") return undefined;
+    const parent = client.sessions.find((each) => each.id === info.parent);
+    return parent ? sessionName(parent) : "the session that asked";
+  });
   const placed = $derived(placedPoints(doc?.extensions));
   // While your message waits for a summary first, the turn before it is done; the message says so.
   const running = $derived(["running", "cancelling"].includes(doc?.status ?? "") && !(doc?.compacting && doc.queuedText));
@@ -120,6 +130,7 @@
         {#each turns as turn (turn.key)}
           <ResponseTurn {turn} sessionId={session.id} />
         {/each}
+        {#if answered}<p class="answered" data-purpose="sent-up"><Icon name="checkBold" class="h-3.5 w-3.5 shrink-0" />Answered {answered}</p>{/if}
         {#if doc.queuedText && (doc.status === "queued" || doc.compacting)}<div class="queued-turn">
             <UserTurn text={doc.queuedText} />
             <p role="status" class="queued-note">
@@ -151,6 +162,13 @@
     opacity: 0.75;
   }
   .queued-note {
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
+  }
+  .answered {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     font-size: 0.8125rem;
     color: var(--muted-foreground);
   }

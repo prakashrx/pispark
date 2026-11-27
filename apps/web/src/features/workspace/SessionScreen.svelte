@@ -48,6 +48,10 @@
     if (session.info?.unread && visible) void client.seen(session.id);
   });
   const agent = $derived(session.info?.agent.name);
+  // A session another one started: its parent is the way back, and is told what the person changes
+  // here while it still works on what the parent asked.
+  const parent = $derived(session.info?.ask ? client.sessions.find((each) => each.id === session.info!.parent) : undefined);
+  const asked = $derived(!!parent && ["working", "waiting", "asked"].includes(session.info!.ask!.state));
   const view = $derived(session.views.find((offer) => offer.key === session.shownView));
   const compact = $derived(layout.size === "compact");
   // An extension's window title names the browser tab while this session is open.
@@ -85,6 +89,7 @@
 {#snippet replyDock()}
   <Shelf />
   {#if session.info}<ActivityStrip owner={session.info} />{/if}
+  {#if parent && asked}<p class="told">{sessionName(parent)} is told what you change here.</p>{/if}
   {#if session.doc?.readOnly}<ReadOnlyReply />{:else}<Composer mode="reply" />{/if}
   <ContributionPoint point="session.input.below" />
   <StatusLine />
@@ -101,7 +106,16 @@
     <SessionDetails view={panelRoute} focus={details.focus(session.id)} />
   </Screen>
 {:else}
-  <Screen title={name} rename={session.info ? (title) => session.rename(title) : undefined} bind:renaming flush scroll={!view} dock={view ? undefined : replyDock} below={compact && session.views.length ? tabs : undefined}>
+  <Screen
+    title={name}
+    {...parent ? { back: { name: "session", id: parent.id } as const, backLabel: sessionName(parent) } : {}}
+    rename={session.info ? (title) => session.rename(title) : undefined}
+    bind:renaming
+    flush
+    scroll={!view}
+    dock={view ? undefined : replyDock}
+    below={compact && session.views.length ? tabs : undefined}
+  >
     {#snippet actions()}<SessionBar tabs={!compact} onrename={() => (renaming = true)} />{/snippet}
     {#snippet notices()}<SessionNotices />{/snippet}
     <SessionArea {session} />
@@ -126,3 +140,12 @@
   {/if}
 {/if}
 
+
+<style>
+  /* Inside a child, by its message box: who hears what the person changes here. */
+  .told {
+    padding: 0 0.25rem 0.25rem;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+  }
+</style>

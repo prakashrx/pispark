@@ -6,8 +6,9 @@
   import { foremostState, sessionName, sessionState } from "./session-presentation";
   import type { SessionInfo } from "../../../../server/src/contract/protocol";
   /**
-   * A session in the sidebar with the sessions it started under it. Closed, its mark speaks for them
-   * too; it opens on its own while one of them works, waits for you, or is the one shown.
+   * A session in the sidebar with its forks under it. Closed, its mark speaks for them too; it
+   * opens on its own while one of them works, waits for you, or is the one shown. The sessions it
+   * started are not rows: its own row counts them, and "Started here" lists them.
    */
   let {
     session,
@@ -17,8 +18,7 @@
   }: { session: SessionInfo; name: string; muted?: boolean; class?: string } = $props();
   const client = useSessions();
   const id = $props.id();
-  const started = $derived(client.sessions.filter((each) => each.parent === session.id));
-  const hasFork = $derived(started.some((each) => each.forkOf));
+  const started = $derived(client.sessions.filter((each) => each.parent === session.id && each.forkOf));
   const byId = $derived(new Map(client.sessions.map((each) => [each.id, each])));
   function isUnder(id: string, ancestor: string) {
     const seen = new Set<string>();
@@ -41,13 +41,13 @@
         class="tree-toggle"
         aria-expanded={open}
         aria-controls={id}
-        aria-label={hasFork ? `Sessions under ${name}` : `Sessions started by ${name}`}
+        aria-label={`Sessions under ${name}`}
         onclick={() => (toggled = !open)}><Icon name={open ? "chevronDown" : "chevronRight"} class="h-3.5 w-3.5" /></button
       >{/if}
   {/snippet}
 </SessionRow>
 {#if open}
-  <div {id} class="started space-y-px" role="group" aria-label={hasFork ? `Under ${name}` : `Started by ${name}`}>
+  <div {id} class="started space-y-px" role="group" aria-label={`Under ${name}`}>
     {#each started as child (child.id)}
       <SessionTree session={child} name={sessionName(child)} class="child-session" />
     {/each}
