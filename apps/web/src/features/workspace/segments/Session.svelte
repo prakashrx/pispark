@@ -74,6 +74,7 @@
     border-radius: var(--radius-sm);
     font-size: var(--text-sm);
     color: var(--foreground);
+    text-align: left;
   }
   button.go:hover,
   .fold:hover {
