@@ -17,6 +17,8 @@ export interface ProcessInfo {
   ended?: "stopped" | "pispark-stopped" | "timeout";
   /** A regular expression: a line of output that matches is raised with its session. */
   raiseOn?: string;
+  /** Its end and what it raises wait for its session's code to take them, and wake nobody. */
+  collect?: true;
   /** Output bytes so far; reading `since` a number gives what came after it. */
   written: number;
 }

@@ -162,6 +162,45 @@ The `session.*` points in the table are the ones the workspace draws (`apps/serv
 
 Earlier builds used slot names (`tool:<name>`, `session.page`, `reply.*` and the event field `slot`). They are refused like any unknown point; there are no aliases.
 
+## Sessions and processes from code
+
+An extension is code inside a session, and it speaks as that session. It can say what the session's agent can, without a model turn, and it hears what reaches the session before the agent does. PiSpark provides the verbs and decides no order: a pipeline is the extension's own code. The full account is in [the ten verbs](session-runtime.md#the-ten-verbs); this is the part an extension author needs.
+
+**Saying.** Ask for the verbs once, when the extension loads:
+
+```ts
+let host: Verbs | undefined; // the type is in apps/server/src/contract/verbs.ts
+pi.events.emit("pispark:api", (api: Verbs) => (host = api));
+```
+
+PiSpark calls back at once with ten functions named after the tools: `startSession`, `startProcess`, `schedule`, `send`, `wait`, `look`, `stop`, `raise`, `note` and `self`. Each takes the tool's own fields and resolves with `{ ok, text, data? }`. They only send `pispark:verb` messages on the session's bus, which stay the contract: an extension that wants no helper can send `{ request: { verb, …fields }, reply }` itself. In terminal Pi nobody calls back, `host` stays undefined, and the extension carries on.
+
+```ts
+const review = (title: string, subject: unknown) => host!.startSession({ brief: `Review ${title}`, title, agent: "reviewer", data: { subject }, collect: true });
+const a = await review("the parser", "parser");
+const b = await review("the lexer", "lexer");
+const both = await host!.wait({ ids: [a.data.id, b.data.id] });
+const c = await review("both reviews", [both.data.answers[a.data.id].data, both.data.answers[b.data.id].data]);
+```
+
+- **What comes back as data:** a start's `data` is `{ id }`, the handle (`session-1`). A wait's is `{ answers, raised, open }`: each answer by its handle with `how`, `text` and the child's `data`; what was raised meanwhile; and what is still open.
+- **`collect: true`** on a start says this code takes the answer itself. The child's answer and raises then wait until `wait` or `look` takes them, and never wake the agent. Use it for anything started outside a turn, where there is no turn's end to send the answer at. Without it, an answer goes to the agent as for any child.
+- **The same limits as the agent:** only what this session started. An extension in a child session cannot start sessions.
+
+**Hearing.** One event for whatever reaches the session, before its agent hears of it:
+
+```ts
+pi.events.on("pispark:heard", (heard) => {
+  // heard: { word, from: { id?, kind, title }, how?, text, data?, reply }
+  if (heard.word === "note") heard.reply({ action: "skip" }); // handled here: no line, no turn
+  if (heard.word === "raise") heard.reply({ action: "send", text: `Decide: ${heard.text}` }); // what the agent gets instead
+});
+```
+
+`word` is `answer`, `raise` or `note` from something the session started (`from.kind` `session` or `process`, `from.id` its handle), or `ask` or `tell` from the session that started this one (`from.kind` `parent`). Reply synchronously, or not at all to let it through. A child's extension that takes its `ask` handles the work itself: no model turn is spent, and the child answers with the data the extension set. The person's own messages are not here; Pi's `input` event is for those.
+
+**Data.** Text is for agents and data is for extensions, both ways. Down: `data` on `startSession` and `send` reaches the child's extensions with the `ask` or `tell` they hear. Up: an extension in a child sets the data its answer carries with `pi.events.emit("pispark:result", { data })` (the last one counts), and passes `data` as the second argument of `raise` and `note`. Data is plain JSON, at most 64 KiB.
+
 ## Not yet
 
 - `ctx.ui.custom()` returns `undefined`, and `onTerminalInput`, `setEditorComponent` and theme switching are quiet no-ops, exactly as in Pi's own RPC mode. Extensions that need `custom()` check `ctx.mode === "tui"` and fall back (Pi's `custom-header` example only sets its header in `tui` mode, so it shows nothing here).

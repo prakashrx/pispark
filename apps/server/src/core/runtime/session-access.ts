@@ -11,7 +11,7 @@ import type { Arrival } from "./arrivals.js";
 /** A new session's request: Ask's, or another session's, which may bring an agent made for it (`layer`, the session's own layer). */
 export type NewSession = { folder?: string; model?: ModelChoice; agent?: string; layer?: AgentDefinition };
 /** What a session started by another one, or by a schedule, records of where it came from. */
-export type Origin = Pick<SessionMetadata, "parent" | "title" | "schedule" | "ask">;
+export type Origin = Pick<SessionMetadata, "parent" | "title" | "schedule" | "ask" | "collect">;
 
 /**
  * What the runtime lends the parts that work across sessions (child sessions, holds, processes,
@@ -42,7 +42,9 @@ export interface SessionAccess {
   waiting(sessionId: string, sourceId: string): boolean;
   /** The next thing to arrive for a session while it works (see `Arrivals`). */
   arrival(sessionId: string, signal: AbortSignal): Promise<Arrival | undefined>;
-  /** Something the session started is still due to wake it: a message waiting for it, or a process still running. */
+  /** Looks again at what waits to be sent, now that something that held it back is over. */
+  drain(): void;
+  /** Something the session started is still due to wake it: a message waiting to be sent to it, or a process still running. */
   pending(sessionId: string): boolean;
   /** Stops the processes a session started, quietly. */
   stopProcesses(sessionId: string): void;

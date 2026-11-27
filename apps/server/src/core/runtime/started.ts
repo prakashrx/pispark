@@ -14,6 +14,13 @@ export interface Listed {
   line: string;
   open: boolean;
 }
+/** A child's answer as a wait takes it: the words for the agent, and for extensions how it ended, what it said and the data its side attached. */
+export interface Taken {
+  words: string;
+  how?: string;
+  text?: string;
+  data?: unknown;
+}
 type Fields<V extends Verb["verb"]> = Omit<Extract<Verb, { verb: V }>, "verb">;
 
 /**
@@ -36,7 +43,7 @@ export interface Kind {
    * delivered again; undefined when `signal` ends the wait first. A kind that is not waited for
    * leaves this out.
    */
-  wait?(owner: string, id: string, until: RegExp | undefined, signal: AbortSignal): Promise<string | undefined>;
+  wait?(owner: string, id: string, until: RegExp | undefined, signal: AbortSignal): Promise<Taken | undefined>;
 }
 
 /**
@@ -45,6 +52,8 @@ export interface Kind {
  */
 export class Started {
   private readonly kinds: Kind[];
+  /** Sessions with a wait under way, and how many. */
+  private readonly waits = new Map<string, number>();
 
   constructor(
     private readonly handles: Handles,
@@ -52,7 +61,7 @@ export class Started {
     private readonly processes: SessionProcesses,
     schedules: Kind,
     /** What waits for a session while it works, and what arrives for it. */
-    private readonly inbox: Pick<SessionAccess, "take" | "arrival">,
+    private readonly inbox: Pick<SessionAccess, "take" | "arrival" | "drain">,
   ) {
     this.kinds = [children, processes, schedules];
   }
@@ -66,15 +75,32 @@ export class Started {
         return this.processes.start(owner, verb, signal);
       case "raise":
       case "note":
-        return this.children.up(owner, verb.verb, verb.text);
+        return this.children.up(owner, verb.verb, verb.text, verb.data);
       case "send":
         return this.send(owner, verb);
       case "wait":
-        return this.wait(owner, verb, signal);
+        return this.waited(owner, verb, signal);
       case "look":
         return this.look(owner, verb);
       case "stop":
         return this.stop(owner, verb, signal);
+    }
+  }
+
+  /** Whether a wait is under way in the session: what arrives for it then waits to be taken, whether or not a turn runs. */
+  waiting(owner: string): boolean {
+    return this.waits.has(owner);
+  }
+  private async waited(owner: string, verb: Fields<"wait">, signal?: AbortSignal): Promise<Answer> {
+    this.waits.set(owner, (this.waits.get(owner) ?? 0) + 1);
+    try {
+      return await this.wait(owner, verb, signal);
+    } finally {
+      const left = this.waits.get(owner)! - 1;
+      if (left) this.waits.set(owner, left);
+      else this.waits.delete(owner);
+      // What the wait did not take is sent now, if nothing else holds it back.
+      this.inbox.drain();
     }
   }
 
@@ -124,7 +150,7 @@ export class Started {
     const raise = (wake: Wake) => wake.word === "raise";
     // A raise that was already waiting is what the session needs first.
     const raised = this.inbox.take(owner, raise);
-    const answers = new Map<string, string>();
+    const answers = new Map<string, Taken>();
     let early: string | undefined;
     if (raised.length) early = RAISED;
     else {
@@ -153,9 +179,16 @@ export class Started {
     }
     const open = waited.filter((target) => !answers.has(target.handle)).map((target) => target.handle);
     const closing = [early, open.length ? `Still open: ${open.join(", ")}.` : ""].filter(Boolean).join(" ");
+    const taken = waited.flatMap((target) => (answers.has(target.handle) ? [[target.handle, answers.get(target.handle)!] as const] : []));
     return {
       ok: true,
-      text: [...waited.flatMap((target) => (answers.has(target.handle) ? [`${target.handle}: ${answers.get(target.handle)}`] : [])), ...raised.map((wake) => wake.text), closing].filter(Boolean).join("\n\n"),
+      text: [...taken.map(([handle, answer]) => `${handle}: ${answer.words}`), ...raised.map((wake) => wake.text), closing].filter(Boolean).join("\n\n"),
+      // The same, for an extension: each answer by its handle, what was raised, and what is still open.
+      data: {
+        answers: Object.fromEntries(taken.map(([handle, { words: _words, ...answer }]) => [handle, answer])),
+        raised: raised.map((wake) => ({ id: this.handles.of(owner, wake.source.kind, wake.source.id), text: wake.report?.text ?? wake.text, ...(wake.report?.data !== undefined ? { data: wake.report.data } : {}) })),
+        open,
+      },
     };
   }
 

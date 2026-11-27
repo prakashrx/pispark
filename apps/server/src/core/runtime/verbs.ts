@@ -16,6 +16,9 @@ export function pattern(source: string): RegExp | undefined {
 const MODEL = /^[^/\s]{1,128}\/[^\s]{1,256}$/;
 const expression = (value: unknown) => value === undefined || (text(value, 200) && !!pattern(value as string));
 
+const flag = (value: unknown) => value === undefined || typeof value === "boolean";
+const data = (value: unknown) => value === undefined || validResultData(value);
+
 /** Whether a request is one of the ten verbs, well formed. Whoever sent it (a tool, an extension) is checked the same way. */
 export function validVerb(value: unknown): value is Verb {
   const r = value as Record<string, unknown> | undefined;
@@ -28,10 +31,12 @@ export function validVerb(value: unknown): value is Verb {
         optional(r.title, 4096) &&
         (optional(r.agent, 64) || (!!r.agent && typeof r.agent === "object" && !Array.isArray(r.agent))) &&
         optional(r.folder, 4096) &&
-        (r.model === undefined || (typeof r.model === "string" && MODEL.test(r.model)))
+        (r.model === undefined || (typeof r.model === "string" && MODEL.test(r.model))) &&
+        data(r.data) &&
+        flag(r.collect)
       );
     case "start_process":
-      return text(r.command, 8192) && optional(r.title, 120) && optional(r.folder, 4096) && seconds(r.stop_after_seconds, 7 * 86_400) && expression(r.raise_on);
+      return text(r.command, 8192) && optional(r.title, 120) && optional(r.folder, 4096) && seconds(r.stop_after_seconds, 7 * 86_400) && expression(r.raise_on) && flag(r.collect);
     case "schedule":
       return (
         text(r.prompt, 8192) &&
@@ -43,7 +48,7 @@ export function validVerb(value: unknown): value is Verb {
       );
     case "send":
       // Words for a session, or a new pattern for a process ("" clears it): one of the two.
-      return text(r.id, 64) && (r.text === undefined) !== (r.raise_on === undefined) && optional(r.text, 64 * 1024) && (r.raise_on === "" || expression(r.raise_on)) && one(r.when, ["now", "after"]);
+      return text(r.id, 64) && (r.text === undefined) !== (r.raise_on === undefined) && optional(r.text, 64 * 1024) && (r.raise_on === "" || expression(r.raise_on)) && one(r.when, ["now", "after"]) && data(r.data);
     case "wait":
       return (
         (r.ids === undefined || (Array.isArray(r.ids) && r.ids.length > 0 && r.ids.length <= 50 && r.ids.every((id) => text(id, 64)))) &&
@@ -57,7 +62,7 @@ export function validVerb(value: unknown): value is Verb {
       return text(r.id, 64);
     case "raise":
     case "note":
-      return text(r.text, 64 * 1024);
+      return text(r.text, 64 * 1024) && data(r.data);
     case "self":
       return r.action === "inspect" || r.action === "reload";
     default:
@@ -65,7 +70,7 @@ export function validVerb(value: unknown): value is Verb {
   }
 }
 
-/** Result data an extension set: plain JSON, at most 64 KiB. */
+/** Data an extension attached: plain JSON, at most 64 KiB. */
 export function validResultData(value: unknown): boolean {
   if (value === undefined) return false;
   try {

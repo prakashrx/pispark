@@ -151,7 +151,8 @@ export class SessionRuntime {
       take: (id, which) => this.wakes.take(id, which),
       waiting: (id, sourceId) => this.wakes.waiting(id, sourceId),
       arrival: (id, signal) => this.arrivals.next(id, signal),
-      pending: (id) => this.wakes.waiting(id) || this.processes.runningIn(id) > 0,
+      drain: () => void this.wakes.drain(),
+      pending: (id) => this.wakes.owed(id) || this.processes.runningIn(id) > 0,
       stopProcesses: (id) => this.processes.stopSession(id),
     };
     this.handles = new Handles((id) => this.storage.directory(id));
@@ -216,7 +217,8 @@ export class SessionRuntime {
         ...sessions,
         free: (id) => {
           const session = this.live.get(id);
-          return !this.setup.has(id) && !this.extensionCandidates.has(id) && (!session || (session.ready && session.settled));
+          // A wait under way takes what arrives, also when no turn runs (an extension waiting in code).
+          return !this.setup.has(id) && !this.extensionCandidates.has(id) && !this.started.waiting(id) && (!session || (session.ready && session.settled));
         },
         settle: async (id, wake) => {
           this.admit();
@@ -224,10 +226,13 @@ export class SessionRuntime {
           if (wake.word === "answer" && wake.source.kind === "process" && this.processes.endTaken(wake.source.id)) return undefined;
           await this.ensure(id);
           let text = wake.text;
-          // A child's answer or raise: the session's extensions see it first and may take it or reword it.
+          // An answer or a raise from something the session started: its extensions hear it first and may take it or reword it.
           let quiet = wake.quiet;
-          if (wake.report) {
-            const answer = this.get(id).offerChildEnded(wake.report);
+          if (wake.report && wake.word) {
+            const kind = wake.source.kind === "process" ? "process" : "session";
+            const { title, how, text: said, data } = wake.report;
+            const from = { id: this.handles.of(id, kind, wake.source.id), kind, title } as const;
+            const answer = this.get(id).hear({ word: wake.word, from, how, text: said, ...(data !== undefined ? { data } : {}) });
             if (answer?.action === "skip") return undefined;
             if (answer?.action === "send") [text, quiet] = [answer.text, undefined];
           }

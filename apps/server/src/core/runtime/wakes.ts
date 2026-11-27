@@ -8,7 +8,6 @@ import {
   type WokenCard,
   type WokenDetails,
 } from "../../contract/wake-protocol.js";
-import type { ChildEnded } from "../../contract/verbs.js";
 import { validResultData } from "./verbs.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { writeAtomic } from "../files.js";
@@ -35,11 +34,13 @@ export interface Wake {
   word?: "answer" | "raise";
   /** Its delivery is a line in the conversation, not a turn: the answer of a run the clock asked for. */
   quiet?: true;
+  /** Code in the session takes it (`contract/verbs.ts`, `Collect`): it waits to be taken, and is never sent. */
+  collect?: true;
   /**
-   * A child's report: what the session's extensions are offered before its agent hears of it (see
-   * `CHILD_ENDED_CHANNEL`), with the data an extension in the child set.
+   * What the session's extensions hear of it before its agent does (see `HEARD_CHANNEL`): whose it
+   * is, how it ended, what it said, and the data an extension on its side attached.
    */
-  report?: Omit<ChildEnded, "reply">;
+  report?: { title: string; how: string; text: string; data?: unknown };
   /** How the conversation shows it, when it is a report (see `WokenCard`). */
   card?: WokenCard;
 }
@@ -109,10 +110,8 @@ function validSource(value: unknown): value is WakeSource {
 function validReport(value: unknown): boolean {
   return (
     object(value) &&
-    typeof value.session === "string" &&
-    UUID.test(value.session) &&
     shortString(value.title, 200) &&
-    shortString(value.how, 40) &&
+    shortString(value.how, 200) &&
     typeof value.text === "string" &&
     value.text.length <= MAX_TEXT &&
     (value.data === undefined || validResultData(value.data))
@@ -138,6 +137,7 @@ function validWake(value: unknown): value is Wake {
     (value.late === undefined || value.late === true) &&
     (value.word === undefined || value.word === "answer" || value.word === "raise") &&
     (value.quiet === undefined || value.quiet === true) &&
+    (value.collect === undefined || value.collect === true) &&
     (value.report === undefined || validReport(value.report)) &&
     (value.card === undefined || validCard(value.card, value.text as string))
   );
@@ -226,10 +226,11 @@ export class Wakes {
   /** Runs the wake now if it can; otherwise it waits, or is recorded as missed. */
   async deliver(sessionId: string, wake: Wake): Promise<void> {
     if (this.closed) return;
+    if (wake.collect) return this.wait(sessionId, wake);
     const paused = this.host.paused();
     if (paused && wake.policy === "latest") return this.note(sessionId, wake.source.id, { due: wake.due, outcome: "missed", reason: "paused" });
     // Wakes reach a session in order: behind any already waiting for it.
-    const first = !paused && !this.state(sessionId).waiting.length;
+    const first = !paused && !this.owed(sessionId);
     if (!first || !(await this.attempt(sessionId, [wake], false))) this.wait(sessionId, wake);
   }
   /** Run now, with the person watching: refused while the session is busy or archived. */
@@ -253,9 +254,9 @@ export class Wakes {
         }
         continue;
       }
-      while (state.waiting.length && !this.closed) {
+      while (this.owed(sessionId) && !this.closed) {
         try {
-          if (!(await this.attempt(sessionId, this.next(state.waiting), true))) break;
+          if (!(await this.attempt(sessionId, this.next(state.waiting.filter((wake) => !wake.collect)), true))) break;
         } catch (error) {
           this.logger.event("wake.failure", { sessionId, outcome: "failed", code: runtimeError(error, "execution").code });
           break;
@@ -374,6 +375,10 @@ export class Wakes {
   }
   waiting(sessionId: string, sourceId?: string): boolean {
     return !!this.states.get(sessionId)?.waiting.some((w) => sourceId === undefined || w.source.id === sourceId);
+  }
+  /** Whether something waits that will be sent to the session when it is free: not what is kept for its code to take. */
+  owed(sessionId: string): boolean {
+    return !!this.states.get(sessionId)?.waiting.some((wake) => !wake.collect);
   }
   /** Whether the source has a wake waiting or running. */
   active(sessionId: string, sourceId: string): boolean {

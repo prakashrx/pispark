@@ -32,7 +32,7 @@ import type { RunSlots } from "./run-slots.js";
 import type { SessionMetadata, SessionStorage } from "./storage.js";
 import { STATUS_ENTRY, WOKEN_ENTRY, type StatusDetails, type WokenDetails } from "../../contract/wake-protocol.js";
 import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
-import { CHILD_ENDED_CHANNEL, toolOf, type Answer, type ChildEnded, type Verb } from "../../contract/verbs.js";
+import { HEARD_CHANNEL, toolOf, type Answer, type Heard, type Verb } from "../../contract/verbs.js";
 
 /**
  * A session started by another one is a worker. It keeps the six verbs a worker needs (start a
@@ -764,20 +764,20 @@ export class Session {
   }
 
   /**
-   * Tells this session's extensions that one of its children answered or raised something, before the
-   * agent hears of it. Their synchronous reply decides (see `CHILD_ENDED_CHANNEL`).
+   * Tells this session's extensions what reaches the session, before its agent hears of it. Their
+   * synchronous reply decides: take it, reword it, or (no reply) let it through (see `HEARD_CHANNEL`).
    */
-  offerChildEnded(event: Omit<ChildEnded, "reply">): { action: "skip" } | { action: "send"; text: string } | undefined {
+  hear(event: Omit<Heard, "reply">): { action: "skip" } | { action: "send"; text: string } | undefined {
     if (!this.bus) return undefined;
     let answer: { action: "skip" } | { action: "send"; text: string } | undefined;
-    const reply: ChildEnded["reply"] = (value) => {
+    const reply: Heard["reply"] = (value) => {
       if (answer || !value || typeof value !== "object") return;
       if (value.action === "skip") answer = { action: "skip" };
       else if (value.action === "send" && typeof value.text === "string" && value.text.trim() && Buffer.byteLength(value.text, "utf8") <= 64 * 1024)
         answer = { action: "send", text: value.text };
     };
     try {
-      this.bus.emit(CHILD_ENDED_CHANNEL, { ...structuredClone(event), reply } satisfies ChildEnded);
+      this.bus.emit(HEARD_CHANNEL, { ...structuredClone(event), reply } satisfies Heard);
     } catch {
       /* A failing listener decides nothing. */
     }

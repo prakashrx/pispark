@@ -49,6 +49,10 @@ export default function (pi: ExtensionAPI) {
 2. **Read the session's state in the tool's `ctx` or in `session_start`.** Use the same backend functions for a tool and a panel action that do the same job. The component calls only the functions its contribution offers via `host.call(name, data)`; it should not edit state files or call unrelated workspace APIs. Calls carry JSON up to 64 KiB and time out after 30 s. Bound I/O and surface loading and errors. Do not expose secrets or raw logs in props, call results, or `host.file`.
 3. **Store mutable session data with the session.** Use namespaced `pi.appendEntry` entries for small state that should follow the conversation branch, and restore them from `ctx.sessionManager.getBranch()`. Use files under `ctx.sessionManager.getSessionDir()/extensions/<name>/` for file-backed state (for example, an explicitly selected preview target). Have the extension create and manage those files through its tools; don't ship mutable state in the agent definition or ask the model to hand-edit it. If tools write files, see Pi's `withFileMutationQueue` guidance. No state should leak to another session just because it uses the same agent.
 
+## Start and follow work from code
+
+An extension can say what the session's agent can, without a model turn, and hears what reaches the session first. Ask for the verbs when the extension loads: `pi.events.emit('pispark:api', (api) => (host = api))`. `host` then has `startSession`, `startProcess`, `schedule`, `send`, `wait`, `look`, `stop`, `raise`, `note` and `self`, each taking the tool's fields and resolving with `{ ok, text, data? }`. Listen with `pi.events.on('pispark:heard', (heard) => …)` and reply `{ action: 'skip' }` or `{ action: 'send', text }`, or not at all. Pass `data` where an agent would pass words, and start with `collect: true` when your code takes the answer itself. In terminal Pi nothing calls back, so keep `host` optional. Read `docs/extensions.md` (Sessions and processes from code) before building a pipeline.
+
 ## Offer a panel
 
 ```ts

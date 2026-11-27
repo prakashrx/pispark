@@ -4,7 +4,7 @@ import type { Answer, Verb } from "../../contract/verbs.js";
 import type { StatusDetails } from "../../contract/wake-protocol.js";
 import type { Processes, ProcessEnd } from "./processes.js";
 import type { Handles } from "./handles.js";
-import type { Kind, Listed } from "./started.js";
+import type { Kind, Listed, Taken } from "./started.js";
 import { RuntimeError } from "./errors.js";
 import { validateId, type SessionMetadata } from "./storage.js";
 import type { SessionAccess } from "./session-access.js";
@@ -37,13 +37,15 @@ export class SessionProcesses implements Kind {
       ...(request.title ? { title: request.title } : {}),
       ...(request.raise_on ? { raiseOn: request.raise_on } : {}),
       ...(request.stop_after_seconds ? { stopAfterSeconds: request.stop_after_seconds } : {}),
+      ...(request.collect ? { collect: true } : {}),
     });
     this.sessions.live(owner)?.changed();
     const process = this.processes.get(started.id, [owner]);
     await this.processes.wait(process, undefined, 0, 1000, signal);
     // Its first output is shown but stays unread: a wait or a look after the start begins at the beginning.
     const first = this.processes.tail(process).trim() || "(no output yet)";
-    return { ok: true, text: `Started ${this.handles.of(owner, this.name, started.id)}: ${this.describe(process)} in ${folder}.\n${first}`, details: { id: started.id } };
+    const handle = this.handles.of(owner, this.name, started.id);
+    return { ok: true, text: `Started ${handle}: ${this.describe(process)} in ${folder}.\n${first}`, details: { id: started.id }, data: { id: handle } };
   }
 
   of(owner: string): Listed[] {
@@ -78,14 +80,16 @@ export class SessionProcesses implements Kind {
     return { ok: true, text: raise_on ? `It raises when a line of its output matches /${raise_on}/, at most once a minute.` : "It no longer raises on its output." };
   }
 
-  async wait(owner: string, id: string, until: RegExp | undefined, signal: AbortSignal): Promise<string | undefined> {
+  async wait(owner: string, id: string, until: RegExp | undefined, signal: AbortSignal): Promise<Taken | undefined> {
     const process = this.processes.get(id, [owner]);
     const result = until ? await this.processes.wait(process, until, process.cursors[owner] ?? 0, undefined, signal) : await this.processes.waitForExit(process, undefined, signal);
     if (result === "timeout") return undefined;
     // Its end is its answer, the same one its session would be sent: taken here, so it is not sent.
     if (result === "ended") {
       this.processes.takeEnd(process.id);
-      return `${this.describe(process)}\n${until ? "It ended before the output showed that.\n" : ""}Last output:\n${this.processes.tail(process).trim() || "(none)"}`;
+      const tail = this.processes.tail(process).trim();
+      const how = `${process.ended ?? process.state}${process.exitCode !== undefined ? ` ${process.exitCode}` : ""}`;
+      return { words: `${this.describe(process)}\n${until ? "It ended before the output showed that.\n" : ""}Last output:\n${tail || "(none)"}`, how, text: tail };
     }
     // What follows the line it waited for (a server's URL after "ready") usually comes at once:
     // a moment more of output, until it goes quiet for a quarter second, at most half a second.
@@ -94,7 +98,8 @@ export class SessionProcesses implements Kind {
       await new Promise((done) => setTimeout(done, 250));
       if (process.written === before) break;
     }
-    return `${this.describe(process)}\nThe output shows ${until}.\n${this.unread(process)}`;
+    const unread = this.unread(process);
+    return { words: `${this.describe(process)}\nThe output shows ${until}.\n${unread}`, how: "matched", text: unread };
   }
 
   // ---- What its session hears --------------------------------------------------------------------
@@ -126,6 +131,8 @@ export class SessionProcesses implements Kind {
       due: new Date(this.sessions.now()).toISOString(),
       policy: "queue",
       word: end.raised ? "raise" : "answer",
+      report: { title: short, how: end.how.slice(0, 200), text: end.raised ?? end.tail },
+      ...(end.process.collect ? { collect: true as const } : {}),
     });
   }
 

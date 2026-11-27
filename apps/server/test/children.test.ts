@@ -463,9 +463,10 @@ test("archiving a parent takes its children along; restore brings them back; del
 
 const ORCHESTRATE = `
 export default function (pi) {
-  pi.events.on("pispark:child-ended", (event) => {
-    if (event.title === "Skip me") event.reply({ action: "skip" });
-    else if (event.title === "Reword") event.reply({ action: "send", text: "Reworded: " + JSON.stringify(event.data) });
+  pi.events.on("pispark:heard", (heard) => {
+    if (heard.word !== "answer") return;
+    if (heard.from.title === "Skip me") heard.reply({ action: "skip" });
+    else if (heard.from.title === "Reword") heard.reply({ action: "send", text: "Reworded: " + JSON.stringify(heard.data) });
   });
   pi.registerTool({
     name: "submit",

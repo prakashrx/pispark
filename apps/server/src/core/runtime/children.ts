@@ -1,4 +1,4 @@
-import type { Answer, ChildEnded, Verb } from "../../contract/verbs.js";
+import type { Answer, Heard, Verb } from "../../contract/verbs.js";
 import type { StatusDetails, WokenDetails } from "../../contract/wake-protocol.js";
 import { isAbsolute, join } from "node:path";
 import type { SessionDoc } from "../../contract/protocol.js";
@@ -7,7 +7,7 @@ import { validateText, type RunResult, type Session } from "./session.js";
 import { toolSessionTitle } from "./session-title.js";
 import { runtimeError } from "./errors.js";
 import type { Handles } from "./handles.js";
-import type { Kind, Listed } from "./started.js";
+import type { Kind, Listed, Taken } from "./started.js";
 import type { SessionMetadata } from "./storage.js";
 import { titleOf, type SessionAccess } from "./session-access.js";
 import type { Wake } from "./wakes.js";
@@ -32,7 +32,7 @@ function notStarted(error: unknown): string {
   return `The session could not be started (${code}).`;
 }
 
-type Report = Omit<ChildEnded, "reply">;
+type Report = NonNullable<Wake["report"]>;
 /** Picks, among what waits for a parent, one child's messages of one kind. */
 const from = (childId: string, word?: Wake["word"]) => (wake: Wake) => wake.source.id === childId && (word === undefined || wake.word === word);
 
@@ -83,18 +83,32 @@ export class Children implements Kind {
           ...(typeof agent === "string" ? { agent } : agent ? { layer: agent } : {}),
           ...(model ? { model: { provider: model.slice(0, slash), id: model.slice(slash + 1) } } : {}),
         },
-        { parent: parent.id, ...(title ? { title } : {}) },
+        { parent: parent.id, ...(title ? { title } : {}), ...(request.collect ? { collect: true as const } : {}) },
       );
     } catch (error) {
       return { ok: false, text: notStarted(error) };
     }
     const session = this.sessions.get(doc.id);
-    void session.start(request.brief, this.from(parent)).completion.catch(() => {});
+    this.down(session, parent, "ask", request.brief, request.data, (brief) => void session.start(brief, this.from(parent)).completion.catch(() => {}));
+    const handle = this.handles.of(owner, this.name, doc.id);
     return {
       ok: true,
-      text: `Started "${titleOf(session.metadata)}" (${this.handles.of(owner, this.name, doc.id)}). It works on its own; its answer arrives here as a message when it is done.`,
+      text: `Started "${titleOf(session.metadata)}" (${handle}). It works on its own; its answer arrives here as a message when it is done.`,
       details: { id: doc.id },
+      data: { id: handle },
     };
+  }
+
+  /**
+   * Something from a parent reaches its child. The child's extensions hear it first, with any data
+   * the parent's side attached: they may reword it, or take it, in which case the agent is not
+   * sent it and the child answers with whatever data they set.
+   */
+  private down(child: Session, parent: SessionMetadata, word: "ask" | "tell", text: string, data: unknown, send: (text: string) => void): void {
+    const from: Heard["from"] = { kind: "parent", title: titleOf(parent) };
+    const heard = child.hear({ word, from, text, ...(data !== undefined ? { data } : {}) });
+    if (heard?.action !== "skip") return send(heard?.text ?? text);
+    void this.rested(child.id);
   }
 
   of(owner: string): Listed[] {
@@ -141,7 +155,7 @@ export class Children implements Kind {
    * Its parent tells it something. A child at rest is asked anew, and answers once more. A working
    * one reads it at its next pause (`now`) or when it has finished what it is doing (`after`).
    */
-  async send(owner: string, id: string, { text, when }: { text?: string; when?: "now" | "after" }): Promise<Answer> {
+  async send(owner: string, id: string, { text, when, data }: { text?: string; when?: "now" | "after"; data?: unknown }): Promise<Answer> {
     const child = this.child(owner, id);
     if (!child) return this.gone;
     if (text === undefined) return { ok: false, text: "A session is sent text; raise_on is for a process." };
@@ -152,13 +166,16 @@ export class Children implements Kind {
     const session = this.sessions.get(child.id);
     // Telling it something answers what it raised: a raise still waiting to be sent here is not sent.
     this.sessions.take(owner, from(child.id, "raise"));
+    const parent = this.sessions.storage.read(owner);
     try {
       if (session.settled) {
         session.openAsk();
-        void session.start(text, this.from(this.sessions.storage.read(owner))).completion.catch(() => {});
+        this.down(session, parent, "ask", text, data, (words) => void session.start(words, this.from(parent)).completion.catch(() => {}));
         return { ok: true, text: "Sent. Its answer arrives here as a message when it is done." };
       }
-      await session.queue(text, when === "after" ? "follow-up" : "steer");
+      let queued: Promise<unknown> = Promise.resolve();
+      this.down(session, parent, "tell", text, data, (words) => (queued = session.queue(words, when === "after" ? "follow-up" : "steer")));
+      await queued;
       return { ok: true, text: when === "after" ? "Sent. It reads this when it has finished what it is doing." : "Sent. It reads this at its next pause." };
     } catch (error) {
       if (runtimeError(error, "execution").code === "busy") return { ok: false, text: "It cannot take a message right now; try again in a moment." };
@@ -167,13 +184,13 @@ export class Children implements Kind {
   }
 
   /** Its answer, as soon as it is in: taken from what waits for its parent, so it is not sent as well. */
-  async wait(owner: string, id: string, _until: RegExp | undefined, signal: AbortSignal): Promise<string | undefined> {
+  async wait(owner: string, id: string, _until: RegExp | undefined, signal: AbortSignal): Promise<Taken | undefined> {
     for (;;) {
       const child = this.child(owner, id);
       if (!child) return undefined;
-      const [answer] = this.sessions.take(owner, from(id, "answer"));
-      if (answer?.report) return `"${answer.report.title}" ${answer.report.how}:\n\n${answer.report.text}${dataText(answer.report.data, 56 * 1024 - answer.report.text.length)}`;
-      if (!child.ask) return `"${titleOf(child)}" — ${this.state(child)}. It gave its answer before (pispark_look shows what it last said).`;
+      const report = this.sessions.take(owner, from(id, "answer"))[0]?.report;
+      if (report) return { words: `"${report.title}" ${report.how}:\n\n${report.text}${dataText(report.data, 56 * 1024 - report.text.length)}`, ...report };
+      if (!child.ask) return { words: `"${titleOf(child)}" — ${this.state(child)}. It gave its answer before (pispark_look shows what it last said).` };
       if (!(await this.sessions.arrival(owner, signal))) return undefined;
     }
   }
@@ -185,7 +202,7 @@ export class Children implements Kind {
    * conversation, without a turn; a raise wakes the parent, and the child is owed an answer. From a
    * session the person started, both are for the person, in its own conversation.
    */
-  async up(sessionId: string, word: "raise" | "note", text: string): Promise<Answer> {
+  async up(sessionId: string, word: "raise" | "note", text: string, data?: unknown): Promise<Answer> {
     const session = this.sessions.get(sessionId);
     const parent = this.parentOf(session.metadata);
     // Kept for whoever looks at the session: a child's last note, and what anyone raised until it is answered.
@@ -194,8 +211,9 @@ export class Children implements Kind {
     if (!parent) return { ok: true, text: word === "raise" ? "Raised with the person." : "Noted for the person." };
     const title = titleOf(child);
     const handle = this.handles.of(parent.id, this.name, child.id);
+    const attached = data !== undefined ? { data } : {};
     if (word === "note") {
-      await this.line(parent, `"${title}" (${handle}) notes: ${text}`, { session: child.id, title, how: `notes: ${short(text)}` });
+      await this.note(parent, { word, from: { id: handle, kind: "session", title }, text, ...attached }, child.id);
       return { ok: true, text: `Noted for "${titleOf(parent)}".` };
     }
     const heading = `The session "${title}" (${handle}) you started raises this, and waits for your answer (pispark_send):\n\n`;
@@ -206,7 +224,8 @@ export class Children implements Kind {
       due: this.due(),
       policy: "queue",
       word: "raise",
-      report: { session: child.id, title, how: "raised", text },
+      report: { title, how: "raised", text, ...attached },
+      ...(child.collect ? { collect: true as const } : {}),
     });
     return { ok: true, text: `Raised with "${titleOf(parent)}". Its answer arrives here as a message: carry on with what does not depend on it, or finish your turn to wait.` };
   }
@@ -261,8 +280,15 @@ export class Children implements Kind {
     const how = result.outcome === "completed" ? "finished" : result.outcome === "cancelled" ? "stopped" : "failed";
     const body = said ? cut(said) : `It ${how} without an answer.`;
     const data = session.resultData;
-    const report: Report = { session: child.id, title, how, text: body, ...(data !== undefined ? { data } : {}) };
-    const answer = { source: { kind: "session" as const, id: child.id, label: `${title} · ${how}` }, due: this.due(), policy: "queue" as const, word: "answer" as const, report };
+    const report: Report = { title, how, text: body, ...(data !== undefined ? { data } : {}) };
+    const answer = {
+      source: { kind: "session" as const, id: child.id, label: `${title} · ${how}` },
+      due: this.due(),
+      policy: "queue" as const,
+      word: "answer" as const,
+      report,
+      ...(child.collect ? { collect: true as const } : {}),
+    };
     const handle = this.handles.of(parent.id, this.name, child.id);
     // The person stopped it: its parent gets a note of that, not a turn. It is still the answer to the ask, so a wait takes it.
     if (result.by === "person")
@@ -278,6 +304,16 @@ export class Children implements Kind {
     // The line the agent needs; the card says it already, so it shows the answer after it.
     const heading = `The session "${title}" (${handle}) you started ${how}:\n\n`;
     void this.sessions.deliver(parent.id, { ...answer, text: `${heading}${body}${dataText(data, 56 * 1024 - body.length)}`, card: { title, how, start: heading.length } });
+  }
+
+  /** A child's note reaches its parent: the parent's extensions hear it first, then it is a line, unless they took it. */
+  private async note(parent: SessionMetadata, note: Omit<Heard, "reply">, childId: string): Promise<void> {
+    if (parent.archived) return;
+    await this.sessions.ensure(parent.id);
+    const heard = this.sessions.get(parent.id).hear(note);
+    if (heard?.action === "skip") return;
+    const text = heard?.text ?? note.text;
+    await this.line(parent, `"${note.from.title}" (${note.from.id}) notes: ${text}`, { session: childId, title: note.from.title, how: `notes: ${short(text)}` });
   }
 
   /** A line in a parent's conversation, without a turn: its agent reads it the next time it runs. */

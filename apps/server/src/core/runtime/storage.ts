@@ -56,6 +56,8 @@ export interface SessionMetadata {
   note?: string;
   /** What it raised with whoever asked it, until that is answered: it is owed an answer. */
   raise?: string;
+  /** Code in its parent takes its answers and raises itself: they wait to be taken, and wake nobody. */
+  collect?: true;
   /** The schedule or app routine this session is one run of, and when that run was due. */
   schedule?: { id: string; due: string };
   /** An extension keeps it loaded while no one watches (`pispark:hold`), and why. */
@@ -124,6 +126,7 @@ export class SessionStorage {
         (value.parent !== undefined && (typeof value.parent !== "string" || !UUID.test(value.parent))) ||
         (value.note !== undefined && typeof value.note !== "string") ||
         (value.raise !== undefined && typeof value.raise !== "string") ||
+        (value.collect !== undefined && value.collect !== true) ||
         (value.ask !== undefined && (!value.ask || !Number.isSafeInteger(value.ask.from) || value.ask.from < 0)) ||
         (value.schedule !== undefined &&
           (!value.schedule ||

@@ -141,7 +141,7 @@ export class Processes {
 
   // ---- Starting and stopping ------------------------------------------------------------------
 
-  start(sessionId: string, input: { command: string; folder: string; title?: string; raiseOn?: string; stopAfterSeconds?: number }): ProcessInfo {
+  start(sessionId: string, input: { command: string; folder: string; title?: string; raiseOn?: string; stopAfterSeconds?: number; collect?: boolean }): ProcessInfo {
     if (this.closed) throw new RuntimeError("closed");
     if (typeof input.command !== "string" || !input.command.trim() || input.command.length > 8192) throw new RuntimeError("invalid-input");
     if (!existsSync(input.folder) || !statSync(input.folder).isDirectory()) throw new RuntimeError("folder");
@@ -173,6 +173,7 @@ export class Processes {
       startedAt: new Date().toISOString(),
       state: "running",
       ...(input.raiseOn ? { raiseOn: input.raiseOn } : {}),
+      ...(input.collect ? { collect: true as const } : {}),
       written: 0,
       offset: 0,
       cursors: {},

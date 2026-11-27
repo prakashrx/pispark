@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { EventBus } from "@earendil-works/pi-coding-agent";
 import { HOLD_CHANNEL, type HoldRequest } from "../../contract/protocol.js";
-import { RESULT_CHANNEL, VERB_CHANNEL, type Answer, type Verb, type VerbMessage } from "../../contract/verbs.js";
+import { API_CHANNEL, RESULT_CHANNEL, VERB_CHANNEL, verbs, type Answer, type Verb, type VerbMessage } from "../../contract/verbs.js";
 import { describeSchedule, parseCron } from "../../contract/cron.js";
 import { validItemName } from "../agents/format.js";
 import type { ExtensionUI } from "../extensions/extension-ui.js";
@@ -43,6 +43,8 @@ export class SessionRequests {
   bind(bus: EventBus, development: boolean): () => void {
     const off = [
       bus.on(VERB_CHANNEL, (message) => this.verb(message)),
+      // An extension asks for the verbs as functions: the same messages, sent for it.
+      bus.on(API_CHANNEL, (take) => typeof take === "function" && take(verbs(bus))),
       ...(development ? [bus.on(EXTENSION_CHANNEL, (message) => void this.extension(message))] : []),
       bus.on(HOLD_CHANNEL, (message) => this.hold(message)),
       bus.on(RESULT_CHANNEL, (message) => {
