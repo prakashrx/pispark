@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 import type { ProcessInfo } from "../../../../server/src/contract/process-protocol";
 import type { Ask, SessionInfo } from "../../../../server/src/contract/protocol";
-import type { ScheduleSummary } from "../../../../server/src/contract/schedule-protocol";
-import { askLine, startedBy, summary, type Sources } from "./work";
+import type { Routine, ScheduleSummary } from "../../../../server/src/contract/schedule-protocol";
+import { askLine, everywhere, startedBy, summary, type Sources } from "./work";
 
 const NOW = new Date("2026-11-28T10:00:00").getTime();
 const session = (id: string, extra: Partial<SessionInfo> = {}): SessionInfo => ({
@@ -27,7 +27,16 @@ const process = (id: string, sessionId: string, title: string): ProcessInfo => (
   state: "running",
   written: 0,
 });
-const schedule = (id: string, sessionId: string): ScheduleSummary => ({
+const routine = (id: string, on: boolean): Routine => ({
+  id,
+  name: "Morning check",
+  cron: "0 7 * * *",
+  prompt: "check the new listings",
+  agent: { id: "scout", name: "Home Scout" },
+  on,
+  runs: [],
+});
+const schedule = (id: string, sessionId: string, extra: Partial<ScheduleSummary> = {}): ScheduleSummary => ({
   id,
   sessionId,
   cron: "0 9 * * 1-5",
@@ -37,6 +46,7 @@ const schedule = (id: string, sessionId: string): ScheduleSummary => ({
   by: "person",
   runs: [],
   session: { agent: { id: "default", name: "Default", layered: false } },
+  ...extra,
 });
 
 test("a child's ask in a few words: how long it has worked, what it waits for, who stopped it", () => {
@@ -63,6 +73,7 @@ test("everything one conversation started is one list of rows of one shape, and 
     ],
     processes: [process("p1", "parent", "dev server"), process("p2", "elsewhere", "theirs")],
     schedules: [schedule("s1", "parent"), schedule("s2", "elsewhere")],
+    routines: [],
     paused: false,
   };
   const works = startedBy(parent, from, NOW);
@@ -78,4 +89,33 @@ test("everything one conversation started is one list of rows of one shape, and 
   // What is open, in one line, for the strip above the message box.
   expect(summary(works.filter((work) => work.open))).toBe("1 session · 1 process · 1 schedule · kept running");
   expect(summary(startedBy(session("lonely"), from, NOW))).toBe("");
+});
+
+test("Background is the same rows for all of PiSpark: what runs and what is scheduled, each naming whom it belongs to, and no session rows", () => {
+  const failedRun = { due: "2026-11-27T09:00:00.000Z", at: "2026-11-27T09:00:05.000Z", outcome: "failed" as const };
+  const from: Sources = {
+    sessions: [session("Release notes", { held: { extension: "telegram", reason: "listening" } }), child("reviewer", { state: "working" }, { parent: "Release notes", status: "running" }), session("Quiet")],
+    processes: [process("p1", "Release notes", "dev server"), process("p2", "reviewer", "tests")],
+    schedules: [schedule("s1", "Release notes", { runs: [failedRun] }), schedule("s2", "gone", { session: { title: "Old digest", agent: { id: "default", name: "Default", layered: false } } })],
+    routines: [routine("morning", false)],
+    paused: false,
+  };
+  const works = everywhere(from, NOW);
+  expect(works.map((work) => [work.kind, work.title, work.of])).toEqual([
+    ["process", "dev server", "Release notes"],
+    ["kept", "Kept running by telegram", "Release notes"],
+    ["schedule", "Every weekday at 9:00 am", "Release notes"],
+    // A child's process is its own: it names the child, whose row is in its parent's "Started here".
+    ["process", "tests", "reviewer"],
+    // A schedule of a session that is no longer listed, and an agent's routine.
+    ["schedule", "Every weekday at 9:00 am", "Archived · Old digest"],
+    ["routine", "Morning check", "Home Scout"],
+  ]);
+  expect(works.some((work) => work.kind === "session")).toBe(false);
+  // A schedule says how its last run went; a failed one is marked, in words too.
+  const failed = works.find((work) => work.failed)!;
+  expect(failed.ref).toBe("s1");
+  expect(failed.detail).toMatch(/^Failed \w{3} \d+ Nov, .+ · /);
+  expect(works.find((work) => work.kind === "routine")!.detail).toBe("Every day at 7:00 am · Off");
+  expect(works.find((work) => work.ref === "s2")!.owner).toBeUndefined();
 });

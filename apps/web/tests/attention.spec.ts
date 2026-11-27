@@ -24,7 +24,7 @@ fresh("a session that starts needing you while you are elsewhere gets a nudge; O
 
   // Elsewhere, on Background, run it: the session starts waiting for an answer.
   await page.goto("/#/background");
-  await page.getByRole("region", { name: "asks later" }).getByRole("button", { name: /^Every day at 9:00 am/ }).click();
+  await page.getByRole("region", { name: "Scheduled" }).getByRole("button", { name: /^Every day at 9:00 am/ }).click();
   const schedule = page.getByRole("dialog", { name: "Schedule" });
   await schedule.getByRole("button", { name: "Run now" }).click();
   await page.keyboard.press("Escape");
@@ -56,7 +56,10 @@ fresh("back on a newer version, the page reloads itself when nothing is typed, a
     const status = await response.json();
     await route.fulfill({ response, json: newer ? { ...status, version: "99.0.0" } : status });
   });
+  // The page must have read the version it runs before the server starts saying a newer one.
+  const first = page.waitForResponse((response) => response.url().endsWith("/api/host"));
   await page.goto("/#/new");
+  await first;
   await expect(page.getByRole("textbox", { name: "Ask anything", exact: true })).toBeVisible();
 
   // Something typed: it is not thrown away; a banner offers the reload instead.

@@ -109,9 +109,12 @@ test("the New session composer stays typeable and its controls inside it at ever
     await page.goto("/#/new");
     const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
     const question = `Question at ${width}`;
-    await ask.fill(question);
-    // Responsive placement can briefly remount the composer. Check the preserved draft and geometry.
-    await expect(ask).toHaveText(question);
+    // Responsive placement can remount the composer just after the width changes: type until it holds,
+    // then check the draft and geometry.
+    await expect(async () => {
+      await ask.fill(question);
+      await expect(ask).toHaveText(question, { timeout: 1000 });
+    }).toPass();
     await expect.poll(async () => (await ask.boundingBox())?.width ?? 0).toBeGreaterThan(200);
     const form = page.getByRole("form", { name: "New session" });
     const start = page.getByRole("button", { name: "Start session", exact: true });

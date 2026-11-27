@@ -7,7 +7,7 @@ const fresh = hostedTest;
 const SERVER = `node -e "console.log('ready on 5199'); setInterval(() => console.log('tick'), 200)"`;
 const start = (args: object) => `tool:pispark_start_process:${JSON.stringify(args)}`;
 
-fresh("a process the agent starts: a row in the reply, on Background with its session, live output in the panel, Stop", async ({ page }) => {
+fresh("a process the agent starts: a row in the reply, on Background naming its session, live output in the panel, Stop", async ({ page }) => {
   await page.goto("/");
   const box = page.getByRole("textbox", { name: "Ask anything", exact: true });
   await box.fill(start({ command: SERVER, title: "dev server" }));
@@ -19,14 +19,17 @@ fresh("a process the agent starts: a row in the reply, on Background with its se
   await expect(row).toContainText("Running");
   await expect(page.getByRole("navigation", { name: "Sessions" }).getByText("Still going: 1 process")).toBeAttached();
 
-  // Background lists it under its session, among what is running; Show output there opens the session on it.
+  // Background lists it among what is running, naming its session; its row opens the session on its output.
   const session = page.url();
   await page.getByRole("complementary", { name: "Sidebar" }).getByRole("link", { name: /^Background/ }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Background" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Running 1" })).toBeVisible();
   await page.getByRole("button", { name: "Running 1" }).click();
   await expect(page.getByRole("button", { name: "Running 1" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Show output of dev server" }).click();
+  const running = page.getByRole("region", { name: "Running" });
+  await expect(running.getByRole("listitem")).toHaveCount(1);
+  await expect(running.getByRole("listitem")).toContainText(/tool:pispark_start_process.* · Running/);
+  await running.getByRole("button", { name: /^dev server/ }).click();
   await expect(page).toHaveURL(session);
   const panel = page.getByRole("complementary", { name: "Process output" });
   await expect(panel.getByLabel("Output of dev server")).toBeVisible();
@@ -59,7 +62,7 @@ fresh("a process the agent starts: a row in the reply, on Background with its se
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-fresh("a reply working shows on Background with how long it has run, and leaves when it stops", async ({ page }) => {
+fresh("a session is not a row on Background: a working reply shows in the session list", async ({ page }) => {
   await page.goto("/");
   await newSession(page);
   const box = page.getByRole("textbox", { name: "Ask anything", exact: true });
@@ -67,15 +70,13 @@ fresh("a reply working shows on Background with how long it has run, and leaves 
   await box.press("Enter");
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
   await page.goto("/#/background");
-  const row = page.getByRole("region", { name: "hold the line" }).getByRole("link").filter({ hasText: "Working" });
-  // How long it has run (design set 5), ticking while it runs.
-  await expect(row).toContainText(/Working \d+s/);
-  const first = await row.textContent();
-  await expect(row).not.toHaveText(first!);
-  await page.getByRole("region", { name: "hold the line" }).getByRole("link").first().click();
+  await expect(page.getByText(/^Nothing runs in the background/)).toBeVisible();
+  await expect(page.getByRole("main").getByText("hold the line")).toHaveCount(0);
+  // The session list says it is working, and opens it.
+  const sessions = page.getByRole("navigation", { name: "Sessions" });
+  await expect(sessions.getByText("Working")).toBeAttached();
+  await sessions.getByRole("link", { name: "hold the line" }).click();
   await page.getByRole("button", { name: "Stop" }).click();
-  await page.goto("/#/background");
-  await expect(page.getByRole("region", { name: "hold the line" })).toHaveCount(0);
 });
 
 fresh("a completed process discloses its original output on demand", async ({ page }) => {

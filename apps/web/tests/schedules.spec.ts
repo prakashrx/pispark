@@ -58,13 +58,13 @@ fresh("a session's schedules: a dialog from Details, run now, switch off, on Bac
 
   // Switched off in its row: no next run.
   await row.getByRole("switch", { name: "Run Every weekday at 9:30 am" }).click();
-  await expect(row.getByText("Off", { exact: true })).toBeVisible();
+  await expect(row.getByText(/^Ran .* · Off$/)).toBeVisible();
 
-  // Background lists it under its session; Pause all is saved and says so in the sidebar.
+  // Background lists it among what is scheduled, naming its session; Pause all is saved and says so in the sidebar.
   await page.goto("/#/background");
   await expect(page.getByRole("heading", { level: 1, name: "Background" })).toBeVisible();
-  const group = page.getByRole("region", { name: "daily digest" });
-  await expect(group.getByRole("link", { name: /daily digest/ })).toBeVisible();
+  const group = page.getByRole("region", { name: "Scheduled" });
+  await expect(group.getByRole("listitem")).toContainText(/daily digest · Ran .* · Off/);
   await expect(group.getByRole("switch", { name: "Run Every weekday at 9:30 am" })).not.toBeChecked();
   await page.getByRole("switch", { name: "Pause all unattended runs" }).click();
   await expect(page.getByText(/^Paused: schedules and routines don’t run/)).toBeVisible();
