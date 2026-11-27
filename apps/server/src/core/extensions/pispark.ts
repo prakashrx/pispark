@@ -111,9 +111,9 @@ export default function pispark(pi: ExtensionAPI): void {
   tool(
     "wait",
     "Wait",
-    "Wait for processes this session started, and get their results together, rather than checking on them. Results returned here are not sent again. What is still open when the wait ends stays open.",
+    "Wait for sessions and processes this session started, and get their answers together, rather than ending your turn or checking on them. It ends early if one of them raises something or a message arrives for you. Answers returned here are not sent again, and what is still open when the wait ends stays open.",
     {
-      ids: Type.Optional(Type.Array(Type.String({ maxLength: 64 }), { minItems: 1, maxItems: 50, description: "What to wait for; everything still open when left out." })),
+      ids: Type.Optional(Type.Array(Type.String({ maxLength: 64 }), { minItems: 1, maxItems: 50, description: "What to wait for, such as ['session-1', 'process-2']; everything still open when left out." })),
       for: Type.Optional(Type.Union([Type.Literal("all"), Type.Literal("any")], { description: "'all' (default) waits for every one; 'any' returns when the first is in." })),
       until: Type.Optional(pattern("A regular expression: return when a process's output shows it, e.g. 'ready|listening'.")),
       seconds: Type.Optional(Type.Number({ minimum: 1, maximum: 604800, description: "Give up after this long. Without it the wait has no limit." })),
@@ -166,7 +166,7 @@ export default function pispark(pi: ExtensionAPI): void {
         ? `When the person asks to do something later or repeatedly in this session, use pispark_schedule; PiSpark asks them to confirm. The server's local time now is ${localNow()}.`
         : "",
       has("start_session")
-        ? "For work that can run on its own (research, a long job, one of several parallel parts), hand it to another session with pispark_start_session and carry on. Each session answers once, when it is done, and its answer arrives here as a message; when others are still working, acknowledge it in one line. What this session starts gets a short id such as session-1 or process-2: pispark_look shows them, pispark_send tells one something, pispark_stop stops one."
+        ? "For work that can run on its own (research, a long job, one of several parallel parts), hand it to another session with pispark_start_session and carry on. Each session answers once, when it is done. To use the answers in this turn, call pispark_wait (all of them, or the first with for 'any'); otherwise end your turn and each answer arrives here as a message. What this session starts gets a short id such as session-1 or process-2: pispark_look shows them, pispark_send tells one something, pispark_stop stops one."
         : "",
       has("start_process")
         ? "For commands that run long or never end on their own (dev servers, watchers, long builds or test runs), use pispark_start_process instead of bash. When one ends this session is told once, so don't check on it repeatedly: pispark_wait blocks until it ends or its output shows something (until), and pispark_look is for a deliberate look at its output."

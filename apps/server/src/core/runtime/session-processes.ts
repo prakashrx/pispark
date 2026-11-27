@@ -121,7 +121,7 @@ export class SessionProcesses implements Kind {
       card: { title: short, how: end.how.slice(0, 200), start: heading.length },
       due: new Date(this.sessions.now()).toISOString(),
       policy: "queue",
-      ...(end.raised ? {} : { processEnd: true as const }),
+      word: end.raised ? "raise" : "answer",
     });
   }
 

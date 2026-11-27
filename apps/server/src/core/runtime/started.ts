@@ -3,7 +3,9 @@ import type { Schedule } from "../../contract/schedule-protocol.js";
 import { describeSchedule } from "../../contract/cron.js";
 import type { Children } from "./children.js";
 import type { Handles } from "./handles.js";
+import type { SessionAccess } from "./session-access.js";
 import type { SessionProcesses } from "./session-processes.js";
+import type { Wake } from "./wakes.js";
 import { pattern } from "./verbs.js";
 
 /** One thing a session started, as `look` lists it: how it reads, and whether it is still open. */
@@ -49,6 +51,8 @@ export class Started {
     private readonly children: Children,
     private readonly processes: SessionProcesses,
     schedules: Kind,
+    /** What waits for a session while it works, and what arrives for it. */
+    private readonly inbox: Pick<SessionAccess, "take" | "arrival">,
   ) {
     this.kinds = [children, processes, schedules];
   }
@@ -106,8 +110,10 @@ export class Started {
   }
 
   /**
-   * Waits for children and takes their answers: all of them, or the first (`for: "any"`). It ends
-   * early when `seconds` are up or `signal` aborts, and then says what is still open.
+   * Waits for children and takes their answers: all of them, or the first (`for: "any"`). It can
+   * never trap its session: it ends early on what needs the session now (something it started
+   * raises, or a message from above reaches it), when `seconds` are up, or when `signal` aborts.
+   * It then says what is still open. What it returns is taken, and not sent to the session as well.
    */
   private async wait(owner: string, verb: Fields<"wait">, signal?: AbortSignal): Promise<Answer> {
     const all = this.all(owner);
@@ -115,35 +121,56 @@ export class Started {
     if (targets.some((each) => typeof each === "string")) return this.unknown;
     const waited = (targets as (typeof all)[number][]).filter((each) => each.kind.wait);
     if (!waited.length) return { ok: true, text: verb.ids ? "None of those can be waited for." : "Nothing this session started is still open." };
-    const until = verb.until === undefined ? undefined : pattern(verb.until);
-    const over = new AbortController();
-    const cancel = () => over.abort();
-    signal?.addEventListener("abort", cancel, { once: true });
-    if (signal?.aborted) cancel();
-    let late = false;
-    const timer = verb.seconds === undefined ? undefined : setTimeout(() => ((late = true), cancel()), verb.seconds * 1000);
+    const raise = (wake: Wake) => wake.word === "raise";
+    // A raise that was already waiting is what the session needs first.
+    const raised = this.inbox.take(owner, raise);
     const answers = new Map<string, string>();
-    const each = waited.map(async (target) => {
-      const answer = await target.kind.wait!(owner, target.id, until, over.signal);
-      if (answer !== undefined) answers.set(target.handle, answer);
-    });
-    try {
-      await (verb.for === "any" ? Promise.race(each) : Promise.all(each));
-      // The first is in (or all are): the rest stop waiting, and stay open.
-      cancel();
-      await Promise.all(each);
-    } finally {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", cancel);
+    let early: string | undefined;
+    if (raised.length) early = RAISED;
+    else {
+      const over = new AbortController();
+      const end = (why?: string) => ((early ??= why), over.abort());
+      const cancelled = () => end("The wait was cancelled.");
+      signal?.addEventListener("abort", cancelled, { once: true });
+      if (signal?.aborted) cancelled();
+      const timer = verb.seconds === undefined ? undefined : setTimeout(() => end(`Not in within ${verb.seconds} s.`), verb.seconds * 1000);
+      void this.needed(owner, over.signal).then((why) => why && end(why));
+      const until = verb.until === undefined ? undefined : pattern(verb.until);
+      const each = waited.map(async (target) => {
+        const answer = await target.kind.wait!(owner, target.id, until, over.signal);
+        if (answer !== undefined) answers.set(target.handle, answer);
+      });
+      try {
+        await (verb.for === "any" ? Promise.race(each) : Promise.all(each));
+        // The first is in (or all are): the rest stop waiting, and stay open.
+        end();
+        await Promise.all(each);
+      } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", cancelled);
+      }
+      raised.push(...this.inbox.take(owner, raise));
     }
     const open = waited.filter((target) => !answers.has(target.handle)).map((target) => target.handle);
-    const why = late ? `Not in within ${verb.seconds} s` : signal?.aborted ? "The wait was cancelled" : "Still open";
+    const closing = [early, open.length ? `Still open: ${open.join(", ")}.` : ""].filter(Boolean).join(" ");
     return {
       ok: true,
-      text: [...waited.flatMap((target) => (answers.has(target.handle) ? [`${target.handle}: ${answers.get(target.handle)}`] : [])), ...(open.length ? [`${why}: ${open.join(", ")}.`] : [])].join("\n\n"),
+      text: [...waited.flatMap((target) => (answers.has(target.handle) ? [`${target.handle}: ${answers.get(target.handle)}`] : [])), ...raised.map((wake) => wake.text), closing].filter(Boolean).join("\n\n"),
     };
   }
+
+  /** Resolves with why, once something needs the session now; undefined when `signal` ends it first. */
+  private async needed(owner: string, signal: AbortSignal): Promise<string | undefined> {
+    for (;;) {
+      const what = await this.inbox.arrival(owner, signal);
+      if (what === undefined) return undefined;
+      if (what === "message") return "The wait ended early: a message arrived for this session.";
+      if (what.word === "raise") return RAISED;
+    }
+  }
 }
+
+const RAISED = "The wait ended early: something this session started raised (above).";
 
 /** Schedules as a kind: looked at and stopped (removed) like anything else a session started. Each run of one is waited for, not the schedule. */
 export function scheduleKind(schedules: { of(sessionId: string): Schedule[]; remove(id: string): void }): Kind {

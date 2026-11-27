@@ -135,6 +135,8 @@ export interface SessionHost {
   hold?(session: Session, request: { extension: string; hold: boolean; reason: string }): { state: "held" | "asked" | "released" | "refused"; text: string };
   /** One of the session's runs ended (a child reports back). Called outside Pi's listeners. */
   ended?(session: Session, result: RunResult): void;
+  /** A message from above reached the session while it works: a wait inside its turn ends early. */
+  arrived?(session: Session): void;
   /**
    * A change to what the session runs, asked for from inside it (its agent or an extension), or an
    * extension revision to activate: applied once the session is free. False when refused.
@@ -1351,6 +1353,8 @@ export class Session {
     const run = this.run;
     if (!run || run.settled || run.admissionClosed || session.isIdle) throw new RuntimeError("busy");
     this.answered();
+    // It is meant to be read at the next pause, so a wait in the turn does not hold it up.
+    if (kind === "steer") this.host.arrived?.(this);
     const valid = () => this.run === run && !run.settled && !run.cancelled && this.status === "running" && !session.isIdle;
     const input = inputAdmission.run({ valid }, async () => {
       const found = await attachedImages(this.host.storage.directory(this.id), text);

@@ -62,7 +62,7 @@ test("wait takes a process's result, look reads what is unread, and find searche
     const started = f.runtime.items(session.id, {}).items.filter((item) => item.role === "toolResult").at(-1);
     assert.deepEqual(started?.details, { id: server!.id });
     // A wait gives up after its own time; what it waited for stays open.
-    assert.equal(await run(say("wait", { ids: ["process-1"], seconds: 1 })), "Not in within 1 s: process-1.");
+    assert.equal(await run(say("wait", { ids: ["process-1"], seconds: 1 })), "Not in within 1 s. Still open: process-1.");
     assert.equal(await run(say("stop", { id: "process-1" })), "Stopped.");
 
     // It prints a diagnostic and then enough output to push it out of the tail, once released.

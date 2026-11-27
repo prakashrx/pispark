@@ -27,8 +27,14 @@ export interface Wake {
   policy: "latest" | "queue";
   /** It came due while PiSpark was not running. */
   late?: true;
-  /** It says a process ended. It is dropped if the session has taken that end by the time it would be sent. */
-  processEnd?: true;
+  /**
+   * What it is, when something the session started says it: its answer (a child session's, or a
+   * process's end), or a raise. An answer the session has taken by the time it would be sent is
+   * dropped; a raise ends a wait early.
+   */
+  word?: "answer" | "raise";
+  /** Its delivery is a line in the conversation, not a turn: the answer of a run the clock asked for. */
+  quiet?: true;
   /**
    * A child's report: what the session's extensions are offered before its agent hears of it (see
    * `CHILD_ENDED_CHANNEL`), with the data an extension in the child set.
@@ -110,7 +116,8 @@ function validWake(value: unknown): value is Wake {
     validTime(value.due) &&
     (value.policy === "latest" || value.policy === "queue") &&
     (value.late === undefined || value.late === true) &&
-    (value.processEnd === undefined || value.processEnd === true) &&
+    (value.word === undefined || value.word === "answer" || value.word === "raise") &&
+    (value.quiet === undefined || value.quiet === true) &&
     (value.report === undefined || validReport(value.report)) &&
     (value.card === undefined || validCard(value.card, value.text as string))
   );
@@ -158,6 +165,8 @@ export class Wakes {
       logger?: SafeLogger;
       /** A source's run ended (recorded), so the source can tidy up, such as a one-off schedule. */
       settled?: (sessionId: string, sourceId: string) => void;
+      /** A wake has to wait for its session, which is working: a wait inside its turn may want it. */
+      queued?: (sessionId: string, wake: Wake) => void;
     } = {},
   ) {}
 
@@ -289,6 +298,7 @@ export class Wakes {
     if (mine.length >= MAX_WAITING_PER_SOURCE) return this.note(sessionId, wake.source.id, { due: wake.due, outcome: "missed", reason: "full" });
     state.waiting.push(wake);
     this.save(sessionId);
+    this.options.queued?.(sessionId, wake);
   }
   private remove(sessionId: string, wake: Wake): void {
     const state = this.state(sessionId);
@@ -318,15 +328,15 @@ export class Wakes {
     return this.waiting(sessionId, sourceId) || this.running.has(key(sessionId, sourceId));
   }
   /**
-   * Takes the source's waiting wakes that `which` picks: the session has what they say already (it
-   * looked, or answered), so they are not sent. Each is recorded as handled.
+   * Takes the waiting wakes that `which` picks: the session has what they say already (it waited
+   * for them, looked, or answered), so they are not sent. Each is recorded as handled.
    */
-  take(sessionId: string, sourceId: string, which: (wake: Wake) => boolean = () => true): Wake[] {
+  take(sessionId: string, which: (wake: Wake) => boolean): Wake[] {
     const state = this.states.get(sessionId);
-    const taken = state?.waiting.filter((w) => w.source.id === sourceId && which(w)) ?? [];
+    const taken = state?.waiting.filter(which) ?? [];
     if (!state || !taken.length) return [];
     state.waiting = state.waiting.filter((w) => !taken.includes(w));
-    for (const wake of taken) this.note(sessionId, sourceId, { due: wake.due, outcome: "handled" });
+    for (const wake of taken) this.note(sessionId, wake.source.id, { due: wake.due, outcome: "handled" });
     return taken;
   }
   /** Drops the source's waiting wakes, such as when a schedule is switched off. */

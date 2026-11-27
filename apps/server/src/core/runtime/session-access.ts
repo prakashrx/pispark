@@ -6,6 +6,7 @@ import type { AgentStore } from "../agents/store.js";
 import type { Session } from "./session.js";
 import type { SessionMetadata, SessionStorage } from "./storage.js";
 import type { Wake } from "./wakes.js";
+import type { Arrival } from "./arrivals.js";
 
 /** A new session's request: Ask's, or another session's. */
 export type NewSession = { folder?: string; model?: ModelChoice; agent?: string };
@@ -35,8 +36,12 @@ export interface SessionAccess {
   archive(id: string): Promise<void>;
   create(request: NewSession, origin: Origin): Promise<SessionDoc>;
   deliver(sessionId: string, wake: Wake): Promise<void>;
-  /** Takes messages from a source that still wait for the session, so they are not sent (see `Wakes.take`). */
-  take(sessionId: string, sourceId: string, which?: (wake: Wake) => boolean): Wake[];
+  /** Takes messages that still wait for the session, so they are not sent (see `Wakes.take`). */
+  take(sessionId: string, which: (wake: Wake) => boolean): Wake[];
+  /** Whether a message from a source still waits for the session. */
+  waiting(sessionId: string, sourceId: string): boolean;
+  /** The next thing to arrive for a session while it works (see `Arrivals`). */
+  arrival(sessionId: string, signal: AbortSignal): Promise<Arrival | undefined>;
   /** Something the session started is still due to wake it: a message waiting for it, or a process still running. */
   pending(sessionId: string): boolean;
   /** Stops the processes a session started, quietly. */

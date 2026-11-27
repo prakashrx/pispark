@@ -42,6 +42,7 @@ import type { RunningWork } from "../../contract/host-protocol.js";
 import { targetOf, type NewSession, type Origin, type SessionAccess } from "./session-access.js";
 import { Children } from "./children.js";
 import { Handles } from "./handles.js";
+import { Arrivals } from "./arrivals.js";
 import { scheduleKind, Started } from "./started.js";
 import { Holds } from "./holds.js";
 import { Runs } from "./runs.js";
@@ -99,6 +100,7 @@ export class SessionRuntime {
   /** Sessions started by other sessions. */
   private readonly children: Children;
   private readonly handles: Handles;
+  private readonly arrivals = new Arrivals();
   private readonly started: Started;
   /** Extensions keeping their sessions loaded. */
   private readonly holds: Holds;
@@ -146,7 +148,9 @@ export class SessionRuntime {
       archive: (id) => this.archive(id),
       create: (request, origin) => this.createSession(request, origin),
       deliver: (id, wake) => this.wakes.deliver(id, wake),
-      take: (id, sourceId, which) => this.wakes.take(id, sourceId, which),
+      take: (id, which) => this.wakes.take(id, which),
+      waiting: (id, sourceId) => this.wakes.waiting(id, sourceId),
+      arrival: (id, signal) => this.arrivals.next(id, signal),
       pending: (id) => this.wakes.waiting(id) || this.processes.runningIn(id) > 0,
       stopProcesses: (id) => this.processes.stopSession(id),
     };
@@ -177,6 +181,7 @@ export class SessionRuntime {
         if (!session.published) this.storage.discardUnpublished(session.id);
       },
       ended: (session, result) => this.children.ended(session, result),
+      arrived: (session) => this.arrivals.tell(session.id, "message"),
       hold: (session, request) => this.holds.request(session, request),
       toolsSeen: (fingerprint, paths, tools) => this.tools.remember(fingerprint, paths, tools),
       started: { say: (sessionId, verb, signal) => this.started.say(sessionId, verb, signal), handle: (sessionId, kind, id) => this.handles.of(sessionId, kind, id) },
@@ -216,18 +221,25 @@ export class SessionRuntime {
         run: async (id, wake, details) => {
           this.admit();
           // An answer already taken is not delivered again: the session read or waited for this process's end.
-          if (wake.processEnd && this.processes.endTaken(wake.source.id)) return { handled: true as const };
+          const ended = wake.word === "answer" && wake.source.kind === "process";
+          if (ended && this.processes.endTaken(wake.source.id)) return { handled: true as const };
           await this.ensure(id);
           let text = wake.text;
           // A child's answer or raise: the session's extensions see it first and may take it or reword it.
+          let quiet = wake.quiet;
           if (wake.report) {
             const answer = this.get(id).offerChildEnded(wake.report);
             if (answer?.action === "skip") return { handled: true as const };
-            if (answer?.action === "send") text = answer.text;
+            if (answer?.action === "send") [text, quiet] = [answer.text, undefined];
+          }
+          if (quiet) {
+            const { title = wake.source.label, how = "ended" } = wake.report ?? {};
+            await this.get(id).addStatus(text, { session: wake.source.id, title, how, ok: how === "finished" });
+            return { handled: true as const };
           }
           validateText(text);
           const run = this.get(id).start(text, details);
-          if (wake.processEnd) this.processes.takeEnd(wake.source.id);
+          if (ended) this.processes.takeEnd(wake.source.id);
           return run;
         },
         paused: () => this.unattendedPaused,
@@ -235,6 +247,7 @@ export class SessionRuntime {
       {
         now: configuration.now,
         logger,
+        queued: (sessionId, wake) => this.arrivals.tell(sessionId, wake),
         settled: (sessionId, sourceId) => {
           this.schedules.settled(sessionId, sourceId);
           // What a child waited for is settled: it may be at rest now, and owe its parent an answer.
@@ -257,7 +270,7 @@ export class SessionRuntime {
       { logger },
     );
     this.sessionProcesses = new SessionProcesses(access, this.processes, this.handles);
-    this.started = new Started(this.handles, this.children, this.sessionProcesses, scheduleKind(this.schedules));
+    this.started = new Started(this.handles, this.children, this.sessionProcesses, scheduleKind(this.schedules), access);
     this.wakes.start();
     this.schedules.start();
     this.processes.load();

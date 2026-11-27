@@ -23,8 +23,8 @@ const cut = (text: string) => (text.length > 8192 ? `${text.slice(0, 8192)}…\n
 const short = (text: string) => (text.length > 160 ? `${text.slice(0, 159)}…` : text);
 
 type Report = Omit<ChildEnded, "reply">;
-/** Whether a message waiting for a parent is a child's raise, not its answer. */
-const raised = (wake: Wake) => wake.report?.how === "raised";
+/** Picks, among what waits for a parent, one child's messages of one kind. */
+const from = (childId: string, word?: Wake["word"]) => (wake: Wake) => wake.source.id === childId && (word === undefined || wake.word === word);
 
 /**
  * Sessions started by other sessions, as one kind of thing a session can start: starting one,
@@ -84,7 +84,12 @@ export class Children implements Kind {
   }
 
   of(owner: string): Listed[] {
-    return this.under(owner).map((child) => ({ id: child.id, line: `"${titleOf(child)}" — ${this.state(child)}`, open: !!child.ask && !child.archived }));
+    // Open while it owes an answer, or its answer still waits to be taken.
+    return this.under(owner).map((child) => ({
+      id: child.id,
+      line: `"${titleOf(child)}" — ${this.state(child)}`,
+      open: !child.archived && (!!child.ask || this.sessions.waiting(owner, child.id)),
+    }));
   }
 
   async look(owner: string, id: string): Promise<Answer> {
@@ -94,7 +99,7 @@ export class Children implements Kind {
     if (child.raise) lines.push(`It raised: ${child.raise}`);
     if (child.note) lines.push(`Its last note: ${child.note}`);
     // An answer still waiting to be sent here is taken by looking: it is shown now, and not sent.
-    const answers = this.sessions.take(owner, child.id, (wake) => !raised(wake));
+    const answers = this.sessions.take(owner, from(child.id, "answer"));
     if (answers.length) lines.push(...answers.map((wake) => wake.text));
     else if (!child.archived) {
       await this.sessions.ensure(child.id);
@@ -112,7 +117,7 @@ export class Children implements Kind {
     if (!working && !child.ask) return { ok: true, text: "It is not working." };
     await this.sessions.ensure(child.id);
     this.sessions.get(child.id).closeAsk();
-    this.sessions.take(owner, child.id);
+    this.sessions.take(owner, from(child.id));
     this.sessions.stopProcesses(child.id);
     if (working) await this.sessions.cancel(child.id);
     return { ok: true, text: "Stopped." };
@@ -132,7 +137,7 @@ export class Children implements Kind {
     validateText(text);
     const session = this.sessions.get(child.id);
     // Telling it something answers what it raised: a raise still waiting to be sent here is not sent.
-    this.sessions.take(owner, child.id, raised);
+    this.sessions.take(owner, from(child.id, "raise"));
     try {
       if (session.settled) {
         session.openAsk();
@@ -144,6 +149,18 @@ export class Children implements Kind {
     } catch (error) {
       if (runtimeError(error, "execution").code === "busy") return { ok: false, text: "It cannot take a message right now; try again in a moment." };
       throw error;
+    }
+  }
+
+  /** Its answer, as soon as it is in: taken from what waits for its parent, so it is not sent as well. */
+  async wait(owner: string, id: string, _until: RegExp | undefined, signal: AbortSignal): Promise<string | undefined> {
+    for (;;) {
+      const child = this.child(owner, id);
+      if (!child) return undefined;
+      const [answer] = this.sessions.take(owner, from(id, "answer"));
+      if (answer?.report) return `"${answer.report.title}" ${answer.report.how}:\n\n${answer.report.text}${dataText(answer.report.data, 56 * 1024 - answer.report.text.length)}`;
+      if (!child.ask) return `"${titleOf(child)}" — ${this.state(child)}. It gave its answer before (pispark_look shows what it last said).`;
+      if (!(await this.sessions.arrival(owner, signal))) return undefined;
     }
   }
 
@@ -174,6 +191,7 @@ export class Children implements Kind {
       card: { title, how: "raised", start: heading.length },
       due: this.due(),
       policy: "queue",
+      word: "raise",
       report: { session: child.id, title, how: "raised", text },
     });
     return { ok: true, text: `Raised with "${titleOf(parent)}". Its answer arrives here as a message: carry on with what does not depend on it, or finish your turn to wait.` };
@@ -216,35 +234,12 @@ export class Children implements Kind {
     const body = said ? cut(said) : `It ${how} without an answer.`;
     const data = session.resultData;
     const report: Report = { session: child.id, title, how, text: body, ...(data !== undefined ? { data } : {}) };
+    const answer = { source: { kind: "session" as const, id: child.id, label: `${title} · ${how}` }, due: this.due(), policy: "queue" as const, word: "answer" as const, report };
     // A run the clock asked for, not the parent's agent: a line, so a schedule does not cost the parent a turn each time.
-    if (child.schedule) return void this.scheduled(parent, report).catch((error: unknown) => this.failed(parent.id, error));
+    if (child.schedule) return void this.sessions.deliver(parent.id, { ...answer, text: `The session "${title}" you started ${how}.`, card: { title, how, start: 0 }, quiet: true });
     // The line the agent needs; the card says it already, so it shows the answer after it.
     const heading = `The session "${title}" (${this.handles.of(parent.id, this.name, child.id)}) you started ${how}:\n\n`;
-    void this.sessions.deliver(parent.id, {
-      source: { kind: "session", id: child.id, label: `${title} · ${how}` },
-      text: `${heading}${body}${dataText(data, 56 * 1024 - body.length)}`,
-      card: { title, how, start: heading.length },
-      due: this.due(),
-      policy: "queue",
-      report,
-    });
-  }
-
-  /** A scheduled run ended: the parent's extensions see it first and may take it or turn it into a message that wakes the agent. */
-  private async scheduled(parent: SessionMetadata, report: Report): Promise<void> {
-    if (parent.archived) return;
-    await this.sessions.ensure(parent.id);
-    const answer = this.sessions.get(parent.id).offerChildEnded(report);
-    if (answer?.action === "skip") return;
-    if (answer?.action === "send")
-      return this.sessions.deliver(parent.id, {
-        source: { kind: "session", id: report.session, label: `${report.title} · ${report.how}` },
-        text: answer.text,
-        card: { title: report.title, how: report.how, start: 0 },
-        due: this.due(),
-        policy: "queue",
-      });
-    await this.line(parent, `The session "${report.title}" you started ${report.how}.`, { session: report.session, title: report.title, how: report.how, ok: report.how === "finished" });
+    void this.sessions.deliver(parent.id, { ...answer, text: `${heading}${body}${dataText(data, 56 * 1024 - body.length)}`, card: { title, how, start: heading.length } });
   }
 
   /** A line in a parent's conversation, without a turn: its agent reads it the next time it runs. */
