@@ -94,82 +94,83 @@ registerToolView("grep", search("Searching for", "Searched for", "pattern"));
 registerToolView("find", search("Finding", "Found", "pattern"));
 registerToolView("ls", { describe: words("Listing", "Listed", on), group: "search", summarize: (calls) => `searched ${noun(calls.length, "time")}`, artifacts: genericArtifacts });
 
-// PiSpark's own session and process tools name what a start made in the call's details.
-const startedId = (call: ToolCall) => (call.status === "done" && arg(call, "action") === "start" ? text(field(call.result?.details, "id")) : undefined);
-
-// PiSpark's own session tool: words for each action, and the session a start made, as a row.
-registerToolView("pispark_session", {
-  describe(call) {
-    const action = arg(call, "action");
-    const title = arg(call, "title");
-    if (action === "start") return { doing: "Starting a session", done: title ? `Started ${short(title)}` : "Started a session" };
-    if (action === "list") return { doing: "Listing its sessions", done: "Listed its sessions" };
-    if (action === "send") return { doing: "Sending to a session", done: "Sent to a session" };
-    if (action === "stop") return { doing: "Stopping a session", done: "Stopped a session" };
-    return { doing: "Reading a session's answer", done: "Read a session's answer" };
-  },
-  group: "sessions",
-  summarize: (calls) => {
-    const started = calls.filter((call) => arg(call, "action") === "start").length;
-    return started ? `started ${noun(started, "session")}` : `used ${noun(calls.length, "session action")}`;
-  },
-  artifacts(call) {
-    const id = startedId(call);
-    return id ? [{ kind: "session", key: `session.${call.id}`, sessionId: id, title: arg(call, "title") ?? "A session" }] : [];
-  },
-});
-
-// PiSpark's own process tool: words for each action, and the process a start made, as a row.
-registerToolView("pispark_process", {
-  describe(call) {
-    const action = arg(call, "action");
-    const name = arg(call, "title") ?? arg(call, "command");
-    if (action === "start") return { doing: "Starting", done: "Started", object: name && short(name) };
-    if (action === "list") return { doing: "Listing its processes", done: "Listed its processes" };
-    if (action === "output") return { doing: "Reading output", done: "Read output" };
-    if (action === "watch") return { doing: "Watching output", done: "Watching output" };
-    if (action === "unwatch") return { doing: "Stopping a watch", done: "Stopped a watch" };
-    return { doing: "Stopping a process", done: "Stopped a process" };
-  },
-  group: "processes",
-  summarize: (calls) => {
-    const started = calls.filter((call) => arg(call, "action") === "start").length;
-    return started ? `started ${noun(started, "process", "processes")}` : `used ${noun(calls.length, "process action")}`;
-  },
-  artifacts(call) {
-    const id = startedId(call);
-    return id ? [{ kind: "process", key: `process.${call.id}`, processId: id, title: arg(call, "title") ?? arg(call, "command") ?? "A process" }] : [];
-  },
-});
-// PiSpark's own schedule tool: what it saved, from the call's details, as a row.
+// PiSpark's own tools, the ten verbs a session says about what it started: words for each, and what
+// a start made, as a row. A start names what it made in the call's details.
+const made = (call: ToolCall) => (call.status === "done" ? text(field(call.result?.details, "id")) : undefined);
+const sessionRow = (call: ToolCall): Segment[] => {
+  const id = made(call);
+  return id ? [{ kind: "session", key: `session.${call.id}`, sessionId: id, title: arg(call, "title") ?? "A session" }] : [];
+};
+const processRow = (call: ToolCall): Segment[] => {
+  const id = made(call);
+  return id ? [{ kind: "process", key: `process.${call.id}`, processId: id, title: arg(call, "title") ?? arg(call, "command") ?? "A process" }] : [];
+};
 const savedSchedule = (call: ToolCall) => {
   const schedule = field(call.result?.details, "schedule");
   return schedule && typeof schedule === "object" && !Array.isArray(schedule) && typeof schedule.id === "string" ? (schedule as unknown as Schedule) : undefined;
 };
-registerToolView("pispark_schedule", {
-  describe(call) {
-    const action = arg(call, "action");
-    if (action === "add") {
-      const saved = savedSchedule(call);
-      return { doing: "Adding a schedule", done: saved ? `Scheduled ${describeSchedule(saved).replace(/^./, (c) => c.toLowerCase())}` : "Added no schedule" };
-    }
-    if (action === "list") return { doing: "Listing its schedules", done: "Listed its schedules" };
-    return { doing: "Removing a schedule", done: "Removed a schedule" };
+/** One verb's view: its words, one line for several calls, and what it puts in the message. */
+const verb = (name: string, describe: ToolView["describe"], summarize: (calls: ToolCall[]) => string, artifacts: ToolView["artifacts"] = () => []) =>
+  registerToolView(`pispark_${name}`, { describe, group: name, summarize, artifacts });
+const said = (call: ToolCall) => {
+  const value = arg(call, "text");
+  return value && short(value);
+};
+const argOf = (key: string) => (call: ToolCall) => arg(call, key);
+
+verb(
+  "start_session",
+  (call) => ({ doing: "Starting a session", done: arg(call, "title") ? `Started ${short(arg(call, "title")!)}` : "Started a session" }),
+  (calls) => `started ${noun(calls.length, "session")}`,
+  sessionRow,
+);
+verb(
+  "start_process",
+  words("Starting", "Started", (call) => {
+    const name = arg(call, "title") ?? arg(call, "command");
+    return name && short(name);
+  }),
+  (calls) => `started ${noun(calls.length, "process", "processes")}`,
+  processRow,
+);
+verb(
+  "schedule",
+  (call) => {
+    const saved = savedSchedule(call);
+    return { doing: "Adding a schedule", done: saved ? `Scheduled ${describeSchedule(saved).replace(/^./, (c) => c.toLowerCase())}` : "Added no schedule" };
   },
-  group: "schedules",
-  summarize: (calls) => {
+  (calls) => {
     const added = calls.filter((call) => savedSchedule(call)).length;
-    return added ? `added ${noun(added, "schedule")}` : `used ${noun(calls.length, "schedule action")}`;
+    return added ? `added ${noun(added, "schedule")}` : "added no schedule";
   },
-  artifacts(call) {
+  (call) => {
     const schedule = call.status === "done" ? savedSchedule(call) : undefined;
     return schedule ? [{ kind: "schedule", key: `schedule.${call.id}`, schedule }] : [];
   },
-});
-registerToolView("pispark_report", {
-  describe: () => ({ doing: "Raising it with the session that started this one", done: "Raised it with the session that started this one" }),
-  summarize: () => "raised it with the starting session",
-});
+);
+verb("send", words("Sending to", "Sent to", argOf("id")), (calls) => `sent ${noun(calls.length, "message")}`);
+verb(
+  "wait",
+  (call) => {
+    const ids = field(call.args, "ids");
+    return { doing: "Waiting for", done: "Waited for", object: Array.isArray(ids) && ids.length ? ids.join(", ") : "what it started" };
+  },
+  (calls) => `waited ${noun(calls.length, "time")}`,
+);
+verb("look", words("Looking at", "Looked at", (call) => arg(call, "id") ?? "what it started"), (calls) => `looked ${noun(calls.length, "time")}`);
+verb("stop", words("Stopping", "Stopped", argOf("id")), (calls) => `stopped ${noun(calls.length, "thing")}`);
+verb("raise", words("Raising", "Raised", said), () => "raised a question");
+verb("note", words("Noting", "Noted", said), (calls) => `left ${noun(calls.length, "note")}`);
+verb(
+  "self",
+  (call) => (arg(call, "action") === "reload" ? { doing: "Asking to reload", done: "Asked to reload" } : { doing: "Inspecting this session", done: "Inspected this session" }),
+  () => "looked at itself",
+);
+
+// Calls from before the ten verbs, in older conversations: what a start made still shows as a row.
+const older = (row: (call: ToolCall) => Segment[]): ToolView => ({ ...generic, artifacts: (call) => (arg(call, "action") === "start" ? row(call) : []) });
+registerToolView("pispark_session", older(sessionRow));
+registerToolView("pispark_process", older(processRow));
 
 /** What a call is doing, in words. */
 export const describeCall = (call: ToolCall): CallWords => resolveToolView(call.name).describe(call);

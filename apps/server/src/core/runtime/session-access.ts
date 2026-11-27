@@ -10,7 +10,7 @@ import type { Wake } from "./wakes.js";
 /** A new session's request: Ask's, or another session's. */
 export type NewSession = { folder?: string; model?: ModelChoice; agent?: string };
 /** What a session started by another one, or by a schedule, records of where it came from. */
-export type Origin = Pick<SessionMetadata, "parent" | "report" | "title" | "schedule" | "ask">;
+export type Origin = Pick<SessionMetadata, "parent" | "title" | "schedule" | "ask">;
 
 /**
  * What the runtime lends the parts that work across sessions (child sessions, holds, processes,
@@ -35,8 +35,12 @@ export interface SessionAccess {
   archive(id: string): Promise<void>;
   create(request: NewSession, origin: Origin): Promise<SessionDoc>;
   deliver(sessionId: string, wake: Wake): Promise<void>;
-  /** Something the session started is still due to wake it: a message waiting for it, or a process that tells it when it ends. */
+  /** Takes messages from a source that still wait for the session, so they are not sent (see `Wakes.take`). */
+  take(sessionId: string, sourceId: string, which?: (wake: Wake) => boolean): Wake[];
+  /** Something the session started is still due to wake it: a message waiting for it, or a process still running. */
   pending(sessionId: string): boolean;
+  /** Stops the processes a session started, quietly. */
+  stopProcesses(sessionId: string): void;
 }
 
 /** How a session is named to an agent when it has no title yet. */

@@ -175,7 +175,7 @@ Copy some of Pi's own examples (`node_modules/@earendil-works/pi-coding-agent/ex
 
 ### Trial an extension in one session
 
-Use `pispark_session` with `action: "inspect"` to list this session's loaded resources, registered extension tools and commands, active tools, offered views, and recent errors. Offered views are not evidence that a browser mounted them.
+Use `pispark_self` with `action: "inspect"` to list this session's loaded resources, registered extension tools and commands, active tools, offered views, and recent errors. Offered views are not evidence that a browser mounted them.
 
 `pispark_extension` is available by default unless the agent disables it. Keep session-only source in `sessions/<id>/extension-drafts/<name>/`, outside the project and any automatically loaded resource folders.
 

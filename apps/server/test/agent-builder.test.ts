@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { AgentStore } from "../src/core/agents/store.js";
 import { frontmatter } from "../src/core/agents/format.js";
 import { listAgents, resolveSetup } from "../src/core/agents/resolve.js";
+import { toolOf, VERBS } from "../src/contract/verbs.js";
 import agentBuilder from "../../../plugins/agents/agent-builder/extensions/agent-builder/index.js";
 
 const PLUGINS = fileURLToPath(new URL("../../../plugins/", import.meta.url));
@@ -66,7 +67,8 @@ test("Agent Builder ships with its skills and extension, and without shell or se
   assert.equal(setup.extensionPaths.length, 1);
   const skills = await readdir(join(AGENT_BUILDER, "skills"));
   assert.deepEqual(setup.skillDirs.map((dir) => dir.split(/[\\/]/).at(-1)).sort(), skills.sort());
-  for (const tool of ["bash", "pispark_session", "pispark_schedule", "pispark_process", "pispark_extension"])
+  // No shell, and none of the verbs about what a session starts.
+  for (const tool of ["bash", "pispark_extension", ...VERBS.map(toolOf)])
     assert.ok(setup.toolsOff.includes(tool), tool);
   for (const tool of ["read", "edit", "write", "grep", "find", "ls"])
     assert.ok(setup.toolsOn.includes(tool), tool);

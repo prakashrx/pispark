@@ -5,12 +5,12 @@ import { newSession } from "./ask";
 // Each test gets its own data folder.
 const fresh = hostedTest;
 const SERVER = `node -e "console.log('ready on 5199'); setInterval(() => console.log('tick'), 200)"`;
-const start = (args: object) => `tool:pispark_process:${JSON.stringify({ action: "start", ...args })}`;
+const start = (args: object) => `tool:pispark_start_process:${JSON.stringify(args)}`;
 
 fresh("a process the agent starts: a row in the reply, on Background with its session, live output in the panel, Stop", async ({ page }) => {
   await page.goto("/");
   const box = page.getByRole("textbox", { name: "Ask anything", exact: true });
-  await box.fill(start({ command: SERVER, title: "dev server", report: "status", wait_for: "ready", timeout_seconds: 30 }));
+  await box.fill(start({ command: SERVER, title: "dev server" }));
   await box.press("Enter");
 
   // The reply shows the process with its state; the sidebar row says one is running.
@@ -38,7 +38,7 @@ fresh("a process the agent starts: a row in the reply, on Background with its se
   await expect(output).toContainText("ready on 5199");
   await expect(output).toContainText("tick");
 
-  // Stop ends it; in status mode the session gets a line, not a turn. On Windows, finding the process
+  // Stop ends it; the session gets a line saying you stopped it, not a turn. On Windows, finding the process
   // tree starts PowerShell, which can take seconds on a cold machine.
   await panel.getByRole("button", { name: "Stop dev server" }).click();
   await expect(panel).toContainText("Stopped", { timeout: 20_000 });
@@ -81,7 +81,7 @@ fresh("a reply working shows on Background with how long it has run, and leaves 
 fresh("a completed process discloses its original output on demand", async ({ page }) => {
   await page.goto("/#/new");
   const box = page.getByRole("textbox", { name: "Ask anything", exact: true });
-  await box.fill(start({ command: 'node -e "console.log(78143)"', title: "Catalog sample", report: "result" }));
+  await box.fill(start({ command: 'node -e "console.log(78143)"', title: "Catalog sample" }));
   await box.press("Enter");
   const report = page.locator("details").filter({ has: page.locator("summary", { hasText: "Catalog sample · exited 0" }) });
   const summary = report.locator("summary");

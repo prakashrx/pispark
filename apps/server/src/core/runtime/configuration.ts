@@ -168,10 +168,8 @@ export async function createSessionServices(options: {
     modelSelected?: () => void;
     /** Extension components placed with `pispark:view` events on the session's bus. */
     views: { bind: (bus: EventBus) => () => void };
-    /** The built-in schedule tool's requests, on the same bus. */
-    schedules?: { bind: (bus: EventBus) => () => void };
-    /** The built-in session tool's requests, on the same bus. */
-    sessions?: { bind: (bus: EventBus) => () => void };
+    /** What the session's tools and extensions ask of PiSpark, on the same bus. */
+    requests?: { bind: (bus: EventBus) => () => void };
   };
 }) {
   const { setup, cwd, agentDir, managed, fixed, admission, host } = options;
@@ -269,8 +267,7 @@ export async function createSessionServices(options: {
   const eventBus = createEventBus();
   // Before any extension loads, so none of its placements are missed.
   const unbindViews = host.views.bind(eventBus);
-  const unbindSchedules = host.schedules?.bind(eventBus);
-  const unbindSessions = host.sessions?.bind(eventBus);
+  const unbindRequests = host.requests?.bind(eventBus);
   let loadedExtensions;
   try {
     loadedExtensions = await loadExplicitExtensions(
@@ -289,8 +286,7 @@ export async function createSessionServices(options: {
     }
   } catch (error) {
     unbindViews();
-    unbindSchedules?.();
-    unbindSessions?.();
+    unbindRequests?.();
     throw error;
   }
   // Last input handler: queued input from a run that already settled must not be appended.

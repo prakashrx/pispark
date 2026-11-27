@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { httpFixture } from "./fixtures/http-host.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { writeAgent } from "./fixtures/home.js";
-import { PROCESS_TOOL } from "../src/core/runtime/process-tool.js";
+import { say } from "./fixtures/verbs.js";
 import type { Item, Receipt } from "../src/contract/protocol.js";
 
 /** A one-pixel PNG, as an ordinary Pi extension's tool returns a picture. */
@@ -75,7 +75,7 @@ test("processes over HTTP: every running one, a session's, its output after a po
   const f = await httpFixture(t);
   f.provider.automatic = true;
   const id = await f.create("a");
-  const started = await f.settle(await f.post({ type: "start", sessionId: id, text: `tool:${PROCESS_TOOL}:${JSON.stringify({ action: "start", command: SERVER, title: "dev server", report: "none" })}` }));
+  const started = await f.settle(await f.post({ type: "start", sessionId: id, text: say("start_process", { command: SERVER, title: "dev server" }) }));
   assert.equal(started.outcome, "completed");
 
   const running = await (await fetch(`${f.base}/api/processes`)).json();

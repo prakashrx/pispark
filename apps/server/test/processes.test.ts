@@ -3,13 +3,13 @@ import { test } from "node:test";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
-import { PROCESS_TOOL, validProcessMessage } from "../src/core/runtime/process-tool.js";
+import { validVerb } from "../src/core/runtime/verbs.js";
 import { gitPs } from "../src/core/runtime/processes.js";
 import { STATUS_ENTRY, WOKEN_ENTRY } from "../src/contract/wake-protocol.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome, writeAgent } from "./fixtures/home.js";
+import { say, steps } from "./fixtures/verbs.js";
 
-const call = (args: object) => `tool:${PROCESS_TOOL}:${JSON.stringify(args)}`;
 const text = (item: { parts: { type: string; text?: string }[] }) => item.parts.map((part) => part.text ?? "").join("");
 const SERVER = `node -e "console.log('ready on 5173'); setInterval(() => console.log('tick'), 50)"`;
 const FAILING = `node -e "console.log('1 failed, 212 passed'); process.exit(1)"`;
@@ -29,7 +29,11 @@ async function fixture() {
     runtime: make(),
     make,
     folder,
-    lastTool: (runtime: SessionRuntime, id: string) => text(runtime.items(id, {}).items.filter((item) => item.role === "toolResult").at(-1)!),
+    /** A prompt for the session's agent, and what the last tool it called answered. */
+    run: async (id: string, prompt: string) => {
+      await runtimes[0]!.start(id, prompt).completion;
+      return text(runtimes[0]!.items(id, {}).items.filter((item) => item.role === "toolResult").at(-1)!);
+    },
     cleanup: async () => {
       await Promise.allSettled(runtimes.map((r) => r.shutdown()));
       await h.remove();
@@ -37,54 +41,78 @@ async function fixture() {
   };
 }
 
-test("a wait always comes with a time limit", () => {
-  const reply = () => {};
-  assert.equal(validProcessMessage({ request: { action: "start", command: "x", waitFor: "ready" }, reply }), false);
-  assert.equal(validProcessMessage({ request: { action: "output", id: "x", timeoutSeconds: 5 }, reply }), false);
-  assert.equal(validProcessMessage({ request: { action: "start", command: "x", waitFor: "ready", timeoutSeconds: 5 }, reply }), true);
+test("a verb is checked the same way whoever sent it", () => {
+  assert.equal(validVerb({ verb: "start_process", command: "npm test", raise_on: "error|failed" }), true);
+  assert.equal(validVerb({ verb: "start_process", command: "npm test", raise_on: "(" }), false, "a pattern must be a regular expression");
+  assert.equal(validVerb({ verb: "wait" }), true, "a wait needs nothing: it has no longest time");
+  assert.equal(validVerb({ verb: "wait", ids: [] }), false);
+  assert.equal(validVerb({ verb: "send", id: "process-1", raise_on: "" }), true, "an empty pattern clears it");
+  assert.equal(validVerb({ verb: "send", id: "session-1", text: "go on", raise_on: "x" }), false, "text or raise_on, not both");
+  assert.equal(validVerb({ verb: "schedule", prompt: "tidy", cron: "0 9 * * *", in_minutes: 5 }), false, "one time, not two");
+  assert.equal(validVerb({ verb: "report", text: "x" }), false);
 });
 
-test("wait returns only status; search finds early literal evidence without consuming output", async () => {
+test("wait takes a process's result, look reads what is unread, and find searches without reading", async () => {
   const f = await fixture();
   try {
     const session = await f.runtime.create({ folder: f.folder });
-    const run = async (args: object) => {
-      await f.runtime.start(session.id, call(args)).completion;
-      return f.lastTool(f.runtime, session.id);
-    };
-    await run({ action: "start", command: SERVER, report: "none" });
+    const run = (prompt: string) => f.run(session.id, prompt);
+    assert.match(await run(say("start_process", { command: SERVER })), /^Started process-1: .* — running since .*\nready on 5173/);
     const [server] = f.runtime.listProcesses(session.id);
     const started = f.runtime.items(session.id, {}).items.filter((item) => item.role === "toolResult").at(-1);
     assert.deepEqual(started?.details, { id: server!.id });
-    assert.equal(await run({ action: "wait", id: server!.id, timeout_seconds: 1 }), `${server!.id}: running (wait timed out)`);
-    await run({ action: "stop", id: server!.id });
+    // A wait gives up after its own time; what it waited for stays open.
+    assert.equal(await run(say("wait", { ids: ["process-1"], seconds: 1 })), "Not in within 1 s: process-1.");
+    assert.equal(await run(say("stop", { id: "process-1" })), "Stopped.");
 
-    // Write the diagnostic and enough later output to hide it from the tail. Release the
-    // command only after start moved its unread cursor past the ready line.
+    // It prints a diagnostic and then enough output to push it out of the tail, once released.
     const command = `node -e "const f=require('fs'); console.log('ready'); const t=setInterval(()=>{if(!f.existsSync('release'))return; clearInterval(t); console.log('not ok [41]'); console.log('expected 41, got 43'); console.log('later\\n'.repeat(4000)); console.log('last line'); process.exitCode=23},25)"`;
-    await run({ action: "start", command, report: "none", wait_for: "ready", timeout_seconds: 10 });
-    const process = f.runtime.listProcesses(session.id).find((p) => p.id !== server!.id)!;
+    // Waiting for a line the start already showed returns at once: the start's first output stays unread.
+    const ready = await run(steps(["start_process", { command }], ["wait", { ids: ["process-2"], until: "ready", seconds: 10 }]));
+    assert.match(ready, /^process-2: .* — running since .*\nThe output shows \/ready\/i\.\nready/);
     writeFileSync(join(f.folder, "release"), "");
-    assert.equal(await run({ action: "wait", id: process.id, timeout_seconds: 10 }), `${process.id}: failed (exit 23)`);
-    assert.doesNotMatch(f.runtime.processOutput(session.id, process.id, 20_000).text, /not ok/);
-    assert.equal(await run({ action: "search", id: process.id, query: "NOT OK [41]" }), "  1: ready\n> 2: not ok [41]\n  3: expected 41, got 43");
-    assert.match(await run({ action: "search", id: process.id, query: "later" }), /first 5 matching lines/);
-    assert.equal(await run({ action: "search", id: process.id, query: ".*" }), "No match in the retained log.");
-    assert.match((await run({ action: "output", id: process.id })).split("\n").slice(1).join("\n"), /^not ok \[41\]\nexpected 41, got 43/);
+    // Waiting for its end gives what its session would have been sent: how it ended and its last output.
+    const ended = await run(say("wait", { ids: ["process-2"], seconds: 20 }));
+    assert.match(ended, /^process-2: .* — failed \(exit 23\)\nLast output:\n/);
+    assert.match(ended, /last line$/);
+    assert.doesNotMatch(ended.split("Last output:\n")[1]!, /not ok/);
+    // find searches the whole retained output, and moves nothing.
+    const found = (await run(say("look", { id: "process-2", find: "NOT OK [41]" }))).split("\n").slice(1).join("\n");
+    assert.equal(found, "  1: ready\n> 2: not ok [41]\n  3: expected 41, got 43");
+    assert.match(await run(say("look", { id: "process-2", find: "later" })), /first 5 matching lines/);
+    assert.match(await run(say("look", { id: "process-2", find: ".*" })), /No match in the retained log\.$/);
+    // look reads on from where its session last read.
+    assert.match((await run(say("look", { id: "process-2" }))).split("\n").slice(1).join("\n"), /^not ok \[41\]\nexpected 41, got 43/);
+    assert.match(await run(say("look")), /^process-1: .* — stopped.*\nprocess-2: .* — failed \(exit 23\)$/);
+    // Both ends were taken (one stopped by the agent, one waited for): nothing was sent to the session.
     assert.ok(!f.runtime.items(session.id, {}).items.some((item) => item.customType === WOKEN_ENTRY));
   } finally {
     await f.cleanup();
   }
 });
 
-test("a process runs in the background, outlives its idle session, streams its output, and tells the session when stopped", async () => {
+test("wait for any returns with the first result and leaves the rest open; with nothing open it says so", async () => {
   const f = await fixture();
   try {
     const session = await f.runtime.create({ folder: f.folder });
-    await f.runtime.start(session.id, call({ action: "start", command: SERVER, title: "dev server", report: "status", wait_for: "ready on", timeout_seconds: 20 })).completion;
-    const started = f.lastTool(f.runtime, session.id);
-    assert.match(started, /^Started .*dev server/);
-    assert.match(started, /The output shows \/ready on\//);
+    const quick = `node -e "setTimeout(() => console.log('quick done'), 300)"`;
+    const race = await f.run(session.id, steps(["start_process", { command: quick, title: "quick" }], ["start_process", { command: SERVER, title: "slow" }], ["wait", { for: "any", seconds: 20 }]));
+    assert.match(race, /^process-1: quick .* — exited \(exit 0\)\nLast output:\nquick done\n\nStill open: process-2\.$/);
+    assert.equal(await f.run(session.id, say("stop", { id: "process-2" })), "Stopped.");
+    assert.equal(await f.run(session.id, say("wait")), "Nothing this session started is still open.");
+    assert.match(await f.run(session.id, say("wait", { ids: ["process-9"] })), /started nothing with that id/);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a process runs in the background, outlives its idle session, and the person stopping it is a line, not a turn", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    const started = await f.run(session.id, steps(["start_process", { command: SERVER, title: "dev server" }], ["wait", { ids: ["process-1"], until: "ready on", seconds: 20 }]));
+    assert.match(started, /^process-1: dev server/);
+    assert.match(started, /The output shows \/ready on\/i\./);
     assert.match(started, /ready on 5173/);
     const [process] = f.runtime.listProcesses(session.id);
     assert.equal(process!.state, "running");
@@ -96,20 +124,20 @@ test("a process runs in the background, outlives its idle session, streams its o
     await eventually(() => f.runtime.processOutput(session.id, process!.id, first.next).text.includes("tick"), 10_000);
     assert.equal(f.runtime.runningProcesses().processes[0]?.id, process!.id);
 
-    // The agent reads only what it has not read yet.
+    // The agent reads only what it has not read yet (after the line describing the process).
     await f.runtime.ensure(session.id);
-    await f.runtime.start(session.id, call({ action: "output", id: process!.id })).completion;
-    // After the line describing the process (which quotes the command).
-    const read = f.lastTool(f.runtime, session.id).split("\n").slice(1).join("\n");
+    const read = (await f.run(session.id, say("look", { id: "process-1" }))).split("\n").slice(1).join("\n");
     assert.ok(!read.includes("ready on 5173"), `earlier output is not repeated: ${read.slice(0, 300)}`);
     assert.match(read, /tick/);
 
-    // The person stops it; in status mode the session gets a line, no turn.
+    // The person stops it: the session gets a note of it, and its agent is not woken.
     f.runtime.stopProcess(session.id, process!.id);
     await eventually(() => f.runtime.listProcesses(session.id)[0]!.state === "stopped", 10_000);
     await eventually(() => f.runtime.items(session.id, {}).items.some((item) => item.customType === STATUS_ENTRY), 10_000);
     const line = f.runtime.items(session.id, {}).items.find((item) => item.customType === STATUS_ENTRY)!;
-    assert.deepEqual(line.details, { process: process!.id, title: "dev server", how: "was stopped", ok: false });
+    assert.deepEqual(line.details, { process: process!.id, title: "dev server", how: "was stopped by you", ok: false });
+    assert.equal(text(line), 'The person stopped the process "dev server" (process-1).');
+    assert.ok(!f.runtime.items(session.id, {}).items.some((item) => item.customType === WOKEN_ENTRY));
   } finally {
     await f.cleanup();
   }
@@ -119,15 +147,40 @@ test("a failing command wakes its session with the exit code and its last output
   const f = await fixture();
   try {
     const session = await f.runtime.create({ folder: f.folder });
-    await f.runtime.start(session.id, call({ action: "start", command: FAILING, title: "tests" })).completion;
+    await f.runtime.start(session.id, say("start_process", { command: FAILING, title: "tests" })).completion;
     await eventually(() => f.runtime.items(session.id, {}).items.some((item) => item.customType === WOKEN_ENTRY), 15_000);
     const items = f.runtime.items(session.id, {}).items;
     const woken = items.findIndex((item) => item.customType === WOKEN_ENTRY);
     assert.equal((items[woken]!.details as { source: { kind: string; label: string } }).source.label, "tests · exited 1");
-    assert.match(text(items[woken + 1]!), /^The process "tests" exited 1\.\n\nLast output:\n1 failed, 212 passed/);
+    assert.match(text(items[woken + 1]!), /^The process "tests" \(process-1\) exited 1\.\n\nLast output:\n1 failed, 212 passed/);
     const { card } = items[woken]!.details as { card: { title: string; how: string; start: number } };
     assert.deepEqual({ title: card.title, how: card.how }, { title: "tests", how: "exited 1" });
     assert.match(text(items[woken + 1]!).slice(card.start), /^1 failed, 212 passed/);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a process raises a line of its output that matches raise_on; send changes or clears the pattern", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    const noisy = `node -e "setTimeout(() => console.log('error: disk full'), 1500); setInterval(() => console.log('tick'), 100)"`;
+    await f.run(session.id, say("start_process", { command: noisy, title: "worker", raise_on: "error" }));
+    assert.equal(f.runtime.listProcesses(session.id)[0]!.raiseOn, "error");
+    await eventually(() => f.runtime.items(session.id, {}).items.some((item) => item.customType === WOKEN_ENTRY), 15_000);
+    const items = f.runtime.items(session.id, {}).items;
+    const woken = items.findIndex((item) => item.customType === WOKEN_ENTRY);
+    assert.match(text(items[woken + 1]!), /^The process "worker" \(process-1\) printed a line matching error:\nerror: disk full\n\nLast output:\n/);
+    // It still runs: a raise is not an end.
+    assert.equal(f.runtime.listProcesses(session.id)[0]!.state, "running");
+
+    assert.equal(await f.run(session.id, say("send", { id: "process-1", raise_on: "fatal" })), "It raises when a line of its output matches /fatal/, at most once a minute.");
+    assert.equal(f.runtime.listProcesses(session.id)[0]!.raiseOn, "fatal");
+    assert.equal(await f.run(session.id, say("send", { id: "process-1", raise_on: "" })), "It no longer raises on its output.");
+    assert.equal(f.runtime.listProcesses(session.id)[0]!.raiseOn, undefined);
+    assert.match(await f.run(session.id, say("send", { id: "process-1", text: "hello" })), /A process cannot be sent text/);
+    await f.run(session.id, say("stop", { id: "process-1" }));
   } finally {
     await f.cleanup();
   }
@@ -137,7 +190,7 @@ test("processes end when PiSpark stops; after the restart their session is told"
   const f = await fixture();
   try {
     const session = await f.runtime.create({ folder: f.folder });
-    await f.runtime.start(session.id, call({ action: "start", command: SERVER, title: "dev server", wait_for: "ready", timeout_seconds: 20 })).completion;
+    await f.run(session.id, say("start_process", { command: SERVER, title: "dev server" }));
     await f.runtime.shutdown();
     const again = f.make();
     assert.equal(again.listProcesses(session.id)[0]!.ended, "pispark-stopped");
@@ -150,7 +203,8 @@ test("processes end when PiSpark stops; after the restart their session is told"
     }, 15_000);
     const items = again.items(session.id, {}).items;
     const woken = items.findIndex((item) => item.customType === WOKEN_ENTRY);
-    assert.match(text(items[woken + 1]!), /^The process "dev server" ended when PiSpark stopped\./);
+    // Its handle means the same thing after the restart.
+    assert.match(text(items[woken + 1]!), /^The process "dev server" \(process-1\) ended when PiSpark stopped\./);
   } finally {
     await f.cleanup();
   }
@@ -164,7 +218,7 @@ test("Stop ends everything a command started, such as npm and the server it runs
     writeFileSync(join(folder, "package.json"), JSON.stringify({ name: "shop", private: true, scripts: { dev: "node dev.js" } }));
     writeFileSync(join(folder, "dev.js"), "console.log('ready'); setInterval(() => console.log('tick'), 100);");
     const session = await f.runtime.create({ folder });
-    await f.runtime.start(session.id, call({ action: "start", command: "npm run dev", wait_for: "ready", timeout_seconds: 60 })).completion;
+    await f.run(session.id, steps(["start_process", { command: "npm run dev" }], ["wait", { until: "ready", seconds: 60 }]));
     const [process] = f.runtime.listProcesses(session.id);
     assert.equal(process!.state, "running");
     f.runtime.stopProcess(session.id, process!.id);
@@ -179,10 +233,7 @@ test("the agent's stop answers once the process has ended", async () => {
   const f = await fixture();
   try {
     const session = await f.runtime.create({ folder: f.folder });
-    await f.runtime.start(session.id, call({ action: "start", command: SERVER, wait_for: "ready", timeout_seconds: 30 })).completion;
-    const [process] = f.runtime.listProcesses(session.id);
-    await f.runtime.start(session.id, call({ action: "stop", id: process!.id })).completion;
-    assert.equal(f.lastTool(f.runtime, session.id), "Stopped.");
+    assert.equal(await f.run(session.id, steps(["start_process", { command: SERVER }], ["stop", { id: "process-1" }])), "Stopped.");
     assert.equal(f.runtime.listProcesses(session.id)[0]!.state, "stopped");
   } finally {
     await f.cleanup();
@@ -197,26 +248,28 @@ test("Windows: Stop finds Git's ps.exe from either Git Bash, and none for anothe
   assert.equal(gitPs(String.raw`C:\Windows\System32\bash.exe`), undefined);
 });
 
-test("a status-only process result survives reload and restart without invoking a model", async () => {
+test("an extension says a verb on the bus; a line it causes survives reload and restart without invoking a model", async () => {
   const f = await fixture();
   try {
-    const name = "status-only";
-    await writeAgent(f.home, name, { name: "Status only" }, {
-      "extensions/status.mjs": `export default (pi) => {
+    const name = "quiet";
+    await writeAgent(f.home, name, { name: "Quiet" }, {
+      "extensions/quiet.mjs": `export default (pi) => {
         let started = false;
         pi.on("session_start", (event) => {
           if (started || event.reason !== "new") return;
           started = true;
-          setTimeout(() => pi.events.emit("pispark:process-request", {
-            request: { action: "start", command: "node --version", title: "Version", report: "status" },
+          setTimeout(() => pi.events.emit("pispark:verb", {
+            request: { verb: "start_process", command: ${JSON.stringify(SERVER)}, title: "Ticker" },
             reply: () => {}
           }), 50);
         });
       }`,
     });
     const session = await f.runtime.create({ folder: f.folder, agent: name });
+    await eventually(() => f.runtime.listProcesses(session.id)[0]?.state === "running", 10_000);
+    f.runtime.stopProcess(session.id, f.runtime.listProcesses(session.id)[0]!.id);
     const statuses = (r: SessionRuntime) => r.items(session.id, {}).items.filter((item) => item.customType === STATUS_ENTRY);
-    await eventually(() => statuses(f.runtime).length === 1, 10_000);
+    await eventually(() => statuses(f.runtime).length === 1, 20_000);
     await f.runtime.shutdown();
     const reopened = f.make();
     await reopened.open(session.id);

@@ -21,7 +21,8 @@ import { headline, questions, section, spoken, withAnswer } from "./tasks.js";
 const QUIET = new Set(["read", "grep", "find", "ls", "tool_search", "pispark_set_title"]);
 const REMINDER = "mind-reminder";
 const CHECKPOINT = "mind-checkpoint";
-const SCHEDULE_REQUEST = "pispark:schedule-request";
+/** PiSpark's bus channel for what a session says to it: here, the verb that schedules. */
+const VERB = "pispark:verb";
 /** PiSpark marks a run that something other than the person started with this entry before its message. */
 const WOKEN = "pispark:woken";
 /** The answers a question card offers. */
@@ -353,8 +354,8 @@ export default function mind(pi: ExtensionAPI) {
         tidy: () => void pi.sendUserMessage(TIDY, ctx.isIdle() ? undefined : { deliverAs: "followUp" }),
         weekly: () =>
           new Promise<string>((done) => {
-            const message = { request: { action: "add", input: { cron: WEEKLY, prompt: TIDY, run: "new", report: "status" } }, reply: (answer: { text: string }) => done(answer.text), taken: false };
-            pi.events.emit(SCHEDULE_REQUEST, message);
+            const message = { request: { verb: "schedule", cron: WEEKLY, prompt: TIDY, run: "new" }, reply: (answer: { text: string }) => done(answer.text), taken: false };
+            pi.events.emit(VERB, message);
             if (!message.taken) done("Schedules are not available here.");
           }),
       },

@@ -30,6 +30,11 @@ async function trace() {
   const file = names.find(n => n.endsWith(`_${id}.jsonl`));
   const turns = [], settles = [], warnings = [];
   const childReads = new Map(), pendingReads = new Map();
+  // A handle such as session-1 names a child; the session's handles.json keeps which.
+  let handles = {};
+  try { handles = Object.fromEntries(Object.entries(JSON.parse(await readFile(join(dir, 'handles.json'), 'utf8')).names).map(([child, handle]) => [handle, child])); } catch { /* None given yet. */ }
+  // The child a call looked at: pispark_look with its handle, or (older transcripts) pispark_session read with its id.
+  const looked = c => c.name === 'pispark_look' ? handles[c.arguments?.id] : c.name === 'pispark_session' && c.arguments?.action === 'read' ? c.arguments.id : undefined;
   let wake, turn;
   const newTurn = trigger => {
     turn = { turn: turns.length + 1, trigger, responses: [], results: [] };
@@ -51,7 +56,7 @@ async function trace() {
     if (m.role === 'assistant') {
       const calls = content.filter(c => c?.type === 'toolCall');
       turn.responses.push({ provider: label(m.provider), model: label(m.model), fresh: num(m.usage?.input), cached: num(m.usage?.cacheRead), cacheWrite: num(m.usage?.cacheWrite), output: num(m.usage?.output), toolCalls: calls.length });
-      for (const c of calls) if (c.name === 'pispark_session' && c.arguments?.action === 'read' && uuid.test(c.arguments.id)) pendingReads.set(c.id, c.arguments.id);
+      for (const c of calls) if (uuid.test(looked(c) ?? '')) pendingReads.set(c.id, looked(c));
     } else {
       turn.results.push({ tool: label(m.toolName), textChars: content.reduce((n,c) => n + (typeof c?.text === 'string' ? c.text.length : 0), 0) });
       if (pendingReads.has(m.toolCallId) && !m.isError) childReads.set(pendingReads.get(m.toolCallId), turn.turn);

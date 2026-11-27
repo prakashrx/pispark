@@ -15,7 +15,6 @@
   import Textarea from "../../lib/ui/Textarea.svelte";
   import { describeSchedule, shortDate } from "../../../../server/src/contract/cron";
   import type { ScheduleSummary } from "../../../../server/src/contract/schedule-protocol";
-  import type { ReportMode } from "../../../../server/src/contract/wake-protocol";
   import { href } from "../../routes";
   import { useSessions } from "../workspace/session-client.svelte";
   import { sessionName } from "../workspace/session-presentation";
@@ -44,8 +43,6 @@
   let prompt = $state(schedule?.prompt ?? "");
   // svelte-ignore state_referenced_locally
   let run = $state<string>(schedule?.run ?? "here");
-  // svelte-ignore state_referenced_locally
-  let report = $state<string>(schedule?.report ?? "status");
   let error = $state("");
   let saving = $state(false);
   let running = $state(false);
@@ -68,7 +65,7 @@
     if ("error" in when) return void (error = when.error);
     if (!prompt.trim()) return void (error = "Write the prompt to send.");
     saving = true;
-    const input = { ...when, prompt, ...(child ? {} : { run: run as "here" | "new" }), ...(run === "new" ? { report: report as ReportMode } : {}) };
+    const input = { ...when, prompt, ...(child ? {} : { run: run as "here" | "new" }) };
     const done = await act(() => (schedule ? schedules.update(schedule.id, input) : schedules.add({ ...input, sessionId })));
     saving = false;
     if (done) onclose();
@@ -103,18 +100,7 @@
     { value: "here", label: "This session" },
     { value: "new", label: "A new session" },
   ];
-  const reports = [
-    { value: "result", label: "The result" },
-    { value: "status", label: "A status line" },
-    { value: "none", label: "Nothing" },
-  ];
-  const reportHelp: Record<string, string> = {
-    result: "Each run’s answer comes back here and this session’s agent carries on with it.",
-    status: "A line here when each run finishes. A run that finds something needing this session can still raise it.",
-    none: "Nothing comes back here; the runs are listed under this session.",
-  };
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label, index) => ({ value: String(index), label }));
-  const REPORTS = { result: "its result comes back to the session", status: "tells the session a status line", none: "tells the session nothing" } as const;
 </script>
 
 <Modal label={schedule ? "Schedule" : "Add a schedule"} title={schedule ? "Schedule" : "Add a schedule"} onclose={() => !saving && onclose()} busy={saving} dismiss={false} asking={confirming}>
@@ -174,16 +160,11 @@
           <span class="label">Each run</span>
           <Segmented label="Each run" options={runs} bind:value={run} />
         </div>
-        {#if run === "new"}
-          <div class="field">
-            <span class="label">Tell this session</span>
-            <Segmented label="Tell this session" options={reports} bind:value={report} />
-          </div>
-        {/if}
       {/if}
     </div>
     {#if !child && run === "new"}<p class="note">
-        Each run is its own session under this session, so this conversation stays clean. {reportHelp[report]}
+        Each run is its own session under this session, so this conversation stays clean. A line here says when each run finishes, and a run that finds
+        something needing this session can raise it.
       </p>{/if}
     <div class="space-y-1.5">
       <label for="{id}-prompt" class="block text-sm font-medium">Prompt</label>
@@ -209,7 +190,7 @@
       {#if current.runs.length > 1 || current.by === "agent" || current.run === "new"}
         <Disclosure title={`Runs (${current.runs.length})`}>
           <p class="note mt-2">
-            {current.run === "new" ? `Each run in a new session · ${REPORTS[current.report ?? "status"]}` : "Each run in this session"}{current.by === "agent"
+            {current.run === "new" ? "Each run in a new session, whose end is a line in this one" : "Each run in this session"}{current.by === "agent"
               ? " · Added by the agent after you said yes"
               : ""}
           </p>

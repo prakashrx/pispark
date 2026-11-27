@@ -4,14 +4,22 @@
   "off": [
     "tool:bash",
     "tool:powershell",
-    "tool:pispark_session",
-    "tool:pispark_schedule",
-    "tool:pispark_process",
     "tool:pispark_extension",
-    "tool:pispark_report"
+    "tool:pispark_start_session",
+    "tool:pispark_start_process",
+    "tool:pispark_schedule",
+    "tool:pispark_send",
+    "tool:pispark_wait",
+    "tool:pispark_look",
+    "tool:pispark_stop",
+    "tool:pispark_raise",
+    "tool:pispark_note",
+    "tool:pispark_self"
   ],
   "resources": {
-    "instructions": ["local:agent-builder"],
+    "instructions": [
+      "local:agent-builder"
+    ],
     "skills": [
       "local:building-agents",
       "local:writing-instructions",
@@ -19,6 +27,8 @@
       "local:writing-prompts",
       "local:creating-extensions"
     ],
-    "extensions": ["local:agent-builder"]
+    "extensions": [
+      "local:agent-builder"
+    ]
   }
 }

@@ -444,19 +444,19 @@ test("mind: a session another session started reports instead of keeping the tas
     await f.put("tasks.md", TASKS);
     const parent = await f.create();
     const brief = call("write", { path: ".mind/tasks.md", content: TASKS.replace("- Add TLS.", "- Add TLS.\n- Worker wrote this.") });
-    await f.start(parent.id, call("pispark_session", { action: "start", prompt: brief, title: "Worker" }));
+    await f.start(parent.id, call("pispark_start_session", { brief, title: "Worker" }));
     await eventually(() => f.runtime.list().some((s) => s.parent === parent.id));
     const child = f.runtime.list().find((s) => s.parent === parent.id)!;
     await eventually(() => /kept by the session that started you: put this in your report/.test(sessionText(f.runtime, child.id)), 10_000);
     assert.doesNotMatch(await f.read("tasks.md"), /Worker wrote this/);
-    const childRequest = f.provider.requests.find((r) => /Worker wrote this/.test(lastOf(r)) && !/pispark_session/.test(lastOf(r)))!;
+    const childRequest = f.provider.requests.find((r) => /Worker wrote this/.test(lastOf(r)) && !/pispark_start_session/.test(lastOf(r)))!;
     assert.match(briefOf(childRequest), /is kept by the session that started you\. Read it, but don't edit it/);
     assert.match(briefOf(childRequest), /Put anything that needs a decision in your report to it/);
     await eventually(() => f.runtime.list().find((s) => s.id === child.id)?.status === "idle");
     await new Promise((resolve) => setTimeout(resolve, 200));
     assert.equal(f.runtime.session(child.id).extensions.dialogs.length, 0, "a worker asks nobody");
     // The parent still keeps them.
-    assert.match(briefOf(f.provider.requests.find((r) => lastOf(r).includes("pispark_session"))!), /2\. Anything not finished: `\.mind\/tasks\.md`\. Move its entry/);
+    assert.match(briefOf(f.provider.requests.find((r) => lastOf(r).includes("pispark_start_session"))!), /2\. Anything not finished: `\.mind\/tasks\.md`\. Move its entry/);
   } finally {
     await f.cleanup();
   }

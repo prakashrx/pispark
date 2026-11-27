@@ -16,7 +16,6 @@ import { validChoice } from "./provider-storage.js";
 import type { ModelChoice } from "../../contract/provider-protocol.js";
 import { validSessionTitle } from "../../contract/session-title.js";
 import { validAgentId } from "../agents/format.js";
-import { validChildReportMode, type ChildReportMode } from "../../contract/wake-protocol.js";
 
 /** `session.json`: what PiSpark knows about a session. Pi's JSONL beside it is the transcript. */
 export interface SessionMetadata {
@@ -53,8 +52,10 @@ export interface SessionMetadata {
    * began. Its parent hears once per ask, when the child is at rest (see `Children`).
    */
   ask?: { from: number };
-  /** How it tells its parent when a run ends; `result` when not given. */
-  report?: ChildReportMode;
+  /** Its last note to whoever asked it, since it was last asked. */
+  note?: string;
+  /** What it raised with whoever asked it, until that is answered: it is owed an answer. */
+  raise?: string;
   /** The schedule or app routine this session is one run of, and when that run was due. */
   schedule?: { id: string; due: string };
   /** An extension keeps it loaded while no one watches (`pispark:hold`), and why. */
@@ -121,7 +122,8 @@ export class SessionStorage {
         (value.archived !== undefined && value.archived !== true) ||
         (value.forkOf !== undefined && (typeof value.forkOf !== "string" || !UUID.test(value.forkOf) || value.forkOf === id)) ||
         (value.parent !== undefined && (typeof value.parent !== "string" || !UUID.test(value.parent))) ||
-        (value.report !== undefined && (value.report as unknown) !== false && !validChildReportMode(value.report)) ||
+        (value.note !== undefined && typeof value.note !== "string") ||
+        (value.raise !== undefined && typeof value.raise !== "string") ||
         (value.ask !== undefined && (!value.ask || !Number.isSafeInteger(value.ask.from) || value.ask.from < 0)) ||
         (value.schedule !== undefined &&
           (!value.schedule ||
@@ -134,11 +136,9 @@ export class SessionStorage {
           (!value.held || typeof value.held.extension !== "string" || typeof value.held.reason !== "string" || value.held.reason.length > 200))
       )
         throw new Error();
-      // `report: false` was the first form of `none`.
-      const report = (value.report as unknown) === false ? { report: "none" as const } : {};
-      // The agent page's Agent Builder sessions (`edits`, `context`) were once hidden from the list; now they're ordinary sessions.
-      const { edits: _edits, context: _context, ...kept } = value as SessionMetadata & { edits?: unknown; context?: unknown };
-      return { ...kept, ...report, id };
+      // What older versions kept: Agent Builder's hidden sessions (`edits`, `context`), and how a child reported (`report`).
+      const { edits: _edits, context: _context, report: _report, ...kept } = value as SessionMetadata & { edits?: unknown; context?: unknown; report?: unknown };
+      return { ...kept, id };
     } catch (error) {
       if (error instanceof RuntimeError) throw error;
       if ((error as NodeJS.ErrnoException).code === "ENOENT")

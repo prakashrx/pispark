@@ -3,13 +3,13 @@ import { join } from "node:path";
 import {
   MAX_RECORDS_KEPT,
   MAX_WAITING_PER_SOURCE,
-  validChildReportMode,
   type WakeRecord,
   type WakeSource,
   type WokenCard,
   type WokenDetails,
 } from "../../contract/wake-protocol.js";
-import { validResultData, type ChildEnded } from "./session-tool.js";
+import type { ChildEnded } from "../../contract/verbs.js";
+import { validResultData } from "./verbs.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { writeAtomic } from "../files.js";
 import { RuntimeError, runtimeError } from "./errors.js";
@@ -27,7 +27,7 @@ export interface Wake {
   policy: "latest" | "queue";
   /** It came due while PiSpark was not running. */
   late?: true;
-  /** It says a process ended. It is dropped if the session has seen that by the time it would be sent. */
+  /** It says a process ended. It is dropped if the session has taken that end by the time it would be sent. */
   processEnd?: true;
   /**
    * A child's report: what the session's extensions are offered before its agent hears of it (see
@@ -87,8 +87,6 @@ function validReport(value: unknown): boolean {
     UUID.test(value.session) &&
     shortString(value.title, 200) &&
     shortString(value.how, 40) &&
-    validChildReportMode(value.mode) &&
-    (value.runId === undefined || shortString(value.runId, 64)) &&
     typeof value.text === "string" &&
     value.text.length <= MAX_TEXT &&
     (value.data === undefined || validResultData(value.data))
@@ -318,6 +316,18 @@ export class Wakes {
   /** Whether the source has a wake waiting or running. */
   active(sessionId: string, sourceId: string): boolean {
     return this.waiting(sessionId, sourceId) || this.running.has(key(sessionId, sourceId));
+  }
+  /**
+   * Takes the source's waiting wakes that `which` picks: the session has what they say already (it
+   * looked, or answered), so they are not sent. Each is recorded as handled.
+   */
+  take(sessionId: string, sourceId: string, which: (wake: Wake) => boolean = () => true): Wake[] {
+    const state = this.states.get(sessionId);
+    const taken = state?.waiting.filter((w) => w.source.id === sourceId && which(w)) ?? [];
+    if (!state || !taken.length) return [];
+    state.waiting = state.waiting.filter((w) => !taken.includes(w));
+    for (const wake of taken) this.note(sessionId, sourceId, { due: wake.due, outcome: "handled" });
+    return taken;
   }
   /** Drops the source's waiting wakes, such as when a schedule is switched off. */
   cancel(sessionId: string, sourceId: string): void {

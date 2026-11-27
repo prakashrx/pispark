@@ -4,12 +4,12 @@ import { openAgent, openTab } from "./agent-journey";
 
 // Each test gets its own data folder.
 const fresh = hostedTest;
-const start = (args: object) => `tool:pispark_session:${JSON.stringify({ action: "start", ...args })}`;
+const start = (args: object) => `tool:pispark_start_session:${JSON.stringify(args)}`;
 
 fresh("a session starts a session; its answer comes back as a card; the child sits under its parent", async ({ page }) => {
   await page.goto("/");
   const box = page.getByRole("textbox", { name: "Ask anything", exact: true });
-  await box.fill(start({ prompt: "research zustand", title: "Zustand research" }));
+  await box.fill(start({ brief: "research zustand", title: "Zustand research" }));
   await box.press("Enter");
 
   // The reply shows the session it started, with its state and a way to open it.
@@ -42,7 +42,7 @@ fresh("a session starts a session; its answer comes back as a card; the child si
   await expect(sessions.getByRole("group", { name: /^Started by / }).getByRole("link", { name: "Zustand research" })).toHaveAttribute("aria-current", "page");
 
   // Back to the parent from the header link.
-  await page.getByRole("button", { name: /^tool:pispark_session/ }).first().click();
+  await page.getByRole("button", { name: /^tool:pispark_start_session/ }).first().click();
   await expect(page.locator('[data-purpose="session-turn"]')).toContainText("finished");
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -62,7 +62,7 @@ fresh("the agent editor lists PiSpark's own tools, found in its built-in extensi
   await page.getByRole("button", { name: /^Built in/ }).click();
   const core = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Built in", level: 2 }) });
   await expect(core.getByRole("switch", { name: "read (read)" })).toBeVisible();
-  await expect(core.getByRole("switch", { name: "Session tools (pispark_session)" })).toBeChecked();
+  await expect(core.getByRole("switch", { name: "Start a session (pispark_start_session)" })).toBeChecked();
   await expect(core.getByRole("switch", { name: "Set session title (pispark_set_title)" })).toBeChecked();
   await expect(core.getByText("pispark_schedule", { exact: true })).toBeVisible();
 });

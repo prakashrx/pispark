@@ -4,16 +4,16 @@ import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync
 import { join } from "node:path";
 import { getShellConfig } from "@earendil-works/pi-coding-agent";
 import type { ProcessInfo, ProcessOutput } from "../../contract/process-protocol.js";
-import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { writeAtomic } from "../files.js";
 import { RuntimeError } from "./errors.js";
+import { pattern } from "./verbs.js";
 
 /** The newest output kept per process; when the log grows past it, it is cut to `KEEP`. */
 const MAX_LOG = 2 * 1024 * 1024;
 const KEEP = 1024 * 1024;
-/** A watch wakes its session at most this often. */
-const WATCH_EVERY_MS = 60_000;
+/** A process raises a line of its output at most this often. */
+const RAISE_EVERY_MS = 60_000;
 /** Ended processes kept per session, with their output; older ones go as new ones start. */
 const KEPT_ENDED = 20;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -22,12 +22,13 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{1
 export interface ProcessEnd {
   process: ProcessInfo;
   how: string;
-  /** It ended as it should (exited 0), or not; absent when a watch matched, which is neither. */
+  /** It ended as it should (exited 0), or not; absent when a line was raised, which is neither. */
   ok?: boolean;
   tail: string;
-  mode: ReportMode;
-  /** A watch matched (the process still runs), rather than the process ending. */
-  watch?: string;
+  /** The person stopped it. */
+  by?: "person";
+  /** The line that matched `raiseOn` (the process still runs), rather than the process ending. */
+  raised?: string;
 }
 
 /** What the processes need from the runtime. */
@@ -35,7 +36,7 @@ export interface ProcessHost {
   /** The session folders there are, read at start. */
   ids(): string[];
   directory(sessionId: string): string;
-  /** A process ended (or a watch matched): tell its session as `mode` says. */
+  /** A process ended (or a line of its output is raised): tell its session. */
   tell(sessionId: string, end: ProcessEnd): void;
 }
 
@@ -47,15 +48,16 @@ interface Stored extends ProcessInfo {
   cursors: Record<string, number>;
   /** Its end was not told yet (PiSpark stopped while it ran). */
   untold?: true;
-  /** Its own session has seen that it ended (read its output or state since), so its end is not told again. */
-  seen?: true;
+  /** Its end has been taken: its session was told, read it, waited for it, or stopped it. It is not told again. */
+  taken?: true;
 }
 interface Live {
   child: ChildProcess;
-  /** The line being written, for watches. */
+  /** The line being written, for `raiseOn`. */
   partial: string;
   waiters: Set<() => void>;
-  lastWatch: Map<string, number>;
+  /** When it last raised a line. */
+  raisedAt: number;
   stoppedBy?: "agent" | "person" | "timeout" | "pispark";
   /** Where the shell wrote its process group (Git Bash). */
   group?: string;
@@ -63,7 +65,7 @@ interface Live {
 }
 
 const view = (s: Stored): ProcessInfo => {
-  const { offset: _offset, cursors: _cursors, untold: _untold, seen: _seen, ...info } = s;
+  const { offset: _offset, cursors: _cursors, untold: _untold, taken: _taken, ...info } = s;
   return structuredClone(info);
 };
 const clean = (text: string) => text.replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]|\x1b\[[0-9;?]*[A-Za-z]/g, "");
@@ -72,7 +74,7 @@ const clean = (text: string) => text.replace(/\r\n?/g, "\n").replace(/[\x00-\x08
  * Processes sessions started: commands that run on this host beside the session, owned here so they
  * keep running while their session unloads. Output goes to `sessions/<id>/processes/<pid>.log`; the
  * list to `sessions/<id>/processes.json`. A process ends by itself, by Stop, after its own time limit,
- * or when PiSpark stops; its session is told as its mode says (after a restart, for that last case).
+ * or when PiSpark stops; its session is told (after a restart, for that last case).
  */
 export class Processes {
   private readonly stored = new Map<string, Stored[]>();
@@ -97,8 +99,11 @@ export class Processes {
         const file = JSON.parse(readFileSync(path, "utf8")) as { version?: number; processes?: Stored[] };
         if (file.version !== 1 || !Array.isArray(file.processes)) throw new Error();
         const list = file.processes.filter((p) => p && typeof p.id === "string" && UUID.test(p.id) && typeof p.command === "string");
-        for (const p of list)
+        for (const p of list) {
+          // What older versions kept: how it reported, and its watches.
+          for (const old of ["report", "watches"]) delete (p as unknown as Record<string, unknown>)[old];
           if (p.state === "running") Object.assign(p, { state: "stopped", ended: "pispark-stopped", endedAt: new Date().toISOString(), untold: true });
+        }
         this.stored.set(id, list);
         this.save(id);
       } catch {
@@ -112,7 +117,7 @@ export class Processes {
       for (const p of list.filter((p) => p.untold)) {
         delete p.untold;
         this.save(sessionId);
-        this.host.tell(sessionId, { process: view(p), how: "ended when PiSpark stopped", ok: false, tail: this.tail(p), mode: p.report });
+        this.host.tell(sessionId, { process: view(p), how: "ended when PiSpark stopped", ok: false, tail: this.tail(p) });
       }
   }
   /** PiSpark stops: every process is stopped (waited for, up to a few seconds); each session is told after the next start. */
@@ -136,10 +141,9 @@ export class Processes {
 
   // ---- Starting and stopping ------------------------------------------------------------------
 
-  start(sessionId: string, input: { command: string; folder: string; title?: string; report: ReportMode; stopAfterSeconds?: number }): ProcessInfo {
+  start(sessionId: string, input: { command: string; folder: string; title?: string; raiseOn?: string; stopAfterSeconds?: number }): ProcessInfo {
     if (this.closed) throw new RuntimeError("closed");
     if (typeof input.command !== "string" || !input.command.trim() || input.command.length > 8192) throw new RuntimeError("invalid-input");
-    if (!validReportMode(input.report)) throw new RuntimeError("invalid-input");
     if (!existsSync(input.folder) || !statSync(input.folder).isDirectory()) throw new RuntimeError("folder");
     const id = randomUUID();
     const dir = join(this.host.directory(sessionId), "processes");
@@ -168,14 +172,13 @@ export class Processes {
       ...(input.title ? { title: input.title.slice(0, 120) } : {}),
       startedAt: new Date().toISOString(),
       state: "running",
-      report: input.report,
-      watches: [],
+      ...(input.raiseOn ? { raiseOn: input.raiseOn } : {}),
       written: 0,
       offset: 0,
       cursors: {},
     };
     this.stored.set(sessionId, [...this.pruned(sessionId), record]);
-    const live: Live = { child, partial: "", waiters: new Set(), lastWatch: new Map(), group };
+    const live: Live = { child, partial: "", waiters: new Set(), raisedAt: 0, group };
     this.live.set(id, live);
     const output = (chunk: Buffer) => this.output(record, live, chunk);
     child.stdout?.on("data", output);
@@ -241,23 +244,15 @@ export class Processes {
     } catch {
       /* A full disk loses output, not the process. */
     }
-    // Watches look at whole lines.
+    // `raiseOn` looks at whole lines.
     const lines = (live.partial + clean(chunk.toString("utf8"))).split("\n");
     live.partial = lines.pop() ?? "";
     if (live.partial.length > 8192) live.partial = live.partial.slice(-8192);
-    for (const watch of record.watches) {
-      const last = live.lastWatch.get(watch.pattern) ?? 0;
-      if (Date.now() - last < WATCH_EVERY_MS) continue;
-      let pattern: RegExp;
-      try {
-        pattern = new RegExp(watch.pattern, "i");
-      } catch {
-        continue;
-      }
-      const line = lines.find((each) => pattern.test(each));
-      if (!line) continue;
-      live.lastWatch.set(watch.pattern, Date.now());
-      this.host.tell(record.sessionId, { process: view(record), how: `printed a line matching ${watch.pattern}`, tail: this.tail(record), mode: watch.report, watch: line.slice(0, 500) });
+    const raiseOn = record.raiseOn && Date.now() - live.raisedAt >= RAISE_EVERY_MS ? pattern(record.raiseOn) : undefined;
+    const line = raiseOn && lines.find((each) => raiseOn.test(each));
+    if (line) {
+      live.raisedAt = Date.now();
+      this.host.tell(record.sessionId, { process: view(record), how: `printed a line matching ${record.raiseOn}`, tail: this.tail(record), raised: line.slice(0, 500) });
     }
     for (const wake of live.waiters) wake();
   }
@@ -271,6 +266,8 @@ export class Processes {
       endedAt: new Date().toISOString(),
       ...(code !== null ? { exitCode: code } : {}),
       ...(ended ? { ended } : {}),
+      // Whoever stopped it knows it ended.
+      ...(stoppedBy === "agent" || stoppedBy === "person" ? { taken: true as const } : {}),
     });
     this.save(record.sessionId);
     for (const wake of live.waiters) wake();
@@ -278,7 +275,7 @@ export class Processes {
     if (stoppedBy === "agent" || stoppedBy === "pispark" || this.closed) return;
     const how =
       stoppedBy === "person" ? "was stopped" : stoppedBy === "timeout" ? "was stopped at its time limit" : code === 0 ? "exited 0" : code === null ? "could not start" : `exited ${code}`;
-    this.host.tell(record.sessionId, { process: view(record), how, ok: stoppedBy === undefined && code === 0, tail: this.tail(record), mode: record.report });
+    this.host.tell(record.sessionId, { process: view(record), how, ok: stoppedBy === undefined && code === 0, tail: this.tail(record), ...(stoppedBy === "person" ? { by: stoppedBy } : {}) });
   }
 
   // ---- Reading ----------------------------------------------------------------------------------
@@ -361,25 +358,26 @@ export class Processes {
     const since = process.cursors[reader] ?? Math.max(0, process.written - max);
     const out = this.read(process, since, max);
     process.cursors[reader] = out.next;
-    if (!this.sawEnd(process, reader)) this.save(process.sessionId);
+    if (reader !== process.sessionId || !this.takeEnd(process.id)) this.save(process.sessionId);
     return out;
   }
-  /** `reader` was shown that the process ended. When it is the process's own session, that end is taken. */
-  sawEnd(process: Stored, reader: string): boolean {
-    if (process.seen || process.state === "running" || reader !== process.sessionId) return false;
-    process.seen = true;
+  /** Its session has the process's end now (it read it, waited for it or was told). False when there was nothing to take. */
+  takeEnd(id: string): boolean {
+    const process = this.find(id)?.process;
+    if (!process || process.taken || process.state === "running") return false;
+    process.taken = true;
     this.save(process.sessionId);
     return true;
   }
-  /** Whether its own session has already seen that this process ended. */
-  endSeen(id: string): boolean {
-    return this.find(id)?.process.seen === true;
+  /** Whether its end has been taken already. */
+  endTaken(id: string): boolean {
+    return this.find(id)?.process.taken === true;
   }
   /**
    * Waits until output after `since` matches `pattern` (or any output, without one), the process
-   * ends, the time is up or `signal` aborts. Never without a time limit.
+   * ends, the time (if any) is up or `signal` aborts.
    */
-  async wait(process: Stored, pattern: RegExp | undefined, since: number, timeoutMs: number, signal?: AbortSignal): Promise<"matched" | "ended" | "timeout"> {
+  async wait(process: Stored, pattern: RegExp | undefined, since: number, timeoutMs: number | undefined, signal?: AbortSignal): Promise<"matched" | "ended" | "timeout"> {
     // Only what came since the last look is read, with a little before it so a match split
     // across two chunks is still seen.
     let from = since;
@@ -393,13 +391,13 @@ export class Processes {
   }
 
   /** Wait for terminal state, without inspecting output or moving a reader's cursor. */
-  waitForExit(process: Stored, timeoutMs: number, signal?: AbortSignal): Promise<"ended" | "timeout"> {
+  waitForExit(process: Stored, timeoutMs: number | undefined, signal?: AbortSignal): Promise<"ended" | "timeout"> {
     return this.waitUntilEnd(process, timeoutMs, signal);
   }
 
-  private waitUntilEnd(process: Stored, timeoutMs: number, signal?: AbortSignal): Promise<"ended" | "timeout">;
-  private waitUntilEnd(process: Stored, timeoutMs: number, signal: AbortSignal | undefined, matched: () => boolean): Promise<"matched" | "ended" | "timeout">;
-  private async waitUntilEnd(process: Stored, timeoutMs: number, signal?: AbortSignal, matched?: () => boolean): Promise<"matched" | "ended" | "timeout"> {
+  private waitUntilEnd(process: Stored, timeoutMs: number | undefined, signal?: AbortSignal): Promise<"ended" | "timeout">;
+  private waitUntilEnd(process: Stored, timeoutMs: number | undefined, signal: AbortSignal | undefined, matched: () => boolean): Promise<"matched" | "ended" | "timeout">;
+  private async waitUntilEnd(process: Stored, timeoutMs: number | undefined, signal?: AbortSignal, matched?: () => boolean): Promise<"matched" | "ended" | "timeout"> {
     const live = this.live.get(process.id);
     if (!live) return "ended";
     if (signal?.aborted) return "timeout";
@@ -412,21 +410,16 @@ export class Processes {
       };
       const check = () => (matched?.() ? done("matched") : !this.live.has(process.id) ? done("ended") : undefined);
       const aborted = () => done("timeout");
-      const timer = setTimeout(() => done("timeout"), timeoutMs);
+      const timer = timeoutMs === undefined ? undefined : setTimeout(() => done("timeout"), timeoutMs);
       live.waiters.add(check);
       signal?.addEventListener("abort", aborted, { once: true });
     });
   }
-  /** Adds (or with `report` "none" and `remove`, drops) a watch. */
-  watch(process: Stored, pattern: string, report: ReportMode | "remove"): void {
-    try {
-      new RegExp(pattern, "i");
-    } catch {
-      throw new RuntimeError("invalid-input");
-    }
-    if (pattern.length > 200) throw new RuntimeError("invalid-input");
-    process.watches = process.watches.filter((w) => w.pattern !== pattern);
-    if (report !== "remove") process.watches.push({ pattern, report });
+  /** Changes what it raises on; nothing, when left out. */
+  raiseOn(process: Stored, source: string | undefined): void {
+    if (source !== undefined && (source.length > 200 || !pattern(source))) throw new RuntimeError("invalid-input");
+    if (source === undefined) delete process.raiseOn;
+    else process.raiseOn = source;
     this.save(process.sessionId);
   }
 

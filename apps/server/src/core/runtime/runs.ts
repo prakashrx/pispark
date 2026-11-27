@@ -1,4 +1,3 @@
-import type { ReportMode } from "../../contract/wake-protocol.js";
 import type { RoutineRun } from "../../contract/schedule-protocol.js";
 import { bindingOf, listAgents, unattendedOf } from "../agents/resolve.js";
 import { RuntimeError } from "./errors.js";
@@ -18,7 +17,7 @@ export class Runs {
    * A schedule's run in its own session: a child of the owner, with the owner's agent, folder and
    * model, named for the run. The clock sends it the prompt.
    */
-  async schedule(owner: string, run: { title: string; report: ReportMode; schedule: { id: string; due: string } }): Promise<string> {
+  async schedule(owner: string, run: { title: string; schedule: { id: string; due: string } }): Promise<string> {
     const { storage, agents, create } = this.sessions;
     const parent = storage.read(owner);
     if (parent.parent || parent.archived) throw new RuntimeError("busy");
@@ -30,7 +29,7 @@ export class Runs {
     }
     const doc = await create(
       { ...(ownFolder ? {} : { folder: parent.cwd }), agent: parent.agent, ...(parent.model ? { model: parent.model } : {}) },
-      { parent: owner, title: run.title, schedule: run.schedule, ...(run.report !== "result" ? { report: run.report } : {}) },
+      { parent: owner, title: run.title, schedule: run.schedule },
     );
     await this.prune(run.schedule.id, doc.id);
     return doc.id;

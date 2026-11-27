@@ -15,7 +15,6 @@ import type { ModelChoice } from "../../contract/provider-protocol.js";
 import { sessionTitle } from "../../contract/session-title.js";
 import { toolSessionTitle } from "./session-title.js";
 import { attachedImages, sentAttachmentNames, namingFiles } from "./attachments.js";
-import type { ProcessRequest } from "./process-tool.js";
 import { ExtensionRevisions, type ExtensionChange } from "./extension-revisions.js";
 import { SessionRequests } from "./session-requests.js";
 import type { SetupChange } from "./setup-changes.js";
@@ -33,13 +32,13 @@ import type { RunSlots } from "./run-slots.js";
 import type { SessionMetadata, SessionStorage } from "./storage.js";
 import { STATUS_ENTRY, WOKEN_ENTRY, type StatusDetails, type WokenDetails } from "../../contract/wake-protocol.js";
 import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
-import {
-  CHILD_ENDED_CHANNEL,
-  REPORT_TOOL,
-  type ChildEnded,
-  type SessionRequest,
-  type ToolAnswer,
-} from "./session-tool.js";
+import { CHILD_ENDED_CHANNEL, toolOf, type Answer, type ChildEnded, type Verb } from "../../contract/verbs.js";
+
+/**
+ * A session started by another one is a worker. It keeps the six verbs a worker needs (start a
+ * process, wait, look, stop, raise, note) and has none of these: it starts no sessions.
+ */
+const NOT_FOR_CHILDREN = (["start_session", "schedule", "send", "self"] as const).map(toolOf);
 
 export type SessionStatus =
   | "starting"
@@ -88,16 +87,6 @@ export interface SessionSummary {
 export interface RunResult {
   outcome: "completed" | "cancelled" | "failed";
   error?: RuntimeErrorCode;
-  /** Set only for child runs using notice delivery. */
-  childResult?: ChildRunResult & { id: string; answer?: string };
-}
-
-const CHILD_RESULT_ENTRY = "pispark:child-result";
-interface ChildRunResult {
-  outcome: RunResult["outcome"];
-  error?: RuntimeErrorCode;
-  answerId?: string;
-  data?: unknown;
 }
 
 function answerOf(entry: SessionEntry | undefined): string | undefined {
@@ -135,9 +124,10 @@ export interface SessionHost {
   freed?(session: Session): void;
   /** Something about the session changed (cheap; the workspace stream coalesces it). */
   touched?(): void;
-  /** The processes a session starts and follows, for its agent (`pispark_process`). */
-  readonly processes?: {
-    request(sessionId: string, request: ProcessRequest, signal?: AbortSignal): Promise<ToolAnswer>;
+  /** The verbs a session says about what it started (`contract/verbs.ts`), and the handle of something it started. */
+  readonly started?: {
+    say(sessionId: string, verb: Exclude<Verb, { verb: "self" | "schedule" }>, signal?: AbortSignal): Promise<Answer>;
+    handle(sessionId: string, kind: string, id: string): string;
   };
   /** The tools a running session of a setup has (`fingerprint`), from Pi's `getAllTools`. */
   toolsSeen?(fingerprint: string, extensionPaths: string[], tools: { name: string; description?: string; sourceInfo?: { path?: string } }[]): void;
@@ -157,17 +147,11 @@ export interface SessionHost {
   extensionCandidate?(id: string): ExtensionChange[] | undefined;
   /** A new session from this one's history up to an entry (an extension command's `ctx.fork`). */
   fork?(session: Session, entryId: string): Promise<string>;
-  /** The sessions a session starts and follows, for its agent (`pispark_session`). */
-  readonly sessions?: {
-    request(parentId: string, request: SessionRequest): Promise<ToolAnswer>;
-  };
-  /** The schedules of a session, for its agent (`pispark_schedule`). */
+  /** Adding a schedule to a session, for its agent (`pispark_schedule`). */
   readonly schedules?: {
-    of(sessionId: string): Schedule[];
     /** Throws as `add` would, without saving. */
     validate(sessionId: string, input: ScheduleInput): void;
     add(sessionId: string, input: ScheduleInput, by: "agent"): Schedule;
-    remove(id: string): void;
   };
 }
 
@@ -609,13 +593,7 @@ export class Session {
     const { metadata, host } = this;
     const development = !setup.toolsOff.includes(EXTENSION_TOOL);
     return createSessionServices({
-      // A session started by another session cannot start sessions: one level only. Only one in
-      // status mode raises things with its parent.
-      setup: {
-        ...setup,
-        extensionPaths,
-        toolsOff: [...setup.toolsOff, ...(metadata.parent && metadata.report === "status" ? [] : [REPORT_TOOL])],
-      },
+      setup: { ...setup, extensionPaths, toolsOff: [...setup.toolsOff, ...(metadata.parent ? NOT_FOR_CHILDREN : [])] },
       cwd,
       agentDir: join(dir, "pi"),
       managed,
@@ -650,8 +628,7 @@ export class Session {
           this.changed();
         },
         views,
-        schedules: { bind: (bus) => this.requests.bindSchedules(bus) },
-        sessions: {
+        requests: {
           bind: (bus) => {
             this.bus = bus;
             return this.requests.bind(bus, development);
@@ -780,7 +757,7 @@ export class Session {
   }
 
   /**
-   * Tells this session's extensions that one of its children ended or raised something, before the
+   * Tells this session's extensions that one of its children answered or raised something, before the
    * agent hears of it. Their synchronous reply decides (see `CHILD_ENDED_CHANNEL`).
    */
   offerChildEnded(event: Omit<ChildEnded, "reply">): { action: "skip" } | { action: "send"; text: string } | undefined {
@@ -814,7 +791,7 @@ export class Session {
   private resources?: object;
   private inspect(): string {
     return JSON.stringify({
-      session: this.id, agent: this.metadata.agent, cwd: this.metadata.cwd, status: this.status,
+      session: this.id, startedBy: this.startedBy, agent: this.metadata.agent, cwd: this.metadata.cwd, status: this.status,
       setupChanged: this.setupChanged, resources: this.resources, activeTools: this.pi?.getActiveToolNames(),
       local: this.extensionRevisions.read(), pending: this.host.pendingSetup?.(this.id) ?? null,
       offeredViews: this.views?.view().map(({ point, key, title }) => ({ point, key, title })),
@@ -841,15 +818,42 @@ export class Session {
       /* Only a listing. */
     }
   }
+  /** The title of the session that started this one, for telling its agent who asked. */
+  private get startedBy(): string | undefined {
+    const { parent } = this.metadata;
+    if (!parent) return undefined;
+    try {
+      return this.host.storage.read(parent).title ?? "a session";
+    } catch {
+      return "a session";
+    }
+  }
   /** Its parent asks it something: what it says from here until it is at rest is its answer. A message while an ask is open is part of that ask. */
   openAsk(): void {
     if (this.metadata.ask) return;
-    this.metadata = { ...this.metadata, ask: { from: this.pi?.sessionManager.getEntries().length ?? 0 } };
+    const { note: _note, ...rest } = this.metadata;
+    this.metadata = { ...rest, ask: { from: this.pi?.sessionManager.getEntries().length ?? 0 } };
     this.host.storage.write(this.metadata);
   }
-  /** Its answer goes to its parent: what the agent said at the end of each of its turns since it was asked, in order. */
+  /** It notes or raises with whoever asked it: kept for whoever looks at it, a raise until it is answered. */
+  up(word: "raise" | "note", text: string): void {
+    this.metadata = { ...this.metadata, [word]: text.length > 500 ? `${text.slice(0, 499)}…` : text };
+    this.host.storage.write(this.metadata);
+    this.changed();
+  }
+  /** Whoever it raised with says something to it: that is its answer. */
+  private answered(marker?: WokenDetails): void {
+    if (this.metadata.raise === undefined || (marker && marker.source.id !== this.metadata.parent)) return;
+    const { raise: _raise, ...rest } = this.metadata;
+    this.metadata = rest;
+    this.host.storage.write(this.metadata);
+  }
+  /**
+   * Its answer goes to its parent: what the agent said at the end of each of its turns since it
+   * was asked, in order. Closing the ask closes what it raised under it.
+   */
   closeAsk(): string[] {
-    const { ask, ...rest } = this.metadata;
+    const { ask, raise: _raise, ...rest } = this.metadata;
     if (!ask) return [];
     const replies: string[] = [];
     let last: string | undefined;
@@ -878,18 +882,6 @@ export class Session {
       if (text) return text;
     }
     return undefined;
-  }
-
-  /** Read a notice result from the transcript, even after reopening or changing the active branch. */
-  childRunResult(id: string): (ChildRunResult & { answer?: string }) | undefined {
-    const transcript = this.pi ? undefined : this.host.storage.validateHistory(this.metadata);
-    const manager = this.pi?.sessionManager ?? (transcript ? SessionManager.open(transcript, this.host.storage.directory(this.id), this.metadata.cwd) : undefined);
-    const entry = manager?.getEntry(id);
-    if (!manager || entry?.type !== "custom" || entry.customType !== CHILD_RESULT_ENTRY) return undefined;
-    const result = entry.data as ChildRunResult | undefined;
-    if (!result || !["completed", "cancelled", "failed"].includes(result.outcome)) return undefined;
-    const answer = result.answerId ? answerOf(manager.getEntry(result.answerId)) : undefined;
-    return { ...result, ...(answer ? { answer } : {}) };
   }
 
   private onEvent(event: Parameters<Parameters<AgentSession["subscribe"]>[0]>[0]): void {
@@ -1122,6 +1114,7 @@ export class Session {
     this.loaded();
     if (this.status !== "idle" || this.input) throw new RuntimeError("busy");
     this.touch();
+    this.answered(marker);
     if (!this.host.slots.take(this.id)) return { completion: this.enqueue(text, false, marker) };
     try {
       return { completion: this.begin(text, marker) };
@@ -1193,8 +1186,6 @@ export class Session {
   private mark(text?: string): { run: Run; settle: () => RunResult } {
     const { host } = this;
     const started = Date.now();
-    const manager = this.metadata.parent && this.metadata.report === "notice" ? this.pi?.sessionManager : undefined;
-    const entryCount = manager?.getEntries().length ?? 0;
     this.resultData = undefined;
     this.runStartedAt = started;
     const { queued: _queued, ...current } = this.metadata;
@@ -1212,27 +1203,10 @@ export class Session {
     const settle = (): RunResult => {
       run.settled = true;
       if (!run.cancelled) this.error ??= run.providerError;
-      let childResult: RunResult["childResult"];
       this.metadata.active = !!this.error;
       this.metadata.interrupted ||= !!this.error;
       try {
         host.storage.write(this.metadata);
-        if (manager) {
-          const entries = manager.getEntries();
-          // Pi only creates a persistent transcript after the first user or assistant message.
-          if (entries.some((entry) => entry.type === "message" && (entry.message.role === "user" || entry.message.role === "assistant"))) {
-            const answerEntry = !this.error && !run.cancelled ? entries.slice(entryCount).findLast((entry) => answerOf(entry)) : undefined;
-            const data: ChildRunResult = {
-              outcome: this.error ? "failed" : run.cancelled ? "cancelled" : "completed",
-              ...(this.error ? { error: this.error } : {}),
-              ...(answerEntry ? { answerId: answerEntry.id } : {}),
-              ...(this.resultData !== undefined ? { data: this.resultData } : {}),
-            };
-            const id = manager.appendCustomEntry(CHILD_RESULT_ENTRY, data);
-            const answer = answerOf(answerEntry);
-            childResult = { ...data, id, ...(answer ? { answer } : {}) };
-          }
-        }
       } catch {
         this.error = "storage";
         this.metadata.active = true;
@@ -1250,10 +1224,7 @@ export class Session {
         code: this.error,
       });
       this.changed();
-      const result: RunResult = {
-        ...(this.error ? { outcome: "failed", error: this.error } : { outcome: run.cancelled ? "cancelled" : "completed" }),
-        ...(childResult ? { childResult } : {}),
-      };
+      const result: RunResult = this.error ? { outcome: "failed", error: this.error } : { outcome: run.cancelled ? "cancelled" : "completed" };
       setImmediate(() => {
         this.reportTools();
         host.ended?.(this, result);
@@ -1379,6 +1350,7 @@ export class Session {
     if (session.pendingMessageCount >= 8) throw new RuntimeError("limit");
     const run = this.run;
     if (!run || run.settled || run.admissionClosed || session.isIdle) throw new RuntimeError("busy");
+    this.answered();
     const valid = () => this.run === run && !run.settled && !run.cancelled && this.status === "running" && !session.isIdle;
     const input = inputAdmission.run({ valid }, async () => {
       const found = await attachedImages(this.host.storage.directory(this.id), text);

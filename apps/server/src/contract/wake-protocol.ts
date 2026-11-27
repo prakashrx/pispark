@@ -61,29 +61,17 @@ export interface WokenCard {
 }
 
 /**
- * How a session started by another one tells it when a run ends. `result`: its answer (and any data
- * an extension set) wakes the parent. `status`: a line in the parent's conversation, without a turn;
- * the child can still raise something with `pispark_report`. `none`: nothing.
- */
-export const REPORT_MODES = ["result", "status", "none"] as const;
-export type ReportMode = (typeof REPORT_MODES)[number];
-export const validReportMode = (value: unknown): value is ReportMode => REPORT_MODES.includes(value as ReportMode);
-
-/** Only child completions support sending a reference to an exact result. */
-export type ChildReportMode = ReportMode | "notice";
-export const validChildReportMode = (value: unknown): value is ChildReportMode => value === "notice" || validReportMode(value);
-
-/**
- * A status line: a custom message of this type in the parent's Pi session, stored without starting
- * a turn (the agent reads it the next time it runs). `details` are `StatusDetails`.
+ * A status line: a custom message of this type in a session's Pi session, stored without starting a
+ * turn (the agent reads it the next time it runs): a child's note, a scheduled run's end, something
+ * the person did to what the session started. `details` are `StatusDetails`.
  */
 export const STATUS_ENTRY = "pispark:status";
 export interface StatusDetails {
-  /** The session (or process) that ended, and how it read then. */
+  /** The session (or process) it is about, and how it read then. */
   session?: string;
   process?: string;
   title: string;
-  /** How it ended, in words: "finished", "stopped", "exited 1". */
+  /** What happened, in words: "finished", "stopped", "notes: half way". */
   how: string;
   /** Whether it went as it should: a session finished, a process exited 0. Absent in older lines. */
   ok?: boolean;

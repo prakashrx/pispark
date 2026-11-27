@@ -11,11 +11,11 @@ test("changes asked for while a session works merge: the latest model and thinki
   assert.deepEqual(changes.view("a"), { model: model("two"), thinking: "low" });
   assert.equal(reloads(changes.take("a")!), false, "model and thinking alone need no reload");
 
-  changes.add("a", { asked: "pispark_session (reload)" });
-  changes.add("a", { asked: "pispark_session (reload)" });
+  changes.add("a", { asked: "pispark_self (reload)" });
+  changes.add("a", { asked: "pispark_self (reload)" });
   changes.add("a", { reload: true });
   assert.deepEqual(changes.view("a"), { reload: true });
-  assert.deepEqual(changes.take("a")!.asked, ["pispark_session (reload)"]);
+  assert.deepEqual(changes.take("a")!.asked, ["pispark_self (reload)"]);
   assert.equal(changes.has("a"), false);
 });
 
