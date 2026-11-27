@@ -1138,8 +1138,12 @@ export class SessionRuntime {
     validateText(placed);
     return placed;
   }
+  /**
+   * The person's Stop. A child still working on what its parent asked is stopped as its parent
+   * could stop it: what it started stops too, and the parent gets a note of it.
+   */
   cancel(id: string): Promise<void> {
-    return this.get(id).cancel();
+    return this.children.stoppedByPerson(id) ?? this.get(id).cancel();
   }
 }
 

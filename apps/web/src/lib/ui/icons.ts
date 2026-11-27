@@ -10,6 +10,8 @@ export const icons = {
   /** Give a panel the whole screen, or show something in full. */
   expand: [{ tag: "path", attrs: { d: "M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7", "stroke-linecap": "round", "stroke-linejoin": "round", "stroke-width": "1.7" } }],
   stop: [{ tag: "rect", attrs: { x: "7", y: "7", width: "10", height: "10", rx: "2", fill: "currentColor", stroke: "none" } }],
+  /** Waiting: its run ended, and something it is owed has not come yet. */
+  pause: [{ tag: "path", attrs: { d: "M9 6v12M15 6v12", "stroke-linecap": "round", "stroke-width": "2" } }],
   menu: [
     {
       tag: "path",

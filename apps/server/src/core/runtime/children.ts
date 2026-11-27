@@ -231,6 +231,28 @@ export class Children implements Kind {
   }
 
   /**
+   * The person stops a session. For a child whose ask is open, that is what its parent's stop
+   * does (its run and what it started), and its parent gets a note of it. Nothing for any other
+   * session: the caller stops its run as usual, at once.
+   */
+  stoppedByPerson(sessionId: string): Promise<void> | undefined {
+    let child: SessionMetadata;
+    try {
+      child = this.sessions.storage.read(sessionId);
+    } catch {
+      return undefined;
+    }
+    if (!this.parentOf(child) || !child.ask) return undefined;
+    this.sessions.stopProcesses(sessionId);
+    return (async () => {
+      await this.sessions.ensure(sessionId);
+      const session = this.sessions.get(sessionId);
+      if (session.settled) this.answer(session, { outcome: "cancelled", by: "person" });
+      else await session.cancel();
+    })();
+  }
+
+  /**
    * The person said something to a session. If it is a child still working on what its parent
    * asked, that changes the parent's work, so the parent gets a note of it. A child at rest is
    * simply asked by the person: its answer is theirs, and the parent is told nothing.

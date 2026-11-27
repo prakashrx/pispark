@@ -21,6 +21,7 @@
   import SessionNotices from "./SessionNotices.svelte";
   import SessionTabs from "./SessionTabs.svelte";
   import Shelf from "./Shelf.svelte";
+  import ActivityStrip from "../started/ActivityStrip.svelte";
   import StatusLine from "./StatusLine.svelte";
   import { details } from "./details.svelte";
   import type { Session } from "./session.svelte";
@@ -83,6 +84,7 @@
 {#snippet tabs()}<SessionTabs />{/snippet}
 {#snippet replyDock()}
   <Shelf />
+  {#if session.info}<ActivityStrip owner={session.info} />{/if}
   {#if session.doc?.readOnly}<ReadOnlyReply />{:else}<Composer mode="reply" />{/if}
   <ContributionPoint point="session.input.below" />
   <StatusLine />

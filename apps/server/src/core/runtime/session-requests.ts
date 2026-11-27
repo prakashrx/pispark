@@ -129,7 +129,7 @@ export class SessionRequests {
     const where = added.run === "new" ? "each run in a new session" : "in this session";
     return {
       ok: true,
-      text: `Scheduled (${started.handle(id, "schedule", added.id)}): ${describeSchedule(added)}, ${where}. The person can change it under Session info → Schedules.`,
+      text: `Scheduled (${started.handle(id, "schedule", added.id)}): ${describeSchedule(added)}, ${where}. The person sees it under Details → Started here.`,
       details: { schedule: added },
     };
   }

@@ -18,7 +18,7 @@ fresh("a session's schedules: a dialog from Details, run now, switch off, on Bac
 
   // Details, beside the conversation, have none yet; + opens the Schedule dialog.
   const panel = page.getByRole("complementary", { name: "Details" });
-  await expect(panel.getByText(/^None\. Add one/)).toBeVisible();
+  await expect(panel.getByText(/^Nothing yet\./)).toBeVisible();
   const add = panel.getByRole("button", { name: "Add a schedule" });
   await add.click();
   const dialog = page.getByRole("dialog", { name: "Add a schedule" });
@@ -38,7 +38,7 @@ fresh("a session's schedules: a dialog from Details, run now, switch off, on Bac
   await expect(dialog).toHaveCount(0);
   await expect(add).toBeFocused();
 
-  const row = panel.getByRole("list", { name: "Schedules of this session" }).getByRole("listitem");
+  const row = panel.getByRole("list", { name: "Started here" }).getByRole("listitem");
   await expect(row).toHaveCount(1);
   await expect(row.getByText("Every weekday at 9:30 am")).toBeVisible();
   await expect(row.getByText(/^Next /)).toBeVisible();
@@ -112,5 +112,5 @@ fresh("on a phone a schedule is a full-screen sheet with Cancel, its title and S
   await dialog.getByLabel("Prompt").fill("summarise the day");
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole("list", { name: "Schedules of this session" }).getByRole("listitem")).toHaveCount(1);
+  await expect(page.getByRole("list", { name: "Started here" }).getByRole("listitem")).toHaveCount(1);
 });

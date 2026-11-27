@@ -301,6 +301,48 @@ test("a status line is its own segment; a report card is drawn from what the ser
   expect(wokenFrom({ source, due: "x" })).toEqual({ ...source, title: "tests · exited 1", start: 0 });
 });
 
+test("one row per ask: a child's answer folds into its row, its arrival is a quiet line, and its notes are not lines of their own", () => {
+  n = 0;
+  const child = "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b";
+  const clock = "7f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b";
+  const heading = 'The session "Reviewer" (session-1) you started finished:\n\n';
+  const turns = buildTurns(
+    [
+      item("user", [text("review the change")]),
+      item("assistant", [call("c1", "pispark_start_session", { brief: "review", title: "Reviewer" })]),
+      item("toolResult", [text('Started "Reviewer" (session-1).')], { callId: "c1", toolName: "pispark_start_session", details: { id: child } }),
+      // The child's note, and the end of a scheduled run that has no row here.
+      item("custom", [text('"Reviewer" (session-1) notes: half way')], { customType: "pispark:status", details: { session: child, title: "Reviewer", how: "notes: half way" } }),
+      item("custom", [text('The session "9:00 am run" you started finished.')], { customType: "pispark:status", details: { session: clock, title: "9:00 am run", how: "finished", ok: true } }),
+      item("entry", [], { customType: "pispark:woken", details: { source: { kind: "session", id: child, label: "Reviewer · finished" }, due: "x", card: { title: "Reviewer", how: "finished", start: heading.length } } }),
+      item("user", [text(`${heading}Looks **good**.`)]),
+      item("assistant", [text("The review is in.")]),
+    ],
+    { running: false },
+  );
+  // The row holds the answer, after the line the agent needs.
+  expect(turns[0]!.segments.find((segment) => segment.kind === "session")).toMatchObject({ sessionId: child, title: "Reviewer", answer: "Looks **good**." });
+  // The child's own line is gone; the scheduled run's stays.
+  expect(turns[0]!.segments.filter((segment) => segment.kind === "status").map((segment) => segment.kind === "status" && segment.title)).toEqual(["9:00 am run"]);
+  // Where the answer arrived, the turn only says so.
+  expect(turns[1]!.from).toMatchObject({ kind: "session", id: child, title: "Reviewer", how: "finished", folded: true });
+
+  // A raise is read where it arrives: it is not folded. Nor is an answer from a child with no row here.
+  const raised = buildTurns(
+    [
+      item("assistant", [call("c1", "pispark_start_session", { title: "Reviewer" })]),
+      item("toolResult", [text("Started.")], { callId: "c1", toolName: "pispark_start_session", details: { id: child } }),
+      item("entry", [], { customType: "pispark:woken", details: { source: { kind: "session", id: child, label: "Reviewer · raised" }, due: "x", card: { title: "Reviewer", how: "raised", start: 0 } } }),
+      item("user", [text("A or B?")]),
+      item("entry", [], { customType: "pispark:woken", details: { source: { kind: "session", id: clock, label: "Elsewhere · finished" }, due: "x", card: { title: "Elsewhere", how: "finished", start: 0 } } }),
+      item("user", [text("done")]),
+    ],
+    { running: false },
+  );
+  expect(raised.map((turn) => turn.from?.folded)).toEqual([undefined, undefined, undefined]);
+  expect(raised[0]!.segments.find((segment) => segment.kind === "session")).not.toHaveProperty("answer");
+});
+
 test("several messages that arrived as one are one turn, with each sender and where its part starts", () => {
   n = 0;
   const lint = { kind: "process", id: "p1", label: "lint · exited 0" };

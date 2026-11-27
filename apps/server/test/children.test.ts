@@ -747,7 +747,16 @@ test("the session list says where each child's ask stands: working, waiting and 
     await f.runtime.cancel(two.id);
     await eventually(() => ask("Two")?.state === "stopped");
     assert.deepEqual(ask("Two"), { state: "stopped", detail: "by you" });
-    f.runtime.stopProcess(two.id, f.runtime.listProcesses(two.id)[0]!.id);
+    // The person's stop is what its parent's is: what the child started stops too.
+    await eventually(() => f.runtime.listProcesses(two.id)[0]!.state === "stopped", 20_000);
+
+    // A child that only waits (its run ended, a process still runs) is stopped the same way.
+    await f.answer(parent.id, say("start_session", { brief: say("start_process", { command: `node -e "setTimeout(() => {}, 20000)"`, title: "server" }), title: "Three" }));
+    const three = f.children(parent.id).find((child) => child.title === "Three")!;
+    await eventually(() => ask("Three")?.state === "waiting");
+    await f.runtime.cancel(three.id);
+    assert.deepEqual(ask("Three"), { state: "stopped", detail: "by you" });
+    await eventually(() => f.runtime.listProcesses(three.id)[0]!.state === "stopped", 20_000);
 
     // A session the person started has no ask; what it raises with them shows on it until they answer.
     assert.equal(f.runtime.list().find((session) => session.id === parent.id)?.ask, undefined);

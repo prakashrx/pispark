@@ -30,6 +30,15 @@
       <summary class="woken">{from.label} <span class="disclosure"><span class="closed">▸ Show {what}</span><span class="opened">▾ Hide {what}</span></span></summary>
       <div class="report output">{body}</div>
     </details>
+  {:else if from.folded}
+    <!-- Its row above holds the answer: here, only that it reached this session. -->
+    <p class="woken" data-purpose="delivery">
+      <Icon name="sessionBack" class="h-3.5 w-3.5" /><span
+        >Answer from {#if known(from)}<button type="button" class="link" onclick={() => client.open(from.id)}>{from.title}</button>{:else}{from.title}{/if}{` reached this session${
+            from.how && from.how !== "finished" ? ` · ${from.how}` : ""
+          }`}</span
+      >
+    </p>
   {:else}
     <div class="flex flex-col items-start gap-1.5" data-purpose="session-turn">
       <p class="woken">
