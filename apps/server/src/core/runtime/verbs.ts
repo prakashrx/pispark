@@ -33,7 +33,8 @@ export function validVerb(value: unknown): value is Verb {
         optional(r.folder, 4096) &&
         (r.model === undefined || (typeof r.model === "string" && MODEL.test(r.model))) &&
         data(r.data) &&
-        flag(r.collect)
+        flag(r.collect) &&
+        flag(r.keep)
       );
     case "start_process":
       return text(r.command, 8192) && optional(r.title, 120) && optional(r.folder, 4096) && seconds(r.stop_after_seconds, 7 * 86_400) && expression(r.raise_on) && flag(r.collect);

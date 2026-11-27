@@ -185,6 +185,7 @@ const c = await review("both reviews", [both.data.answers[a.data.id].data, both.
 
 - **What comes back as data:** a start's `data` is `{ id }`, the handle (`session-1`). A wait's is `{ answers, raised, open }`: each answer by its handle with `how`, `text` and the child's `data`; what was raised meanwhile; and what is still open. A start refused over its agent answers `{ ok: false }` with `data.agents`, the agents there are (`{ id, name }` each); the agent reads the same ids in the text.
 - **`collect: true`** on a start says this code takes the answer itself. The child's answer and raises then wait until `wait` or `look` takes them, and never wake the agent. Use it for anything started outside a turn, where there is no turn's end to send the answer at. Without it, an answer goes to the agent as for any child.
+- **`keep: true`** on a start keeps the child when it has answered, so `send` can tell it more later; `stop` then puts it away. Without it a child is put away once it is done, which is what a pipeline wants: its answer still waits for `wait` or `look`, and nothing piles up.
 - **The same limits as the agent:** only what this session started. An extension in a child session cannot start sessions.
 
 **Hearing.** One event for whatever reaches the session, before its agent hears of it:

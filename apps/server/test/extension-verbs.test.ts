@@ -144,7 +144,9 @@ test("an extension runs a two-reviewer pipeline in code: the same verbs, data bo
     // PiSpark decided no order and ran no model: the parent's agent took no turn, and neither did a reviewer's.
     assert.equal(f.provider.requests.length, 0);
     assert.equal(f.runtime.items(parent.id, {}).items.filter((item) => item.customType === WOKEN_ENTRY || item.role === "user" || item.role === "assistant").length, 0);
-    assert.equal(f.children(parent.id).length, 3);
+    // None of the three was kept: each was put away as it was done, and is not among what the person archived.
+    await eventually(() => f.children(parent.id).length === 0);
+    assert.deepEqual(f.runtime.archived(), []);
   } finally {
     await f.cleanup();
   }

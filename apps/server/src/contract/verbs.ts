@@ -33,9 +33,11 @@ export type Verb =
    * message, complete on its own. `agent`: an agent's id, or an agent definition made for this
    * session (kept as its own layer); the Default agent when left out. `folder`: where it works;
    * the caller's when left out. `model`: `provider/id`; the agent's own when left out.
-   * `collect`: for code that takes the answer itself, see `Collect`.
+   * `collect`: for code that takes the answer itself, see `Collect`. `keep`: it stays when it has
+   * answered, to be told more later; left out, it is put away once it is done (it leaves the
+   * lists and can no longer be told anything; the person can bring it back).
    */
-  | ({ verb: "start_session"; brief: string; title?: string; agent?: string | AgentDefinition; folder?: string; model?: string; data?: unknown } & Collect)
+  | ({ verb: "start_session"; brief: string; title?: string; agent?: string | AgentDefinition; folder?: string; model?: string; keep?: boolean; data?: unknown } & Collect)
   /** Ask: run a command in the background. `raise_on`: a regular expression; a matching line of output is raised. */
   | ({ verb: "start_process"; command: string; title?: string; folder?: string; stop_after_seconds?: number; raise_on?: string } & Collect)
   /** Ask, with a time: send `prompt` later, once (`in_minutes` or `at`) or repeating (`cron`). The person is asked first. */
@@ -46,6 +48,7 @@ export type Verb =
   | { verb: "wait"; ids?: string[]; for?: "all" | "any"; until?: string; seconds?: number }
   /** Look, without disturbing: everything this session started, or one child. `find`: literal text in a process's output. */
   | { verb: "look"; id?: string; find?: string }
+  /** Stop: what works is ended. A session that was kept and is at rest is put away. */
   | { verb: "stop"; id: string }
   /** Up, to whoever asked: "I need you". */
   | { verb: "raise"; text: string; data?: unknown }

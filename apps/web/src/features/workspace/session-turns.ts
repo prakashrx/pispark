@@ -69,8 +69,12 @@ export type Segment =
    * the session's last reply, which Retry can follow.
    */
   | { kind: "stopped"; key: string; reason: "aborted" | ReplyFailure; error?: string; provider?: string; latest: boolean }
-  /** A session this one started: one row for the ask, with the child's answer folded inside once it has reached this conversation. */
-  | { kind: "session"; key: string; sessionId: string; title: string; answer?: string }
+  /**
+   * A session this one started: one row for the ask, with the child's answer folded inside once it
+   * has reached this conversation. `how`: how the ask ended, as this conversation heard it, which
+   * is what the row says once the child is put away.
+   */
+  | { kind: "session"; key: string; sessionId: string; title: string; answer?: string; how?: string }
   /** A process this one started, shown with its live state. */
   | { kind: "process"; key: string; processId: string; title: string }
   /** A schedule the agent added, as it was saved. */
@@ -173,25 +177,33 @@ const summaryOf = (item: Item, between: boolean): Segment => ({
 const STARTS = new Set(["pispark_start_session", "pispark_session"]);
 /**
  * The asks this conversation holds: the children it has a row for (a start names the session it
- * made in its result's details), and each child's latest answer that reached it as a message.
+ * made in its result's details), each child's latest answer that reached it as a message, and how
+ * each ask ended (said by that message, or by the wait that took the answer).
  */
-function asksIn(items: Item[]): { rows: Set<string>; answers: Map<string, string> } {
+function asksIn(items: Item[]): { rows: Set<string>; answers: Map<string, string>; ended: Map<string, string> } {
   const rows = new Set<string>();
   const answers = new Map<string, string>();
+  const ended = new Map<string, string>();
   let woken: unknown;
   for (const item of items) {
     const made = item.role === "toolResult" && STARTS.has(item.toolName ?? "") ? (item.details as { id?: unknown } | undefined)?.id : undefined;
     if (typeof made === "string") rows.add(made);
+    if (item.role === "toolResult" && item.toolName === "pispark_wait") {
+      const taken = (item.details as { answers?: unknown } | undefined)?.answers;
+      for (const each of Array.isArray(taken) ? (taken as { id?: unknown; how?: unknown }[]) : []) if (typeof each?.id === "string" && typeof each.how === "string") ended.set(each.id, each.how);
+    }
     if (item.role === "entry" && item.customType === WOKEN_ENTRY) woken = item.details;
     if (item.role !== "user") continue;
     const text = itemText(item);
     const parts = wokenTogether(woken) ?? [wokenFrom(woken)].flatMap((from) => (from ? [{ ...from, at: 0 }] : []));
     parts.forEach((part, index) => {
-      if (part.kind === "session" && part.how !== "raised") answers.set(part.id, text.slice(part.at + part.start, parts[index + 1]?.at).trimEnd());
+      if (part.kind !== "session" || part.how === "raised") return;
+      answers.set(part.id, text.slice(part.at + part.start, parts[index + 1]?.at).trimEnd());
+      if (part.how) ended.set(part.id, part.how);
     });
     woken = undefined;
   }
-  return { rows, answers };
+  return { rows, answers, ended };
 }
 
 /**
@@ -243,9 +255,13 @@ export function buildTurns(
   let together: Turn["together"];
 
   const current = (): Turn => turns.at(-1) ?? turns[turns.push({ key: "earlier", segments: [], running: false }) - 1]!;
-  // A child's row holds its answer, once that has reached this conversation.
-  const emit = (turn: Turn, segment: Segment) =>
-    turn.segments.push(segment.kind === "session" && asks.answers.has(segment.sessionId) ? { ...segment, answer: asks.answers.get(segment.sessionId)! } : segment);
+  // A child's row holds its answer, once that has reached this conversation, and how its ask ended.
+  const emit = (turn: Turn, segment: Segment) => {
+    if (segment.kind !== "session") return turn.segments.push(segment);
+    const answer = asks.answers.get(segment.sessionId);
+    const how = asks.ended.get(segment.sessionId);
+    return turn.segments.push({ ...segment, ...(answer !== undefined ? { answer } : {}), ...(how ? { how } : {}) });
+  };
   const folded = <T extends From>(from: T): T => (from.kind === "session" && from.how !== "raised" && asks.rows.has(from.id) ? { ...from, folded: true as const } : from);
   // A notice lands before the first item at or after its position. Called before a new turn starts,
   // so a notice ahead of your message ends the answer before it.

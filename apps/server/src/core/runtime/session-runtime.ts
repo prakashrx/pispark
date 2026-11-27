@@ -317,11 +317,15 @@ export class SessionRuntime {
       .filter((metadata) => !metadata.archived)
       .map((metadata) => this.summary(metadata, this.live.get(metadata.id)));
   }
-  /** The sessions the person put away. */
+  /**
+   * The sessions the person put away. A child put away when it was done is not among them while
+   * its parent is in use: it was never a row of its own, and is reached from its parent.
+   */
   archived(): SessionSummary[] {
-    return this.storage
-      .list()
-      .filter((metadata) => metadata.archived)
+    const all = this.storage.list();
+    const inUse = new Set(all.filter((metadata) => !metadata.archived).map((metadata) => metadata.id));
+    return all
+      .filter((metadata) => metadata.archived && !(metadata.parent && !metadata.schedule && inUse.has(metadata.parent)))
       .map((metadata) => this.summary(metadata));
   }
   get unreadableSessions(): number {
@@ -732,7 +736,6 @@ export class SessionRuntime {
       this.processes.stopSession(each);
     }
   }
-  /** Brings a session back, with its children. */
   /**
    * Another model or thinking level for this session, from its next reply on. While the session
    * works, the change waits until it is free (`pending` in its document).
@@ -826,9 +829,15 @@ export class SessionRuntime {
     if (live) return live.rename(title);
     this.storage.write({ ...this.storage.read(id), title, renamed: true });
   }
+  /**
+   * Brings a session back, with the children it still had: those it kept, those that still owe it
+   * an answer, and a schedule's runs. A child put away when it was done stays put away; its row in
+   * the conversation brings it back.
+   */
   restore(id: string): void {
     validateId(id);
-    for (const each of [id, ...this.children.under(id).map((child) => child.id)]) {
+    const had = this.children.under(id).filter((child) => child.keep || child.schedule || child.ask);
+    for (const each of [id, ...had.map((child) => child.id)]) {
       const { archived, ...metadata } = this.storage.read(each);
       if (archived) this.storage.write(metadata);
     }

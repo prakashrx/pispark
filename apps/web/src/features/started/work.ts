@@ -59,6 +59,15 @@ export function askLine(child: SessionInfo, now: number): string {
   return [ask.state, ask.detail].filter(Boolean).join(" ");
 }
 
+/**
+ * How an ask ended, from the words its parent's conversation heard ("finished", "stopped by the
+ * person", "failed"): what its row says once the child itself is put away.
+ */
+export function endedState(how: string | undefined): Extract<Ask["state"], "answered" | "stopped" | "failed"> | undefined {
+  if (!how) return undefined;
+  return how.includes("stopped") ? "stopped" : how.includes("failed") ? "failed" : "answered";
+}
+
 const scheduleRow = (x: ScheduleSummary, from: Sources, now: number, owner?: SessionInfo): Work => {
   const last = x.runs[0];
   const failed = !!last && runFailed(last);

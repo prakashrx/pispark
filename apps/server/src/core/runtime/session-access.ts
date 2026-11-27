@@ -11,7 +11,7 @@ import type { Arrival } from "./arrivals.js";
 /** A new session's request: Ask's, or another session's, which may bring an agent made for it (`layer`, the session's own layer). */
 export type NewSession = { folder?: string; model?: ModelChoice; agent?: string; layer?: AgentDefinition };
 /** What a session started by another one, or by a schedule, records of where it came from. */
-export type Origin = Pick<SessionMetadata, "parent" | "title" | "schedule" | "ask" | "collect">;
+export type Origin = Pick<SessionMetadata, "parent" | "title" | "schedule" | "ask" | "collect" | "keep">;
 
 /**
  * What the runtime lends the parts that work across sessions (child sessions, holds, processes,

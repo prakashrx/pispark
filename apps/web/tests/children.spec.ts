@@ -32,13 +32,13 @@ fresh("a session starts a session: one row for the ask, its answer folded inside
   await expect(sessions.getByRole("link", { name: "Zustand research" })).toHaveCount(0);
   await expect(sessions.getByRole("button", { name: /^Sessions (started by|under) / })).toHaveCount(0);
 
-  // "Started here" keeps it under Finished once it has answered; its row opens it.
+  // It was not kept, so it is put away once it has answered: "Started here" holds nothing, not even under Finished.
   const details = page.getByRole("complementary", { name: "Details" });
   await expect(details.getByRole("list", { name: "Started here" })).toHaveCount(0);
-  await details.getByRole("button", { name: /^Finished/ }).click();
-  const finished = details.getByRole("list", { name: "Finished" });
-  await expect(finished).toContainText("answered");
-  await finished.getByRole("button", { name: /Zustand research/ }).click();
+  await expect(details.getByRole("button", { name: /^Finished/ })).toHaveCount(0);
+  // Its row still says how the ask ended, and opening it brings the child back.
+  await expect(row).toContainText("answered");
+  await row.getByRole("button", { name: "Open Zustand research" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Zustand research" })).toBeVisible();
   // Inside the child: who asked and the brief it was given, and that it has answered.
   const brief = page.locator('[data-purpose="session-turn"]');
@@ -52,6 +52,9 @@ fresh("a session starts a session: one row for the ask, its answer folded inside
   // Its parent is the way back, in the header.
   await page.getByRole("banner").getByRole("link", { name: /^tool:pispark_start_session/ }).click();
   await expect(page.locator('[data-purpose="ask-row"]')).toContainText("answered");
+  // Brought back, it is listed again with what has finished.
+  await details.getByRole("button", { name: /^Finished/ }).click();
+  await expect(details.getByRole("list", { name: "Finished" })).toContainText("answered");
 
   await page.setViewportSize({ width: 390, height: 844 });
   const wide = await page.evaluate(() =>

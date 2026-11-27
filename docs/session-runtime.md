@@ -113,13 +113,13 @@ A session says ten things to PiSpark about what it started, one per word of the 
 
 | Verb | Tool | What it does |
 |---|---|---|
-| `start_session` | `pispark_start_session` | Ask: hands work to a new [child session](#child-sessions). `brief`, optional `title`, `agent`, `folder`, `model`. |
+| `start_session` | `pispark_start_session` | Ask: hands work to a new [child session](#child-sessions). `brief`, optional `title`, `agent`, `folder`, `model`, `keep`. |
 | `start_process` | `pispark_start_process` | Ask: runs a command in the background ([processes](#processes)). `command`, optional `title`, `folder`, `stop_after_seconds`, `raise_on`. |
 | `schedule` | `pispark_schedule` | Ask, with a time: a [schedule](#schedules). `prompt`, one of `cron`, `in_minutes`, `at`, optional `run`. The person is asked first. |
 | `send` | `pispark_send` | Tell: `text` to a session, or a new `raise_on` for a process. `id`, optional `when` (`now` or `after`). |
 | `wait` | `pispark_wait` | Waits for children and takes their answers. Optional `ids`, `for` (`all` or `any`), `until`, `seconds`. |
 | `look` | `pispark_look` | Looks without disturbing: everything the session started, or one child (`id`, optional `find`). |
-| `stop` | `pispark_stop` | Stops a child: `id`. |
+| `stop` | `pispark_stop` | Stops a child: `id`. A session that was kept and is at rest is put away. |
 | `raise` | `pispark_raise` | Up, to whoever asked: "I need you". `text`. |
 | `note` | `pispark_note` | Up, to whoever asked: a line that never interrupts. `text`. |
 | `self` | `pispark_self` | The calling session itself: `action` `inspect` or `reload` ([setup changes](#setup-changes)). |
@@ -150,6 +150,7 @@ A session can hand work to another session and carry on (VISION §6: sessions "h
 - **Note:** a line in the parent's conversation, a Pi custom message `pispark:status` sent with `triggerTurn: false`, so the parent's agent reads it the next time it runs and is not woken for it. The child's last note is kept (`note` in its `session.json`) for whoever looks at it.
 - **Raise:** wakes the parent with the child's words, labelled "‹title› · raised", and says to answer with `send`. The child is then owed an answer (`raise` in its `session.json`): it may carry on, but it is waiting, not at rest, until whoever it raised with says something to it. Closing the ask closes the raise.
 - **From a session the person started,** a note and a raise are for the person, in its own conversation; the person's next message answers the raise.
+- **How long a child lives** is its parent's call, made at the start. Without `keep`, a child is put away once it is done (it answered, failed or was stopped): it is archived, so it unloads and leaves every list, `look` no longer lists it, and it cannot be told more. Its answer travels on its own (a message waiting for the parent, or what `wait` takes), so nothing is lost, and its id still names it. With `keep: true` it stays at rest when it has answered, to be told more with all it knows; `stop` on it then puts it away. A child the person has open at that moment, or that has more to do, is not put away under them: it stays. A put-away child is not on the Archived page while its parent is in use; the person brings it back by opening its row in the parent's conversation. A schedule's runs are not part of this: their schedule keeps the newest and archives the rest.
 - **Tell:** `send` to a child at rest is a new ask. To a working child it arrives at its next pause (`when: "now"`, Pi's steer) or when it has finished what it is doing (`when: "after"`, Pi's follow-up), and what it says after is part of the same answer.
 - **Look** shows a child's state (working, waiting for the person, waiting for your answer, waiting for what it started, at rest, stopped, failed), what it raised, its last note and what it last said. It loads the child if needed and never wakes it.
 - **For clients:** the same state is `ask` on the child in the session list ([protocol](session-protocol.md)): `Children.stand` is the one place that says where an ask stands, for the agent's words and the client's rows. How the last ask ended is kept in the child's `session.json` (`ended`) until it is asked again.
@@ -160,7 +161,7 @@ A session can hand work to another session and carry on (VISION §6: sessions "h
 - **Extensions hear it first:** whatever reaches a session is offered to its extensions before its agent hears of it, as one event on its bus: `pispark:heard {word, from, how?, text, data?, reply}`. `word` is `answer`, `raise` or `note` from something the session started (a child session or a process, named by its handle), or `ask` or `tell` from the session that started it. An extension may reply synchronously `{action: "skip"}` (it handled it: no turn, no line; a wake is recorded `handled`) or `{action: "send", text}` (what the agent gets instead). A child's extension that takes its `ask` spends no model turn: the child answers at once, with the data the extension set. The person's own messages are Pi's `input` event, not this one.
 - **Data:** text is for agents, data for extensions. A child's answer carries what an extension in it set (`pispark:result {data}`); `raise`, `note`, a brief and a `send` carry `data` in the verb. Plain JSON, at most 64 KiB.
 - **Collected answers:** a start may say `collect: true`: code in the session takes the child's answer and raises itself (`wait`, `look`), so they wait to be taken and never wake the agent. It is for code that asks outside a turn, which has no turn's end to send the answer at. A wait under way also keeps what arrives for it from being sent, whether or not a turn runs.
-- **Archive and delete:** archiving a parent archives its children (refused while any of them works); restoring restores them; deleting deletes them. A child can be archived alone.
+- **Archive and delete:** archiving a parent archives its children (refused while any of them works); restoring restores the ones it still had (kept, still owing an answer, or a schedule's runs), not those put away when they were done; deleting deletes them all. A child can be archived alone.
 
 Manual forks use Pi’s transcript fork operation and inherit the source session’s saved agent and model. The source appears as their parent in navigation. A fork runs, archives, and restores independently, without sending completion reports to the source.
 

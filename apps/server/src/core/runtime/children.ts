@@ -44,7 +44,8 @@ const from = (childId: string, word?: Wake["word"]) => (wake: Wake) => wake.sour
  * Sessions started by other sessions, as one kind of thing a session can start: starting one,
  * telling it, looking at it and stopping it, and what goes up from it. A child answers its parent
  * once per ask, when it is at rest; at any time it may note (a line, no turn) or raise (its parent
- * is woken). One level only: a child cannot start sessions.
+ * is woken). One level only: a child cannot start sessions. A child lives as long as its parent
+ * says: one that was not started to be kept is put away once it is done.
  */
 export class Children implements Kind {
   readonly name = "session";
@@ -65,7 +66,8 @@ export class Children implements Kind {
    * A session started by another one, set up as the person sets one up: where it works (its
    * parent's folder unless given, or its agent's own), its agent (Default unless one is named, or
    * one made for it, kept as its own layer), its model (the agent's own unless given), and the
-   * brief as its first message. It is named by its parent, or from the brief.
+   * brief as its first message. It is named by its parent, or from the brief. With `keep` it
+   * stays when it has answered; without, it is put away then.
    */
   async start(owner: string, request: Omit<Extract<Verb, { verb: "start_session" }>, "verb">): Promise<Answer> {
     const parent = this.sessions.storage.read(owner);
@@ -87,7 +89,7 @@ export class Children implements Kind {
           ...(typeof agent === "string" ? { agent } : agent ? { layer: agent } : {}),
           ...(model ? { model: { provider: model.slice(0, slash), id: model.slice(slash + 1) } } : {}),
         },
-        { parent: parent.id, ...(title ? { title } : {}), ...(request.collect ? { collect: true as const } : {}) },
+        { parent: parent.id, ...(title ? { title } : {}), ...(request.collect ? { collect: true as const } : {}), ...(request.keep ? { keep: true as const } : {}) },
       );
     } catch (error) {
       return notStarted(error, this.sessions.agents);
@@ -97,7 +99,7 @@ export class Children implements Kind {
     const handle = this.handles.of(owner, this.name, doc.id);
     return {
       ok: true,
-      text: `Started "${titleOf(session.metadata)}" (${handle}). It works on its own; its answer arrives here as a message when it is done.`,
+      text: `Started "${titleOf(session.metadata)}" (${handle}). It works on its own; its answer arrives here as a message when it is done.${request.keep ? " It is kept after that: pispark_send tells it more, and pispark_stop puts it away." : ""}`,
       details: { id: doc.id },
       data: { id: handle },
     };
@@ -117,11 +119,10 @@ export class Children implements Kind {
 
   of(owner: string): Listed[] {
     // Open while it owes an answer, or its answer still waits to be taken.
-    return this.under(owner).map((child) => ({
-      id: child.id,
-      line: `"${titleOf(child)}" — ${this.state(child)}`,
-      open: !child.archived && (!!child.ask || this.sessions.waiting(owner, child.id)),
-    }));
+    return this.under(owner).map((child) => {
+      const open = (!child.archived && !!child.ask) || this.sessions.waiting(owner, child.id);
+      return { id: child.id, line: `"${titleOf(child)}" — ${this.state(child)}`, open, away: !!child.archived && !open };
+    });
   }
 
   async look(owner: string, id: string): Promise<Answer> {
@@ -141,17 +142,26 @@ export class Children implements Kind {
     return { ok: true, text: lines.join("\n") };
   }
 
-  /** Its parent stops it, and everything it started. The parent knows, so the ask is closed without an answer. */
+  /**
+   * Its parent stops it, and everything it started. The parent knows, so the ask is closed without
+   * an answer. Stopping one that is at rest says the parent is finished with it: it is put away.
+   */
   async stop(owner: string, id: string): Promise<Answer> {
     const child = this.child(owner, id);
     if (!child) return this.gone;
+    if (child.archived) return { ok: true, text: "It is already put away." };
     const working = !(this.sessions.live(child.id)?.settled ?? true);
-    if (!working && !child.ask) return { ok: true, text: "It is not working." };
+    if (!working && !child.ask) {
+      await this.sessions.archive(child.id);
+      return { ok: true, text: "Put away." };
+    }
     await this.sessions.ensure(child.id);
     this.sessions.get(child.id).closeAsk({ state: "stopped" });
     this.sessions.take(owner, from(child.id));
     this.sessions.stopProcesses(child.id);
     if (working) await this.sessions.cancel(child.id);
+    if (child.keep) return { ok: true, text: "Stopped. It is kept: pispark_send tells it more, and pispark_stop again puts it away." };
+    this.putAway(this.sessions.get(child.id));
     return { ok: true, text: "Stopped." };
   }
 
@@ -163,7 +173,7 @@ export class Children implements Kind {
     const child = this.child(owner, id);
     if (!child) return this.gone;
     if (text === undefined) return { ok: false, text: "A session is sent text; raise_on is for a process." };
-    if (child.archived) return { ok: false, text: "That session is archived." };
+    if (child.archived) return { ok: false, text: "That session was put away when it was done, so it cannot be told more. Start a session with keep: true to tell it more after its answer." };
     this.sessions.admit();
     await this.sessions.ensure(child.id);
     validateText(text);
@@ -194,7 +204,7 @@ export class Children implements Kind {
       if (!child) return undefined;
       const report = this.sessions.take(owner, from(id, "answer"))[0]?.report;
       if (report) return { words: `"${report.title}" ${report.how}:\n\n${report.text}${dataText(report.data, 56 * 1024 - report.text.length)}`, ...report };
-      if (!child.ask) return { words: `"${titleOf(child)}" — ${this.state(child)}. It gave its answer before (pispark_look shows what it last said).` };
+      if (!child.ask) return { words: `"${titleOf(child)}" — ${this.state(child)}. It gave its answer before${child.archived ? "" : " (pispark_look shows what it last said)"}.` };
       if (!(await this.sessions.arrival(owner, signal))) return undefined;
     }
   }
@@ -308,6 +318,7 @@ export class Children implements Kind {
     const body = said ? cut(said) : `It ${how} without an answer.`;
     const data = session.resultData;
     const report: Report = { title, how, text: body, ...(data !== undefined ? { data } : {}) };
+    this.putAway(session);
     const answer = {
       source: { kind: "session" as const, id: child.id, label: `${title} · ${how}` },
       due: this.due(),
@@ -331,6 +342,18 @@ export class Children implements Kind {
     // The line the agent needs; the card says it already, so it shows the answer after it.
     const heading = `The session "${title}" (${handle}) you started ${how}:\n\n`;
     void this.sessions.deliver(parent.id, { ...answer, text: `${heading}${body}${dataText(data, 56 * 1024 - body.length)}`, card: { title, how, start: heading.length } });
+  }
+
+  /**
+   * A child that is done and was not started to be kept is put away: it unloads and leaves the
+   * lists, and the person can bring it back. Its answer travels on its own, so nothing is lost.
+   * Not while it is in use (the person has it open, or it has more to do): then it stays. A
+   * schedule's runs are kept and pruned by their schedule (`Runs`).
+   */
+  private putAway(session: Session): void {
+    const child = session.metadata;
+    if (child.keep || child.schedule || !session.unloadable) return;
+    void this.sessions.archive(child.id).catch((error: unknown) => this.failed(child.id, error));
   }
 
   /** A child's note reaches its parent: the parent's extensions hear it first, then it is a line, unless they took it. */
@@ -377,7 +400,7 @@ export class Children implements Kind {
   }
 
   private state(child: SessionMetadata): string {
-    if (child.archived) return "archived";
+    if (child.archived) return "put away";
     const { state, detail } = this.stand(child);
     if (state === "waiting") return this.sessions.live(child.id)?.asking ? "waiting for the person" : `waiting ${detail}`;
     if (state === "stopped") return detail === "by you" ? "stopped by the person" : "stopped";

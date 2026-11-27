@@ -40,7 +40,7 @@ export interface SessionMetadata {
   setup?: string;
   /** A prompt waiting for a run slot, kept so a restart does not lose it. */
   queued?: string;
-  /** Put away by the person: not listed or opened until restored. */
+  /** Put away, by the person or (a child that was not kept) when it was done: not listed or opened until restored. */
   archived?: true;
   /** Uploads have been recorded from this session’s creation. */
   tracksUploads?: true;
@@ -61,6 +61,8 @@ export interface SessionMetadata {
   raise?: string;
   /** Code in its parent takes its answers and raises itself: they wait to be taken, and wake nobody. */
   collect?: true;
+  /** Its parent keeps it when it has answered, to tell it more later; without it, it is put away once it is done. */
+  keep?: true;
   /** The schedule or app routine this session is one run of, and when that run was due. */
   schedule?: { id: string; due: string };
   /** An extension keeps it loaded while no one watches (`pispark:hold`), and why. */
@@ -131,6 +133,7 @@ export class SessionStorage {
         (value.note !== undefined && typeof value.note !== "string") ||
         (value.raise !== undefined && typeof value.raise !== "string") ||
         (value.collect !== undefined && value.collect !== true) ||
+        (value.keep !== undefined && value.keep !== true) ||
         (value.ask !== undefined && (!value.ask || !Number.isSafeInteger(value.ask.from) || value.ask.from < 0)) ||
         (value.schedule !== undefined &&
           (!value.schedule ||

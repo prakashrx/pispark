@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { ProcessInfo } from "../../../../server/src/contract/process-protocol";
 import type { Ask, SessionInfo } from "../../../../server/src/contract/protocol";
 import type { Routine, ScheduleSummary } from "../../../../server/src/contract/schedule-protocol";
-import { askLine, everywhere, startedBy, summary, type Sources } from "./work";
+import { askLine, endedState, everywhere, startedBy, summary, type Sources } from "./work";
 
 const NOW = new Date("2026-11-28T10:00:00").getTime();
 const session = (id: string, extra: Partial<SessionInfo> = {}): SessionInfo => ({
@@ -58,6 +58,15 @@ test("a child's ask in a few words: how long it has worked, what it waits for, w
   expect(askLine(child("e", { state: "stopped" }), NOW)).toBe("stopped");
   expect(askLine(child("f", { state: "answered" }), NOW)).toBe("answered");
   expect(askLine(session("g"), NOW)).toBe("");
+});
+
+test("a child that was put away: its row says how the ask ended, from what the conversation heard", () => {
+  expect(endedState("finished")).toBe("answered");
+  expect(endedState("stopped")).toBe("stopped");
+  expect(endedState("stopped by the person")).toBe("stopped");
+  expect(endedState("was stopped by you")).toBe("stopped");
+  expect(endedState("failed")).toBe("failed");
+  expect(endedState(undefined)).toBeUndefined();
 });
 
 test("everything one conversation started is one list of rows of one shape, and only its own", () => {

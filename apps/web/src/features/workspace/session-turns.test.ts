@@ -324,8 +324,21 @@ test("one row per ask: a child's answer folds into its row, its arrival is a qui
     ],
     { running: false },
   );
-  // The row holds the answer, after the line the agent needs.
-  expect(turns[0]!.segments.find((segment) => segment.kind === "session")).toMatchObject({ sessionId: child, title: "Reviewer", answer: "Looks **good**." });
+  // The row holds the answer, after the line the agent needs, and how the ask ended.
+  expect(turns[0]!.segments.find((segment) => segment.kind === "session")).toMatchObject({ sessionId: child, title: "Reviewer", answer: "Looks **good**.", how: "finished" });
+  // An answer a wait took is in that call's result; the row still says how the ask ended, from what the wait names.
+  const waited = buildTurns(
+    [
+      item("user", [text("review the change")]),
+      item("assistant", [call("c1", "pispark_start_session", { brief: "review", title: "Reviewer" }), call("c2", "pispark_wait", {})]),
+      item("toolResult", [text('Started "Reviewer" (session-1).')], { callId: "c1", toolName: "pispark_start_session", details: { id: child } }),
+      item("toolResult", [text('session-1: "Reviewer" stopped by the person:')], { callId: "c2", toolName: "pispark_wait", details: { answers: [{ id: child, how: "stopped by the person" }] } }),
+    ],
+    { running: false },
+  );
+  const row = waited[0]!.segments.find((segment) => segment.kind === "session");
+  expect(row).toMatchObject({ sessionId: child, how: "stopped by the person" });
+  expect(row).not.toHaveProperty("answer");
   // The child's own line is gone; the scheduled run's stays.
   expect(turns[0]!.segments.filter((segment) => segment.kind === "status").map((segment) => segment.kind === "status" && segment.title)).toEqual(["9:00 am run"]);
   // Where the answer arrived, the turn only says so.

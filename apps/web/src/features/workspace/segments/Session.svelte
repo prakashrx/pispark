@@ -2,11 +2,12 @@
   /**
    * One row per ask, at the place it was asked. It changes in place: how the ask stands, how long
    * it has worked, the child's last note or its question, and its answer folded inside. The name
-   * opens the child.
+   * opens the child. A child that was not kept is put away once it is done: its row then says how
+   * the ask ended, and opening it brings the child back.
    */
   import Icon from "../../../lib/ui/Icon.svelte";
   import AskMark from "../../started/AskMark.svelte";
-  import { askLine } from "../../started/work";
+  import { askLine, endedState } from "../../started/work";
   import { useNow } from "../clock.svelte";
   import { useSessions } from "../session-client.svelte";
   import { sessionName } from "../session-presentation";
@@ -28,9 +29,14 @@
   });
   const clock = useNow(() => ask?.state === "working");
   let open = $state(false);
+  // Not in the list any more: put away. What this conversation heard says how its ask ended.
+  const ended = $derived(endedState(segment.how));
+  async function bringBack() {
+    if (await client.restore(segment.sessionId)) client.open(segment.sessionId);
+  }
 </script>
 
-<div class="ask" data-purpose="ask-row" data-state={ask?.state}>
+<div class="ask" data-purpose="ask-row" data-state={ask?.state ?? ended}>
   <div class="line">
     {#if child && ask}
       <button type="button" class="go" onclick={() => client.open(child.id)}>
@@ -38,8 +44,14 @@
         <span class="title"><span class="sr-only">Open </span>{sessionName(child)}</span>
         <span class="state">{askLine(child, clock.now)}</span>
       </button>
+    {:else if looked}
+      <button type="button" class="go" onclick={bringBack}>
+        {#if ended}<AskMark state={ended} />{:else}<Icon name="sessionOut" class="h-3.5 w-3.5 shrink-0" />{/if}
+        <span class="title"><span class="sr-only">Open </span>{segment.title}</span>
+        <span class="state">{ended ?? "put away"}</span>
+      </button>
     {:else}
-      <span class="go"><Icon name="sessionOut" class="h-3.5 w-3.5 shrink-0" /><span class="title">{segment.title}</span><span class="state">{looked ? "archived" : "starting…"}</span></span>
+      <span class="go"><Icon name="sessionOut" class="h-3.5 w-3.5 shrink-0" /><span class="title">{segment.title}</span><span class="state">starting…</span></span>
     {/if}
     {#if segment.answer}
       <button type="button" class="fold" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} the answer from ${segment.title}`} onclick={() => (open = !open)}>

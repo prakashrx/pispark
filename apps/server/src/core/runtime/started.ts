@@ -13,6 +13,8 @@ export interface Listed {
   id: string;
   line: string;
   open: boolean;
+  /** Put away and heard: still found by its id, no longer listed. */
+  away?: boolean;
 }
 /** A child's answer as a wait takes it: the words for the agent, and for extensions how it ended, what it said and the data its side attached. */
 export interface Taken {
@@ -118,7 +120,9 @@ export class Started {
   private async look(owner: string, { id, find }: Fields<"look">): Promise<Answer> {
     if (id === undefined) {
       const all = this.all(owner);
-      return { ok: true, text: all.length ? all.map((each) => `${each.handle}: ${each.line}`).join("\n") : "This session has not started anything." };
+      const here = all.filter((each) => !each.away);
+      if (here.length) return { ok: true, text: here.map((each) => `${each.handle}: ${each.line}`).join("\n") };
+      return { ok: true, text: all.length ? "Everything this session started is done and put away." : "This session has not started anything." };
     }
     const found = this.find(owner, id);
     return found ? found.kind.look(owner, found.id, find) : this.unknown;
@@ -180,9 +184,12 @@ export class Started {
     const open = waited.filter((target) => !answers.has(target.handle)).map((target) => target.handle);
     const closing = [early, open.length ? `Still open: ${open.join(", ")}.` : ""].filter(Boolean).join(" ");
     const taken = waited.flatMap((target) => (answers.has(target.handle) ? [[target.handle, answers.get(target.handle)!] as const] : []));
+    // For clients: the sessions that answered here and how each ended, so the row of each ask can say so.
+    const ended = waited.flatMap((target) => (target.kind.name === "session" && answers.get(target.handle)?.how ? [{ id: target.id, how: answers.get(target.handle)!.how! }] : []));
     return {
       ok: true,
       text: [...taken.map(([handle, answer]) => `${handle}: ${answer.words}`), ...raised.map((wake) => wake.text), closing].filter(Boolean).join("\n\n"),
+      ...(ended.length ? { details: { answers: ended } } : {}),
       // The same, for an extension: each answer by its handle, what was raised, and what is still open.
       data: {
         answers: Object.fromEntries(taken.map(([handle, { words: _words, ...answer }]) => [handle, answer])),

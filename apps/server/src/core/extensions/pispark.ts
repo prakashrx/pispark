@@ -62,7 +62,7 @@ export default function pispark(pi: ExtensionAPI): void {
   tool(
     "start_session",
     "Start a session",
-    "Hand work to another PiSpark session, which runs on its own while this one carries on. It sees only the brief. It answers once, when it is done, and its answer arrives here as a message. Set it up as a person sets up a new session: a folder, an agent and a model.",
+    "Hand work to another PiSpark session, which runs on its own while this one carries on. It sees only the brief. It answers once, when it is done, and its answer arrives here as a message. It is then put away, unless you keep it. Set it up as a person sets up a new session: a folder, an agent and a model.",
     {
       brief: Type.String({ maxLength: 65536, description: "Its first message, complete on its own: the outcome, the limits, and what done means." }),
       title: Type.Optional(Type.String({ maxLength: 200, description: "A short title for it; named from the brief when left out." })),
@@ -74,6 +74,7 @@ export default function pispark(pi: ExtensionAPI): void {
       ),
       folder: Type.Optional(Type.String({ maxLength: 4096, description: "Where it works, absolute or relative to this session's folder; this session's folder when left out." })),
       model: Type.Optional(Type.String({ maxLength: 400, description: "As provider/id; its agent's own model when left out." })),
+      keep: Type.Optional(Type.Boolean({ description: "true keeps it after its answer, so pispark_send can tell it more later with all it knows; pispark_stop then puts it away. Left out, it is put away once it is done." })),
     },
   );
   tool(
@@ -105,7 +106,7 @@ export default function pispark(pi: ExtensionAPI): void {
   tool(
     "send",
     "Send",
-    "Tell something this session started. A session takes text: at rest it is asked anew and answers again; working, it reads the text at its next pause. A process takes raise_on.",
+    "Tell something this session started. A session takes text: working, it reads the text at its next pause; waiting for your answer to what it raised, or kept and at rest, it is asked anew and answers again. A process takes raise_on.",
     {
       id: id("What to tell"),
       text: Type.Optional(Type.String({ maxLength: 65536, description: "For a session: the message." })),
@@ -135,7 +136,9 @@ export default function pispark(pi: ExtensionAPI): void {
       find: Type.Optional(Type.String({ maxLength: 200, pattern: "^[^\\r\\n]+$", description: "For a process: literal text to search for in its output, case-insensitive." })),
     },
   );
-  tool("stop", "Stop", "Stop something this session started: a session and what it started, a process, or a schedule (which is removed).", { id: id("What to stop") });
+  tool("stop", "Stop", "Stop something this session started: a session and what it started, a process, or a schedule (which is removed). A session you kept that is at rest is put away.", {
+    id: id("What to stop"),
+  });
   tool(
     "raise",
     "Raise",
@@ -173,7 +176,7 @@ export default function pispark(pi: ExtensionAPI): void {
         ? `When the person asks to do something later or repeatedly in this session, use pispark_schedule; PiSpark asks them to confirm. The server's local time now is ${localNow()}.`
         : "",
       has("start_session")
-        ? `For work that can run on its own (research, a long job, one of several parallel parts), hand it to another session with pispark_start_session and carry on. Each session answers once, when it is done. To use the answers in this turn, call pispark_wait (all of them, or the first with for 'any'); otherwise end your turn and each answer arrives here as a message. What this session starts gets a short id such as session-1 or process-2: pispark_look shows them, pispark_send tells one something, pispark_stop stops one.${
+        ? `For work that can run on its own (research, a long job, one of several parallel parts), hand it to another session with pispark_start_session and carry on. Each session answers once, when it is done, and is then put away; start it with keep: true if you will tell it more after its answer. To use the answers in this turn, call pispark_wait (all of them, or the first with for 'any'); otherwise end your turn and each answer arrives here as a message. What this session starts gets a short id such as session-1 or process-2: pispark_look shows them, pispark_send tells one something, pispark_stop stops one.${
             agent ? ` A session you start uses the Default agent and that agent's model unless you say otherwise; this session's agent is "${agent}"${model ? ` and its model is "${model}"` : ""}, to pass when it should work as you do.` : ""
           }`
         : "",
