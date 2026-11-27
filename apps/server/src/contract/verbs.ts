@@ -57,7 +57,8 @@ export type Verb =
 /**
  * PiSpark's answer: text for the agent; for clients what the text names, as the tool call's
  * `details`; and for extensions what the text says, as `data`: a start's `{ id }` (the handle), a
- * wait's `{ answers, raised, open }`.
+ * wait's `{ answers, raised, open }`, and for a start refused over its agent, `{ agents }`: the
+ * ones there are, each `{ id, name }`.
  */
 export interface Answer {
   ok: boolean;

@@ -3,6 +3,7 @@ import type { StatusDetails, WokenDetails } from "../../contract/wake-protocol.j
 import { isAbsolute, join } from "node:path";
 import type { Ask, SessionDoc } from "../../contract/protocol.js";
 import { AgentError } from "../agents/format.js";
+import type { AgentStore } from "../agents/store.js";
 import { validateText, type RunResult, type Session } from "./session.js";
 import { toolSessionTitle } from "./session-title.js";
 import { runtimeError } from "./errors.js";
@@ -23,13 +24,16 @@ function dataText(data: unknown, room: number): string {
 const cut = (text: string) => (text.length > 8192 ? `${text.slice(0, 8192)}…\n(cut; pispark_look shows what it last said)` : text);
 const short = (text: string) => (text.length > 160 ? `${text.slice(0, 159)}…` : text);
 
-/** Why a session could not be started, for the agent that asked for it. */
-function notStarted(error: unknown): string {
-  if (error instanceof AgentError) return `That agent definition cannot be used: ${error.code}${error.detail ? ` (${error.detail})` : ""}.`;
+/** Why a session could not be started, for whoever asked for it. A wrong agent is answered with the ones there are. */
+function notStarted(error: unknown, agents: AgentStore): Answer {
+  if (error instanceof AgentError) return { ok: false, text: `That agent definition cannot be used: ${error.code}${error.detail ? ` (${error.detail})` : ""}.` };
   const { code } = runtimeError(error, "execution");
-  if (code === "agent") return "There is no such agent, or it cannot be used now.";
-  if (code === "invalid-input" || code === "folder") return "That folder cannot be used: it must exist, and a project agent works only in its own.";
-  return `The session could not be started (${code}).`;
+  if (code === "agent") {
+    const usable = agents.list().filter((agent) => agent.valid).map(({ id, name }) => ({ id, name }));
+    return { ok: false, text: `There is no such agent, or it cannot be used now. The agents here: ${usable.map(({ id }) => id).join(", ")}.`, data: { agents: usable } };
+  }
+  if (code === "invalid-input" || code === "folder") return { ok: false, text: "That folder cannot be used: it must exist, and a project agent works only in its own." };
+  return { ok: false, text: `The session could not be started (${code}).` };
 }
 
 type Report = NonNullable<Wake["report"]>;
@@ -86,7 +90,7 @@ export class Children implements Kind {
         { parent: parent.id, ...(title ? { title } : {}), ...(request.collect ? { collect: true as const } : {}) },
       );
     } catch (error) {
-      return { ok: false, text: notStarted(error) };
+      return notStarted(error, this.sessions.agents);
     }
     const session = this.sessions.get(doc.id);
     this.down(session, parent, "ask", request.brief, request.data, (brief) => void session.start(brief, this.from(parent)).completion.catch(() => {}));

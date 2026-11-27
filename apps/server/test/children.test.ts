@@ -241,7 +241,7 @@ test("setup: the Default agent unless one is named, the parent's folder unless o
 
     // What can't be used is said, and nothing is started for it.
     const before = f.children(parent.id).length;
-    assert.equal(await f.answer(parent.id, say("start_session", { brief: "e", agent: "nobody" })), "There is no such agent, or it cannot be used now.");
+    assert.match(await f.answer(parent.id, say("start_session", { brief: "e", agent: "nobody" })), /^There is no such agent, or it cannot be used now\. The agents here: (.+, )?default(, .+)?\.$/);
     assert.match(await f.answer(parent.id, say("start_session", { brief: "f", folder: join(f.folder, "missing") })), /^That folder cannot be used/);
     assert.match(await f.answer(parent.id, say("start_session", { brief: "g", model: "no-slash" })), /not well formed/);
     assert.equal(f.children(parent.id).length, before);

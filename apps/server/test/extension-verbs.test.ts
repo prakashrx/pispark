@@ -112,7 +112,8 @@ export default function (pi) {
       const c = await review("both reviews", found);
       const last = await host.wait({ ids: [c.data.id] });
       const noted = await host.note("The pipeline is done");
-      writeFileSync(join(ctx.cwd, "pipeline.json"), JSON.stringify({ ids: [a.data.id, b.data.id, c.data.id], found, final: last.data.answers[c.data.id], noted: noted.text, open: last.data.open }));
+      const refused = await host.startSession({ brief: "Review nothing", agent: "nobody", collect: true });
+      writeFileSync(join(ctx.cwd, "pipeline.json"), JSON.stringify({ ids: [a.data.id, b.data.id, c.data.id], found, final: last.data.answers[c.data.id], noted: noted.text, open: last.data.open, refused }));
     }, 50);
   });
 }
@@ -136,6 +137,9 @@ test("an extension runs a two-reviewer pipeline in code: the same verbs, data bo
     assert.deepEqual(done.final.data, { reviewed: done.found, askedBy: "a session", verdict: "both read" });
     assert.equal(done.final.how, "finished");
     assert.deepEqual(done.open, []);
+    // A start refused over its agent says which agents there are, as data for code.
+    assert.equal(done.refused.ok, false);
+    assert.ok(done.refused.data.agents.some((agent: { id: string; name: string }) => agent.id === "reviewer" && agent.name === "Reviewer"));
     assert.equal(done.noted, "Noted for the person.");
     // PiSpark decided no order and ran no model: the parent's agent took no turn, and neither did a reviewer's.
     assert.equal(f.provider.requests.length, 0);
