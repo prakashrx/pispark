@@ -140,7 +140,7 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
     await f.runtime.queue(a.id, "also-not-run", "steer");
     assert.equal(f.runtime.session(a.id).queue.followUp, 1);
     await f.runtime.cancel(a.id);
-    assert.deepEqual(await runA.completion, { outcome: "cancelled" });
+    assert.deepEqual(await runA.completion, { outcome: "cancelled", by: "person" });
     assert.deepEqual(f.runtime.session(a.id).queue, {
       steering: 0,
       followUp: 0,
@@ -760,7 +760,7 @@ test("SessionRuntime: a streaming turn remains active until explicitly cancelled
     await eventually(() => f.provider.requests.length === 1);
     assert.equal(f.runtime.session(a.id).status, "running");
     await f.runtime.cancel(a.id);
-    assert.deepEqual(await run.completion, { outcome: "cancelled" });
+    assert.deepEqual(await run.completion, { outcome: "cancelled", by: "person" });
     assert.equal(f.provider.requests[0]?.aborted, true);
     assert.equal(f.runtime.session(a.id).status, "idle");
   } finally {

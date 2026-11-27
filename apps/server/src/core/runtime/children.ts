@@ -212,6 +212,20 @@ export class Children implements Kind {
   }
 
   /**
+   * The person said something to a session. If it is a child still working on what its parent
+   * asked, that changes the parent's work, so the parent gets a note of it. A child at rest is
+   * simply asked by the person: its answer is theirs, and the parent is told nothing.
+   */
+  told(sessionId: string, text: string): void {
+    const child = this.sessions.storage.read(sessionId);
+    const parent = this.parentOf(child);
+    if (!parent || !child.ask) return;
+    const title = titleOf(child);
+    const line = `The person told the session "${title}" (${this.handles.of(parent.id, this.name, child.id)}): ${text}`;
+    void this.line(parent, line, { session: child.id, title, how: `was told by you: ${short(text)}` }).catch((error: unknown) => this.failed(parent.id, error));
+  }
+
+  /**
    * A child's run ended. Its parent hears once per ask, not once per run: when the child is at
    * rest (nothing it started is still due to wake it, and nothing it raised waits for an answer),
    * or at once when it was stopped or failed, since it will not get there by itself. A run nobody
@@ -249,10 +263,20 @@ export class Children implements Kind {
     const data = session.resultData;
     const report: Report = { session: child.id, title, how, text: body, ...(data !== undefined ? { data } : {}) };
     const answer = { source: { kind: "session" as const, id: child.id, label: `${title} · ${how}` }, due: this.due(), policy: "queue" as const, word: "answer" as const, report };
+    const handle = this.handles.of(parent.id, this.name, child.id);
+    // The person stopped it: its parent gets a note of that, not a turn. It is still the answer to the ask, so a wait takes it.
+    if (result.by === "person")
+      return void this.sessions.deliver(parent.id, {
+        ...answer,
+        report: { ...report, how: "stopped by the person" },
+        text: `The person stopped the session "${title}" (${handle}).`,
+        card: { title, how: "was stopped by you", start: 0 },
+        quiet: true,
+      });
     // A run the clock asked for, not the parent's agent: a line, so a schedule does not cost the parent a turn each time.
     if (child.schedule) return void this.sessions.deliver(parent.id, { ...answer, text: `The session "${title}" you started ${how}.`, card: { title, how, start: 0 }, quiet: true });
     // The line the agent needs; the card says it already, so it shows the answer after it.
-    const heading = `The session "${title}" (${this.handles.of(parent.id, this.name, child.id)}) you started ${how}:\n\n`;
+    const heading = `The session "${title}" (${handle}) you started ${how}:\n\n`;
     void this.sessions.deliver(parent.id, { ...answer, text: `${heading}${body}${dataText(data, 56 * 1024 - body.length)}`, card: { title, how, start: heading.length } });
   }
 

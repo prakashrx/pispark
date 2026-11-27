@@ -232,8 +232,9 @@ export class SessionRuntime {
             if (answer?.action === "send") [text, quiet] = [answer.text, undefined];
           }
           if (!quiet) return text;
-          const { title = wake.source.label, how = "ended" } = wake.report ?? {};
-          await this.get(id).addStatus(text, { session: wake.source.id, title, how, ok: how === "finished" });
+          // A line reads as the person sees it: the card's words.
+          const { title = wake.source.label, how = "ended" } = wake.card ?? {};
+          await this.get(id).addStatus(text, { session: wake.source.id, title, how, ok: wake.report?.how === "finished" });
           return undefined;
         },
         send: (id, text, details) => {
@@ -1020,7 +1021,9 @@ export class SessionRuntime {
   start(id: string, text: string, attachments: readonly string[] = []): RunHandle {
     validateText(text);
     if (!this.accepting) throw new RuntimeError("closed");
-    return this.get(id).start(this.withAttachments(id, text, attachments));
+    const run = this.get(id).start(this.withAttachments(id, text, attachments));
+    this.children.told(id, text);
+    return run;
   }
   /**
    * Sends one of the person's messages again, edited: Pi's tree navigation moves the session to just
@@ -1055,7 +1058,9 @@ export class SessionRuntime {
   async queue(id: string, text: string, kind: "steer" | "follow-up", attachments: readonly string[] = []): Promise<"queued" | "handled"> {
     validateText(text);
     if (kind !== "steer" && kind !== "follow-up") throw new RuntimeError("invalid-input");
-    return this.get(id).queue(this.withAttachments(id, text, attachments), kind);
+    const outcome = await this.get(id).queue(this.withAttachments(id, text, attachments), kind);
+    this.children.told(id, text);
+    return outcome;
   }
 
   // ---- Attachments ----------------------------------------------------------------------------

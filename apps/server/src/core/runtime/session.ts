@@ -88,6 +88,8 @@ export interface SessionSummary {
 export interface RunResult {
   outcome: "completed" | "cancelled" | "failed";
   error?: RuntimeErrorCode;
+  /** Cancelled by the person, with Stop. */
+  by?: "person";
 }
 
 function answerOf(entry: SessionEntry | undefined): string | undefined {
@@ -162,6 +164,8 @@ export interface SessionHost {
 interface Run {
   providerError?: "execution" | "usage-limit";
   cancelled: boolean;
+  /** The person cancelled it, with Stop. */
+  byPerson?: true;
   settled: boolean;
   /** Settling: no new steer or follow-up may join this run. */
   admissionClosed?: boolean;
@@ -1228,7 +1232,11 @@ export class Session {
         code: this.error,
       });
       this.changed();
-      const result: RunResult = this.error ? { outcome: "failed", error: this.error } : { outcome: run.cancelled ? "cancelled" : "completed" };
+      const result: RunResult = this.error
+        ? { outcome: "failed", error: this.error }
+        : run.cancelled
+          ? { outcome: "cancelled", ...(run.byPerson ? { by: "person" as const } : {}) }
+          : { outcome: "completed" };
       setImmediate(() => {
         this.reportTools();
         host.ended?.(this, result);
@@ -1394,6 +1402,7 @@ export class Session {
     if (!this.cancelling) {
       this.host.logger.event("session.cancel", { sessionId: this.id, outcome: "completed", code: source });
       if (this.run) this.run.cancelled = true;
+      if (this.run && source === "command") this.run.byPerson = true;
       // Questions an extension is waiting on, or an answered one waiting for a slot, would hold the run open.
       this.ui?.dismissAll();
       this.wake();

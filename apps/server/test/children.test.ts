@@ -627,3 +627,87 @@ test("the real case in small: several processes, some already taken, one answer 
     await f.cleanup();
   }
 });
+
+// ---- Reaching in: the person can do to a child what its parent can, and the parent gets a note of it ----
+
+test("reaching in: the person stops a working child; its parent gets a note of it, not a turn", async () => {
+  const f = await fixture();
+  try {
+    const parent = await f.runtime.create({ folder: f.folder });
+    const brief = steps(["start_process", { command: `node -e "setTimeout(() => {}, 20000)"`, title: "long job" }], ["wait"]);
+    await f.runtime.start(parent.id, say("start_session", { brief, title: "Runner" })).completion;
+    const [child] = f.children(parent.id);
+    assert.ok(child);
+    await eventually(() => f.runtime.listProcesses(child.id).length === 1);
+    await pause(300);
+    await f.runtime.cancel(child.id);
+
+    await eventually(() => f.runtime.items(parent.id, {}).items.some((item) => item.customType === STATUS_ENTRY));
+    const line = f.runtime.items(parent.id, {}).items.find((item) => item.customType === STATUS_ENTRY)!;
+    assert.equal(text(line), 'The person stopped the session "Runner" (session-1).');
+    assert.deepEqual(line.details, { session: child.id, title: "Runner", how: "was stopped by you", ok: false });
+    // The ask is closed, and nothing woke the parent's agent.
+    assert.equal(f.metadata(child.id).ask, undefined);
+    await pause(300);
+    assert.equal(f.runtime.items(parent.id, {}).items.filter((item) => item.customType === WOKEN_ENTRY).length, 0);
+    f.runtime.stopProcess(child.id, f.runtime.listProcesses(child.id)[0]!.id);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("reaching in: a parent waiting for a child the person stops gets that as the child's answer", async () => {
+  const f = await fixture();
+  try {
+    const parent = await f.runtime.create({ folder: f.folder });
+    const brief = steps(["start_process", { command: `node -e "setTimeout(() => {}, 20000)"`, title: "long job" }], ["wait"]);
+    const run = f.runtime.start(parent.id, steps(["start_session", { brief, title: "Runner" }], ["wait"]));
+    await eventually(() => f.children(parent.id).length === 1);
+    const [child] = f.children(parent.id);
+    await eventually(() => f.runtime.listProcesses(child!.id).length === 1);
+    await pause(300);
+    await f.runtime.cancel(child!.id);
+    await run.completion;
+    const waited = text(f.runtime.items(parent.id, {}).items.filter((item) => item.role === "toolResult").at(-1)!);
+    assert.match(waited, /^session-1: "Runner" stopped by the person:\n\n/);
+    // Taken by the wait: no line is added as well.
+    await pause(300);
+    assert.equal(f.runtime.items(parent.id, {}).items.filter((item) => item.customType === STATUS_ENTRY).length, 0);
+    f.runtime.stopProcess(child!.id, f.runtime.listProcesses(child!.id)[0]!.id);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("reaching in: telling a child that works for its parent is noted for the parent; asking one at rest is not", async () => {
+  const f = await fixture();
+  try {
+    const parent = await f.runtime.create({ folder: f.folder });
+    const slow = `node -e "setTimeout(() => console.log('built'), 3000)"`;
+    await f.runtime.start(parent.id, say("start_session", { brief: say("start_process", { command: slow, title: "build" }), title: "Builder" })).completion;
+    const [child] = f.children(parent.id);
+    assert.ok(child);
+    await f.idle(child.id);
+    const lines = () => f.runtime.items(parent.id, {}).items.filter((item) => item.customType === STATUS_ENTRY);
+
+    // The child still owes its parent an answer: what the person tells it changes the parent's work.
+    await f.runtime.start(child.id, "use the staging database").completion;
+    await eventually(() => lines().length === 1);
+    assert.equal(text(lines()[0]!), 'The person told the session "Builder" (session-1): use the staging database');
+    assert.deepEqual(lines()[0]!.details, { session: child.id, title: "Builder", how: "was told by you: use the staging database" });
+
+    // It answers its parent once, with what it said to the person in it.
+    await eventually(() => f.heard(parent.id, child.id).length === 1, 20_000);
+    assert.match(f.heard(parent.id, child.id)[0]!, /local:use the staging database/);
+    await f.idle(parent.id);
+    await f.idle(child.id);
+
+    // At rest, the person simply asks it: the answer is theirs, and the parent is told nothing.
+    await f.runtime.start(child.id, "and what about the tests?").completion;
+    await pause(300);
+    assert.equal(lines().length, 1);
+    assert.equal(f.heard(parent.id, child.id).length, 1);
+  } finally {
+    await f.cleanup();
+  }
+});
