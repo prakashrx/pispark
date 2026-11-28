@@ -1,0 +1,2 @@
+# Deliberately broken: a test that a component which fails to compile is reported.
+apps/server/test/fixtures/view-extension/Broken.svelte
