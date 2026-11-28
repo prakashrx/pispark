@@ -20,8 +20,10 @@
   <summary
     class={variant === "plain"
       ? "cursor-pointer text-[0.8125rem] font-medium text-[var(--interactive-text)]"
-      : "cursor-pointer font-medium text-foreground"}>{title}</summary
+      : "cursor-pointer font-medium text-foreground"}
   >
+    {title}
+  </summary>
   <div class={variant === "plain" ? "mt-2 space-y-2" : "mt-3 space-y-3"}>
     {#if help}<p class="text-muted-foreground">{help}</p>{/if}{@render children()}
   </div>

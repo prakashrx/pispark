@@ -227,8 +227,10 @@
               disabled={option.disabled}
               class="block w-full rounded-lg px-2.5 py-2 text-left [overflow-wrap:anywhere] hover:bg-[var(--muted)] aria-selected:font-medium aria-selected:text-[var(--interactive-text)] disabled:opacity-50"
               class:bg-[var(--muted)]={index === active}
-              onclick={() => choose(option)}>{option.label}</button
+              onclick={() => choose(option)}
             >
+              {option.label}
+            </button>
           {:else}<p class="px-2.5 py-2 text-muted-foreground" role="status">
               {loading ? "Loading…" : error ? "Options unavailable" : options.length ? "No matches" : emptyText}
             </p>{/each}

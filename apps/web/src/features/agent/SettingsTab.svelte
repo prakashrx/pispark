@@ -65,15 +65,17 @@
     <div class="chips">
       <span class="chip" title="Every agent starts from Default.">Default</span>
       {#each base as parent (parent)}
-        <span class="chip"
-          >{nameOf(parent)}{#if !readOnly}<button
+        <span class="chip">
+          {nameOf(parent)}{#if !readOnly}<button
               type="button"
               class="chip-x"
               aria-label={`Stop building on ${nameOf(parent)}`}
               disabled={client.busy}
-              onclick={() => removeParent(parent)}><Icon name="close" class="h-3 w-3" /></button
-            >{/if}</span
-        >
+              onclick={() => removeParent(parent)}
+            >
+              <Icon name="close" class="h-3 w-3" />
+            </button>{/if}
+        </span>
       {/each}
       {#if parentOptions.length && !readOnly && id !== "default"}
         <Selector label="Build on another agent" options={parentOptions} bind:value={addParent} action>
@@ -103,8 +105,10 @@
             class="ui-button"
             data-variant="secondary"
             data-size="compact"
-            disabled={home.trim() === (definition?.home ?? "") || client.busy}>Save</button
-          >{/if}
+            disabled={home.trim() === (definition?.home ?? "") || client.busy}
+          >
+            Save
+          </button>{/if}
       </form>
     </section>
   {/if}
@@ -120,9 +124,9 @@
         <h2 class="setting-title">Delete this agent</h2>
         <p class="setting-sub">Sessions that used it keep their messages. Shared resources stay in the library.</p>
       </div>
-      <button type="button" class="ui-button" data-variant="destructive" data-size="compact" onclick={() => (askingDelete = true)}
-        >Delete agent</button
-      >
+      <button type="button" class="ui-button" data-variant="destructive" data-size="compact" onclick={() => (askingDelete = true)}>
+        Delete agent
+      </button>
     </section>
   {/if}
 </div>

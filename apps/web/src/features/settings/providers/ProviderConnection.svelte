@@ -25,9 +25,9 @@
       <h4 class="text-sm font-semibold">Sign-in</h4>
       <p class="text-[0.8125rem] text-muted-foreground mt-0.5">Pi supplies the steps. Credentials stay on the PiSpark host.</p>
     </div>
-    {#if auth.view || auth.error}<Button size="compact" onclick={onreset}
-        >{auth.view && auth.view.state !== "pending" ? "Start over" : "Cancel sign-in"}</Button
-      >{/if}
+    {#if auth.view || auth.error}<Button size="compact" onclick={onreset}>
+        {auth.view && auth.view.state !== "pending" ? "Start over" : "Cancel sign-in"}
+      </Button>{/if}
   </div>
   {#if auth.error}<p class="inline-note" data-tone="danger" role="alert">
       {auth.error}
@@ -46,9 +46,9 @@
     <div class="space-y-3 text-sm text-muted-foreground" aria-live="polite">
       {#each auth.view.events as event}
         {#if event.type === "auth_url"}<p>{event.instructions}</p>
-          <a class="settings-link break-all !whitespace-normal" href={href(event.url)} target="_blank" rel="noopener noreferrer"
-            >Open sign-in page ↗</a
-          >
+          <a class="settings-link break-all !whitespace-normal" href={href(event.url)} target="_blank" rel="noopener noreferrer">
+            Open sign-in page ↗
+          </a>
         {:else if event.type === "device_code"}<p>Enter this code on the provider's device page.</p>
           <p class="inline-block font-mono text-2xl tracking-[0.2em] text-foreground bg-[var(--muted)] rounded-xl px-4 py-2">
             {event.userCode}
@@ -57,8 +57,10 @@
             class="settings-link block break-all !whitespace-normal"
             href={href(event.verificationUri)}
             target="_blank"
-            rel="noopener noreferrer">{event.verificationUri}</a
-          >{#if event.expiresInSeconds}<p class="text-xs">
+            rel="noopener noreferrer"
+          >
+            {event.verificationUri}
+          </a>{#if event.expiresInSeconds}<p class="text-xs">
               Provider expiry: {event.expiresInSeconds} seconds from issuance.
             </p>{/if}
         {:else}<p>{event.message}</p>
@@ -66,8 +68,10 @@
               class="settings-link block break-all !whitespace-normal"
               href={href(link.url)}
               target="_blank"
-              rel="noopener noreferrer">{link.label ?? link.url}</a
-            >{/each}{/if}
+              rel="noopener noreferrer"
+            >
+              {link.label ?? link.url}
+            </a>{/each}{/if}
       {/each}
     </div>
     {#if auth.view.prompt}{#key auth.view.prompt.id}<AuthPrompt
@@ -85,14 +89,15 @@
           onclick={() => {
             if (!auth.busy && method.interactive) void auth.start(provider.id, method.type);
           }}
-          ><span class="font-medium">{method.label}</span><span class="block text-xs text-muted-foreground mt-0.5"
-            >{method.interactive
+        >
+          <span class="font-medium">{method.label}</span><span class="block text-xs text-muted-foreground mt-0.5">
+            {method.interactive
               ? method.type === "oauth"
                 ? "Browser, device or code prompts"
                 : "Paste a key or answer host prompts"
-              : "Host setup only"}</span
-          ></button
-        >{:else}<p class="text-sm text-muted-foreground">No sign-in method supplied.</p>{/each}
+              : "Host setup only"}
+          </span>
+        </button>{:else}<p class="text-sm text-muted-foreground">No sign-in method supplied.</p>{/each}
     </div>
   {/if}
   <details class="text-xs text-muted-foreground">

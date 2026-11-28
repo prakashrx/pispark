@@ -53,8 +53,9 @@
         onclick={() => (value = tab.id)}
         onkeydown={(event) => navigate(event, tab.id)}
         class="tab"
-        >{tab.label}{#if tab.count !== undefined}<span class="count">{tab.count}</span>{/if}</button
       >
+        {tab.label}{#if tab.count !== undefined}<span class="count">{tab.count}</span>{/if}
+      </button>
     {/each}
   </div>
   {#each tabs as tab (tab.id)}

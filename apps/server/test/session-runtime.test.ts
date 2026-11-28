@@ -49,7 +49,12 @@ async function fixture(logger?: SafeLogger) {
   const configuration = h.configuration;
   const runtime = new SessionRuntime(configuration, undefined, logger);
   const sessionsDir = join(h.home, "sessions");
-  const transcript = async (id: string) => join(sessionsDir, id, (await readdir(join(sessionsDir, id))).find((n) => n.endsWith(".jsonl"))!);
+  const transcript = async (id: string) =>
+    join(
+      sessionsDir,
+      id,
+      (await readdir(join(sessionsDir, id))).find((n) => n.endsWith(".jsonl"))!,
+    );
   /** Write an extension file into agent `agent`. */
   const extension = async (agent: string, name: string, source: string) => {
     const dir = join(h.home, "agents", agent, "extensions");

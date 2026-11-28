@@ -68,9 +68,9 @@
           >
             <span class="call-dot" aria-hidden="true"></span>
             <span class="call-label">{rowLabel(call)}</span>
-            {#if call.status === "error"}<span class="call-state">failed</span>{:else if call.status === "blocked"}<span class="call-state"
-                >blocked</span
-              >{:else if call.status === "unfinished"}<span class="call-state">didn’t finish</span>{/if}
+            {#if call.status === "error"}<span class="call-state">failed</span>{:else if call.status === "blocked"}<span class="call-state">
+                blocked
+              </span>{:else if call.status === "unfinished"}<span class="call-state">didn’t finish</span>{/if}
           </button>
           {#if openCall === call.id}
             {@const Detail = resolveToolView(call.name).detail ?? ToolDetail}

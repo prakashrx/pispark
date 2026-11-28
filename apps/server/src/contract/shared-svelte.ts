@@ -7,6 +7,7 @@ export const SHARED_SVELTE = [
   "svelte",
   "svelte/internal/client",
   "svelte/internal/disclose-version",
+  "svelte/internal/init-operations",
   "svelte/store",
   "svelte/transition",
   "svelte/animate",

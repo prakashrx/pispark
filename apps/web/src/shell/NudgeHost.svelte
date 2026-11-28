@@ -28,15 +28,17 @@
     >
       <div class="top">
         <IdentityMark name={nudge.agent} />
-        <span class="what"
-          ><span class="line"><span class="mark" aria-hidden="true">?</span><strong class="name">{nudge.name}</strong></span><span
-            class="sub">{nudge.question ?? "Needs you"}</span
-          ></span
-        >
+        <span class="what">
+          <span class="line"><span class="mark" aria-hidden="true">?</span><strong class="name">{nudge.name}</strong></span><span
+            class="sub"
+          >
+            {nudge.question ?? "Needs you"}
+          </span>
+        </span>
         <a class="open" href={href({ name: "session", id: nudge.id })} onclick={() => attention.dismissNudge()}>Open</a>
-        <button type="button" class="close" aria-label="Dismiss" onclick={() => attention.dismissNudge()}
-          ><Icon name="close" class="h-4 w-4" /></button
-        >
+        <button type="button" class="close" aria-label="Dismiss" onclick={() => attention.dismissNudge()}>
+          <Icon name="close" class="h-4 w-4" />
+        </button>
       </div>
       {#if deviceNotifications.offerable}<div class="offer">
           <Icon name="bell" class="h-4 w-4 shrink-0 text-muted-foreground" />

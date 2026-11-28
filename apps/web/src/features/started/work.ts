@@ -96,18 +96,16 @@ function background(owner: SessionInfo, from: Sources, now: number): Work[] {
   return [
     ...from.processes
       .filter((p) => p.sessionId === owner.id)
-      .map(
-        (p): Work => ({
-          key: `process:${p.id}`,
-          kind: "process",
-          ref: p.id,
-          title: processName(p),
-          detail: processState(p, now),
-          open: true,
-          owner,
-          of,
-        }),
-      ),
+      .map((p): Work => ({
+        key: `process:${p.id}`,
+        kind: "process",
+        ref: p.id,
+        title: processName(p),
+        detail: processState(p, now),
+        open: true,
+        owner,
+        of,
+      })),
     ...(owner.held
       ? [
           {
@@ -132,19 +130,17 @@ export function startedBy(owner: SessionInfo, from: Sources, now: number): Work[
   return [
     ...from.sessions
       .filter((s) => s.parent === owner.id && s.ask)
-      .map(
-        (s): Work => ({
-          key: `session:${s.id}`,
-          kind: "session",
-          ref: s.id,
-          title: sessionName(s),
-          detail: askLine(s, now),
-          state: s.ask!.state,
-          open: OPEN.includes(s.ask!.state),
-          owner,
-          of,
-        }),
-      ),
+      .map((s): Work => ({
+        key: `session:${s.id}`,
+        kind: "session",
+        ref: s.id,
+        title: sessionName(s),
+        detail: askLine(s, now),
+        state: s.ask!.state,
+        open: OPEN.includes(s.ask!.state),
+        owner,
+        of,
+      })),
     ...background(owner, from, now),
   ];
 }

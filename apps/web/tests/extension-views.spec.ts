@@ -198,6 +198,8 @@ test("an extension offers whole views of the session: the person switches, the c
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(show).toBeVisible();
   expect(await fits()).toBe(true);
+  // The header is drawn again for the narrow layout: measure the switch once it is settled there.
+  await expect.poll(async () => (await show.boundingBox())?.width ?? 0).toBeGreaterThan(0);
   const track = (await show.boundingBox())!;
   expect(track.x).toBeGreaterThanOrEqual(0);
   expect(track.x + track.width).toBeLessThanOrEqual(390);

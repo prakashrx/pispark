@@ -15,13 +15,13 @@
 <span class="status-mark" data-kind={kind} title={label}>
   {#if kind === "busy"}<span class="spin" aria-hidden="true"></span>
   {:else if kind === "fresh"}<span class="dot" aria-hidden="true"></span>
-  {:else if kind === "waiting"}<svg class="glyph clock" viewBox="0 0 20 20" aria-hidden="true"
-      ><circle cx="10" cy="10" r="7.25" /><path d="M10 6v4l2.5 1.5" /></svg
-    >
+  {:else if kind === "waiting"}<svg class="glyph clock" viewBox="0 0 20 20" aria-hidden="true">
+      <circle cx="10" cy="10" r="7.25" /><path d="M10 6v4l2.5 1.5" />
+    </svg>
   {:else}<span class="glyph round" aria-hidden="true">{kind === "attention" ? "?" : "!"}</span>{/if}
-  {#if words}<span class="word"
-      >{label}{#if detail}<span class="detail">{` ${detail}`}</span>{/if}</span
-    >
+  {#if words}<span class="word">
+      {label}{#if detail}<span class="detail">{` ${detail}`}</span>{/if}
+    </span>
   {:else}<span class="sr-only">{label}{detail ? ` ${detail}` : ""}</span>{/if}
 </span>
 

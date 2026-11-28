@@ -78,15 +78,16 @@
       role="img"
       aria-label={`Backend: ${client.connection}`}
       title={`Backend: ${client.connection}`}
-      >{#if backend !== "ok"}<span aria-hidden="true">{backend === "offline" ? "Offline" : "Connecting…"}</span>{/if}</span
     >
+      {#if backend !== "ok"}<span aria-hidden="true">{backend === "offline" ? "Offline" : "Connecting…"}</span>{/if}
+    </span>
     <span class="grow"></span>
     {#if screen}
       <a class="new-round" href="#/new" aria-label="New session"><Icon name="plus" class="h-5 w-5" /></a>
     {:else if layout.size === "expanded"}
-      <button type="button" class="tap" aria-label="Hide sidebar" aria-expanded="true" onclick={() => layout.toggleSidebar()}
-        ><Icon name="collapse" class="h-4 w-4" /></button
-      >
+      <button type="button" class="tap" aria-label="Hide sidebar" aria-expanded="true" onclick={() => layout.toggleSidebar()}>
+        <Icon name="collapse" class="h-4 w-4" />
+      </button>
     {/if}
   </div>
 
@@ -147,33 +148,33 @@
             </div>
           {:else}<p class="empty">No sessions yet.</p>{/if}
         {/each}
-        {#if client.archivedCount}<a class="nav-item archived" href="#/archived" aria-current={at("archived")}
-            ><Icon name="archive" class="h-4 w-4" /><span class="flex-1">Archived</span>
-            <span class="count">{client.archivedCount}</span></a
-          >{/if}
+        {#if client.archivedCount}<a class="nav-item archived" href="#/archived" aria-current={at("archived")}>
+            <Icon name="archive" class="h-4 w-4" /><span class="flex-1">Archived</span>
+            <span class="count">{client.archivedCount}</span>
+          </a>{/if}
       {/if}
     </nav>
   </div>
 
   <div class="foot" class:bar={screen}>
-    {#if client.host.available}<a class="footrow" href={href({ name: "settings", section: "about" })} data-purpose="update-available"
-        ><Icon name="arrowUp" class="h-4 w-4 shrink-0" /><span class="flex-1 truncate">Update available · v{client.host.available}</span></a
-      >{/if}
-    {#if client.schedules.paused}<a class="footrow" href={href({ name: "background" })} data-purpose="runs-paused"
-        ><Icon name="clock" class="h-4 w-4 shrink-0" /><span class="flex-1 truncate">Unattended runs paused</span></a
-      >{/if}
+    {#if client.host.available}<a class="footrow" href={href({ name: "settings", section: "about" })} data-purpose="update-available">
+        <Icon name="arrowUp" class="h-4 w-4 shrink-0" /><span class="flex-1 truncate">Update available · v{client.host.available}</span>
+      </a>{/if}
+    {#if client.schedules.paused}<a class="footrow" href={href({ name: "background" })} data-purpose="runs-paused">
+        <Icon name="clock" class="h-4 w-4 shrink-0" /><span class="flex-1 truncate">Unattended runs paused</span>
+      </a>{/if}
     <div class="dests">
-      <a class="nav-item" href="#/agents" aria-current={at("agents")} onclick={() => client.agents.collection()}
-        ><Icon name="people" class="h-4 w-4" /><span class="name">Agents</span></a
-      >
-      <a class="nav-item" href="#/background" aria-current={at("background")}
-        ><Icon name="clock" class="h-4 w-4" /><span class="name">Background</span>{#if background}<span class="count"
-            ><span class="sr-only">: </span>{background}</span
-          >{/if}</a
-      >
-      <a class="nav-item" href="#/settings" aria-current={at("settings")}
-        ><Icon name="settings" class="h-4 w-4" /><span class="name">Settings</span></a
-      >
+      <a class="nav-item" href="#/agents" aria-current={at("agents")} onclick={() => client.agents.collection()}>
+        <Icon name="people" class="h-4 w-4" /><span class="name">Agents</span>
+      </a>
+      <a class="nav-item" href="#/background" aria-current={at("background")}>
+        <Icon name="clock" class="h-4 w-4" /><span class="name">Background</span>{#if background}<span class="count">
+            <span class="sr-only">: </span>{background}
+          </span>{/if}
+      </a>
+      <a class="nav-item" href="#/settings" aria-current={at("settings")}>
+        <Icon name="settings" class="h-4 w-4" /><span class="name">Settings</span>
+      </a>
     </div>
   </div>
 </div>

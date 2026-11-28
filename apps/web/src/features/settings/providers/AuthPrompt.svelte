@@ -70,7 +70,7 @@
       disabled={busy}
     />
   {/if}
-  <Button variant="primary" type="submit" unavailable={busy || !valid ? "Enter a response to the current prompt" : undefined}
-    >Continue</Button
-  >
+  <Button variant="primary" type="submit" unavailable={busy || !valid ? "Enter a response to the current prompt" : undefined}>
+    Continue
+  </Button>
 </form>

@@ -336,7 +336,10 @@ test("SessionRuntime: managed native config cancellation before compaction dispa
   for (let i = 0; i < 2; i++) await sessions.start(a.id, "history".repeat(8000)).completion;
   await sessions.stop(a.id);
   const dir = join(home, "sessions", a.id);
-  const native = join(dir, (await readdir(dir)).find((name) => name.endsWith(".jsonl"))!);
+  const native = join(
+    dir,
+    (await readdir(dir)).find((name) => name.endsWith(".jsonl"))!,
+  );
   const entries = (await readFile(native, "utf8"))
     .trim()
     .split("\n")

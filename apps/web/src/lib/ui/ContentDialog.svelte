@@ -301,8 +301,10 @@
           onclick={() => {
             revokeImport();
             void restore(pausedScroll);
-          }}>Keep current text</Button
+          }}
         >
+          Keep current text
+        </Button>
       </div>
     {/if}
     {#if discarding}
@@ -313,14 +315,18 @@
           onclick={() => {
             revokeImport();
             onclose();
-          }}>Discard changes</Button
+          }}
         >
+          Discard changes
+        </Button>
         <Button
           onclick={() => {
             discarding = false;
             void restore(pausedScroll);
-          }}>Keep editing</Button
+          }}
         >
+          Keep editing
+        </Button>
       </div>
     {/if}
     {#snippet footer()}
@@ -339,15 +345,17 @@
             revokeImport();
           }}
         />
-        <Button variant="ghost" disabled={!writable || !canApply || importing || discarding} onclick={() => picker.click()}
-          >Import text</Button
-        >
+        <Button variant="ghost" disabled={!writable || !canApply || importing || discarding} onclick={() => picker.click()}>
+          Import text
+        </Button>
         <Button onclick={cancelEdit}>Cancel</Button>
         <Button
           variant="primary"
           disabled={!writable || !canApply || !!invalid || importing || replacement !== undefined || discarding}
-          onclick={apply}>{stage === "add" ? addLabel : applyLabel}</Button
+          onclick={apply}
         >
+          {stage === "add" ? addLabel : applyLabel}
+        </Button>
       {:else}
         {#if permission !== "none"}<Button onclick={beginEdit}>{permission === "edit" ? "Edit" : "Customize"}</Button>{/if}
         <Button onclick={requestClose}>Close</Button>

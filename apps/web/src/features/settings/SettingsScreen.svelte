@@ -62,10 +62,11 @@
     <div class="split">
       <nav aria-label="Settings sections" class="sections">
         {#each sections as [id, info] (id)}
-          <a class="nav-item" href={href({ name: "settings", section: id })} aria-current={shown === id ? "page" : undefined}
-            ><Icon name={icons[id]} class="h-4 w-4 text-muted-foreground" /><span class="flex-1">{info.label}</span
-            >{#if id === "about" && sessions.host.available}<span class="update">Update</span>{/if}</a
-          >
+          <a class="nav-item" href={href({ name: "settings", section: id })} aria-current={shown === id ? "page" : undefined}>
+            <Icon name={icons[id]} class="h-4 w-4 text-muted-foreground" /><span class="flex-1">
+              {info.label}
+            </span>{#if id === "about" && sessions.host.available}<span class="update">Update</span>{/if}
+          </a>
         {/each}
       </nav>
       <div class="cards">{@render page(shown)}</div>

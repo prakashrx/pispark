@@ -75,13 +75,15 @@
           data-sidebar-toggle
           aria-label={layout.size === "medium" ? "Open sessions" : "Show sidebar"}
           aria-expanded="false"
-          onclick={() => layout.toggleSidebar()}><Icon name="menu" class="h-5 w-5" /></button
+          onclick={() => layout.toggleSidebar()}
         >
+          <Icon name="menu" class="h-5 w-5" />
+        </button>
       {/if}
       {#if backLabel}
-        <a class="crumb" href={href(back)} aria-label={backLabel}
-          ><Icon name="back" class="h-4 w-4" />{#if !compact}<span>{backLabel}</span>{/if}</a
-        >
+        <a class="crumb" href={href(back)} aria-label={backLabel}>
+          <Icon name="back" class="h-4 w-4" />{#if !compact}<span>{backLabel}</span>{/if}
+        </a>
       {:else if compact}
         <a class="tap" href={href(back)} aria-label="Back"><Icon name="back" class="h-5 w-5" /></a>
       {/if}
@@ -106,8 +108,10 @@
             data-rename-title
             aria-label={`Rename ${title}`}
             title="Rename"
-            onclick={() => (renaming = true)}><Icon name="pencil" class="h-3.5 w-3.5" /></button
+            onclick={() => (renaming = true)}
           >
+            <Icon name="pencil" class="h-3.5 w-3.5" />
+          </button>
         </div>
       {:else}<h1 class="title">{title}</h1>{/if}
       {#if actions}<div class="actions">{@render actions()}</div>{/if}

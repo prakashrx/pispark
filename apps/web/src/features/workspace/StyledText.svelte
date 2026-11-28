@@ -27,9 +27,9 @@
   {#each lines as line}
     <div class="line">
       {#each line as span}
-        {#if span.link}<a href={span.link} target="_blank" rel="noopener noreferrer" class={classes(span)} style={style(span)}
-            >{span.text}</a
-          >
+        {#if span.link}<a href={span.link} target="_blank" rel="noopener noreferrer" class={classes(span)} style={style(span)}>
+            {span.text}
+          </a>
         {:else}<span class={classes(span)} style={style(span)}>{span.text}</span>{/if}
       {:else}&#8203;{/each}
     </div>

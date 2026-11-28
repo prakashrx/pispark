@@ -35,28 +35,30 @@
   {#if from.kind === "process" || from.kind === "reload"}
     {@const what = from.kind === "process" ? "output" : "details"}
     <details class="process-report" data-purpose="session-turn">
-      <summary class="woken"
-        >{from.label}
-        <span class="disclosure"><span class="closed">▸ Show {what}</span><span class="opened">▾ Hide {what}</span></span></summary
-      >
+      <summary class="woken">
+        {from.label}
+        <span class="disclosure"><span class="closed">▸ Show {what}</span><span class="opened">▾ Hide {what}</span></span>
+      </summary>
       <div class="report output">{body}</div>
     </details>
   {:else if from.folded}
     <!-- Its row above holds the answer: here, only that it reached this session. -->
     <p class="woken" data-purpose="delivery">
-      <Icon name="sessionBack" class="h-3.5 w-3.5" /><span
-        >Answer from {#if known(from)}<button type="button" class="link" onclick={() => client.open(from.id)}>{from.title}</button
-          >{:else}{from.title}{/if}{` reached this session${from.how && from.how !== "finished" ? ` · ${from.how}` : ""}`}</span
-      >
+      <Icon name="sessionBack" class="h-3.5 w-3.5" /><span>
+        Answer from {#if known(from)}<button type="button" class="link" onclick={() => client.open(from.id)}>
+            {from.title}
+          </button>{:else}{from.title}{/if}{` reached this session${from.how && from.how !== "finished" ? ` · ${from.how}` : ""}`}
+      </span>
     </p>
   {:else}
     <div class="flex flex-col items-start gap-1.5" data-purpose="session-turn">
       <p class="woken">
-        <Icon name="sessionBack" class="h-3.5 w-3.5" /><span
-          >{lead(from)}
-          {#if known(from)}<button type="button" class="link" onclick={() => client.open(from.id)}>{from.title}</button
-            >{:else}{from.title}{/if}{from.how ? ` · ${from.how}` : ""}</span
-        >
+        <Icon name="sessionBack" class="h-3.5 w-3.5" /><span>
+          {lead(from)}
+          {#if known(from)}<button type="button" class="link" onclick={() => client.open(from.id)}>
+              {from.title}
+            </button>{:else}{from.title}{/if}{from.how ? ` · ${from.how}` : ""}
+        </span>
       </p>
       <div class="report markdown"><SessionMarkdown text={body} /></div>
     </div>
@@ -81,18 +83,20 @@
           title="Edit message"
           aria-pressed={editing}
           onclick={() => (editing ? session.cancelEdit() : session.edit(item!.id!, text))}
-          ><Icon name="pencil" class="h-3.5 w-3.5" /></button
-        >{/if}
+        >
+          <Icon name="pencil" class="h-3.5 w-3.5" />
+        </button>{/if}
       <div class="user-bubble">
         {#each namedFiles(text, session?.id) as piece}{#if typeof piece === "string"}<SessionMarkdown
               text={piece}
               flavor="typed"
-            />{:else if piece.image && piece.url}<a class="named-image" href={piece.url} target="_blank" rel="noopener" title={piece.name}
-              ><img src={piece.url} alt={piece.name} loading="lazy" /></a
-            >{:else if piece.url}<a class="named-file" href={piece.url} target="_blank" rel="noopener" title={piece.name}
-              ><Icon name="file" class="h-3.5 w-3.5" /><span>{piece.name}</span></a
-            >{:else}<span class="named-file" title={piece.name}><Icon name="file" class="h-3.5 w-3.5" /><span>{piece.name}</span></span
-            >{/if}{/each}
+            />{:else if piece.image && piece.url}<a class="named-image" href={piece.url} target="_blank" rel="noopener" title={piece.name}>
+              <img src={piece.url} alt={piece.name} loading="lazy" />
+            </a>{:else if piece.url}<a class="named-file" href={piece.url} target="_blank" rel="noopener" title={piece.name}>
+              <Icon name="file" class="h-3.5 w-3.5" /><span>{piece.name}</span>
+            </a>{:else}<span class="named-file" title={piece.name}>
+              <Icon name="file" class="h-3.5 w-3.5" /><span>{piece.name}</span>
+            </span>{/if}{/each}
       </div>
     </div>
     {#if versions}<div class="user-actions">
@@ -103,16 +107,20 @@
               title="Previous version"
               disabled={!versions.previous || !free}
               onclick={() => versions.previous && void session.branch(versions.previous)}
-              ><Icon name="chevronRight" class="h-3.5 w-3.5 flip" /></button
-            ><span class="sr-only">Version {versions.at} of {versions.of}</span><span aria-hidden="true">{versions.at} / {versions.of}</span
-            ><button
+            >
+              <Icon name="chevronRight" class="h-3.5 w-3.5 flip" />
+            </button><span class="sr-only">Version {versions.at} of {versions.of}</span><span aria-hidden="true">
+              {versions.at} / {versions.of}
+            </span><button
               type="button"
               aria-label="Next version"
               title="Next version"
               disabled={!versions.next || !free}
-              onclick={() => versions.next && void session.branch(versions.next)}><Icon name="chevronRight" class="h-3.5 w-3.5" /></button
-            ></span
-          >{/if}
+              onclick={() => versions.next && void session.branch(versions.next)}
+            >
+              <Icon name="chevronRight" class="h-3.5 w-3.5" />
+            </button>
+          </span>{/if}
       </div>{/if}
   </div>
 {/if}

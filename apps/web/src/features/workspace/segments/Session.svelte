@@ -51,11 +51,11 @@
         <span class="state">{ended ?? "put away"}</span>
       </button>
     {:else}
-      <span class="go"
-        ><Icon name="sessionOut" class="h-3.5 w-3.5 shrink-0" /><span class="title">{segment.title}</span><span class="state"
-          >starting…</span
-        ></span
-      >
+      <span class="go">
+        <Icon name="sessionOut" class="h-3.5 w-3.5 shrink-0" /><span class="title">{segment.title}</span><span class="state">
+          starting…
+        </span>
+      </span>
     {/if}
     {#if segment.answer}
       <button

@@ -112,9 +112,9 @@
           onclick={() => (tab = key)}
           onkeydown={onTabKey}
         >
-          {label}{#if key === "now" && open.length}<span class="count" aria-hidden="true">{open.length}</span><span class="hidden"
-              >({open.length} waiting on you)</span
-            >{/if}
+          {label}{#if key === "now" && open.length}<span class="count" aria-hidden="true">{open.length}</span><span class="hidden">
+              ({open.length} waiting on you)
+            </span>{/if}
         </button>
       {/each}
     </div>
@@ -147,8 +147,10 @@
                       type="button"
                       class="primary"
                       disabled={busy === q.id}
-                      onclick={(e) => answer(q, "Yes, do as you recommend.", e)}>Do it</button
+                      onclick={(e) => answer(q, "Yes, do as you recommend.", e)}
                     >
+                      Do it
+                    </button>
                     <button type="button" disabled={busy === q.id} onclick={(e) => answer(q, "No, don't.", e)}>No</button>
                     <button type="button" disabled={busy === q.id} onclick={(e) => later(q, e)}>Later</button>
                     <button type="button" disabled={busy === q.id} onclick={() => discuss(q)}>Discuss</button>
@@ -230,8 +232,10 @@
                         "undo",
                         { id: change.id },
                         (label) => (notice = `${label} was put back as it was before that change.`),
-                      )}>Undo</button
+                      )}
                   >
+                    Undo
+                  </button>
                 </li>
               {/each}
             </ul>
@@ -253,13 +257,17 @@
             <button
               type="button"
               disabled={busy === "tidy"}
-              onclick={() => act("tidy", "tidy", undefined, () => (notice = "Tidying started in the conversation."))}>Tidy now</button
+              onclick={() => act("tidy", "tidy", undefined, () => (notice = "Tidying started in the conversation."))}
             >
+              Tidy now
+            </button>
             <button
               type="button"
               disabled={busy === "weekly"}
-              onclick={() => act("weekly", "weekly", undefined, (text) => (notice = String(text)))}>Tidy every week…</button
+              onclick={() => act("weekly", "weekly", undefined, (text) => (notice = String(text)))}
             >
+              Tidy every week…
+            </button>
           </div>
         </section>
       </div>

@@ -229,7 +229,11 @@ test("PiSpark integration: legacy unmentioned tool activates on reopen; explicit
     const a = await f.runtime.create({ folder: f.cwd });
     await f.runtime.start(a.id, "legacy fixture").completion;
     await f.runtime.stop(a.id);
-    const path = join(f.sessions, a.id, (await readdir(join(f.sessions, a.id))).find((n) => n.endsWith(".jsonl"))!);
+    const path = join(
+      f.sessions,
+      a.id,
+      (await readdir(join(f.sessions, a.id))).find((n) => n.endsWith(".jsonl"))!,
+    );
     const original = (await readFile(path, "utf8"))
       .trim()
       .split("\n")

@@ -17,8 +17,9 @@ import type { SHARED_SVELTE } from "../../../../server/src/contract/shared-svelt
 export const sharedSvelte: Record<(typeof SHARED_SVELTE)[number], object> = {
   svelte,
   "svelte/internal/client": client,
-  // Compiled components import this only for its side effect, which the app already ran.
+  // Compiled components import these only for their side effects, which the app already ran.
   "svelte/internal/disclose-version": {},
+  "svelte/internal/init-operations": {},
   "svelte/store": store,
   "svelte/transition": transition,
   "svelte/animate": animate,

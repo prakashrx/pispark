@@ -82,9 +82,9 @@
               autocomplete="off"
               spellcheck="false"
             />
-            <span id={hint} class="hint"
-              >{name && !valid ? "Letters, numbers, dots, dashes; no spaces" : "Enter to keep, Esc to cancel"}</span
-            >
+            <span id={hint} class="hint">
+              {name && !valid ? "Letters, numbers, dots, dashes; no spaces" : "Enter to keep, Esc to cancel"}
+            </span>
           </form>
         {:else if title}
           <h2 tabindex="-1">{@render title()}</h2>
@@ -101,8 +101,10 @@
             data-size="icon"
             aria-label={fresh.name ? "Rename" : "Name it"}
             title={fresh.name ? "Rename" : "Name it"}
-            onclick={() => void startNaming()}><Icon name="pencil" class="h-3.5 w-3.5" /></button
+            onclick={() => void startNaming()}
           >
+            <Icon name="pencil" class="h-3.5 w-3.5" />
+          </button>
         {/if}
       </div>
       {#if about}<p class="about">{about}</p>{/if}

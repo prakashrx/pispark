@@ -88,16 +88,20 @@
         class="copy"
         aria-label="Copy reply"
         title="Copy reply"
-        onclick={() => void copyReply()}><Icon name="copy" class="h-3.5 w-3.5" /></button
-      >{/if}
+        onclick={() => void copyReply()}
+      >
+        <Icon name="copy" class="h-3.5 w-3.5" />
+      </button>{/if}
     {#if session && !turn.running && turn.replyId && !session.doc?.readOnly}<button
         type="button"
         class="copy"
         aria-label="Fork from here"
         title="Fork from here"
         disabled={forking}
-        onclick={() => void forkHere(turn.replyId!)}><Icon name="fork" class="h-3.5 w-3.5" /></button
-      >{/if}
+        onclick={() => void forkHere(turn.replyId!)}
+      >
+        <Icon name="fork" class="h-3.5 w-3.5" />
+      </button>{/if}
   </div>
 </div>
 

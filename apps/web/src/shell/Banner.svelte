@@ -29,9 +29,9 @@
 
 {#if host.restarting}
   <p role="status" class="banner" data-tone="info" data-purpose="updating">
-    <span class="spin" aria-hidden="true"></span><span
-      ><strong>Updating PiSpark to v{host.restarting}…</strong> Back in a few seconds. Your draft is kept.</span
-    >
+    <span class="spin" aria-hidden="true"></span><span>
+      <strong>Updating PiSpark to v{host.restarting}…</strong> Back in a few seconds. Your draft is kept.
+    </span>
   </p>
 {:else if host.updated}
   <p role="status" class="banner" data-tone="info">

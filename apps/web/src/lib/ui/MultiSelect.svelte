@@ -123,9 +123,9 @@
       {#each value as item (item)}
         {@const known = options.some((option) => option.value === item)}
         <li class="token-chip" data-unavailable={!known || undefined}>
-          <span class="break-all"
-            >{labelOf(item)}{#if !known}<span class="token-note">(Unavailable)</span>{/if}</span
-          >
+          <span class="break-all">
+            {labelOf(item)}{#if !known}<span class="token-note">(Unavailable)</span>{/if}
+          </span>
           {#if !readonly}<button
               type="button"
               data-chip-remove
@@ -138,8 +138,10 @@
                   remove(item, true);
                 }
               }}
-              onclick={() => remove(item, true)}>×</button
-            >{/if}
+              onclick={() => remove(item, true)}
+            >
+              ×
+            </button>{/if}
         </li>
       {/each}
     </ul>

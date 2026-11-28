@@ -90,9 +90,9 @@
       onchange={(event) => switched((event.currentTarget as HTMLInputElement).checked)}
     />
   {:else if work.open}
-    <button type="button" class="stop" aria-label={`Stop ${work.title}`} title="Stop" onclick={stop}
-      ><Icon name="stop" class="h-4 w-4" /></button
-    >
+    <button type="button" class="stop" aria-label={`Stop ${work.title}`} title="Stop" onclick={stop}>
+      <Icon name="stop" class="h-4 w-4" />
+    </button>
   {/if}
 </div>
 

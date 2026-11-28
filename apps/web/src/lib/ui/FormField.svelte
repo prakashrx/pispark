@@ -20,9 +20,9 @@
 </script>
 
 <div class="space-y-1.5 min-w-0">
-  <label for={id} class="block text-sm font-medium text-neutral-900"
-    >{label}{#if required}<span aria-hidden="true"> *</span>{/if}</label
-  >
+  <label for={id} class="block text-sm font-medium text-neutral-900">
+    {label}{#if required}<span aria-hidden="true"> *</span>{/if}
+  </label>
   {@render children(id, describedby)}
   {#if help}<p id={`${id}-help`} class="text-sm text-neutral-500">
       {help}

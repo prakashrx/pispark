@@ -56,24 +56,26 @@
                       : ""}{#if client.sessions.some((s) => s.id === run.session)}<button
                         type="button"
                         class="link"
-                        onclick={() => client.open(run.session)}>{shortDate(new Date(run.due)).split(",")[0]}</button
-                      >{:else}{shortDate(new Date(run.due)).split(",")[0]}{run.archived ? " (archived)" : ""}{/if}{/each}
+                        onclick={() => client.open(run.session)}
+                      >
+                        {shortDate(new Date(run.due)).split(",")[0]}
+                      </button>{:else}{shortDate(new Date(run.due)).split(",")[0]}{run.archived ? " (archived)" : ""}{/if}{/each}
                 </p>{/if}
             </div>
             <div class="ml-auto flex shrink-0 gap-1">
-              <Button size="compact" loading={busy === routine.id} onclick={() => void act(routine, () => client.routines.run(routine))}
-                >Run now</Button
-              >
+              <Button size="compact" loading={busy === routine.id} onclick={() => void act(routine, () => client.routines.run(routine))}>
+                Run now
+              </Button>
             </div>
           </div>
         </li>
       {/each}
     </ul>
     <p class="flex items-start gap-2 text-[0.8125rem] text-muted-foreground">
-      <Icon name="alert" class="mt-0.5 h-4 w-4 shrink-0" /><span
-        >The agent offers these. Each is off until you switch it on. Runs while you’re away use this agent and its tools, with this server’s
-        permissions. The newest 10 runs stay listed; older ones are archived.</span
-      >
+      <Icon name="alert" class="mt-0.5 h-4 w-4 shrink-0" /><span>
+        The agent offers these. Each is off until you switch it on. Runs while you’re away use this agent and its tools, with this server’s
+        permissions. The newest 10 runs stay listed; older ones are archived.
+      </span>
     </p>
   {:else}<p class="text-sm text-muted-foreground">This agent offers no routines.</p>{/if}
   {#if error}<p role="alert" class="text-sm text-[var(--danger-foreground)]">{error}</p>{/if}

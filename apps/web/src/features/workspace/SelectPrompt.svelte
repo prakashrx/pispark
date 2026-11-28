@@ -64,9 +64,9 @@
         onclick={() => onanswer(option)}
       >
         <span class="number" aria-hidden="true">{index < 9 ? index + 1 : ""}</span>
-        <span class="text"
-          ><span>{label}</span>{#if detail}<span class="detail">{detail}</span>{/if}</span
-        >
+        <span class="text">
+          <span>{label}</span>{#if detail}<span class="detail">{detail}</span>{/if}
+        </span>
       </button>
     {:else}
       <p class="none" role="status">Nothing matches “{query}”.</p>

@@ -88,26 +88,26 @@
   class="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-auto rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-0 text-foreground shadow-elevation-lg backdrop:bg-black/40 backdrop:backdrop-blur-sm"
 >
   {#if title}<header class="flex items-center justify-between gap-4 border-b border-[var(--border)] px-5 py-3">
-      {#if primary && !asking}<span class="sheet-only"
-          ><Button variant="ghost" size="compact" disabled={busy} onclick={onclose}>{cancel}</Button></span
-        >{/if}
+      {#if primary && !asking}<span class="sheet-only">
+          <Button variant="ghost" size="compact" disabled={busy} onclick={onclose}>{cancel}</Button>
+        </span>{/if}
       <div class="title">
         <h2 id={`${id}-title`} class="text-base font-semibold">{title}</h2>
         {#if help}<p id={`${id}-help`} class="mt-1 text-sm text-muted-foreground">
             {help}
           </p>{/if}
       </div>
-      {#if closable}<Button variant="ghost" size="icon" aria-label="Close dialog" disabled={busy} onclick={onclose}
-          ><Icon name="close" class="h-4 w-4" /></Button
-        >{/if}
+      {#if closable}<Button variant="ghost" size="icon" aria-label="Close dialog" disabled={busy} onclick={onclose}>
+          <Icon name="close" class="h-4 w-4" />
+        </Button>{/if}
       {#if primary && !asking}<span class="sheet-only">{@render primary()}</span>{/if}
     </header>{/if}
   <div class="body {title ? 'p-5 space-y-4' : ''}">{@render children()}</div>
   {#if footer || primary}<footer class="flex justify-end gap-2 border-t border-[var(--border)] p-4">
       {#if footer}{@render footer()}{/if}
-      {#if primary && !asking}<span class="dialog-only flex gap-2"
-          ><Button variant="ghost" disabled={busy} onclick={onclose}>{cancel}</Button>{@render primary()}</span
-        >{/if}
+      {#if primary && !asking}<span class="dialog-only flex gap-2">
+          <Button variant="ghost" disabled={busy} onclick={onclose}>{cancel}</Button>{@render primary()}
+        </span>{/if}
     </footer>{/if}
 </dialog>
 

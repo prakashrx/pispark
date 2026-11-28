@@ -71,9 +71,9 @@
       >
         {#snippet children()}<Icon name="plus" class="h-4 w-4" /><span>Add</span>{/snippet}
       </Selector>
-      {#if oncreate}<button type="button" class="ui-button create" data-variant="primary" data-size="compact" onclick={oncreate}
-          ><Icon name="plus" class="h-4 w-4" />Create</button
-        >{/if}
+      {#if oncreate}<button type="button" class="ui-button create" data-variant="primary" data-size="compact" onclick={oncreate}>
+          <Icon name="plus" class="h-4 w-4" />Create
+        </button>{/if}
     </div>
   {/if}
 </div>

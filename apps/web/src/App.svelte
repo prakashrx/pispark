@@ -17,6 +17,8 @@
     event.preventDefault();
     focusMain();
   }}
-  class="skip-link text-xs">Skip to content</a
+  class="skip-link text-xs"
 >
+  Skip to content
+</a>
 <Shell />

@@ -84,9 +84,9 @@
       </p>{/if}
     {#if client.error && !open && !adding}<div class="error">
         <p class="inline-note flex-1" data-tone="danger" role="alert">{client.error}</p>
-        <Button variant="ghost" unavailable={client.loading ? "Loading catalog" : undefined} onclick={() => void client.refresh()}
-          >Reload status</Button
-        >
+        <Button variant="ghost" unavailable={client.loading ? "Loading catalog" : undefined} onclick={() => void client.refresh()}>
+          Reload status
+        </Button>
       </div>{/if}
     {#if notice}<p class="inline-note" data-tone="success" role="status">{notice}</p>{/if}
   </div>
@@ -107,18 +107,18 @@
     <p class="muted small">
       {#if defaultChoice && !defaultModel?.available}{defaultModel?.name ?? defaultChoice.id} is unavailable; the saved choice is kept.
       {/if}Existing sessions keep their model.
-      {#if defaultChoice}<button type="button" class="link" disabled={client.busy} onclick={() => void setDefault(null)}
-          >Clear the default</button
-        >{/if}
+      {#if defaultChoice}<button type="button" class="link" disabled={client.busy} onclick={() => void setDefault(null)}>
+          Clear the default
+        </button>{/if}
     </p>
   </CardRow>
 </Card>
 
 <Card title="Your providers" count={String(yours.length)}>
   {#snippet action()}
-    <button type="button" class="icon" aria-label="Add a provider" title="Add a provider" onclick={() => (adding = true)}
-      ><Icon name="plus" class="h-4 w-4" /></button
-    >
+    <button type="button" class="icon" aria-label="Add a provider" title="Add a provider" onclick={() => (adding = true)}>
+      <Icon name="plus" class="h-4 w-4" />
+    </button>
   {/snippet}
   {#each yours as provider (provider.id)}
     <button type="button" class="provider" onclick={() => (open = provider.id)}>
@@ -158,9 +158,9 @@
     {:else}
       <div class="search">
         <div class="flex-1"><Input label="Search providers" bind:value={query} placeholder={`Search ${others.length} providers…`} /></div>
-        <Button variant="ghost" unavailable={client.loading ? "Loading catalog" : undefined} onclick={() => void client.refresh()}
-          >Reload status</Button
-        >
+        <Button variant="ghost" unavailable={client.loading ? "Loading catalog" : undefined} onclick={() => void client.refresh()}>
+          Reload status
+        </Button>
       </div>
       <ul class="choices" aria-label="Providers">
         {#each others as provider (provider.id)}<li>
@@ -168,9 +168,9 @@
               <IdentityMark name={provider.name} />
               <span class="min-w-0 flex-1">
                 <span class="name block">{provider.name}</span>
-                <span class="muted small block truncate"
-                  >{provider.models.length} models · {provider.methods.map((m) => m.label).join(" · ") || "Set up on the host"}</span
-                >
+                <span class="muted small block truncate">
+                  {provider.models.length} models · {provider.methods.map((m) => m.label).join(" · ") || "Set up on the host"}
+                </span>
               </span>
               <Icon name="chevronRight" class="h-4 w-4 text-muted-foreground" />
             </button>

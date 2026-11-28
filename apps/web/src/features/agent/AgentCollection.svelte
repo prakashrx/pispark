@@ -53,14 +53,14 @@
       <a class="card" href={href({ name: "agents", id: item.id })}>
         <IdentityMark name={item.name} size="lg" />
         <span class="min-w-0 flex-1">
-          <span class="title"
-            ><span class="name">{item.name}</span>{#if kind(item)}<span class="tag">{kind(item)}</span>{/if}</span
-          >
-          <span class="what"
-            >{item.builtIn
+          <span class="title">
+            <span class="name">{item.name}</span>{#if kind(item)}<span class="tag">{kind(item)}</span>{/if}
+          </span>
+          <span class="what">
+            {item.builtIn
               ? "The base of every agent."
-              : (item.description ?? (item.base.length ? `Builds on ${item.base.join(", ")}` : "Builds on Default"))}</span
-          >
+              : (item.description ?? (item.base.length ? `Builds on ${item.base.join(", ")}` : "Builds on Default"))}
+          </span>
           <span class="count">{count(item)}</span>
           {#if !item.valid}<span class="status">Needs attention</span>{/if}
         </span>
@@ -102,8 +102,10 @@
         variant="primary"
         type="submit"
         form="new-agent"
-        unavailable={!name.trim() ? "Add a name" : client.busy ? "Creating…" : undefined}>Create</Button
+        unavailable={!name.trim() ? "Add a name" : client.busy ? "Creating…" : undefined}
       >
+        Create
+      </Button>
     {/snippet}
   </Modal>
 {/if}

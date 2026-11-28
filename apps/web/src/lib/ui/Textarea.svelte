@@ -24,8 +24,7 @@
   class={`ui-input ${monospace ? "font-mono" : "font-sans"} ${className}`}
   data-density={density}
   data-monospace={monospace}
-  bind:value
-></textarea>
+  bind:value></textarea>
 
 <style>
   :global(.ui-input),

@@ -42,9 +42,9 @@
         ]);
 </script>
 
-<TabIntro {page} kind="instructions" oncreate={() => page.create("instructions")}
-  >What {name} reads at the start of every session, top to bottom. Later parts win when they disagree.</TabIntro
->
+<TabIntro {page} kind="instructions" oncreate={() => page.create("instructions")}>
+  What {name} reads at the start of every session, top to bottom. Later parts win when they disagree.
+</TabIntro>
 
 <Split
   items={all}
@@ -85,9 +85,9 @@
         {#each used as item, i (keyOf(item))}
           <li>
             <span class="swatch" style:--o={own(item) ? 1 : 0.45} aria-hidden="true"></span>
-            <button type="button" class="part" onclick={() => page.show("instructions", item)}
-              >{i + 1}. {item.name || "New instruction"}</button
-            >
+            <button type="button" class="part" onclick={() => page.show("instructions", item)}>
+              {i + 1}. {item.name || "New instruction"}
+            </button>
             <span class="share">{size(item)} words · {share(size(item))}</span>
           </li>
         {/each}

@@ -112,8 +112,7 @@
         aria-label={`${label}, Markdown`}
         spellcheck="false"
         autocapitalize="off"
-        placeholder={placeholder || "Write Markdown…"}
-      ></textarea>
+        placeholder={placeholder || "Write Markdown…"}></textarea>
     </div>
   {:else if shown.length}
     <div class="preview prose max-w-none" role="group" aria-label={label}>
