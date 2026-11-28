@@ -1,6 +1,6 @@
 <script lang="ts">
   import StatusMark from "../../lib/ui/StatusMark.svelte";
-  import { useNow } from "./clock.svelte";
+  import { useNow } from "../../lib/clock.svelte";
   import { elapsed } from "./session-presentation";
   import { useSession } from "./session-client.svelte";
   import type { Turn } from "./session-turns";

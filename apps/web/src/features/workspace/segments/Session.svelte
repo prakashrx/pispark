@@ -8,7 +8,7 @@
   import Icon from "../../../lib/ui/Icon.svelte";
   import AskMark from "../../started/AskMark.svelte";
   import { askLine, endedState } from "../../started/work";
-  import { useNow } from "../clock.svelte";
+  import { useNow } from "../../../lib/clock.svelte";
   import { useSessions } from "../session-client.svelte";
   import { sessionName } from "../session-presentation";
   import SessionMarkdown from "../SessionMarkdown.svelte";

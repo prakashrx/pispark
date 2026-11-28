@@ -7,8 +7,9 @@
   import Icon from "../../lib/ui/Icon.svelte";
   import Markdown from "../../lib/markdown/Markdown.svelte";
   import { useSessions } from "../workspace/session-client.svelte";
-  import { formatBytes } from "./host-client.svelte";
+  import { formatBytes } from "../../lib/bytes";
   import type { HostAction, ReleaseChannel } from "../../../../server/src/contract/host-protocol";
+  import { useNow } from "../../lib/clock.svelte";
   /** Settings → About (set 6): its updates, and this PiSpark: version and where it runs. */
   const client = useSessions();
   const host = client.host;
@@ -21,14 +22,13 @@
   let confirming = $state(false);
   let error = $state("");
   let acting = $state(false);
-  let now = $state(Date.now());
+  // "Checked 3 min ago" needs no finer clock.
+  const clock = useNow(() => true, 30_000);
   /** What is new in this version, unfolded under its Version row. */
   let showNotes = $state(false);
   $effect(() => {
     void host.refresh().catch(() => {});
     void host.readNotes();
-    const timer = setInterval(() => (now = Date.now()), 30_000);
-    return () => clearInterval(timer);
   });
   async function act(action: HostAction) {
     error = "";
@@ -46,7 +46,7 @@
     else void act({ action: "apply", when: "now" });
   }
   function ago(at: string) {
-    const minutes = Math.max(0, Math.round((now - Date.parse(at)) / 60_000));
+    const minutes = Math.max(0, Math.round((clock.now - Date.parse(at)) / 60_000));
     if (minutes < 1) return "just now";
     if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
     const hours = Math.round(minutes / 60);

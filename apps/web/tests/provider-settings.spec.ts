@@ -291,7 +291,8 @@ test("ProvidersPage: unavailable catalog retry and delayed dialog start cannot l
   page,
 }) => {
   let fail = true;
-  await page.route("**/api/providers", (route) =>
+  // The catalog read and the page's own read with `?check`: both fail until retried.
+  await page.route(/\/api\/providers(\?check)?$/, (route) =>
     fail ? route.abort() : route.continue(),
   );
   await page.goto("/#/settings/providers");
@@ -366,8 +367,8 @@ test("shared model radios preserve native keyboard grouping, disabled options, d
 }) => {
   await openLocal(page);
   await login(page);
-  // Add only an unavailable display fixture between two actual local provider models.
-  await page.route("**/api/providers", async (route) => {
+  // Add only an unavailable display fixture between two actual local provider models, in either read.
+  await page.route(/\/api\/providers(\?check)?$/, async (route) => {
     const response = await route.fetch(),
       catalog = await response.json();
     const local = catalog.providers.find((p: { id: string }) => p.id === id);
@@ -381,6 +382,8 @@ test("shared model radios preserve native keyboard grouping, disabled options, d
   });
   await page.reload();
   const trigger = summary(page);
+  // Settings loads when first shown: wait for the provider before choosing how to open it.
+  await expect(trigger).toBeVisible();
   await expand(page);
   const dialog = modelsOf(page);
   const radios = dialog.getByRole("radio");

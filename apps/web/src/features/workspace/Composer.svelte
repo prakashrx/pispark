@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { modelKey } from "../settings/provider-client.svelte";
   import ContributionPoint from "./ContributionPoint.svelte";
   import FolderChoice from "./FolderChoice.svelte";
   import Button from "../../lib/ui/Button.svelte";
@@ -35,22 +36,13 @@
       .filter((p) => p.valid)
       .map((p) => ({ value: p.id, label: p.name })),
   ]);
-  const models = $derived(
-    sessions.providers.catalog.providers.flatMap((provider) =>
-      provider.models
-        .filter((m) => m.available)
-        .map((m) => ({
-          value: JSON.stringify({ provider: provider.id, id: m.id }),
-          label: `${m.name} · ${provider.name}`,
-        })),
-    ),
-  );
+  const models = $derived(sessions.providers.modelOptions);
   const defaultChoice = $derived(sessions.providers.catalog.defaultModel);
   const selected = $derived(
     sessions.askModel
       ? models.find((m) => m.value === sessions.askModel)
       : defaultChoice
-        ? models.find((m) => m.value === JSON.stringify(defaultChoice))
+        ? models.find((m) => m.value === modelKey(defaultChoice))
         : undefined,
   );
   const modelOptions = $derived([

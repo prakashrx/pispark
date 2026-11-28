@@ -95,7 +95,3 @@ export class HostClient {
     clearTimeout(this.watch);
   }
 }
-
-export function formatBytes(bytes: number) {
-  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(0)} MB` : `${Math.round(bytes / 1024)} KB`;
-}

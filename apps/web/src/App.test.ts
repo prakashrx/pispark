@@ -79,7 +79,7 @@ test("hides and shows the sidebar; the shortcut ignores editable inputs", async 
 test("settings show only real sections, each with its own address", async () => {
   render(App);
   await navigate("settings");
-  expect(screen.getByRole("heading", { name: "Theme" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Theme" })).toBeTruthy();
   const sections = screen.getByRole("navigation", { name: "Settings sections" });
   expect([...sections.querySelectorAll("a")].map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
     ["Appearance", "#/settings/appearance"],
@@ -102,7 +102,7 @@ test("settings show only real sections, each with its own address", async () => 
 test("Appearance applies real browser-local themes without fictional preferences, saves or environment", async () => {
   window.location.hash = "/settings";
   render(App);
-  const themes = screen.getByRole("radiogroup", { name: "Theme" });
+  const themes = await screen.findByRole("radiogroup", { name: "Theme" });
   expect([...themes.querySelectorAll("input")].map((input) => input.value)).toEqual([
     "system",
     "daylight",

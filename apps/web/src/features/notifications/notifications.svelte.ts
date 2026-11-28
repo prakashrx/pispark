@@ -1,4 +1,5 @@
 import { NOTIFY_EVENTS, type NotificationState, type NotifyEvent } from "../../../../server/src/contract/notification-protocol";
+import { RequestFailed, requestJson } from "../workspace/transport";
 
 /**
  * Notifications on this device (design set 9): whether this browser can show them, whether it may,
@@ -128,9 +129,12 @@ class DeviceNotifications {
 export const deviceNotifications = new DeviceNotifications();
 
 async function post<T = unknown>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`/api/notifications/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!response.ok) throw new Error(response.status === 400 ? "refused" : `error ${response.status}`);
-  return (await response.json()) as T;
+  // Bounded in size and time like every other request; a refusal reads as one.
+  try {
+    return await requestJson<T>(`/api/notifications/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  } catch (error) {
+    throw error instanceof RequestFailed ? new Error(error.status === 400 ? "refused" : `error ${error.status}`) : error;
+  }
 }
 /** What the browser allows now; the Permissions API where it answers (it follows a change made in the browser's settings). */
 async function permission(): Promise<NotificationPermission> {

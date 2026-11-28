@@ -9,6 +9,7 @@
   import { useSessions } from "../workspace/session-client.svelte";
   import { copyText } from "../../lib/clipboard";
   import type { RemoteAction, RemoteDevice } from "../../../../server/src/contract/remote-protocol";
+  import { useNow } from "../../lib/clock.svelte";
   /**
    * Settings → Remote access (set 6): serve this PiSpark to your own devices through Tailscale, and
    * pair them. Pairing opens inside the Devices card (QR, code, countdown, Cancel), not a dialog.
@@ -19,12 +20,10 @@
   let error = $state("");
   let acting = $state<RemoteAction["action"]>();
   let copied = $state("");
-  let now = $state(Date.now());
+  const time = useNow();
 
   $effect(() => {
     void load();
-    const timer = setInterval(() => (now = Date.now()), 1000);
-    return () => clearInterval(timer);
   });
   // While a code is showing, look every two seconds for the device that uses it.
   $effect(() => {
@@ -32,7 +31,7 @@
     const timer = setInterval(() => void remote.refresh().catch(() => {}), 2000);
     return () => clearInterval(timer);
   });
-  const left = $derived(status?.pairing ? Math.max(0, Date.parse(status.pairing.expiresAt) - now) : 0);
+  const left = $derived(status?.pairing ? Math.max(0, Date.parse(status.pairing.expiresAt) - time.now) : 0);
   $effect(() => {
     if (status?.pairing && left === 0) void remote.refresh().catch(() => {});
   });
@@ -69,11 +68,11 @@
   }
   function when(at: string) {
     const date = new Date(at);
-    const today = new Date(now).toDateString() === date.toDateString();
+    const today = new Date(time.now).toDateString() === date.toDateString();
     return today ? `today at ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : date.toLocaleDateString();
   }
   function ago(at: string) {
-    const minutes = Math.max(0, Math.round((now - Date.parse(at)) / 60_000));
+    const minutes = Math.max(0, Math.round((time.now - Date.parse(at)) / 60_000));
     if (minutes < 1) return "just now";
     if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
     const hours = Math.round(minutes / 60);

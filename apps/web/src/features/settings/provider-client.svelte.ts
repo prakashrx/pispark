@@ -35,12 +35,21 @@ export async function providerRequest<T>(
     throw error;
   }
 }
+/** How a model selector knows a model: one string for its provider and id. */
+export const modelKey = (model: { provider: string; id: string }) => JSON.stringify({ provider: model.provider, id: model.id });
+
 export class ProviderClient {
   catalog = $state<ProviderCatalog>({
     providers: [],
     defaultModel: null,
     networkBlocked: false,
   });
+  /** Every model that can be chosen now, named the way every selector names it. */
+  readonly available = $derived(
+    this.catalog.providers.flatMap((p) => p.models.filter((m) => m.available).map((m) => ({ provider: p.id, id: m.id, label: `${m.name} · ${p.name}` }))),
+  );
+  /** `available` as a selector's options, valued by `modelKey`. */
+  readonly modelOptions = $derived(this.available.map((model) => ({ value: modelKey(model), label: model.label })));
   loading = $state(false);
   /** Nothing to start a session with yet: no default and no available model (a truthful first run). */
   get noModel(): boolean {

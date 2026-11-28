@@ -18,7 +18,7 @@
   import ScheduleDialog from "../schedules/ScheduleDialog.svelte";
   import WorkRow from "../started/WorkRow.svelte";
   import { everywhere, sourcesOf, type Work } from "../started/work";
-  import { useNow } from "../workspace/clock.svelte";
+  import { useNow } from "../../lib/clock.svelte";
   import { useSessions } from "../workspace/session-client.svelte";
 
   type Filter = "all" | "running" | "scheduled" | "failed";

@@ -9,7 +9,7 @@
   import WorkingFrames from "./WorkingFrames.svelte";
   import { details } from "./details.svelte";
   import { canArchive, elapsed, sessionName, sessionState, sessionStatus, STATE_WORDS, type SessionState } from "./session-presentation";
-  import { useNow } from "./clock.svelte";
+  import { useNow } from "../../lib/clock.svelte";
   import { useSession, useSessions } from "./session-client.svelte";
   import { attention } from "../../shell/attention.svelte";
   import { href } from "../../routes";

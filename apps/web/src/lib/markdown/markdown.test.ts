@@ -140,6 +140,38 @@ test("half-written Markdown reads as intended: open fences, spans, emphasis and 
   expect(repairOpenBlock("**done** and `code` and [x](y)")).toBe("**done** and `code` and [x](y)");
 });
 
+test("half-written Markdown: strikethrough, underscores, images, math and a line that would make a heading", () => {
+  expect(repairOpenBlock("was ~~wrong")).toBe("was ~~wrong~~");
+  expect(repairOpenBlock("an _aside")).toBe("an _aside_");
+  expect(repairOpenBlock("a __strong point")).toBe("a __strong point__");
+  // Underscores inside words are names, not emphasis.
+  expect(repairOpenBlock("call snake_case_name and max_tokens")).toBe("call snake_case_name and max_tokens");
+  expect(repairOpenBlock("see _this_ and my_var")).toBe("see _this_ and my_var");
+  // Nested and trailing space: closed innermost first, before the space.
+  expect(repairOpenBlock("**bold _and ")).toBe("**bold _and_** ");
+  // An image shows once its address is whole.
+  expect(repairOpenBlock("look: ![a cha")).toBe("look: ");
+  expect(repairOpenBlock("look: ![chart](https://exa")).toBe("look: ");
+  expect(repairOpenBlock("look: ![chart](a.png)")).toBe("look: ![chart](a.png)");
+  // Math being written is closed, so it shows as math.
+  expect(repairOpenBlock("$$\nx^2 +")).toBe("$$\nx^2 +\n$$");
+  expect(repairOpenBlock("$$\nx^2\n$$")).toBe("$$\nx^2\n$$");
+  expect(repairOpenBlock("\\[\na +")).toBe("\\[\na +\n\\]");
+  // A line of - or = under text would turn it into a heading before the line is finished.
+  expect(repairOpenBlock("Results so far\n---")).toBe("Results so far");
+  expect(repairOpenBlock("Results\n=")).toBe("Results");
+  expect(repairOpenBlock("- one\n- two")).toBe("- one\n- two");
+});
+
+test("math being written renders as math, not as dollar signs", () => {
+  const root = shown("$$\nx^2 +");
+  expect(root.querySelector('[data-math="block"]')).toBeNull();
+  const live = document.createElement("div");
+  new MarkdownView(live).update("$$\nx^2 +", true);
+  expect(live.querySelector('[data-math="block"]')?.textContent).toBe("x^2 +");
+  expect(live.textContent).not.toContain("$$");
+});
+
 test("a selection in the text being written survives it growing", () => {
   const root = document.createElement("div");
   document.body.append(root);

@@ -7,7 +7,7 @@
   import type { SessionInfo } from "../../../../server/src/contract/protocol";
   import type { ScheduleSummary } from "../../../../server/src/contract/schedule-protocol";
   import Icon from "../../lib/ui/Icon.svelte";
-  import { useNow } from "../workspace/clock.svelte";
+  import { useNow } from "../../lib/clock.svelte";
   import { useSessions } from "../workspace/session-client.svelte";
   import WorkRow from "./WorkRow.svelte";
   import { sourcesOf, startedBy } from "./work";

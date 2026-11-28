@@ -7,13 +7,15 @@
    * forks and its agent's routines. The longer work (a schedule's form, a process's output, editing
    * the agent) opens as a view in the same panel, with Back to here.
    */
+  import { modelKey } from "../settings/provider-client.svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Fold from "../../lib/ui/Fold.svelte";
   import Selector from "../../lib/ui/Selector.svelte";
   import type { ThinkingLevel } from "../../../../server/src/contract/agent-protocol";
   import { contributionsFor } from "./extension-views";
   import type { SessionFile, SessionInfo } from "../../../../server/src/contract/protocol";
-  import { fileKind, fileSize, fileUrl } from "../files/file-kinds";
+  import { fileKind, fileUrl } from "../files/file-kinds";
+  import { formatBytes } from "../../lib/bytes";
   import Icon from "../../lib/ui/Icon.svelte";
   import Toggle from "../../lib/ui/Toggle.svelte";
   import StartedHere from "../started/StartedHere.svelte";
@@ -43,13 +45,9 @@
   // next reply (chosen while it works, they wait for the reply to finish).
   const between = $derived((doc?.status === "idle" || doc?.status === "error") && !doc.readOnly && !doc.compacting);
   const changeable = $derived(!!doc && !doc.readOnly && !doc.compacting && doc.status !== "starting" && doc.status !== "stopping");
-  const models = $derived(
-    client.providers.catalog.providers.flatMap((p) =>
-      p.models.filter((m) => m.available).map((m) => ({ value: JSON.stringify({ provider: p.id, id: m.id }), label: `${m.name} · ${p.name}` })),
-    ),
-  );
+  const models = $derived(client.providers.modelOptions);
   const shownModel = $derived(doc?.pending?.model ?? doc?.model);
-  const modelValue = $derived(shownModel ? JSON.stringify({ provider: shownModel.provider, id: shownModel.id }) : "");
+  const modelValue = $derived(shownModel ? modelKey(shownModel) : "");
   const thinkingValue = $derived(doc?.pending?.thinking ?? doc?.thinking?.level);
   const levels = $derived((doc?.thinking?.levels ?? []).map((level) => ({ value: level, label: THINKING_WORDS[level] ?? level })));
   let configureError = $state("");
@@ -196,7 +194,7 @@
                 type="button"
                 class="tile"
                 aria-label={`${file.name}${file.by ? `, ${file.by === "you" ? "uploaded" : "made"}` : ""}`}
-                title={`${file.name} · ${fileSize(file.size)}`}
+                title={`${file.name} · ${formatBytes(file.size)}`}
                 onclick={() => details.show(session.id, "file", file.name)}
               >
                 <span class="thumb">

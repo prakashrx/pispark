@@ -5,6 +5,7 @@
    * then Pi's own sign-in steps).
    */
   import { onMount } from "svelte";
+  import { modelKey } from "../provider-client.svelte";
   import Button from "../../../lib/ui/Button.svelte";
   import Card from "../../../lib/ui/Card.svelte";
   import CardRow from "../../../lib/ui/CardRow.svelte";
@@ -36,13 +37,7 @@
   const defaultChoice = $derived(client.catalog.defaultModel);
   const defaultProvider = $derived(providers.find((p) => p.id === defaultChoice?.provider));
   const defaultModel = $derived(defaultProvider?.models.find((m) => m.id === defaultChoice?.id));
-  const modelOptions = $derived(
-    providers.flatMap((provider) =>
-      provider.models
-        .filter((m) => m.available)
-        .map((m) => ({ value: JSON.stringify({ provider: provider.id, id: m.id }), label: `${m.name} · ${provider.name}` })),
-    ),
-  );
+  const modelOptions = $derived(client.modelOptions);
   const opened = $derived(providers.find((p) => p.id === open));
   const chosen = $derived(typeof adding === "string" ? providers.find((p) => p.id === adding) : undefined);
 
@@ -96,7 +91,7 @@
         searchable
         options={modelOptions}
         placeholder="Choose model"
-        bind:value={() => (defaultChoice ? JSON.stringify(defaultChoice) : ""), (value) => void setDefault(value ? JSON.parse(value) : null)}
+        bind:value={() => (defaultChoice ? modelKey(defaultChoice) : ""), (value) => void setDefault(value ? JSON.parse(value) : null)}
       />
     {:else}<span class="muted">Connect a provider to make models available.</span>{/if}
   </CardRow>

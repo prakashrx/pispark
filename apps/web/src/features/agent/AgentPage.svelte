@@ -75,9 +75,8 @@
   // What it runs with: saved as soon as it's chosen.
   const models = $derived([
     { value: "", label: view?.settings.model && !definition?.settings?.model ? `Model: inherited · ${view.settings.model}` : "Model: no preference" },
-    ...sessions.providers.catalog.providers.flatMap((provider) =>
-      provider.models.filter((m) => m.available).map((m) => ({ value: `${provider.id}/${m.id}`, label: `${m.name} · ${provider.name}` })),
-    ),
+    // An agent names its model as `provider/id`.
+    ...sessions.providers.available.map((model) => ({ value: `${model.provider}/${model.id}`, label: model.label })),
   ]);
   const thinkingLevels: { value: ThinkingLevel | ""; label: string }[] = $derived([
     { value: "", label: view?.settings.thinking && !definition?.settings?.thinking ? `Thinking: inherited · ${view.settings.thinking}` : "Thinking: inherited" },
