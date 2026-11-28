@@ -41,6 +41,9 @@ import type { ProcessInfo, ProcessList, ProcessOutput } from "../../contract/pro
 import type { RunningWork } from "../../contract/host-protocol.js";
 import { targetOf, type NewSession, type Origin, type SessionAccess } from "./session-access.js";
 import { Children } from "./children.js";
+import { Handles } from "./handles.js";
+import { Arrivals } from "./arrivals.js";
+import { scheduleKind, Started } from "./started.js";
 import { Holds } from "./holds.js";
 import { Runs } from "./runs.js";
 import { SessionProcesses } from "./session-processes.js";
@@ -96,6 +99,9 @@ export class SessionRuntime {
   private checking?: Promise<void>;
   /** Sessions started by other sessions. */
   private readonly children: Children;
+  private readonly handles: Handles;
+  private readonly arrivals = new Arrivals();
+  private readonly started: Started;
   /** Extensions keeping their sessions loaded. */
   private readonly holds: Holds;
   /** Runs of schedules and routines, each in a new session. */
@@ -142,8 +148,20 @@ export class SessionRuntime {
       archive: (id) => this.archive(id),
       create: (request, origin) => this.createSession(request, origin),
       deliver: (id, wake) => this.wakes.deliver(id, wake),
+      take: (id, which) => this.wakes.take(id, which),
+      waiting: (id, sourceId) => this.wakes.waiting(id, sourceId),
+      arrival: (id, signal) => this.arrivals.next(id, signal),
+      drain: () => void this.wakes.drain(),
+      pending: (id) => this.wakes.owed(id) || this.processes.runningIn(id) > 0,
+      waitingFor: (id) => {
+        const running = this.processes.list(id).filter((p) => p.state === "running");
+        if (running.length) return running.length === 1 ? `for ${running[0]!.title ?? "a process"}` : `for ${running.length} processes`;
+        return this.wakes.owed(id) ? "for a message" : undefined;
+      },
+      stopProcesses: (id) => this.processes.stopSession(id),
     };
-    this.children = new Children(access);
+    this.handles = new Handles((id) => this.storage.directory(id));
+    this.children = new Children(access, this.handles);
     this.holds = new Holds(access, () => this.unattendedPaused);
     this.runs = new Runs(access);
     this.sweeper = setInterval(() => this.sweep(), Math.min(60_000, Math.max(1000, this.idleUnload / 4)));
@@ -169,10 +187,10 @@ export class SessionRuntime {
         if (!session.published) this.storage.discardUnpublished(session.id);
       },
       ended: (session, result) => this.children.ended(session, result),
+      arrived: (session) => this.arrivals.tell(session.id, "message"),
       hold: (session, request) => this.holds.request(session, request),
       toolsSeen: (fingerprint, paths, tools) => this.tools.remember(fingerprint, paths, tools),
-      processes: { request: (sessionId, request, signal) => this.sessionProcesses.request(sessionId, request, signal) },
-      sessions: { request: (parentId, request) => this.children.request(parentId, request) },
+      started: { say: (sessionId, verb, signal) => this.started.say(sessionId, verb, signal), handle: (sessionId, kind, id) => this.handles.of(sessionId, kind, id) },
       // A waiting wake goes as soon as its session is free; the minute check catches anything missed.
       extensionPending: (id) => this.setup.extension(id) ?? this.extensionCandidates.get(id)?.revision,
       extensionCandidate: (id) => this.extensionCandidates.get(id)?.active,
@@ -190,10 +208,8 @@ export class SessionRuntime {
         for (const listener of this.touchedListeners) listener();
       },
       schedules: {
-        of: (sessionId) => this.schedules.of(sessionId),
         validate: (sessionId, input) => void this.schedules.validate(sessionId, input),
         add: (sessionId, input, by) => this.schedules.add(sessionId, input, by),
-        remove: (id) => this.schedules.remove(id),
       },
     };
     const sessions = {
@@ -206,24 +222,47 @@ export class SessionRuntime {
         ...sessions,
         free: (id) => {
           const session = this.live.get(id);
-          return !this.setup.has(id) && !this.extensionCandidates.has(id) && (!session || (session.ready && session.settled));
+          // A wait under way takes what arrives, also when no turn runs (an extension waiting in code).
+          return !this.setup.has(id) && !this.extensionCandidates.has(id) && !this.started.waiting(id) && (!session || (session.ready && session.settled));
         },
-        run: async (id, wake, details) => {
+        settle: async (id, wake) => {
           this.admit();
+          // An answer already taken is not sent as well: the session read or waited for this process's end.
+          if (wake.word === "answer" && wake.source.kind === "process" && this.processes.endTaken(wake.source.id)) return undefined;
           await this.ensure(id);
           let text = wake.text;
-          // A child's report: the session's extensions see it first and may take it or reword it.
-          if (wake.report) {
-            const answer = this.get(id).offerChildEnded(wake.report);
-            if (answer?.action === "skip") return { handled: true as const };
-            if (answer?.action === "send") text = answer.text;
+          // An answer or a raise from something the session started: its extensions hear it first and may take it or reword it.
+          let quiet = wake.quiet;
+          if (wake.report && wake.word) {
+            const kind = wake.source.kind === "process" ? "process" : "session";
+            const { title, how, text: said, data } = wake.report;
+            const from = { id: this.handles.of(id, kind, wake.source.id), kind, title } as const;
+            const answer = this.get(id).hear({ word: wake.word, from, how, text: said, ...(data !== undefined ? { data } : {}) });
+            if (answer?.action === "skip") return undefined;
+            if (answer?.action === "send") [text, quiet] = [answer.text, undefined];
           }
+          if (!quiet) return text;
+          // A line reads as the person sees it: the card's words.
+          const { title = wake.source.label, how = "ended" } = wake.card ?? {};
+          await this.get(id).addStatus(text, { session: wake.source.id, title, how, ok: wake.report?.how === "finished" });
+          return undefined;
+        },
+        send: (id, text, details) => {
           validateText(text);
           return this.get(id).start(text, details);
         },
         paused: () => this.unattendedPaused,
       },
-      { now: configuration.now, logger, settled: (sessionId, sourceId) => this.schedules.settled(sessionId, sourceId) },
+      {
+        now: configuration.now,
+        logger,
+        queued: (sessionId, wake) => this.arrivals.tell(sessionId, wake),
+        settled: (sessionId, sourceId) => {
+          this.schedules.settled(sessionId, sourceId);
+          // What a child waited for is settled: it may be at rest now, and owe its parent an answer.
+          void this.children.rested(sessionId);
+        },
+      },
     );
     this.schedules = new Schedules({ ...sessions, spawn: (owner, run) => this.runs.schedule(owner, run) }, this.wakes, { now: configuration.now, logger });
     this.routines = new Routines(
@@ -239,7 +278,8 @@ export class SessionRuntime {
       { ids: () => this.storage.ids(), directory: (id) => this.storage.directory(id), tell: (sessionId, end) => this.sessionProcesses.ended(sessionId, end) },
       { logger },
     );
-    this.sessionProcesses = new SessionProcesses(access, this.processes, (id) => this.children.of(id));
+    this.sessionProcesses = new SessionProcesses(access, this.processes, this.handles);
+    this.started = new Started(this.handles, this.children, this.sessionProcesses, scheduleKind(this.schedules), access);
     this.wakes.start();
     this.schedules.start();
     this.processes.load();
@@ -277,11 +317,15 @@ export class SessionRuntime {
       .filter((metadata) => !metadata.archived)
       .map((metadata) => this.summary(metadata, this.live.get(metadata.id)));
   }
-  /** The sessions the person put away. */
+  /**
+   * The sessions the person put away. A child put away when it was done is not among them while
+   * its parent is in use: it was never a row of its own, and is reached from its parent.
+   */
   archived(): SessionSummary[] {
-    return this.storage
-      .list()
-      .filter((metadata) => metadata.archived)
+    const all = this.storage.list();
+    const inUse = new Set(all.filter((metadata) => !metadata.archived).map((metadata) => metadata.id));
+    return all
+      .filter((metadata) => metadata.archived && !(this.children.away(metadata) && inUse.has(metadata.parent!)))
       .map((metadata) => this.summary(metadata));
   }
   get unreadableSessions(): number {
@@ -330,7 +374,8 @@ export class SessionRuntime {
       ...(session?.workingSince ? { workingSince: new Date(session.workingSince).toISOString() } : {}),
       ...(session?.waitingForSlot || (!session && metadata.queued !== undefined) ? { queued: true } : {}),
       ...(metadata.forkOf ? { parent: metadata.forkOf, forkOf: metadata.forkOf }
-        : metadata.parent ? { parent: metadata.parent } : {}),
+        : metadata.parent ? { parent: metadata.parent, ask: this.children.stand(metadata) }
+        : metadata.raise ? { raised: metadata.raise } : {}),
       ...(metadata.schedule ? { schedule: { ...metadata.schedule } } : {}),
       ...(metadata.held ? { held: { ...metadata.held } } : {}),
       ...(this.processes?.runningIn(metadata.id) ? { processes: this.processes.runningIn(metadata.id) } : {}),
@@ -420,39 +465,51 @@ export class SessionRuntime {
       this.admit();
     }
     if (request.model !== undefined && !validChoice(request.model)) throw new RuntimeError("invalid-input");
-    const agent = request.agent ?? DEFAULT_AGENT;
+    // An agent made for this session builds on the agents it names, like any session's own layer.
+    const agent = request.agent ?? request.layer?.base?.[0] ?? DEFAULT_AGENT;
     if (!validAgentId(agent)) throw new RuntimeError("invalid-input");
     if (!this.agents.exists({ agent })) throw new RuntimeError("agent");
-    let bound: ReturnType<typeof bindingOf>;
+    const id = randomUUID();
     try {
-      bound = bindingOf(this.agents, { agent });
-    } catch {
-      throw new RuntimeError("agent");
+      if (request.layer) this.agents.save({ session: id }, "", request.layer);
+      let bound: ReturnType<typeof bindingOf>;
+      try {
+        bound = bindingOf(this.agents, request.layer ? { session: id } : { agent });
+      } catch {
+        throw new RuntimeError("agent");
+      }
+      // A project agent decides the folder; nobody else may. A session another one started works
+      // where that one does, unless it is given a folder. An app without one has its own place.
+      const inherited = child.parent ? this.storage.read(child.parent).cwd : undefined;
+      const folder = bound.folder ?? request.folder ?? inherited ?? (bound.home ? this.appFolder(agent) : undefined);
+      if ((bound.folder && request.folder !== undefined) || typeof folder !== "string" || !isAbsolute(folder) || folder.length > 4096)
+        throw new RuntimeError("invalid-input");
+      // The folder is checked and made canonical during setup, after the session is reserved.
+      const createdAt = new Date().toISOString();
+      return await this.load(
+        {
+          version: 2,
+          id,
+          tracksUploads: true,
+          cwd: folder,
+          agent,
+          ...(request.model ? { model: request.model } : {}),
+          createdAt,
+          // Nothing to read yet: it becomes unread when it does something no one has looked at.
+          seenAt: createdAt,
+          active: false,
+          interrupted: false,
+          // A session started by another one is asked from its first message.
+          ...(child.parent ? { ask: { from: 0 } } : {}),
+          ...child,
+        },
+        false,
+      );
+    } catch (error) {
+      // Nothing is kept of a session that did not start, the layer made for it included.
+      if (request.layer) this.storage.discardUnpublished(id);
+      throw error;
     }
-    // A project agent decides the folder; nobody else may. An app without one has its own place
-    // unless it is given another. Any other agent is given a folder.
-    const folder = bound.folder ?? request.folder ?? (bound.home ? this.appFolder(agent) : undefined);
-    if ((bound.folder && request.folder !== undefined) || typeof folder !== "string" || !isAbsolute(folder) || folder.length > 4096)
-      throw new RuntimeError("invalid-input");
-    // The folder is checked and made canonical during setup, after the session is reserved.
-    const createdAt = new Date().toISOString();
-    return this.load(
-      {
-        version: 2,
-        id: randomUUID(),
-        tracksUploads: true,
-        cwd: folder,
-        agent,
-        ...(request.model ? { model: request.model } : {}),
-        createdAt,
-        // Nothing to read yet: it becomes unread when it does something no one has looked at.
-        seenAt: createdAt,
-        active: false,
-        interrupted: false,
-        ...child,
-      },
-      false,
-    );
   }
   private appFolder(agent: string): string {
     const dir = join(this.appsDir, agent);
@@ -668,7 +725,7 @@ export class SessionRuntime {
   async archive(id: string): Promise<void> {
     validateId(id);
     // A parent takes its children along; nothing is put away while any of them works.
-    const ids = [...this.children.of(id).filter((child) => !child.archived).map((child) => child.id), id];
+    const ids = [...this.children.under(id).filter((child) => !child.archived).map((child) => child.id), id];
     if (ids.some((each) => this.live.get(each) && !this.live.get(each)!.settled)) throw new RuntimeError("busy");
     for (const each of ids) {
       if (this.live.has(each)) await this.stop(each);
@@ -679,7 +736,6 @@ export class SessionRuntime {
       this.processes.stopSession(each);
     }
   }
-  /** Brings a session back, with its children. */
   /**
    * Another model or thinking level for this session, from its next reply on. While the session
    * works, the change waits until it is free (`pending` in its document).
@@ -773,9 +829,15 @@ export class SessionRuntime {
     if (live) return live.rename(title);
     this.storage.write({ ...this.storage.read(id), title, renamed: true });
   }
+  /**
+   * Brings a session back, with what was put away along with it: a schedule's runs, and the
+   * children it kept or that still owe it an answer. A child put away when it was done stays
+   * put away; its row in the conversation brings it back.
+   */
   restore(id: string): void {
     validateId(id);
-    for (const each of [id, ...this.children.of(id).map((child) => child.id)]) {
+    const had = this.children.under(id).filter((child) => !this.children.away(child));
+    for (const each of [id, ...had.map((child) => child.id)]) {
       const { archived, ...metadata } = this.storage.read(each);
       if (archived) this.storage.write(metadata);
     }
@@ -787,7 +849,7 @@ export class SessionRuntime {
   delete(id: string): void {
     validateId(id);
     const metadata = this.storage.read(id);
-    const children = this.children.of(id);
+    const children = this.children.under(id);
     if (!metadata.archived || [id, ...children.map((child) => child.id)].some((each) => this.live.has(each))) throw new RuntimeError("busy");
     for (const each of [...children.map((child) => child.id), id]) {
       this.storage.remove(each);
@@ -795,6 +857,7 @@ export class SessionRuntime {
       this.schedules.forget(each);
       this.wakes.forget(each);
       this.processes.forget(each);
+      this.handles.forget(each);
     }
     // A deleted child's reports are no longer kept by its parent.
     if (metadata.parent) this.wakes.forgetSource(metadata.parent, id);
@@ -830,7 +893,7 @@ export class SessionRuntime {
   }
   /** The person stops a process; its session is told. */
   stopProcess(sessionId: string, id: string): void {
-    this.sessionProcesses.stop(sessionId, id);
+    this.sessionProcesses.stopByPerson(sessionId, id);
   }
   /** The data folder this runtime reads and writes. */
   get dataFolder(): string {
@@ -978,7 +1041,9 @@ export class SessionRuntime {
   start(id: string, text: string, attachments: readonly string[] = []): RunHandle {
     validateText(text);
     if (!this.accepting) throw new RuntimeError("closed");
-    return this.get(id).start(this.withAttachments(id, text, attachments));
+    const run = this.get(id).start(this.withAttachments(id, text, attachments));
+    this.children.told(id, text);
+    return run;
   }
   /**
    * Sends one of the person's messages again, edited: Pi's tree navigation moves the session to just
@@ -1013,7 +1078,9 @@ export class SessionRuntime {
   async queue(id: string, text: string, kind: "steer" | "follow-up", attachments: readonly string[] = []): Promise<"queued" | "handled"> {
     validateText(text);
     if (kind !== "steer" && kind !== "follow-up") throw new RuntimeError("invalid-input");
-    return this.get(id).queue(this.withAttachments(id, text, attachments), kind);
+    const outcome = await this.get(id).queue(this.withAttachments(id, text, attachments), kind);
+    this.children.told(id, text);
+    return outcome;
   }
 
   // ---- Attachments ----------------------------------------------------------------------------
@@ -1080,8 +1147,12 @@ export class SessionRuntime {
     validateText(placed);
     return placed;
   }
+  /**
+   * The person's Stop. A child still working on what its parent asked is stopped as its parent
+   * could stop it: what it started stops too, and the parent gets a note of it.
+   */
   cancel(id: string): Promise<void> {
-    return this.get(id).cancel();
+    return this.children.stoppedByPerson(id) ?? this.get(id).cancel();
   }
 }
 

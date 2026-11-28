@@ -1,6 +1,6 @@
 import { EXTENSION_TOOL } from "../src/core/runtime/extension-tool.js";
 import { RuntimeError } from "../src/core/runtime/errors.js";
-import { PROCESS_TOOL } from "../src/core/runtime/process-tool.js";
+import { toolOf, VERBS } from "../src/contract/verbs.js";
 /** Pi's built-in extensions every session loads; their tools are on unless switched off. */
 const PI_BUILT_IN_TOOLS = ["codemode", "tool_search"];
 import assert from "node:assert/strict";
@@ -20,8 +20,6 @@ import {
   type RuntimeConfiguration,
 } from "../src/core/runtime/session-runtime.js";
 import { TITLE_TOOL, toolSessionTitle } from "../src/core/runtime/session-title.js";
-import { SCHEDULE_TOOL } from "../src/core/runtime/schedule-tool.js";
-import { SESSION_TOOL } from "../src/core/runtime/session-tool.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { selectLocal, testHome } from "./fixtures/home.js";
 import { sessionItems, sessionNotices, sessionText } from "./fixtures/session.js";
@@ -88,7 +86,7 @@ test("PiSpark integration: real native title-only calls, agent/no-agent isolatio
             ? (message.toolsAdded ?? []).map((tool) => tool.name)
             : [],
         ),
-        [EXTENSION_TOOL, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL, PROCESS_TOOL, ...PI_BUILT_IN_TOOLS],
+        [EXTENSION_TOOL, TITLE_TOOL, ...VERBS.map(toolOf), ...PI_BUILT_IN_TOOLS],
       );
     const prompts = JSON.stringify(
       f.control.requests.map((request) =>
@@ -116,7 +114,7 @@ test("PiSpark integration: real native title-only calls, agent/no-agent isolatio
             ? (message.toolsAdded ?? []).map((tool) => tool.name)
             : [],
         ),
-      [EXTENSION_TOOL, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL, PROCESS_TOOL, ...PI_BUILT_IN_TOOLS],
+      [EXTENSION_TOOL, TITLE_TOOL, ...VERBS.map(toolOf), ...PI_BUILT_IN_TOOLS],
     );
     observer.events.close();
     other.events.close();
@@ -333,7 +331,7 @@ test("PiSpark integration: legacy unmentioned tool activates on reopen; explicit
           latest.flatMap((m) => m.toolsAdded?.map((tool) => tool.name) ?? []),
         ),
       ].sort(),
-      [EXTENSION_TOOL, PROCESS_TOOL, SCHEDULE_TOOL, SESSION_TOOL, TITLE_TOOL, ...PI_BUILT_IN_TOOLS].sort(),
+      [EXTENSION_TOOL, TITLE_TOOL, ...VERBS.map(toolOf), ...PI_BUILT_IN_TOOLS].sort(),
     );
   } finally {
     await f.cleanup();

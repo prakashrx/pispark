@@ -6,6 +6,7 @@ import {
   commandUncertainty,
   folderName,
   foremostState,
+  parentState,
   goesByApp,
   sessionName,
   sessionStarted,
@@ -66,6 +67,21 @@ test("normal status is quiet and cancellation/agent errors remain distinct", () 
   expect(foremostState(["queued", "needs-you", "failed"])).toBe("needs-you");
   expect(foremostState(["", ""])).toBe("");
 });
+test("a session's mark speaks for the sessions it started: it needs you when one does, and works while any ask is open", () => {
+  const idle = { status: "idle", interrupted: false };
+  const child = (state: "working" | "waiting" | "asked" | "answered" | "stopped" | "failed", extra: object = {}) => ({ ...idle, ask: { state }, ...extra });
+  expect(parentState(idle, [])).toBe("");
+  // Its own state comes first, except that needing you is the one loud state.
+  expect(parentState({ status: "error", interrupted: false }, [child("working")])).toBe("failed");
+  expect(parentState({ status: "error", interrupted: false }, [child("waiting", { status: "running", waiting: true })])).toBe("needs-you");
+  // Something it raised with you needs you, whatever else it does.
+  expect(sessionState({ ...idle, raised: "Ship it today?" })).toBe("needs-you");
+  expect(parentState({ status: "running", interrupted: false, raised: "Ship it today?" }, [])).toBe("needs-you");
+  // Idle itself, it is still working while a child works, waits or has a question for it.
+  for (const open of ["working", "waiting", "asked"] as const) expect(parentState(idle, [child("answered"), child(open)])).toBe("working");
+  for (const done of ["answered", "stopped", "failed"] as const) expect(parentState(idle, [child(done)])).toBe("");
+});
+
 test("a refused command is said in words; an unknown code is still named", () => {
   expect(commandError("folder")).toBe("That working folder doesn’t exist on the server.");
   expect(commandError("busy")).toBe("The session is busy. Try again when it has finished.");

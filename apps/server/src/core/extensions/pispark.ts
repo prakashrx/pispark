@@ -1,12 +1,10 @@
 import { dirname, join } from "node:path";
-import { Type } from "typebox";
+import { Type, type TSchema } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { sessionTitle } from "../../contract/session-title.js";
+import { toolOf, verbs, type Verb, type VerbName } from "../../contract/verbs.js";
 import { registerExtensionTool } from "../runtime/extension-tool.js";
 import { TITLE_TOOL } from "../runtime/session-title.js";
-import { SCHEDULE_CHANNEL, SCHEDULE_TOOL, type ScheduleAnswer, type ScheduleMessage, type ScheduleRequest } from "../runtime/schedule-tool.js";
-import { REPORT_TOOL, SESSION_CHANNEL, SESSION_TOOL, type SessionMessage, type SessionRequest, type ToolAnswer } from "../runtime/session-tool.js";
-import { PROCESS_CHANNEL, PROCESS_TOOL, type ProcessMessage, type ProcessRequest } from "../runtime/process-tool.js";
 
 /** "2026-11-13 14:30 (UTC+01:00)": the server's local time, for the agent to schedule by. */
 function localNow(now = new Date()): string {
@@ -19,8 +17,7 @@ function localNow(now = new Date()): string {
 /**
  * Ordinary native Pi extension, instantiated separately for every hosted session. Its title tool
  * names the session with Pi's own `setSessionName`; the session's name is the session title. Its
- * schedule tool asks PiSpark (which asks the person first) to wake this session later. Its session
- * tool asks PiSpark to start and follow child sessions, whose answers come back as messages.
+ * other tools are the ten verbs a session says about what it started (`contract/verbs.ts`).
  */
 export default function pispark(pi: ExtensionAPI): void {
   registerExtensionTool(pi);
@@ -44,228 +41,154 @@ export default function pispark(pi: ExtensionAPI): void {
       };
     },
   });
-  pi.registerTool({
-    name: SCHEDULE_TOOL,
-    label: "Schedule",
-    description:
-      "Schedule a prompt to be sent to this same session later, as if the person typed it: once (in_minutes or at) or repeating (cron, five fields, the server's local time). PiSpark asks the person before adding it. Also lists or removes this session's schedules.",
-    parameters: Type.Object(
-      {
-        action: Type.Union([Type.Literal("add"), Type.Literal("list"), Type.Literal("remove")]),
-        prompt: Type.Optional(Type.String({ maxLength: 8192, description: "What to send at that time, written as the person's request." })),
-        cron: Type.Optional(Type.String({ maxLength: 100, description: "Repeating: minute hour day-of-month month day-of-week, e.g. '0 9 * * 1-5'." })),
-        in_minutes: Type.Optional(Type.Integer({ minimum: 1, maximum: 525600, description: "Once, this many minutes from now." })),
-        at: Type.Optional(Type.String({ maxLength: 40, description: "Once, at this local date and time, e.g. '2026-11-14T09:00'." })),
-        id: Type.Optional(Type.String({ maxLength: 64, description: "The schedule to remove." })),
-        run: Type.Optional(
-          Type.Union([Type.Literal("here"), Type.Literal("new")], {
-            description: "add: 'here' sends each run to this session (default); 'new' starts each run as a new session under this session.",
-          }),
-        ),
-        report: Type.Optional(
-          Type.Union([Type.Literal("result"), Type.Literal("status"), Type.Literal("none")], {
-            description:
-              "add, with run 'new': how each run tells this session it ended. 'status' (default): a line here, and the run can raise what needs attention; 'result': its answer wakes this session; 'none': nothing.",
-          }),
-        ),
+  // The ten verbs about what a session started (`contract/verbs.ts`): each tool is a schema and one call.
+  const say = verbs(pi.events);
+  const tool = (verb: VerbName, label: string, description: string, properties: Record<string, TSchema>) =>
+    pi.registerTool({
+      name: toolOf(verb),
+      label,
+      description,
+      parameters: Type.Object(properties, { additionalProperties: false }),
+      async execute(_id, parameters, signal) {
+        if (signal?.aborted) throw new Error("Cancelled");
+        const answer = await say.say({ verb, ...parameters } as Verb, signal);
+        if (!answer.ok) throw new Error(answer.text);
+        return { content: [{ type: "text", text: answer.text }], details: answer.details };
       },
-      { additionalProperties: false },
-    ),
-    async execute(_id, parameters, signal) {
-      if (signal?.aborted) throw new Error("Cancelled");
-      let request: ScheduleRequest;
-      if (parameters.action === "list") request = { action: "list" };
-      else if (parameters.action === "remove") {
-        if (!parameters.id) throw new Error("Give the id of the schedule to remove (list shows them)");
-        request = { action: "remove", id: parameters.id };
-      } else {
-        const whens = [parameters.cron, parameters.in_minutes, parameters.at].filter((value) => value !== undefined);
-        if (whens.length !== 1) throw new Error("Give exactly one of cron, in_minutes or at");
-        if (!parameters.prompt?.trim()) throw new Error("Give the prompt to send");
-        const at =
-          parameters.in_minutes !== undefined
-            ? new Date(Date.now() + parameters.in_minutes * 60_000).toISOString()
-            : parameters.at !== undefined
-              ? new Date(parameters.at).toISOString()
-              : undefined;
-        if (parameters.at !== undefined && Number.isNaN(new Date(parameters.at).getTime())) throw new Error("at is not a date and time");
-        request = {
-          action: "add",
-          input: {
-            prompt: parameters.prompt,
-            ...(at ? { at } : { cron: parameters.cron }),
-            ...(parameters.run ? { run: parameters.run } : {}),
-            ...(parameters.report ? { report: parameters.report } : {}),
-          },
-        };
-      }
-      const answer = await new Promise<ScheduleAnswer>((reply) => {
-        const message: ScheduleMessage = { request, reply };
-        pi.events.emit(SCHEDULE_CHANNEL, message);
-        // The host takes the request while the event is delivered; nobody did: not hosted by PiSpark.
-        if (!message.taken) reply({ ok: false, text: "Scheduling is not available here." });
-      });
-      if (!answer.ok) throw new Error(answer.text);
-      // The schedules as saved, for views of the call.
-      const details = answer.schedule ? { schedule: answer.schedule } : answer.schedules ? { schedules: answer.schedules } : undefined;
-      return { content: [{ type: "text", text: answer.text }], details };
+    });
+  const id = (what: string) => Type.String({ maxLength: 64, description: `${what}, by its id, such as session-1 or process-2 (pispark_look lists them).` });
+  const pattern = (description: string) => Type.String({ maxLength: 200, description });
+
+  tool(
+    "start_session",
+    "Start a session",
+    "Hand work to another PiSpark session, which runs on its own while this one carries on. It sees only the brief. It answers once, when it is done, and its answer arrives here as a message. It is then put away, unless you keep it. Set it up as a person sets up a new session: a folder, an agent and a model.",
+    {
+      brief: Type.String({ maxLength: 65536, description: "Its first message, complete on its own: the outcome, the limits, and what done means." }),
+      title: Type.Optional(Type.String({ maxLength: 200, description: "A short title for it; named from the brief when left out." })),
+      agent: Type.Optional(
+        Type.Union([Type.String({ maxLength: 64 }), Type.Object({}, { additionalProperties: true })], {
+          description:
+            "An agent id, or an agent definition made for this session, in the shape of an agent.json (base, on, off, resources, settings): it names agents, skills, extensions and prompts that exist, and holds no code. The Default agent when left out.",
+        }),
+      ),
+      folder: Type.Optional(Type.String({ maxLength: 4096, description: "Where it works, absolute or relative to this session's folder; this session's folder when left out." })),
+      model: Type.Optional(Type.String({ maxLength: 400, description: "As provider/id; its agent's own model when left out." })),
+      keep: Type.Optional(Type.Boolean({ description: "true keeps it after its answer, so pispark_send can tell it more later with all it knows; pispark_stop then puts it away. Left out, it is put away once it is done." })),
     },
-  });
-  pi.registerTool({
-    name: SESSION_TOOL,
-    label: "Session tools",
-    description:
-      "Hand work to another PiSpark session that runs on its own while this one carries on: start one with a first message (and optionally an agent, a title and how it reports), list this session's sessions, send one another message, stop one, or read its last answer. By default a session you started sends its answer here as a new message when it finishes. Sessions started by another session cannot start sessions. Use inspect for the calling session's resources and extensions, and reload to restart the calling session with its agent's current setup after you change that agent: it happens when this turn ends and you get the outcome as a new message.",
-    parameters: Type.Object(
-      {
-        action: Type.Union([Type.Literal("inspect"), Type.Literal("reload"), Type.Literal("start"), Type.Literal("list"), Type.Literal("send"), Type.Literal("stop"), Type.Literal("read")]),
-        prompt: Type.Optional(Type.String({ maxLength: 65536, description: "start: the new session's first message, complete on its own." })),
-        title: Type.Optional(Type.String({ maxLength: 200, description: "start: a short title for the new session." })),
-        agent: Type.Optional(Type.String({ maxLength: 64, description: "start: an agent id; this session's agent when left out." })),
-        report: Type.Optional(
-          Type.Union([Type.Literal("result"), Type.Literal("status"), Type.Literal("notice"), Type.Literal("none")], {
-            description:
-              "start: 'result' (default) sends its answer; 'notice' wakes you with a run_id, not the answer; 'status' adds a line without waking you, and the child can raise things; 'none' says nothing.",
-          }),
-        ),
-        id: Type.Optional(Type.String({ maxLength: 64, description: "send, stop, read: the session (list shows them)." })),
-        run_id: Type.Optional(Type.String({ maxLength: 64, description: "read: fetch the exact run from a notice; omit to read the latest answer." })),
-        text: Type.Optional(Type.String({ maxLength: 65536, description: "send: the message." })),
-      },
-      { additionalProperties: false },
-    ),
-    async execute(_id, parameters, signal) {
-      if (signal?.aborted) throw new Error("Cancelled");
-      const { action } = parameters;
-      let request: SessionRequest;
-      if (action === "list" || action === "inspect" || action === "reload") request = { action };
-      else if (action === "start") {
-        if (!parameters.prompt?.trim()) throw new Error("Give the first message for the new session");
-        request = {
-          action,
-          prompt: parameters.prompt,
-          ...(parameters.agent ? { agent: parameters.agent } : {}),
-          ...(parameters.title ? { title: parameters.title } : {}),
-          ...(parameters.report ? { report: parameters.report } : {}),
-        };
-      } else {
-        if (!parameters.id) throw new Error("Give the id of the session (list shows them)");
-        if (action === "send") {
-          if (!parameters.text?.trim()) throw new Error("Give the message to send");
-          request = { action, id: parameters.id, text: parameters.text };
-        } else if (action === "read") request = { action, id: parameters.id, ...(parameters.run_id !== undefined ? { runId: parameters.run_id } : {}) };
-        else request = { action, id: parameters.id };
-      }
-      const answer = await new Promise<ToolAnswer>((reply) => {
-        const message: SessionMessage = { request, reply };
-        pi.events.emit(SESSION_CHANNEL, message);
-        if (!message.taken) reply({ ok: false, text: "Starting sessions is not available here." });
-      });
-      if (!answer.ok) throw new Error(answer.text);
-      return { content: [{ type: "text", text: answer.text }], details: answer.details };
+  );
+  tool(
+    "start_process",
+    "Run in the background",
+    "Run a command in the background on this host (a dev server, a build, a test suite). PiSpark owns it, so it keeps running while this session is idle. Returns at once with its id and first output. When it ends this session is told once, with its exit code and last output.",
+    {
+      command: Type.String({ maxLength: 8192, description: "The shell command." }),
+      title: Type.Optional(Type.String({ maxLength: 120, description: "A short name." })),
+      folder: Type.Optional(Type.String({ maxLength: 4096, description: "Where to run it; this session's folder when left out." })),
+      stop_after_seconds: Type.Optional(Type.Number({ minimum: 1, maximum: 604800, description: "Stop it after this long. Without it, it runs until it ends or is stopped." })),
+      raise_on: Type.Optional(pattern("A regular expression, e.g. 'error|failed': this session is woken when a line of its output matches, at most once a minute.")),
     },
-  });
-  pi.registerTool({
-    name: PROCESS_TOOL,
-    label: "Run in the background",
-    description:
-      "Run a command in the background on this host (a dev server, a build, a test suite), owned by PiSpark so it keeps running while this session is idle or unloaded. start returns at once with its id and first output; with wait_for (a regular expression) and timeout_seconds it returns when the output shows it or the time is up. output returns unread output; with wait_for and timeout_seconds it first waits for a matching line, and without them it returns at once, often with nothing new. wait returns terminal status without output. search looks for a literal string in retained output without consuming it. watch wakes this session when a line matches a pattern. When a process ends this session is told: 'result' (default) wakes it with the exit code and last output; 'status' adds a line; 'none' says nothing. Also lists and stops this session's processes and those of sessions it started.",
-    parameters: Type.Object(
-      {
-        action: Type.Union([Type.Literal("start"), Type.Literal("list"), Type.Literal("output"), Type.Literal("wait"), Type.Literal("search"), Type.Literal("watch"), Type.Literal("unwatch"), Type.Literal("stop")]),
-        command: Type.Optional(Type.String({ maxLength: 8192, description: "start: the shell command." })),
-        folder: Type.Optional(Type.String({ maxLength: 4096, description: "start: where to run it; this session's folder when left out." })),
-        title: Type.Optional(Type.String({ maxLength: 120, description: "start: a short name." })),
-        report: Type.Optional(
-          Type.Union([Type.Literal("result"), Type.Literal("status"), Type.Literal("none")], {
-            description: "start, watch: how this session is told. Use 'status' for servers that only end when stopped or broken.",
-          }),
-        ),
-        wait_for: Type.Optional(Type.String({ maxLength: 200, description: "start, output: a regular expression to wait for in the output, e.g. 'ready|listening'. Needs timeout_seconds." })),
-        timeout_seconds: Type.Optional(Type.Number({ minimum: 1, maximum: 3600, description: "Required for wait, or with wait_for: the longest to wait." })),
-        stop_after_seconds: Type.Optional(Type.Number({ minimum: 1, maximum: 604800, description: "start: stop it after this long. Without it, it runs until it ends or is stopped." })),
-        id: Type.Optional(Type.String({ maxLength: 64, description: "output, wait, search, watch, unwatch, stop: the process (list shows them)." })),
-        query: Type.Optional(Type.String({ maxLength: 200, pattern: "^[^\\r\\n]+$", description: "search: literal text, case-insensitive." })),
-        pattern: Type.Optional(Type.String({ maxLength: 200, description: "watch, unwatch: a regular expression, e.g. 'error|failed'." })),
-      },
-      { additionalProperties: false },
-    ),
-    async execute(_id, parameters, signal) {
-      if (signal?.aborted) throw new Error("Cancelled");
-      const p = parameters;
-      if (p.action === "wait") {
-        if (p.timeout_seconds === undefined || p.wait_for !== undefined) throw new Error("wait needs timeout_seconds, without wait_for");
-      } else if ((p.wait_for === undefined) !== (p.timeout_seconds === undefined)) throw new Error("A wait needs both wait_for and timeout_seconds");
-      const wait = p.wait_for !== undefined ? { waitFor: p.wait_for, timeoutSeconds: p.timeout_seconds! } : {};
-      const need = (value: string | undefined, what: string) => {
-        if (!value?.trim()) throw new Error(`Give ${what}`);
-        return value;
-      };
-      let request: ProcessRequest;
-      if (p.action === "list") request = { action: "list" };
-      else if (p.action === "start")
-        request = {
-          action: "start",
-          command: need(p.command, "the command"),
-          ...(p.folder ? { folder: p.folder } : {}),
-          ...(p.title ? { title: p.title } : {}),
-          ...(p.report ? { report: p.report } : {}),
-          ...(p.stop_after_seconds ? { stopAfterSeconds: p.stop_after_seconds } : {}),
-          ...wait,
-        };
-      else if (p.action === "output") request = { action: "output", id: need(p.id, "the id (list shows them)"), ...wait };
-      else if (p.action === "wait") request = { action: "wait", id: need(p.id, "the id"), timeoutSeconds: p.timeout_seconds! };
-      else if (p.action === "search") request = { action: "search", id: need(p.id, "the id"), query: need(p.query, "the search term") };
-      else if (p.action === "watch")
-        request = { action: "watch", id: need(p.id, "the id"), pattern: need(p.pattern, "the pattern"), ...(p.report ? { report: p.report } : {}) };
-      else if (p.action === "unwatch") request = { action: "unwatch", id: need(p.id, "the id"), pattern: need(p.pattern, "the pattern") };
-      else request = { action: "stop", id: need(p.id, "the id") };
-      const answer = await new Promise<ToolAnswer>((reply) => {
-        const message: ProcessMessage = { request, reply, ...(signal ? { signal } : {}) };
-        pi.events.emit(PROCESS_CHANNEL, message);
-        if (!message.taken) reply({ ok: false, text: "Background processes are not available here." });
-      });
-      if (!answer.ok) throw new Error(answer.text);
-      return { content: [{ type: "text", text: answer.text }], details: answer.details };
+  );
+  tool(
+    "schedule",
+    "Schedule",
+    "Schedule a prompt to be sent later, as if the person typed it: once (in_minutes or at) or repeating (cron). PiSpark asks the person before adding it.",
+    {
+      prompt: Type.String({ maxLength: 8192, description: "What to send at that time, written as the person's request." }),
+      cron: Type.Optional(Type.String({ maxLength: 100, description: "Repeating: minute hour day-of-month month day-of-week, in the server's local time, e.g. '0 9 * * 1-5'." })),
+      in_minutes: Type.Optional(Type.Integer({ minimum: 1, maximum: 525600, description: "Once, this many minutes from now." })),
+      at: Type.Optional(Type.String({ maxLength: 40, description: "Once, at this local date and time, e.g. '2026-11-14T09:00'." })),
+      run: Type.Optional(
+        Type.Union([Type.Literal("here"), Type.Literal("new")], { description: "'here' sends each run to this session (default); 'new' starts each run as a new session under this one." }),
+      ),
     },
-  });
-  pi.registerTool({
-    name: REPORT_TOOL,
-    label: "Raise with the starting session",
-    description:
-      "This session was started by another session, which hears only that it ended. When you find something that session needs to know or act on, raise it with this tool: your text wakes it.",
-    parameters: Type.Object({ text: Type.String({ maxLength: 65536, description: "What the starting session needs to know, complete on its own." }) }, { additionalProperties: false }),
-    async execute(_id, parameters, signal) {
-      if (signal?.aborted) throw new Error("Cancelled");
-      if (!parameters.text?.trim()) throw new Error("Give what to raise");
-      const answer = await new Promise<{ ok: boolean; text: string }>((reply) => {
-        const message: SessionMessage = { request: { action: "report", text: parameters.text }, reply };
-        pi.events.emit(SESSION_CHANNEL, message);
-        if (!message.taken) reply({ ok: false, text: "Raising is not available here." });
-      });
-      if (!answer.ok) throw new Error(answer.text);
-      return { content: [{ type: "text", text: answer.text }], details: undefined };
+  );
+  tool(
+    "send",
+    "Send",
+    "Tell something this session started. A session takes text: working, it reads the text at its next pause; waiting for your answer to what it raised, or kept and at rest, it is asked anew and answers again. A process takes raise_on.",
+    {
+      id: id("What to tell"),
+      text: Type.Optional(Type.String({ maxLength: 65536, description: "For a session: the message." })),
+      raise_on: Type.Optional(pattern("For a process: a new regular expression to raise on, or '' to stop raising.")),
+      when: Type.Optional(
+        Type.Union([Type.Literal("now"), Type.Literal("after")], { description: "For a working session: 'now' (default) at its next pause; 'after' once it has finished what it is doing." }),
+      ),
     },
+  );
+  tool(
+    "wait",
+    "Wait",
+    "Wait for sessions and processes this session started, and get their answers together, rather than ending your turn or checking on them. It ends early if one of them raises something or a message arrives for you. Answers returned here are not sent again, and what is still open when the wait ends stays open.",
+    {
+      ids: Type.Optional(Type.Array(Type.String({ maxLength: 64 }), { minItems: 1, maxItems: 50, description: "What to wait for, such as ['session-1', 'process-2']; everything still open when left out." })),
+      for: Type.Optional(Type.Union([Type.Literal("all"), Type.Literal("any")], { description: "'all' (default) waits for every one; 'any' returns when the first is in." })),
+      until: Type.Optional(pattern("A regular expression: return when a process's output shows it, e.g. 'ready|listening'.")),
+      seconds: Type.Optional(Type.Number({ minimum: 1, maximum: 604800, description: "Give up after this long. Without it the wait has no limit." })),
+    },
+  );
+  tool(
+    "look",
+    "Look",
+    "See what this session started, without disturbing it. Without id: every session, process and schedule, with its id and state. With id: a session's state, last note and what it last said; a process's unread output; a schedule's runs.",
+    {
+      id: Type.Optional(id("One thing to look at")),
+      find: Type.Optional(Type.String({ maxLength: 200, pattern: "^[^\\r\\n]+$", description: "For a process: literal text to search for in its output, case-insensitive." })),
+    },
+  );
+  tool("stop", "Stop", "Stop something this session started: a session and what it started, a process, or a schedule (which is removed). A session you kept that is at rest is put away.", {
+    id: id("What to stop"),
   });
-  pi.on("before_agent_start", (event, ctx) => {
+  tool(
+    "raise",
+    "Raise",
+    "Say you need a decision from whoever asked for this work. It does not end your turn, and the answer arrives as a message. Use it only when the answer changes what you do next.",
+    { text: Type.String({ maxLength: 65536, description: "What you need, complete on its own, with what you recommend." }) },
+  );
+  tool("note", "Note", "Leave a line for whoever asked for this work, such as progress worth knowing. It never interrupts anyone, and nothing comes back.", {
+    text: Type.String({ maxLength: 65536, description: "The line." }),
+  });
+  tool(
+    "self",
+    "This session",
+    "The calling session itself. inspect: its loaded resources, tools, extensions and recent errors. reload: restart it with its agent's current setup after you change that agent; it happens when this turn ends and you get the outcome as a new message.",
+    { action: Type.Union([Type.Literal("inspect"), Type.Literal("reload")]) },
+  );
+
+  /** What PiSpark knows of this session that its agent is told: who started it, if a session did, and its own agent and model. */
+  const self = async (): Promise<{ startedBy?: string; agent?: string; model?: string }> => {
+    try {
+      return JSON.parse((await say.self("inspect")).text) as { startedBy?: string; agent?: string; model?: string };
+    } catch {
+      return {};
+    }
+  };
+  pi.on("before_agent_start", async (event, ctx) => {
     const active = pi.getActiveTools();
+    const has = (verb: VerbName) => active.includes(toolOf(verb));
+    const { startedBy: parent, agent, model } = await self();
     const guidance = [
       pisparkContext(ctx.sessionManager.getSessionDir()),
       active.includes(TITLE_TOOL)
         ? "PiSpark hosts this session. In your first reply, once its purpose is clear, call pispark_set_title with a short title of a few words; change it only when the topic meaningfully changes."
         : "",
-      active.includes(SCHEDULE_TOOL)
+      has("schedule")
         ? `When the person asks to do something later or repeatedly in this session, use pispark_schedule; PiSpark asks them to confirm. The server's local time now is ${localNow()}.`
         : "",
-      active.includes(SESSION_TOOL)
-        ? "For work that can run on its own (research, a long job, one of several parallel parts), you may start other sessions with pispark_session and carry on. Each session's answer arrives later as a message here; when others are still running, acknowledge it in one line."
+      has("start_session")
+        ? `For work that can run on its own (research, a long job, one of several parallel parts), hand it to another session with pispark_start_session and carry on. Each session answers once, when it is done, and is then put away; start it with keep: true if you will tell it more after its answer. To use the answers in this turn, call pispark_wait (all of them, or the first with for 'any'); otherwise end your turn and each answer arrives here as a message. What this session starts gets a short id such as session-1 or process-2: pispark_look shows them, pispark_send tells one something, pispark_stop stops one.${
+            agent ? ` A session you start uses the Default agent and that agent's model unless you say otherwise; this session's agent is "${agent}"${model ? ` and its model is "${model}"` : ""}, to pass when it should work as you do.` : ""
+          }`
         : "",
-      active.includes(PROCESS_TOOL)
-        ? "For commands that run long or never end on their own (dev servers, watchers, long builds or test runs), use pispark_process instead of bash: it runs them in the background, and when one ends this session is woken with its result, so don't check on it repeatedly. To block until something happens, use output with wait_for and timeout_seconds (a server's ready line) or wait (the exit). Call output without a wait only for a deliberate partial look."
+      has("start_process")
+        ? "For commands that run long or never end on their own (dev servers, watchers, long builds or test runs), use pispark_start_process instead of bash. When one ends this session is told once, so don't check on it repeatedly: pispark_wait blocks until it ends or its output shows something (until), and pispark_look is for a deliberate look at its output."
         : "",
-      active.includes(REPORT_TOOL)
-        ? "Another session started this one and hears only that it ended. If you find something it needs to know or act on, raise it with pispark_report; otherwise just finish."
-        : "",
+      // What every session started by another one is told: who asked, how it talks, and its limit.
+      parent !== undefined
+        ? `The session "${parent}" started this one and gave it its first message. What you say when you finish is your answer to it: it is sent once, when you are done and nothing you started is still running, so stop processes you no longer need. Use pispark_note for progress worth a line, and pispark_raise only when you need a decision from it before you can go on. You cannot start sessions.`
+        : has("raise")
+          ? "pispark_note and pispark_raise speak to the person: a note leaves them a line, a raise says this session needs them. Use them to pass on what a session you started raised and you cannot decide, not for ordinary replies."
+          : "",
     ].filter(Boolean);
     event.systemPromptOptions.appendSystemPrompt = [event.systemPromptOptions.appendSystemPrompt, ...guidance]
       .filter(Boolean)

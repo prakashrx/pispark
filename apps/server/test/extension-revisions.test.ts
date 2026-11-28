@@ -72,7 +72,7 @@ test("stage, deny, reload, replace, recover and remove without changing a siblin
     await eventually(() => runtime.session(id).extensions.views[0]?.key === "revision-probe");
     await invoke("revision_probe", {});
     assert.match(sessionText(runtime, id), /probe-one/);
-    await invoke("pispark_session", { action: "inspect" });
+    await invoke("pispark_self", { action: "inspect" });
     assert.match(sessionText(runtime, id), /browser mounting is not verified/);
     const apply = () => invoke("pispark_extension", { action: "apply", name: "probe" });
     await apply();

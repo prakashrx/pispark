@@ -49,6 +49,10 @@ export interface SessionInfo {
   parent?: string;
   /** Present when the parent is the source of an independently managed manual fork. */
   forkOf?: string;
+  /** For a session another one started: where what it was asked stands. */
+  ask?: Ask;
+  /** For a session the person started: what it raised with them, until they answer. It needs them. */
+  raised?: string;
   /** The schedule or app routine this session is one run of. */
   schedule?: { id: string; due: string };
   /** Kept loaded while no one watches, by one of its extensions, and why (see `HoldRequest`). */
@@ -62,6 +66,21 @@ export interface SessionInfo {
   readOnly?: ReadOnlyReason;
 }
 export type ReadOnlyReason = "model" | "agent" | "folder";
+/**
+ * Where a child's ask stands, for its parent's views. It is open while `working`, `waiting` (its
+ * run ended, but something it started is still due, or it waits for the person inside it) or
+ * `asked` (it raised a question with its parent and waits for the answer). Then it is `answered`,
+ * `stopped` or `failed`, until it is asked again.
+ */
+export interface Ask {
+  state: "working" | "waiting" | "asked" | "answered" | "stopped" | "failed";
+  /** What it waits for ("for tests", "for you, in it"), or who stopped it ("by you"). */
+  detail?: string;
+  /** Its last note to its parent, since it was asked. */
+  note?: string;
+  /** What it raised with its parent, while that waits for an answer. */
+  question?: string;
+}
 /**
  * An extension asks on its session's Pi bus (`HOLD_CHANNEL`) to keep the session loaded while no one
  * watches, so its own live work (a bot's connection, a watcher) keeps going and starts again after a

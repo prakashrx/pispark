@@ -13,6 +13,7 @@ import type { Schedule } from "../src/contract/schedule-protocol.js";
 import { STATUS_ENTRY, WOKEN_ENTRY } from "../src/contract/wake-protocol.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { testHome } from "./fixtures/home.js";
+import { say } from "./fixtures/verbs.js";
 
 const code = (expected: string) => (error: unknown) => error instanceof RuntimeError && error.code === expected;
 const local = (text: string) => new Date(text).getTime();
@@ -261,7 +262,7 @@ test("the agent's schedule tool adds to its own session only after the person sa
   try {
     const session = await f.runtime.create({ folder: f.folder });
     const ask = async (answer: boolean) => {
-      const run = f.runtime.start(session.id, `tool:pispark_schedule:${JSON.stringify({ action: "add", cron: "0 9 * * 1-5", prompt: "digest" })}`);
+      const run = f.runtime.start(session.id, say("schedule", { cron: "0 9 * * 1-5", prompt: "digest" }));
       await eventually(() => f.runtime.session(session.id).extensions.dialogs.length === 1);
       const dialog = f.runtime.session(session.id).extensions.dialogs[0]!;
       assert.equal(dialog.kind, "confirm");
@@ -277,41 +278,42 @@ test("the agent's schedule tool adds to its own session only after the person sa
     assert.equal(f.one().prompt, "digest");
     assert.equal(f.one().run, undefined);
     const result = f.runtime.items(session.id, {}).items.findLast((item) => item.role === "toolResult" && item.toolName === "pispark_schedule");
-    assert.match((result?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""), /, in this session \(id /);
+    assert.match((result?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""), /^Scheduled \(schedule-1\): Every weekday at 9:00 am, in this session\./);
   } finally {
     await f.cleanup();
   }
 });
 
-test("the agent's schedule tool keeps run 'new' and its report mode", async () => {
+test("the agent's schedule tool keeps run 'new'; look shows the schedule and stop removes it", async () => {
   const f = await fixture();
   try {
     const session = await f.runtime.create({ folder: f.folder });
-    const add = { action: "add", cron: "0 7 * * *", prompt: "feed", run: "new", report: "result" };
-    const run = f.runtime.start(session.id, `tool:pispark_schedule:${JSON.stringify(add)}`);
+    const run = f.runtime.start(session.id, say("schedule", { cron: "0 7 * * *", prompt: "feed", run: "new" }));
     await eventually(() => f.runtime.session(session.id).extensions.dialogs.length === 1);
     const dialog = f.runtime.session(session.id).extensions.dialogs[0]!;
     assert.match(dialog.kind === "confirm" ? dialog.title : "", /new sessions/);
     f.runtime.answer(session.id, dialog.id, true);
     await run.completion;
     assert.equal(f.one().run, "new");
-    assert.equal(f.one().report, "result");
 
     // The call's result is the schedule as saved: its details for views, and words saying where runs go.
-    const results = () => f.runtime.items(session.id, {}).items.filter((item) => item.role === "toolResult" && item.toolName === "pispark_schedule");
+    const results = () => f.runtime.items(session.id, {}).items.filter((item) => item.role === "toolResult");
     const text = (item: (typeof results extends () => (infer T)[] ? T : never) | undefined) =>
       (item?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join("");
     const added = results().at(-1);
-    const saved = (added?.details as { schedule?: { id: string; run?: string; report?: string } } | undefined)?.schedule;
+    const saved = (added?.details as { schedule?: { id: string; run?: string } } | undefined)?.schedule;
     assert.equal(saved?.id, f.one().id);
     assert.equal(saved?.run, "new");
-    assert.equal(saved?.report, "result");
-    assert.match(text(added), /Every day at 7:00 am, as a new session, reports result/);
+    assert.match(text(added), /^Scheduled \(schedule-1\): Every day at 7:00 am, each run in a new session\./);
 
-    await f.runtime.start(session.id, `tool:pispark_schedule:${JSON.stringify({ action: "list" })}`).completion;
-    const listed = results().at(-1);
-    assert.deepEqual(((listed?.details as { schedules?: { id: string }[] } | undefined)?.schedules ?? []).map((s) => s.id), [f.one().id]);
-    assert.match(text(listed), /as a new session, reports result \(on\): feed/);
+    // A schedule is one more thing the session started: it is looked at and stopped like the rest.
+    await f.runtime.start(session.id, say("look")).completion;
+    assert.equal(text(results().at(-1)), "schedule-1: Every day at 7:00 am, each run in a new session (on): feed");
+    await f.runtime.start(session.id, say("look", { id: "schedule-1" })).completion;
+    assert.match(text(results().at(-1)), /each run in a new session \(on\): feed\nNext: .*\nIt has not run yet\.$/);
+    await f.runtime.start(session.id, say("stop", { id: "schedule-1" })).completion;
+    assert.equal(text(results().at(-1)), "Schedule removed.");
+    assert.deepEqual(f.runtime.listSchedules().schedules, []);
   } finally {
     await f.cleanup();
   }
@@ -321,9 +323,8 @@ test("the agent's schedule tool asks the person only about a schedule that can b
   const f = await fixture();
   try {
     const session = await f.runtime.create({ folder: f.folder });
-    // A report belongs to runs in new sessions; with runs here it can't be kept, so nobody is asked.
-    const add = { action: "add", cron: "0 8 * * *", prompt: "standup", run: "here", report: "result" };
-    await f.runtime.start(session.id, `tool:pispark_schedule:${JSON.stringify(add)}`).completion;
+    // The 31st of February never comes, so it can't be kept and nobody is asked.
+    await f.runtime.start(session.id, say("schedule", { cron: "0 8 31 2 *", prompt: "standup" })).completion;
     assert.deepEqual(f.runtime.session(session.id).extensions.dialogs, []);
     assert.deepEqual(f.runtime.listSchedules().schedules, []);
     const result = f.runtime.items(session.id, {}).items.findLast((item) => item.role === "toolResult" && item.toolName === "pispark_schedule");
@@ -369,14 +370,12 @@ test("schedules over HTTP: list, add, change, run now and remove", async () => {
   }
 });
 
-test("a schedule can run each time in a new session under its session, which tells the session a status line", async () => {
+test("a schedule can run each time in a new session under its session, whose end is a line there, not a turn", async () => {
   const f = await fixture();
   try {
     const session = await f.runtime.create({ folder: f.folder });
-    assert.throws(() => f.runtime.addSchedule({ sessionId: session.id, cron: "0 9 * * *", prompt: "x", report: "status" }), code("invalid-input"));
     const added = f.runtime.addSchedule({ sessionId: session.id, cron: "0 9 * * *", prompt: "run the tests", run: "new" });
     assert.equal(added.run, "new");
-    assert.equal(added.report, "status");
 
     f.clock.now = local("2026-11-13T09:00");
     await f.runtime.checkWakes();

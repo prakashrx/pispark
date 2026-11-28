@@ -1,7 +1,8 @@
 import { EXTENSION_TOOL } from "../src/core/runtime/extension-tool.js";
 import { viewAgent } from "../src/core/agents/resolve.js";
 import { BUILT_IN_SKILLS } from "../src/core/runtime/configuration.js";
-import { PROCESS_TOOL } from "../src/core/runtime/process-tool.js";
+import { toolOf, VERBS } from "../src/contract/verbs.js";
+import { say } from "./fixtures/verbs.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdir, realpath, writeFile } from "node:fs/promises";
@@ -10,8 +11,6 @@ import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { RuntimeError } from "../src/core/runtime/errors.js";
 import { DEFAULT_TOOLS } from "../src/core/agents/format.js";
 import { TITLE_TOOL } from "../src/core/runtime/session-title.js";
-import { SCHEDULE_TOOL } from "../src/core/runtime/schedule-tool.js";
-import { SESSION_TOOL } from "../src/core/runtime/session-tool.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { localProviderSettings } from "./fixtures/provider-settings.js";
 import { testHome } from "./fixtures/home.js";
@@ -73,7 +72,7 @@ test("a fresh data root needs no setup: Default gives every session Pi's built-i
     await f.runtime.start(session.id, "read:value.txt").completion;
     assert.deepEqual(
       toolsOf(f.provider.requests[0]!).sort(),
-      [...DEFAULT_TOOLS, "codemode", "tool_search", EXTENSION_TOOL, TITLE_TOOL, SCHEDULE_TOOL, SESSION_TOOL, PROCESS_TOOL].sort(),
+      [...DEFAULT_TOOLS, "codemode", "tool_search", EXTENSION_TOOL, TITLE_TOOL, ...VERBS.map(toolOf)].sort(),
     );
     assert.match(sessionText(f.runtime, session.id), /WORK-FILE/);
   } finally {
@@ -204,7 +203,7 @@ test("the agent asks for a reload: it waits for the turn to end, then wakes the 
     const file = f.runtime.agents.readFile({ agent: "dev" }, "instructions/a.md");
     f.runtime.agents.writeFile({ agent: "dev" }, "instructions/a.md", file.revision, "SECOND-VERSION");
     f.provider.automatic = false;
-    const run = f.runtime.start(session.id, `tool:${SESSION_TOOL}:${JSON.stringify({ action: "reload" })}`);
+    const run = f.runtime.start(session.id, say("self", { action: "reload" }));
     await eventually(() => f.provider.active === 1);
     f.provider.requests.at(-1)!.release();
     await eventually(() => f.runtime.session(session.id).pending?.reload === true);
@@ -212,7 +211,7 @@ test("the agent asks for a reload: it waits for the turn to end, then wakes the 
     f.provider.automatic = true;
     f.provider.requests.at(-1)!.release();
     await run.completion;
-    await eventually(now(() => /This reload was asked for by pispark_session/.test(sessionText(f.runtime, session.id))));
+    await eventually(now(() => /This reload was asked for by pispark_self/.test(sessionText(f.runtime, session.id))));
     await eventually(now(() => f.runtime.session(session.id).status === "idle"));
     const woken = f.provider.requests.at(-1)!;
     assert.match(systemText(woken), /SECOND-VERSION/);
@@ -322,7 +321,7 @@ test("stopping the turn drops the reload its agent asked for", async () => {
     const file = f.runtime.agents.readFile({ agent: "dev" }, "instructions/a.md");
     f.runtime.agents.writeFile({ agent: "dev" }, "instructions/a.md", file.revision, "SECOND-VERSION");
     f.provider.automatic = false;
-    const run = f.runtime.start(session.id, `tool:${SESSION_TOOL}:${JSON.stringify({ action: "reload" })}`);
+    const run = f.runtime.start(session.id, say("self", { action: "reload" }));
     await eventually(() => f.provider.active === 1);
     f.provider.requests.at(-1)!.release();
     await eventually(() => f.runtime.session(session.id).pending?.reload === true);

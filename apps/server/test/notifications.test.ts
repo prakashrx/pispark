@@ -54,6 +54,42 @@ const session = (id: string, extra: Partial<SessionInfo> = {}): SessionInfo => (
   ...extra,
 });
 
+test("a session another one started never notifies on its own; what needs you is named after its parent, and a raise needs you", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "pispark-notify-"));
+  let now = Date.UTC(2026, 10, 18, 9);
+  const long = new Date(now - 5 * 60_000).toISOString();
+  const child = (extra: object) => session("kid", { parent: "p", ask: { state: "working" }, ...extra });
+  let sessions = [session("p"), child({ status: "running", workingSince: long })];
+  try {
+    const n = new Notifications(folder, () => sessions, (async () => new Response(null, { status: 201 })) as typeof fetch, () => now);
+    n.subscribe("phone", PHONE, ["needs-you", "failed", "finished", "schedule-failed"]);
+    n.sessionsChanged();
+    const told = async () => {
+      n.sessionsChanged();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return n.take("phone", PHONE);
+    };
+    // The child finishes a long run, then fails one: its parent's rows say so, and nobody is notified.
+    sessions = [session("p"), child({ status: "idle" })];
+    assert.deepEqual(await told(), []);
+    sessions = [session("p"), child({ status: "running" })];
+    assert.deepEqual(await told(), []);
+    sessions = [session("p"), child({ status: "error" })];
+    assert.deepEqual(await told(), []);
+    // A question inside the child reaches the person: named after the parent, opening the child, where the question is.
+    sessions = [session("p"), child({ status: "running", waiting: true, question: "Overwrite?" })];
+    assert.deepEqual(await told(), [{ title: "Session p", body: "Needs you: Overwrite?", url: "/#/s/kid", tag: "kid:needs-you" }]);
+    // The parent passes a question up to the person: it needs you.
+    sessions = [session("p", { raised: "Postgres or SQLite?" }), child({ status: "idle" })];
+    assert.deepEqual(await told(), [{ title: "Session p", body: "Needs you: Postgres or SQLite?", url: "/#/s/p", tag: "p:needs-you" }]);
+    // Answered, then raised again: told again.
+    sessions = [session("p"), child({ status: "idle" })];
+    assert.deepEqual(await told(), []);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
 test("a device is told what newly happened, as it asked, unless PiSpark is in view there; a gone subscription is dropped", async () => {
   const folder = await mkdtemp(join(tmpdir(), "pispark-notify-"));
   let sessions = [session("a"), session("b"), session("c")];

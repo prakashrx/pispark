@@ -1,28 +1,27 @@
 <script lang="ts">
   /**
-   * A session's Details (design language §1.5a): a stack of foldable panels. Session (agent, model
-   * and thinking, which apply from the next reply, folder, when and by whom it started), its context,
-   * the panels its extensions add (`session.details`), its schedules, its background tasks, the
-   * sessions it started, its agent's routines and what keeps it running. Each row acts with a small icon; the
-   * longer work (a schedule's form, a process's output, editing the agent) opens as a view in the
-   * same panel, with Back to here.
+   * A session's Details (design language §1.5a): a stack of foldable panels. "Started here" comes
+   * first: everything the conversation started that is still open, of any kind, in one list. Then
+   * Session (agent, model and thinking, which apply from the next reply, folder, when and by whom it
+   * started), its context, its artifacts, the panels its extensions add (`session.details`), its
+   * forks and its agent's routines. The longer work (a schedule's form, a process's output, editing
+   * the agent) opens as a view in the same panel, with Back to here.
    */
   import Button from "../../lib/ui/Button.svelte";
   import Fold from "../../lib/ui/Fold.svelte";
   import Selector from "../../lib/ui/Selector.svelte";
   import type { ThinkingLevel } from "../../../../server/src/contract/agent-protocol";
   import { contributionsFor } from "./extension-views";
-  import { useNow } from "./clock.svelte";
   import type { SessionFile, SessionInfo } from "../../../../server/src/contract/protocol";
   import { fileKind, fileSize, fileUrl } from "../files/file-kinds";
   import Icon from "../../lib/ui/Icon.svelte";
   import Toggle from "../../lib/ui/Toggle.svelte";
+  import StartedHere from "../started/StartedHere.svelte";
+  import { sourcesOf, startedBy } from "../started/work";
   import StatusMark from "../../lib/ui/StatusMark.svelte";
   import { describeSchedule } from "../../../../server/src/contract/cron";
   import type { Routine } from "../../../../server/src/contract/schedule-protocol";
   import { layout } from "../../shell/layout.svelte";
-  import { processName, processState } from "../background/process-presentation";
-  import { nextText } from "../schedules/schedule-presentation";
   import ScheduleDialog from "../schedules/ScheduleDialog.svelte";
   import type { ScheduleSummary } from "../../../../server/src/contract/schedule-protocol";
   import ContributionPoint from "./ContributionPoint.svelte";
@@ -35,13 +34,9 @@
   const info = $derived(session.info);
   const model = $derived(modelName(client.providers.catalog.providers, session.doc?.model));
   const parent = $derived(info?.parent ? client.sessions.find((each) => each.id === info.parent) : undefined);
-  const schedules = $derived(info ? client.schedules.of(info.id) : []);
-  const tasks = $derived(info ? client.processes.running.filter((p) => p.sessionId === info.id) : []);
-  // "Running · 4 min" keeps counting while a task runs.
-  const clock = useNow(() => tasks.length > 0);
-  const related = $derived(info ? client.sessions.filter((each) => each.parent === info.id) : []);
-  const started = $derived(related.filter((each) => !each.forkOf));
-  const forks = $derived(related.filter((each) => each.forkOf));
+  // How many things it started are still open: beside the heading, and whether the list is worth unfolding.
+  const openCount = $derived(info ? startedBy(info, sourcesOf(client), Date.now()).filter((work) => work.open).length : 0);
+  const forks = $derived(info ? client.sessions.filter((each) => each.parent === info.id && each.forkOf) : []);
   const routines = $derived(info ? client.routines.of(info.agent.id) : []);
   const doc = $derived(session.doc);
   // Compacting needs the session free; model and thinking can be chosen any time and apply from the
@@ -114,6 +109,17 @@
 
 {#if info}
   <div class="panels">
+    <Fold title="Started here" count={openCount ? String(openCount) : undefined}>
+      {#snippet action()}<button
+          type="button"
+          class="icon"
+          aria-label="Add a schedule"
+          title="Add a schedule"
+          onclick={() => (editing = true)}><Icon name="plus" class="h-4 w-4" /></button
+        >{/snippet}
+      <StartedHere owner={info} onschedule={(schedule) => (editing = schedule)} />
+    </Fold>
+
     <Fold title="Session">
       <dl class="facts">
         <div>
@@ -208,61 +214,6 @@
         <ContributionPoint point="session.details" only={panel.key} />
       </Fold>{/each}
 
-    <Fold title="Schedules" count={schedules.length ? String(schedules.length) : undefined}>
-      {#snippet action()}<button
-          type="button"
-          class="icon"
-          aria-label="Add a schedule"
-          title="Add a schedule"
-          onclick={() => (editing = true)}><Icon name="plus" class="h-4 w-4" /></button
-        >{/snippet}
-      {#if schedules.length}
-        <ul class="rows" aria-label="Schedules of this session">
-          {#each schedules as schedule (schedule.id)}<li class="row">
-              <button type="button" class="row grow" aria-haspopup="dialog" onclick={() => (editing = schedule)}>
-                <span class="line">{describeSchedule(schedule)}</span>
-                <span class="sub">{nextText(schedule, client.schedules.paused)}</span>
-              </button>
-              <Toggle
-                label={`Run ${describeSchedule(schedule)}`}
-                checked={schedule.on}
-                disabled={!!schedule.held}
-                onchange={(event) => void client.schedules.update(schedule.id, { on: (event.currentTarget as HTMLInputElement).checked }).catch(() => {})}
-              />
-            </li>{/each}
-        </ul>
-      {:else}<p class="note">None. Add one, or ask the agent: “check again in 30 minutes”.</p>{/if}
-    </Fold>
-
-    {#if tasks.length || info.processes}<Fold title="Background tasks" count={tasks.length ? `${tasks.length} running` : undefined}>
-        {#if tasks.length}
-          <ul class="rows" aria-label="Background tasks of this session">
-            {#each tasks as task (task.id)}<li class="row">
-                <Icon name="terminal" class="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span class="grow"><span class="line mono">{processName(task)}</span><span class="sub">{processState(task, clock.now)}</span></span>
-                <button
-                  type="button"
-                  class="icon"
-                  aria-label={`Show output of ${processName(task)}`}
-                  title="Show output"
-                  onclick={() => details.show(session.id, "tasks", task.id)}><Icon name="expand" class="h-4 w-4" /></button
-                >
-                <button
-                  type="button"
-                  class="icon"
-                  aria-label={`Stop ${processName(task)}`}
-                  title="Stop"
-                  onclick={() => void client.processes.stop(session.id, task.id)}><Icon name="stop" class="h-4 w-4" /></button
-                >
-              </li>{/each}
-          </ul>
-        {:else}<p class="note">None running.</p>{/if}
-      </Fold>{/if}
-
-    {#if started.length}<Fold title="Sessions it started" count={String(started.length)}>
-        {@render relatedRows("Sessions it started", started)}
-        <p class="note">Each tells this session when it ends.</p>
-      </Fold>{/if}
     {#if forks.length}<Fold title="Forks" count={String(forks.length)}>
         {@render relatedRows("Forks", forks)}
       </Fold>{/if}
@@ -290,20 +241,6 @@
         {#if routineError}<p role="alert" class="note danger">{routineError}</p>{/if}
       </Fold>{/if}
 
-    {#if info.held}<Fold title="Kept running">
-        <div class="row">
-          <Icon name="pin" class="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span class="grow line wrap"><strong>{info.held.extension}</strong>: {info.held.reason}</span>
-          <button
-            type="button"
-            class="icon"
-            aria-label="Stop keeping it running"
-            title="Stop keeping it running"
-            onclick={() => void client.hold(info.id, "release-hold")}><Icon name="stop" class="h-4 w-4" /></button
-          >
-        </div>
-        <p class="note">Stays loaded while no one watches and starts again after a restart. Pause all stops it.</p>
-      </Fold>{/if}
   </div>
 {/if}
 
@@ -454,29 +391,11 @@
     min-width: 0;
     text-align: left;
   }
-  button.row {
-    width: 100%;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0;
-    padding: 0.25rem 0;
-  }
-  button.row:hover .line {
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
   .line {
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .line.wrap {
-    white-space: normal;
-  }
-  .mono {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
   }
   .sub {
     display: block;

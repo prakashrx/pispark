@@ -202,6 +202,13 @@ export class LocalProviderControl {
           }));
           message.stopReason = "toolUse";
           events.push({ type: "done", reason: "toolUse", message });
+        } else if (text.startsWith("steps:") && stepsDone(context) < (JSON.parse(text.slice(6)) as unknown[]).length) {
+          // "steps:<json array of {name, args}>" calls the tools one after another, each in its own
+          // assistant message, so a later one can use what an earlier one made.
+          const step = (JSON.parse(text.slice(6)) as { name: string; args?: any }[])[stepsDone(context)]!;
+          message.content = [{ type: "toolCall", id: `local-step-${stepsDone(context)}`, name: step.name, arguments: step.args ?? {} }];
+          message.stopReason = "toolUse";
+          events.push({ type: "done", reason: "toolUse", message });
         } else if (text.startsWith("read:") && last?.role !== "toolResult") {
           message.content = [
             {
@@ -239,6 +246,12 @@ export class LocalProviderControl {
       streamSimple: stream,
     };
   };
+}
+
+/** Tool results since the last user message: how many of a "steps:" prompt's calls are done. */
+function stepsDone(context: TranscriptContext): number {
+  const from = context.messages.findLastIndex((item) => item.role === "user");
+  return context.messages.slice(from + 1).filter((item) => item.role === "toolResult").length;
 }
 
 export async function eventually(

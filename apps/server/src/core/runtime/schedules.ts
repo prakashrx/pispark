@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describeSchedule, nextRun, parseCron, shortDate } from "../../contract/cron.js";
 import type { Schedule, ScheduleInput } from "../../contract/schedule-protocol.js";
-import { validReportMode, type ReportMode } from "../../contract/wake-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { writeAtomic } from "../files.js";
 import { RuntimeError, runtimeError } from "./errors.js";
@@ -17,7 +16,7 @@ export interface ClockHost {
    * A run that goes to a new session: starts a session under `owner` (its agent, folder and
    * model) and returns its id. The clock then sends the prompt to it as a wake.
    */
-  spawn?(owner: string, run: { title: string; report: ReportMode; schedule: { id: string; due: string } }): Promise<string>;
+  spawn?(owner: string, run: { title: string; schedule: { id: string; due: string } }): Promise<string>;
   /** The session folders there are, read without loading anything (at start). */
   ids(): string[];
   /** The session's folder, where its `schedules.json` lives beside `session.json`. */
@@ -35,9 +34,8 @@ interface Stored {
   by: "person" | "agent";
   /** The last due time that was dealt with (delivered, missed or passed over). */
   lastDue: string;
-  /** Each run in a new session under this one, which tells it as `report` says. */
+  /** Each run in a new session under this one. */
   run?: "new";
-  report?: ReportMode;
 }
 
 const MAX_PROMPT = 8 * 1024;
@@ -66,10 +64,9 @@ function readStored(value: unknown): Stored | undefined {
     validTime(s.createdAt) &&
     (s.by === "person" || s.by === "agent") &&
     validTime(s.lastDue) &&
-    (s.run === undefined || s.run === "new") &&
-    (s.report === undefined || (s.run === "new" && validReportMode(s.report)));
+    (s.run === undefined || s.run === "new");
   if (!valid) return undefined;
-  const { id, cron, at, prompt, on, createdAt, by, lastDue, run, report } = s;
+  const { id, cron, at, prompt, on, createdAt, by, lastDue, run } = s;
   return {
     id,
     ...(cron !== undefined ? { cron } : { at }),
@@ -79,7 +76,6 @@ function readStored(value: unknown): Stored | undefined {
     by,
     lastDue,
     ...(run ? { run } : {}),
-    ...(report ? { report } : {}),
   };
 }
 
@@ -187,9 +183,9 @@ export class Schedules {
     throw new RuntimeError("not-found");
   }
   /** Validates when, prompt and on; `base` is the schedule being changed. */
-  private validInput(input: ScheduleInput, base?: Stored): Pick<Stored, "cron" | "at" | "prompt" | "on" | "run" | "report"> {
+  private validInput(input: ScheduleInput, base?: Stored): Pick<Stored, "cron" | "at" | "prompt" | "on" | "run"> {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new RuntimeError("invalid-input");
-    const allowed = ["cron", "at", "prompt", "on", "run", "report", ...(base ? [] : ["sessionId"])];
+    const allowed = ["cron", "at", "prompt", "on", "run", ...(base ? [] : ["sessionId"])];
     if (Object.keys(input).some((key) => !allowed.includes(key))) throw new RuntimeError("invalid-input");
     const whenGiven = input.cron !== undefined || input.at !== undefined;
     if (input.cron !== undefined && input.at !== undefined) throw new RuntimeError("invalid-input");
@@ -207,13 +203,11 @@ export class Schedules {
     if (typeof on !== "boolean") throw new RuntimeError("invalid-input");
     if (input.run !== undefined && input.run !== "here" && input.run !== "new") throw new RuntimeError("invalid-input");
     const run = input.run !== undefined ? input.run : (base?.run ?? "here");
-    if (input.report !== undefined && (!validReportMode(input.report) || run !== "new")) throw new RuntimeError("invalid-input");
-    const report = run === "new" ? (input.report ?? base?.report ?? "status") : undefined;
     return {
       ...(cron !== undefined ? { cron } : { at: new Date(at!).toISOString() }),
       prompt,
       on,
-      ...(run === "new" ? { run, report } : {}),
+      ...(run === "new" ? { run } : {}),
     };
   }
   add(sessionId: string, input: ScheduleInput, by: "person" | "agent"): Schedule {
@@ -229,7 +223,7 @@ export class Schedules {
    * What `add` would save for this session, without saving it; throws as `add` would. So a person is
    * asked only about a schedule that can be kept.
    */
-  validate(sessionId: string, input: ScheduleInput): Pick<Stored, "cron" | "at" | "prompt" | "on" | "run" | "report"> {
+  validate(sessionId: string, input: ScheduleInput): Pick<Stored, "cron" | "at" | "prompt" | "on" | "run"> {
     const session = this.host.sessions().find((s) => s.id === sessionId);
     if (!session) throw new RuntimeError("not-found");
     if (session.archived) throw new RuntimeError("busy");
@@ -244,7 +238,7 @@ export class Schedules {
     const valid = this.validInput(input, schedule);
     const restart = input.cron !== undefined || input.at !== undefined || (valid.on && !schedule.on);
     if (valid.run === "new" && (this.host.sessions().find((s) => s.id === sessionId)?.child || !this.host.spawn)) throw new RuntimeError("invalid-input");
-    const { cron: _cron, at: _at, run: _run, report: _report, ...kept } = schedule;
+    const { cron: _cron, at: _at, run: _run, ...kept } = schedule;
     const changed: Stored = { ...kept, ...valid, ...(restart ? { lastDue: new Date(this.now()).toISOString() } : {}) };
     if (restart || !valid.on) this.wakes.cancel(sessionId, id);
     this.replace(sessionId, changed);
@@ -276,7 +270,7 @@ export class Schedules {
     if (!how.manual && this.wakes.paused()) return this.wakes.note(owner, s.id, { due, outcome: "missed", reason: "paused" });
     let session: string;
     try {
-      session = await this.host.spawn!(owner, { title: runTitle(due, new Date(this.now())), report: s.report ?? "status", schedule: { id: s.id, due } });
+      session = await this.host.spawn!(owner, { title: runTitle(due, new Date(this.now())), schedule: { id: s.id, due } });
     } catch (error) {
       if (how.manual) throw error;
       return this.wakes.note(owner, s.id, { due, outcome: "failed", error: runtimeError(error, "execution").code });

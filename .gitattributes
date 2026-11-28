@@ -1,2 +1,4 @@
 * text=auto eol=lf
 *.png binary
+# Release notes: two changes that each add lines both keep theirs (docs/releasing.md).
+docs/releases/*.md merge=union

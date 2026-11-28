@@ -4,6 +4,7 @@ name: Release
 # Latest: every push to main that passes CI publishes a prerelease <package version>-main.<run>.
 # Each holds pispark-<version>-<os>-<arch>.tar.gz for Windows x64, Linux x64 and Linux arm64, and
 # SHA256SUMS. PiSpark's launcher and the install scripts read these (docs/install.md).
+# What a release says is docs/releases/<package version>.md, written with each change (docs/releasing.md).
 on:
   push:
     tags: ["v*.*.*"]
@@ -25,6 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.v.outputs.version }}
+      base: ${{ steps.v.outputs.base }}
       channel: ${{ steps.v.outputs.channel }}
       sha: ${{ steps.v.outputs.sha }}
     steps:
@@ -48,7 +50,10 @@ jobs:
             version="$base-main.${{ github.run_number }}"
             channel=latest
           fi
+          # A release says what is new: its notes are written with the changes, before it is built.
+          [ -s "docs/releases/$base.md" ] || { echo "docs/releases/$base.md is missing or empty: write what is new in $base (docs/releasing.md)."; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
           echo "channel=$channel" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -84,6 +89,10 @@ jobs:
     needs: [version, build]
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+          sparse-checkout: docs/releases
       - uses: actions/download-artifact@v4
         with:
           pattern: release-*
@@ -96,13 +105,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.version.outputs.version }}
+          BASE: ${{ needs.version.outputs.base }}
           CHANNEL: ${{ needs.version.outputs.channel }}
           SHA: ${{ needs.version.outputs.sha }}
         run: |
           flags=""
           [ "$CHANNEL" = "latest" ] && flags="--prerelease"
-          gh release create "v$VERSION" release/* --repo "$GITHUB_REPOSITORY" --target "$SHA" --title "PiSpark $VERSION" $flags --generate-notes \
-            --notes "PiSpark $VERSION ($CHANNEL channel). Install or update: https://github.com/$GITHUB_REPOSITORY/blob/main/docs/install.md"
+          # What is new, as written with the changes; then how to install; then GitHub's list of what was merged.
+          { cat "docs/releases/$BASE.md"; printf '\n---\n\nPiSpark %s (%s channel). Install or update: https://github.com/%s/blob/main/docs/install.md\n' "$VERSION" "$CHANNEL" "$GITHUB_REPOSITORY"; } > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" release/* --repo "$GITHUB_REPOSITORY" --target "$SHA" --title "PiSpark $VERSION" $flags --generate-notes --notes "$(cat "$RUNNER_TEMP/notes.md")"
       - name: Keep the newest 10 builds of main
         if: needs.version.outputs.channel == 'latest'
         env:

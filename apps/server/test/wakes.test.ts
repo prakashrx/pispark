@@ -24,7 +24,9 @@ async function fixture() {
     ids: () => [SESSION],
     directory: (id) => join(root, id),
     free: (id) => !busy.has(id),
-    run: async (id, { text }, details) => {
+    // "skip me" stands for a wake that is settled without a message, such as one an extension took.
+    settle: async (_id, { text }) => (text === "skip me" ? undefined : text),
+    send: (id, text, details) => {
       if (busy.has(id)) throw new RuntimeError("busy");
       busy.add(id);
       let finish!: (result?: RunResult) => void;
@@ -84,18 +86,20 @@ test("busy: one waiting wake stands for a latest source; a queue source waits fo
     const again = f.make();
     f.busy.delete(SESSION);
     await again.drain();
-    // Each finished run lets the next waiting wake go.
-    for (let i = 0; i < 3; i++) {
+    // Each finished run lets what waits next go: the clock's run by itself, then the messages together.
+    for (let i = 0; i < 2; i++) {
       f.sent.at(-1)!.finish();
       await settle();
       await again.drain();
     }
     assert.deepEqual(
       f.sent.map((s) => s.text),
-      ["tick 1", "message 1", "message 2"],
+      ["tick 1", "message 1\n\nmessage 2"],
     );
     assert.equal(again.records(SESSION, "clock")[0]!.reason, "busy");
     assert.equal(again.waiting(SESSION, "inbox"), false);
+    // One run for both messages, recorded for each.
+    assert.deepEqual(again.records(SESSION, "inbox").map((record) => record.outcome), ["ran", "ran"]);
   } finally {
     await f.cleanup();
   }
@@ -137,7 +141,8 @@ test("archived sessions hold waiting wakes; a queue that is full records the res
     // Restored: the first goes; a removed source takes its waiting wakes and records with it.
     f.state.archived = false;
     await wakes.drain();
-    assert.equal(f.sent[0]!.text, "m0");
+    assert.equal(f.sent.length, 1);
+    assert.match(f.sent[0]!.text, /^m0\n\nm1\n\n/);
     wakes.forgetSource(SESSION, "inbox");
     f.sent[0]!.finish();
     await settle();
@@ -160,6 +165,41 @@ test("Run now is refused while the session is busy and ignores Pause all", async
     f.sent[0]!.finish();
     await settle();
     assert.equal(wakes.records(SESSION, "a")[0]!.manual, true);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("everything that waited arrives together: one message, each part with its source and where it starts; what is settled without a message is left out", async () => {
+  const f = await fixture();
+  try {
+    const wakes = f.make();
+    f.busy.add(SESSION);
+    const from = (id: string, text: string, start: number): Wake => ({ ...f.wake(id, text, "queue"), source: { kind: "process", id, label: `${id} · exited 0` }, card: { title: id, how: "exited 0", start } });
+    await wakes.deliver(SESSION, from("typecheck", "typecheck exited 0. Output: clean", 28));
+    await wakes.deliver(SESSION, f.wake("taken", "skip me", "queue"));
+    await wakes.deliver(SESSION, from("tests", "tests exited 0. Output: 212 passed", 24));
+    f.busy.delete(SESSION);
+    await wakes.drain();
+
+    assert.equal(f.sent.length, 1);
+    const [{ text, details }] = f.sent as [(typeof f.sent)[number]];
+    assert.equal(text, "typecheck exited 0. Output: clean\n\ntests exited 0. Output: 212 passed");
+    // The first part's source and card are the message's own, as for a message of one.
+    assert.equal(details.source.id, "typecheck");
+    assert.deepEqual(
+      details.together!.map((part) => ({ id: part.source.id, at: part.at, body: text.slice(part.at + part.card!.start).split("\n")[0] })),
+      [
+        { id: "typecheck", at: 0, body: "clean" },
+        { id: "tests", at: 35, body: "212 passed" },
+      ],
+    );
+    // What needed no message is recorded at once; the run is recorded for each part when it ends.
+    assert.equal(wakes.records(SESSION, "taken")[0]!.outcome, "handled");
+    assert.equal(wakes.waiting(SESSION), false);
+    f.sent[0]!.finish();
+    await settle();
+    assert.deepEqual([wakes.records(SESSION, "typecheck")[0]!.outcome, wakes.records(SESSION, "tests")[0]!.outcome], ["ran", "ran"]);
   } finally {
     await f.cleanup();
   }

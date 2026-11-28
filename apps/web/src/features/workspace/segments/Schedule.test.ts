@@ -17,7 +17,7 @@ const saved = (extra: Partial<Saved> = {}): Saved => ({
 const show = (schedule: Saved) => render(Schedule, { segment: { kind: "schedule", key: "schedule.c1", schedule } });
 
 test("a saved schedule shows when it runs, where its runs go, and what it sends", () => {
-  show(saved({ run: "new", report: "status" }));
+  show(saved({ run: "new" }));
   expect(screen.getByText("Every day at 7:00 am")).toBeTruthy();
   expect(screen.getByText(/runs in a new session/)).toBeTruthy();
   expect(screen.getByText(/^Next /)).toBeTruthy();

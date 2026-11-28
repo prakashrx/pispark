@@ -1,16 +1,17 @@
 import type { SessionDoc } from "../../contract/protocol.js";
 import type { ModelChoice } from "../../contract/provider-protocol.js";
-import type { AgentTarget } from "../../contract/agent-protocol.js";
+import type { AgentDefinition, AgentTarget } from "../../contract/agent-protocol.js";
 import type { SafeLogger } from "../logger.js";
 import type { AgentStore } from "../agents/store.js";
 import type { Session } from "./session.js";
 import type { SessionMetadata, SessionStorage } from "./storage.js";
 import type { Wake } from "./wakes.js";
+import type { Arrival } from "./arrivals.js";
 
-/** A new session's request: Ask's, or another session's. */
-export type NewSession = { folder?: string; model?: ModelChoice; agent?: string };
+/** A new session's request: Ask's, or another session's, which may bring an agent made for it (`layer`, the session's own layer). */
+export type NewSession = { folder?: string; model?: ModelChoice; agent?: string; layer?: AgentDefinition };
 /** What a session started by another one, or by a schedule, records of where it came from. */
-export type Origin = Pick<SessionMetadata, "parent" | "report" | "title" | "schedule">;
+export type Origin = Pick<SessionMetadata, "parent" | "title" | "schedule" | "ask" | "collect" | "keep">;
 
 /**
  * What the runtime lends the parts that work across sessions (child sessions, holds, processes,
@@ -35,6 +36,20 @@ export interface SessionAccess {
   archive(id: string): Promise<void>;
   create(request: NewSession, origin: Origin): Promise<SessionDoc>;
   deliver(sessionId: string, wake: Wake): Promise<void>;
+  /** Takes messages that still wait for the session, so they are not sent (see `Wakes.take`). */
+  take(sessionId: string, which: (wake: Wake) => boolean): Wake[];
+  /** Whether a message from a source still waits for the session. */
+  waiting(sessionId: string, sourceId: string): boolean;
+  /** The next thing to arrive for a session while it works (see `Arrivals`). */
+  arrival(sessionId: string, signal: AbortSignal): Promise<Arrival | undefined>;
+  /** Looks again at what waits to be sent, now that something that held it back is over. */
+  drain(): void;
+  /** Something the session started is still due to wake it: a message waiting to be sent to it, or a process still running. */
+  pending(sessionId: string): boolean;
+  /** What a session's run ended waiting for, in words for the person: "for tests", "for 2 processes", "for a message". */
+  waitingFor(sessionId: string): string | undefined;
+  /** Stops the processes a session started, quietly. */
+  stopProcesses(sessionId: string): void;
 }
 
 /** How a session is named to an agent when it has no title yet. */

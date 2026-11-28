@@ -29,7 +29,7 @@
   import DetailsPanels from "./DetailsPanels.svelte";
   import { useSession, useSessions } from "./session-client.svelte";
 
-  /** `focus`: what the view opens on, a process for Background tasks or a file's name. */
+  /** `focus`: what the view opens on, a process for its output or a file's name. */
   let { view, focus }: { view: DetailsView; focus?: string } = $props();
   const client = useSessions();
   const session = useSession();

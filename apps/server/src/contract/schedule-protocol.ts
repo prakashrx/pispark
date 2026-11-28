@@ -1,5 +1,5 @@
 import type { SessionAgent, RoutineDefinition } from "./agent-protocol.js";
-import type { ReportMode, WakeRecord } from "./wake-protocol.js";
+import type { WakeRecord } from "./wake-protocol.js";
 
 /**
  * A schedule belongs to one session and wakes it (a wake whose source is the clock): at the time, its
@@ -19,11 +19,10 @@ export interface Schedule extends ScheduleWhen {
   /** Who added it: the person, or the agent (after the person said yes). */
   by: "person" | "agent";
   /**
-   * Where each run goes: `here`, this session (the default), or `new`, a new session under it, which
-   * tells this one how it went as `report` says (default `status`).
+   * Where each run goes: `here`, this session (the default), or `new`, a new session under it. Such a
+   * run's end is a line in this session's conversation, and it can raise what needs attention.
    */
   run?: "here" | "new";
-  report?: ReportMode;
   /** The last runs, newest first; at most ten. */
   runs: WakeRecord[];
   /** When it next runs, while it can. */
@@ -48,7 +47,6 @@ export interface ScheduleInput extends ScheduleWhen {
   prompt?: string;
   on?: boolean;
   run?: "here" | "new";
-  report?: ReportMode;
 }
 
 /** A run of a routine (see `RoutineDefinition`): the session it started. */

@@ -110,15 +110,6 @@ When a release changes the launcher itself (`LAUNCHER_VERSION` in `apps/launcher
 
 ## Releases
 
-`.github/workflows/release.yml` publishes them:
-- a tag `v<version>` matching `package.json` publishes a Stable release;
-- each push to main that passes CI publishes a Latest prerelease `<version>-main.<run>`, and keeps the newest 10.
-
-To build one locally (Linux releases must be built on Linux, because Windows loses the executable bits):
-
-```sh
-npm run build
-node scripts/release.mjs --version 0.1.0-main.1 --out release
-```
+How releases are made, what they hold and where their notes come from is in [releasing](releasing.md): a tag `v<version>` publishes a Stable release, and each push to main that passes CI publishes a Latest build.
 
 `PISPARK_RELEASES_URL`, set when running `setup`, points an install at another release list, such as a mirror or a test feed. The launcher records it in `state.json`.

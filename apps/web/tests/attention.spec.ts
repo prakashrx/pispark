@@ -24,7 +24,7 @@ fresh("a session that starts needing you while you are elsewhere gets a nudge; O
 
   // Elsewhere, on Background, run it: the session starts waiting for an answer.
   await page.goto("/#/background");
-  await page.getByRole("region", { name: "asks later" }).getByRole("button", { name: /^Every day at 9:00 am/ }).click();
+  await page.getByRole("region", { name: "Scheduled" }).getByRole("button", { name: /^Every day at 9:00 am/ }).click();
   const schedule = page.getByRole("dialog", { name: "Schedule" });
   await schedule.getByRole("button", { name: "Run now" }).click();
   await page.keyboard.press("Escape");
@@ -56,7 +56,10 @@ fresh("back on a newer version, the page reloads itself when nothing is typed, a
     const status = await response.json();
     await route.fulfill({ response, json: newer ? { ...status, version: "99.0.0" } : status });
   });
+  // The page must have read the version it runs before the server starts saying a newer one.
+  const first = page.waitForResponse((response) => response.url().endsWith("/api/host"));
   await page.goto("/#/new");
+  await first;
   await expect(page.getByRole("textbox", { name: "Ask anything", exact: true })).toBeVisible();
 
   // Something typed: it is not thrown away; a banner offers the reload instead.
@@ -76,4 +79,27 @@ fresh("back on a newer version, the page reloads itself when nothing is typed, a
   await expect(page.getByRole("textbox", { name: "Ask anything", exact: true })).toBeVisible();
   await expect(banner).toHaveCount(0);
   await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+fresh("About says what is new in the version that runs: folded by default, opened with the keyboard, readable on a phone", async ({ page }) => {
+  await page.goto("/#/settings/about");
+  const toggle = page.getByRole("button", { name: "What’s new" });
+  const notes = page.getByRole("region", { name: /^What’s new in \d+\.\d+\.\d+$/ });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(notes).toHaveCount(0);
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  // The notes written with the changes, drawn as Markdown: a heading per change, for the version this build is of.
+  await expect(notes.getByRole("heading", { level: 1 })).toHaveText(/^PiSpark \d+\.\d+\.\d+$/);
+  await expect(notes.getByRole("heading", { level: 2 }).first()).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(notes).toHaveCount(0);
+
+  // On a phone: the same control, and the notes fit the screen.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/#/settings/about");
+  await toggle.click();
+  await expect(notes.getByRole("heading", { level: 1 })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 });

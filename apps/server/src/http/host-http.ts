@@ -2,12 +2,14 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { body, sendJson } from "./io.js";
 import { validHostAction, type HostStatus } from "../contract/host-protocol.js";
 import type { HostLink } from "../core/host-link.js";
+import { releaseNotes } from "../core/release-notes.js";
 import type { RunningWork } from "../contract/host-protocol.js";
 
 /**
  * `GET /api/host`: this PiSpark's version, where it runs and its updates; `POST /api/host`: check,
- * update, cancel or change update choices (passed to the launcher). Invoked only inside SessionHttp's
- * local Host/Origin/Fetch-Metadata guard.
+ * update, cancel or change update choices (passed to the launcher). `GET /api/host/notes`: what is
+ * new in the version that runs. Invoked only inside SessionHttp's local Host/Origin/Fetch-Metadata
+ * guard.
  */
 export class HostHttp {
   constructor(
@@ -31,6 +33,11 @@ export class HostHttp {
   /** What changes in the status, without the per-request address: for the workspace stream. */
   changes(): unknown {
     return { launcher: this.link.launcher(), running: this.running() };
+  }
+  /** The notes of the version that runs; of the checkout's own version when it was started from its source. */
+  notes(response: ServerResponse) {
+    const found = releaseNotes(this.link.launcher()?.version);
+    return found ? sendJson(response, 200, found, 256 * 1024) : sendJson(response, 404, { error: "not-found" });
   }
   async handle(request: IncomingMessage, response: ServerResponse) {
     if (request.method === "GET") return sendJson(response, 200, this.status(request), 256 * 1024);

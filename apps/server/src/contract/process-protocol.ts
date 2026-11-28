@@ -1,9 +1,7 @@
-import type { ReportMode } from "./wake-protocol.js";
-
 /**
  * A process a session started: a command that runs on the backend host beside the session, owned by
  * PiSpark rather than by the session, so it keeps running while the session unloads. Its output is
- * kept with the session (the newest 2 MB). When it ends it tells its session as `report` says.
+ * kept with the session (the newest 2 MB). When it ends its session is told, once.
  */
 export interface ProcessInfo {
   id: string;
@@ -17,9 +15,10 @@ export interface ProcessInfo {
   exitCode?: number;
   /** Why it ended besides its own exit: stopped by the person or the agent, or PiSpark stopped. */
   ended?: "stopped" | "pispark-stopped" | "timeout";
-  report: ReportMode;
-  /** Patterns that wake the session when a line matches. */
-  watches: { pattern: string; report: ReportMode }[];
+  /** A regular expression: a line of output that matches is raised with its session. */
+  raiseOn?: string;
+  /** Its end and what it raises wait for its session's code to take them, and wake nobody. */
+  collect?: true;
   /** Output bytes so far; reading `since` a number gives what came after it. */
   written: number;
 }

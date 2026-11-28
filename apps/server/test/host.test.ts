@@ -88,4 +88,8 @@ test("/api/host: version and what runs; changes refused when no launcher runs th
   // Another site may not drive it.
   const cross = await fetch(`${origin}/api/host`, { method: "POST", headers: { "Content-Type": "application/json", Origin: "https://example.com" }, body: "{}" });
   assert.equal(cross.status, 403);
+  // What is new in the version that runs: started from its source, the checkout's own version.
+  const notes = await (await fetch(`${origin}/api/host/notes`)).json();
+  assert.match(notes.version, /^\d+\.\d+\.\d+$/);
+  assert.match(notes.notes, /^# PiSpark /);
 });

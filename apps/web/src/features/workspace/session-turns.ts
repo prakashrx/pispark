@@ -69,13 +69,19 @@ export type Segment =
    * the session's last reply, which Retry can follow.
    */
   | { kind: "stopped"; key: string; reason: "aborted" | ReplyFailure; error?: string; provider?: string; latest: boolean }
-  /** A session this one started, shown with its live state. */
-  | { kind: "session"; key: string; sessionId: string; title: string }
+  /**
+   * A session this one started: one row for the ask, with the child's answer folded inside once it
+   * has reached this conversation. `how`: how the ask ended, as this conversation heard it, which
+   * is what the row says once the child is put away.
+   */
+  | { kind: "session"; key: string; sessionId: string; title: string; answer?: string; how?: string }
   /** A process this one started, shown with its live state. */
   | { kind: "process"; key: string; processId: string; title: string }
   /** A schedule the agent added, as it was saved. */
   | { kind: "schedule"; key: string; schedule: Schedule }
-  /** A line saying something this session started ended, without a turn (status mode). */
+  /** What this session sent up to whoever asked it: a note, or a raise. */
+  | { kind: "up"; key: string; what: "note" | "raise"; text: string }
+  /** A line about something this session started, added without a turn: a scheduled run ended, the person stopped a process. */
   | { kind: "status"; key: string; title: string; how: string; ok?: boolean; session?: string; process?: string };
 
 /** Your message and everything the agent did and said in answer to it. */
@@ -89,7 +95,9 @@ export interface Turn {
    * report says whose it is and how it ended (`title`, `how`), and where in the message the report
    * itself starts (`start`); a message without that shows its label and all of its text.
    */
-  from?: { id: string; label: string; kind: "session" | "process" | "reload"; title: string; how?: string; start: number };
+  from?: From;
+  /** Several messages that waited arrived as one: each one's sender, and where it starts in the message (`at`). */
+  together?: (From & { at: number })[];
   segments: Segment[];
   /** The agent is still working on this turn. */
   running: boolean;
@@ -98,6 +106,18 @@ export interface Turn {
   /** When your message was recorded (epoch ms), and when the last of the response ended. */
   startedAt?: number;
   endedAt?: number;
+}
+
+/** Who sent a message that the person did not: a session, a process or a reload. */
+export interface From {
+  id: string;
+  label: string;
+  kind: "session" | "process" | "reload";
+  title: string;
+  how?: string;
+  start: number;
+  /** A child's answer that its row in this conversation already holds: here it is one quiet line. */
+  folded?: true;
 }
 
 const textOf = (part: ItemPart) => (part.type === "text" || part.type === "thinking" ? part.text : "");
@@ -125,14 +145,25 @@ export function wokenLabel(details: unknown): string {
   return [kind, label].filter(Boolean).join(" · ");
 }
 /** The session, process or reload a turn came from, when it was not the person or a schedule. */
-export function wokenFrom(details: unknown): Turn["from"] {
+export function wokenFrom(details: unknown): From | undefined {
   const { source, card } = (details ?? {}) as { source?: { kind?: unknown; id?: unknown; label?: unknown }; card?: Partial<WokenCard> };
   if (!(source?.kind === "session" || source?.kind === "process" || source?.kind === "reload") || typeof source.id !== "string" || typeof source.label !== "string")
     return undefined;
-  const from: NonNullable<Turn["from"]> = { id: source.id, label: source.label, kind: source.kind, title: source.label, start: 0 };
+  const from: From = { id: source.id, label: source.label, kind: source.kind, title: source.label, start: 0 };
   return card && typeof card.title === "string" && typeof card.how === "string" && Number.isSafeInteger(card.start) && card.start! >= 0
     ? { ...from, title: card.title, how: card.how, start: card.start! }
     : from;
+}
+
+/** The senders of a turn whose message is several that arrived together, each with where it starts. */
+function wokenTogether(details: unknown): Turn["together"] {
+  const { together } = (details ?? {}) as { together?: unknown };
+  if (!Array.isArray(together)) return undefined;
+  const parts = together.flatMap((part: { at?: unknown }) => {
+    const from = wokenFrom(part);
+    return from && Number.isSafeInteger(part.at) && (part.at as number) >= 0 ? [{ ...from, at: part.at as number }] : [];
+  });
+  return parts.length === together.length && parts.length > 1 ? parts : undefined;
 }
 
 const summaryOf = (item: Item, between: boolean): Segment => ({
@@ -142,6 +173,38 @@ const summaryOf = (item: Item, between: boolean): Segment => ({
   between,
   ...(item.tokensBefore ? { tokensBefore: item.tokensBefore } : {}),
 });
+
+const STARTS = new Set(["pispark_start_session", "pispark_session"]);
+/**
+ * The asks this conversation holds: the children it has a row for (a start names the session it
+ * made in its result's details), each child's latest answer that reached it as a message, and how
+ * each ask ended (said by that message, or by the wait that took the answer).
+ */
+function asksIn(items: Item[]): { rows: Set<string>; answers: Map<string, string>; ended: Map<string, string> } {
+  const rows = new Set<string>();
+  const answers = new Map<string, string>();
+  const ended = new Map<string, string>();
+  let woken: unknown;
+  for (const item of items) {
+    const made = item.role === "toolResult" && STARTS.has(item.toolName ?? "") ? (item.details as { id?: unknown } | undefined)?.id : undefined;
+    if (typeof made === "string") rows.add(made);
+    if (item.role === "toolResult" && item.toolName === "pispark_wait") {
+      const taken = (item.details as { answers?: unknown } | undefined)?.answers;
+      for (const each of Array.isArray(taken) ? (taken as { id?: unknown; how?: unknown }[]) : []) if (typeof each?.id === "string" && typeof each.how === "string") ended.set(each.id, each.how);
+    }
+    if (item.role === "entry" && item.customType === WOKEN_ENTRY) woken = item.details;
+    if (item.role !== "user") continue;
+    const text = itemText(item);
+    const parts = wokenTogether(woken) ?? [wokenFrom(woken)].flatMap((from) => (from ? [{ ...from, at: 0 }] : []));
+    parts.forEach((part, index) => {
+      if (part.kind !== "session" || part.how === "raised") return;
+      answers.set(part.id, text.slice(part.at + part.start, parts[index + 1]?.at).trimEnd());
+      if (part.how) ended.set(part.id, part.how);
+    });
+    woken = undefined;
+  }
+  return { rows, answers, ended };
+}
 
 /**
  * Groups the session's items into turns of ordered segments. Presentation only: tool results attach
@@ -170,6 +233,7 @@ export function buildTurns(
     laterAssistant = true;
   }
   for (const item of items) if (item.role === "toolResult" && item.callId) results.set(item.callId, item);
+  const asks = asksIn(items);
   const notices = [...(options.notices ?? [])].sort((a, b) => a.after - b.after || a.at - b.at);
   const turns: Turn[] = [];
   const lastItem = items.at(-1);
@@ -188,9 +252,17 @@ export function buildTurns(
   /** A wake's marker, waiting for the message it sent. */
   let woken: string | undefined;
   let from: Turn["from"];
+  let together: Turn["together"];
 
   const current = (): Turn => turns.at(-1) ?? turns[turns.push({ key: "earlier", segments: [], running: false }) - 1]!;
-  const emit = (turn: Turn, segment: Segment) => turn.segments.push(segment);
+  // A child's row holds its answer, once that has reached this conversation, and how its ask ended.
+  const emit = (turn: Turn, segment: Segment) => {
+    if (segment.kind !== "session") return turn.segments.push(segment);
+    const answer = asks.answers.get(segment.sessionId);
+    const how = asks.ended.get(segment.sessionId);
+    return turn.segments.push({ ...segment, ...(answer !== undefined ? { answer } : {}), ...(how ? { how } : {}) });
+  };
+  const folded = <T extends From>(from: T): T => (from.kind === "session" && from.how !== "raised" && asks.rows.has(from.id) ? { ...from, folded: true as const } : from);
   // A notice lands before the first item at or after its position. Called before a new turn starts,
   // so a notice ahead of your message ends the answer before it.
   const flush = (position: number | undefined) => {
@@ -207,18 +279,19 @@ export function buildTurns(
         key: item.key,
         user: item,
         ...(woken ? { woken } : {}),
-        ...(from ? { from } : {}),
+        ...(from ? { from: folded(from) } : {}),
+        ...(together ? { together: together.map(folded) } : {}),
         ...(item.at ? { startedAt: item.at } : {}),
         segments: [],
         running: false,
       });
-      woken = undefined;
-      from = undefined;
+      woken = from = together = undefined;
       continue;
     }
     if (item.role === "entry" && item.customType === WOKEN_ENTRY) {
       woken = wokenLabel(item.details);
       from = wokenFrom(item.details);
+      together = wokenTogether(item.details);
       continue;
     }
     if (item.role === "summary" && between.has(item)) {
@@ -292,6 +365,8 @@ export function buildTurns(
         });
     } else if (item.role === "custom" && item.customType === STATUS_ENTRY) {
       const d = (item.details ?? {}) as { title?: unknown; how?: unknown; ok?: unknown; session?: unknown; process?: unknown };
+      // A child with a row here says how it stands in that row, not in a line of its own.
+      if (typeof d.session === "string" && asks.rows.has(d.session)) continue;
       emit(turn, {
         kind: "status",
         key: item.key,

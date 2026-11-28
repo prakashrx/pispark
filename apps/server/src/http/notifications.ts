@@ -14,6 +14,7 @@ interface Subscription {
 }
 interface Seen {
   waiting: boolean;
+  raised: boolean;
   status: string;
   workingSince?: string;
   schedule: boolean;
@@ -23,7 +24,8 @@ const PAGE_TTL_MS = 90_000;
 
 /**
  * Notifications on devices (design set 9, G-13): it watches the session list for a session that
- * starts needing you, a run that fails, a long run that finishes and a schedule run that fails, and
+ * starts needing you (an extension's question, or something it raised with you), a run that fails,
+ * a long run that finishes and a schedule run that fails, and
  * tells each subscribed device that asked for it, unless PiSpark is open and in view there (the nudge
  * says it then). A push carries nothing; the device's service worker reads what to show from here.
  */
@@ -118,16 +120,22 @@ export class Notifications {
     const sessions = this.list();
     const previous = this.seen;
     this.seen = new Map(
-      sessions.map((s) => [s.id, { waiting: !!s.waiting, status: s.status, ...(s.workingSince ? { workingSince: s.workingSince } : {}), schedule: !!s.schedule }]),
+      sessions.map((s) => [s.id, { waiting: !!s.waiting, raised: !!s.raised, status: s.status, ...(s.workingSince ? { workingSince: s.workingSince } : {}), schedule: !!s.schedule }]),
     );
     if (!previous) return;
+    const byId = new Map(sessions.map((s) => [s.id, s]));
     for (const session of sessions) {
       const before = previous.get(session.id);
       if (!before) continue;
-      const name = session.title ?? "A session";
+      // A session another one started never notifies on its own: its parent's rows say how it goes.
+      // When a question in it reaches the person, that is named after its parent.
+      const child = !!session.ask && !session.schedule;
+      const name = ((child && byId.get(session.parent ?? "")) || session).title ?? "A session";
       const ran = ["running", "cancelling", "queued"].includes(before.status);
       if (!before.waiting && session.waiting)
         void this.tell("needs-you", session.id, name, session.question ? `Needs you: ${session.question}` : "Needs you");
+      else if (!before.raised && session.raised) void this.tell("needs-you", session.id, name, `Needs you: ${session.raised}`);
+      else if (child) continue;
       else if (ran && session.status === "error")
         void this.tell(session.schedule ? "schedule-failed" : "failed", session.id, name, session.schedule ? "A scheduled run failed" : "The run failed");
       else if (ran && session.status === "idle" && before.workingSince && this.now() - Date.parse(before.workingSince) >= LONG_RUN_MS)

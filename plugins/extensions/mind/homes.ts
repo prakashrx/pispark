@@ -20,8 +20,8 @@ export interface Homes {
   everyone: string[];
 }
 
-/** PiSpark's bus channel for a session's own requests; `inspect` answers at once with its agent. */
-const SESSION_REQUEST = "pispark:session-request";
+/** PiSpark's bus channel for what a session says to it; `self inspect` answers at once with its agent. */
+const VERB = "pispark:verb";
 /** The instruction file started for an agent that has none of its own. */
 const STARTED = "standing";
 
@@ -32,7 +32,7 @@ const inside = (dir: string, file: string) => within(dir, file) !== undefined;
 /** The agent this session uses, as PiSpark names it. Nothing outside PiSpark. */
 function agentId(pi: ExtensionAPI): string | undefined {
   let answer: { ok: boolean; text: string } | undefined;
-  pi.events.emit(SESSION_REQUEST, { request: { action: "inspect" }, reply: (value: { ok: boolean; text: string }) => (answer = value) });
+  pi.events.emit(VERB, { request: { verb: "self", action: "inspect" }, reply: (value: { ok: boolean; text: string }) => (answer = value) });
   try {
     const agent = answer?.ok ? (JSON.parse(answer.text) as { agent?: unknown }).agent : undefined;
     return typeof agent === "string" && /^[\w.-]+$/.test(agent) ? agent : undefined;

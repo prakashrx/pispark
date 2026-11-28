@@ -1,4 +1,4 @@
-import type { HostAction, HostStatus, UpdateState } from "../../../../server/src/contract/host-protocol";
+import type { HostAction, HostStatus, ReleaseNotes, UpdateState } from "../../../../server/src/contract/host-protocol";
 import { CommandFailed, type Transport } from "../workspace/transport";
 
 /**
@@ -12,6 +12,8 @@ export class HostClient {
   restarting = $state<string>();
   /** The server now runs a newer version than the one this page was loaded from. */
   updated = $state<string>();
+  /** What is new in the version that runs, once read; undefined when it has no notes. */
+  notes = $state<ReleaseNotes>();
   /** The version this page was loaded from. */
   private loaded?: string;
   private watch?: ReturnType<typeof setTimeout>;
@@ -41,6 +43,11 @@ export class HostClient {
       if (this.restarting) this.watchReturn();
       else throw error;
     }
+  }
+
+  /** Reads what is new in the version that runs. A version without notes has none to show. */
+  async readNotes(): Promise<void> {
+    this.notes = await this.transport.json<ReleaseNotes>("/api/host/notes").catch(() => undefined);
   }
 
   async act(action: HostAction): Promise<void> {

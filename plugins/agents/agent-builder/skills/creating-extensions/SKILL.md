@@ -24,7 +24,7 @@ If the request already says what the extension does (its tools, what they take a
 
 The built-in `pispark-extensions` skill covers the essentials: registering tools and commands, state, views and their contribution points. Read it. For anything it doesn't cover, search Pi's `docs/extensions.md` for the heading you need (it's long; don't read it whole), and start from the closest example in Pi's `examples/extensions/`. Paths are in the system prompt.
 
-Where it differs for you: the `pispark-extensions` skill describes trying an extension in your own session with `pispark_session` and `pispark_extension`. You don't have those tools. You write the extension into the agent's folder, and the person tries it in a new session of the agent.
+Where it differs for you: the `pispark-extensions` skill describes trying an extension in your own session with `pispark_self` and `pispark_extension`. You don't have those tools. You write the extension into the agent's folder, and the person tries it in a new session of the agent.
 
 ## Write it into the agent
 

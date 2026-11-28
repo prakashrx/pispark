@@ -60,7 +60,7 @@ hostedTest("a finished reply and each code block in it can be copied", async ({ 
 hostedTest("Background explains what runs there, one line each, on demand", async ({ page }) => {
   await page.goto("/#/background");
   await page.getByRole("button", { name: "What runs here" }).click();
-  for (const term of ["Schedules", "Routines", "Background tasks", "Kept running"]) await expect(page.locator(".explain dt", { hasText: term })).toBeVisible();
+  for (const term of ["Processes", "Kept running", "Schedules", "Routines"]) await expect(page.locator(".explain dt", { hasText: term })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator(".explain")).toHaveCount(0);
 });

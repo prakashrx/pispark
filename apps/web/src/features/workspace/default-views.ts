@@ -12,6 +12,7 @@ import Stopped from "./segments/Stopped.svelte";
 import Summary from "./segments/Summary.svelte";
 import Text from "./segments/Text.svelte";
 import Thinking from "./segments/Thinking.svelte";
+import Up from "./segments/Up.svelte";
 import { registerSegmentView } from "./views.svelte";
 import "./tool-views";
 
@@ -34,3 +35,4 @@ registerSegmentView("session", Session);
 registerSegmentView("process", Process);
 registerSegmentView("schedule", Schedule);
 registerSegmentView("status", Status);
+registerSegmentView("up", Up);

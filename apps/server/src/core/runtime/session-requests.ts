@@ -1,17 +1,17 @@
 import { join } from "node:path";
 import type { EventBus } from "@earendil-works/pi-coding-agent";
 import { HOLD_CHANNEL, type HoldRequest } from "../../contract/protocol.js";
-import type { Schedule } from "../../contract/schedule-protocol.js";
+import { API_CHANNEL, RESULT_CHANNEL, VERB_CHANNEL, verbs, type Answer, type Verb, type VerbMessage } from "../../contract/verbs.js";
 import { describeSchedule, parseCron } from "../../contract/cron.js";
 import { validItemName } from "../agents/format.js";
 import type { ExtensionUI } from "../extensions/extension-ui.js";
 import { runtimeError } from "./errors.js";
 import { extensionNameValid } from "./extension-revisions.js";
 import { EXTENSION_CHANNEL, type ExtensionMessage } from "./extension-tool.js";
-import { PROCESS_CHANNEL, validProcessMessage } from "./process-tool.js";
-import { SCHEDULE_CHANNEL, validMessage, type ScheduleAnswer, type ScheduleMessage } from "./schedule-tool.js";
-import { RESULT_CHANNEL, SESSION_CHANNEL, validResultData, validSessionMessage } from "./session-tool.js";
+import { validResultData, validVerb } from "./verbs.js";
 import type { Session, SessionHost } from "./session.js";
+
+const UNAVAILABLE: Answer = { ok: false, text: "Not available here." };
 
 /** What the requests need of the session that is not public. */
 export interface RequestState {
@@ -20,13 +20,14 @@ export interface RequestState {
   closed(): boolean;
   /** The current run was cancelled. */
   cancelled(): boolean;
-  /** The session's state as JSON, for `pispark_session inspect`. */
+  /** The session's state as JSON, for `pispark_self inspect`. */
   inspect(): string;
 }
 
 /**
- * What a session's tools and extensions ask of PiSpark on the session's event bus: keep it loaded,
- * run processes, start and follow sessions, schedule it, change its extensions, and set its result.
+ * What a session's tools and extensions ask of PiSpark on the session's event bus: the ten verbs
+ * about what it started (`contract/verbs.ts`), keeping it loaded, changing its extensions, and
+ * setting the data its answer carries.
  */
 export class SessionRequests {
   /** A project extension's activation waits for the person's yes. */
@@ -41,21 +42,17 @@ export class SessionRequests {
   /** Listens on the bus; `development` adds the extension tool's channel. Returns how to stop. */
   bind(bus: EventBus, development: boolean): () => void {
     const off = [
-      bus.on(SESSION_CHANNEL, (message) => this.sessions(message)),
+      bus.on(VERB_CHANNEL, (message) => this.verb(message)),
+      // An extension asks for the verbs as functions: the same messages, sent for it.
+      bus.on(API_CHANNEL, (take) => typeof take === "function" && take(verbs(bus))),
       ...(development ? [bus.on(EXTENSION_CHANNEL, (message) => void this.extension(message))] : []),
       bus.on(HOLD_CHANNEL, (message) => this.hold(message)),
-      bus.on(PROCESS_CHANNEL, (message) => this.processes(message)),
       bus.on(RESULT_CHANNEL, (message) => {
         const data = (message as { data?: unknown } | undefined)?.data;
         if (validResultData(data)) this.session.resultData = structuredClone(data);
       }),
     ];
     return () => off.forEach((each) => each());
-  }
-
-  /** Listens for the schedule tool. Returns how to stop. */
-  bindSchedules(bus: EventBus): () => void {
-    return bus.on(SCHEDULE_CHANNEL, (message) => this.schedule(message));
   }
 
   /** An extension asks to keep this session loaded, or lets go (`HOLD_CHANNEL`). */
@@ -77,45 +74,64 @@ export class SessionRequests {
     reply(answer);
   }
 
-  /** The built-in process tool (or an extension in this session): its own processes and its children's. */
-  private processes(value: unknown): void {
-    if (!validProcessMessage(value)) return;
-    value.taken = true;
-    const processes = this.host.processes;
-    void (processes ? processes.request(this.session.id, value.request, value.signal) : Promise.resolve({ ok: false, text: "Background processes are not available here." }))
+  /**
+   * One of the ten verbs, from a built-in tool or an extension in this session. The session answers
+   * for itself (`self`, at once) and asks the person before a schedule is added; the rest is about
+   * what it started.
+   */
+  private verb(value: unknown): void {
+    const message = value as VerbMessage | undefined;
+    if (!message || typeof message !== "object" || typeof message.reply !== "function") return;
+    message.taken = true;
+    const { request, signal } = message;
+    if (!validVerb(request))
+      return message.reply({ ok: false, text: "That request is not well formed. Check its fields: a pattern must be a regular expression, and a schedule takes exactly one of cron, in_minutes or at." });
+    if (request.verb === "self") return message.reply(this.self(request.action));
+    const { started } = this.host;
+    void (request.verb === "schedule" ? this.schedule(request) : started ? started.say(this.session.id, request, signal) : Promise.resolve(UNAVAILABLE))
       .catch((error: unknown) => ({ ok: false, text: `That did not work (${runtimeError(error, "execution").code}).` }))
-      .then((answer) => value.reply(answer));
+      .then((answer) => message.reply(answer));
   }
 
-  /** The built-in session tool (or an extension in this session): its own children only. */
-  private sessions(value: unknown): void {
-    if (!validSessionMessage(value)) return;
-    value.taken = true;
-    if (value.request.action === "inspect") {
+  /** The calling session: what it has loaded, or a reload with its agent's current setup when this turn ends. */
+  private self(action: "inspect" | "reload"): Answer {
+    if (action === "inspect") {
       try {
-        value.reply({ ok: true, text: this.state.inspect() });
+        return { ok: true, text: this.state.inspect() };
       } catch {
-        value.reply({ ok: false, text: "Cannot read this session's extension state." });
+        return { ok: false, text: "Cannot read this session's extension state." };
       }
-      return;
     }
-    if (value.request.action === "reload") {
-      const scheduled = !this.state.closed() && this.session.published && !!this.host.requestSetup?.(this.session, { asked: "pispark_session (reload)" });
-      value.reply(
-        scheduled
-          ? { ok: true, text: "The session reloads when this turn ends, picking up its agent's current setup, and you get the outcome as a new message. End your turn now rather than checking." }
-          : { ok: false, text: "This session cannot reload now." },
-      );
-      return;
+    const scheduled = !this.state.closed() && this.session.published && !!this.host.requestSetup?.(this.session, { asked: "pispark_self (reload)" });
+    return scheduled
+      ? { ok: true, text: "The session reloads when this turn ends, picking up its agent's current setup, and you get the outcome as a new message. End your turn now rather than checking." }
+      : { ok: false, text: "This session cannot reload now." };
+  }
+
+  /** A schedule is added only after the person says yes, and only one that can be kept is put to them. */
+  private async schedule(request: Extract<Verb, { verb: "schedule" }>): Promise<Answer> {
+    const { schedules, started } = this.host;
+    const ui = this.state.ui();
+    if (!schedules || !started || !ui) return UNAVAILABLE;
+    const id = this.session.id;
+    const time = request.in_minutes !== undefined ? Date.now() + request.in_minutes * 60_000 : new Date(request.at ?? "").getTime();
+    if (request.cron !== undefined ? !parseCron(request.cron) : Number.isNaN(time) || time <= Date.now()) return { ok: false, text: "That is not a time that can be scheduled." };
+    const when = request.cron !== undefined ? { cron: request.cron } : { at: new Date(time).toISOString() };
+    const input = { ...when, prompt: request.prompt, ...(request.run ? { run: request.run } : {}) };
+    try {
+      schedules.validate(id, input);
+    } catch {
+      return { ok: false, text: "That schedule can't be kept as given, so the person wasn't asked. A session started by another one can't use run 'new', and the time must be ahead." };
     }
-    if (this.session.metadata.parent && value.request.action !== "report") {
-      value.reply({ ok: false, text: "Child sessions cannot manage other sessions." });
-      return;
-    }
-    const sessions = this.host.sessions;
-    void (sessions ? sessions.request(this.session.id, value.request) : Promise.resolve({ ok: false, text: "Starting sessions is not available here." }))
-      .catch((error: unknown) => ({ ok: false, text: `That did not work (${runtimeError(error, "execution").code}).` }))
-      .then((answer) => value.reply(answer));
+    const title = request.run === "new" ? "Schedule this as new sessions under this one?" : "Schedule this in this session?";
+    if (!(await ui.context.confirm(title, `${describeSchedule(when)}: ${request.prompt}`))) return { ok: true, text: "The person declined; nothing was scheduled." };
+    const added = schedules.add(id, input, "agent");
+    const where = added.run === "new" ? "each run in a new session" : "in this session";
+    return {
+      ok: true,
+      text: `Scheduled (${started.handle(id, "schedule", added.id)}): ${describeSchedule(added)}, ${where}. The person sees it under Details → Started here.`,
+      details: { schedule: added },
+    };
   }
 
   /** The extension tool: stage, apply, unload or reload one of the session's own extensions. */
@@ -175,60 +191,5 @@ export class SessionRequests {
     } catch (error) {
       reply((error as Error).message.slice(0, 500), true);
     }
-  }
-
-  /** The built-in schedule tool: list, remove, or add after the person says yes. */
-  private schedule(value: unknown): void {
-    if (!validMessage(value)) return;
-    const message: ScheduleMessage = value;
-    message.taken = true;
-    const schedules = this.host.schedules;
-    const id = this.session.id;
-    // Where each run goes and how it reports, as saved: the agent sees what was made, not what it asked for.
-    const where = (s: Schedule) => (s.run === "new" ? `as a new session, reports ${s.report ?? "status"}` : "in this session");
-    const answer = async (): Promise<ScheduleAnswer> => {
-      const ui = this.state.ui();
-      if (!schedules || !ui) return { ok: false, text: "Scheduling is not available here." };
-      const { request } = message;
-      const mine = schedules.of(id);
-      if (request.action === "list")
-        return {
-          ok: true,
-          text: mine.length ? mine.map((s) => `${s.id}: ${describeSchedule(s)}, ${where(s)} (${s.on ? "on" : "off"}): ${s.prompt}`).join("\n") : "This session has no schedules.",
-          schedules: mine,
-        };
-      if (request.action === "remove") {
-        if (!mine.some((s) => s.id === request.id)) return { ok: false, text: "This session has no schedule with that id." };
-        schedules.remove(request.id);
-        return { ok: true, text: "Schedule removed." };
-      }
-      const { input } = request;
-      const when = { cron: input.cron, at: input.at };
-      if (input.cron !== undefined ? !parseCron(input.cron) : Number.isNaN(new Date(input.at ?? "").getTime()) || new Date(input.at!).getTime() <= Date.now())
-        return { ok: false, text: "That is not a time that can be scheduled." };
-      const how = { ...(input.run !== undefined ? { run: input.run } : {}), ...(input.report !== undefined ? { report: input.report } : {}) };
-      const schedule = { ...when, ...how, prompt: input.prompt };
-      // Only a schedule that can be kept is put to the person.
-      try {
-        schedules.validate(id, schedule);
-      } catch {
-        return {
-          ok: false,
-          text: "That schedule can't be kept as given, so the person wasn't asked. `report` goes only with run 'new', a session started by another one can't use run 'new', and the time must be ahead.",
-        };
-      }
-      const title = how.run === "new" ? "Schedule this as new sessions under this one?" : "Schedule this in this session?";
-      const yes = await ui.context.confirm(title, `${describeSchedule(when)}: ${input.prompt ?? ""}`);
-      if (!yes) return { ok: true, text: "The person declined; nothing was scheduled." };
-      const added = schedules.add(id, schedule, "agent");
-      return {
-        ok: true,
-        text: `Scheduled: ${describeSchedule(added)}, ${where(added)} (id ${added.id}). The person can change it under Session info → Schedules.`,
-        schedule: added,
-      };
-    };
-    void answer()
-      .catch((error: unknown) => ({ ok: false, text: `Scheduling failed (${runtimeError(error, "execution").code}).` }))
-      .then((result) => message.reply(result));
   }
 }

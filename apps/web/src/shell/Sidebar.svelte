@@ -51,7 +51,7 @@
     sessionsNav?.querySelector<HTMLElement>('a[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
   });
   const needsYou = $derived(newestFirst.filter((session) => sessionState(session) === "needs-you"));
-  // What can run without you: schedules, routines switched on, kept sessions and background tasks.
+  // What can run without you: schedules, routines switched on, kept sessions and processes.
   const background = $derived(
     client.schedules.schedules.length +
       client.routines.routines.filter((routine) => routine.on).length +
