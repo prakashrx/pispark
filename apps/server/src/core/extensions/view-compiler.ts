@@ -39,7 +39,12 @@ export const ASSET_TYPES: Readonly<Record<string, string>> = {
   ".webm": "video/webm",
   ".pdf": "application/pdf",
 };
-const ASSET_FILTER = new RegExp(`\\.(${Object.keys(ASSET_TYPES).map((ext) => ext.slice(1)).join("|")})$`, "i");
+const ASSET_FILTER = new RegExp(
+  `\\.(${Object.keys(ASSET_TYPES)
+    .map((ext) => ext.slice(1))
+    .join("|")})$`,
+  "i",
+);
 const sha = (data: Buffer | string) => createHash("sha256").update(data).digest("hex").slice(0, 32);
 
 /** Imported static files by content hash: where each is, so it is read when it is asked for. */
@@ -66,8 +71,7 @@ const assetFiles = (root: string): Plugin => ({
   setup(build) {
     build.onLoad({ filter: ASSET_FILTER }, async (args) => {
       const real = await realpath(args.path);
-      if (real === root || !isInside(root, real))
-        return { errors: [{ text: `${basename(args.path)} is outside the extension's folder` }] };
+      if (real === root || !isInside(root, real)) return { errors: [{ text: `${basename(args.path)} is outside the extension's folder` }] };
       const data = await readFile(real);
       if (data.length > MAX_ASSET) return { errors: [{ text: `${basename(args.path)} is too large to load` }] };
       const hash = sha(data);

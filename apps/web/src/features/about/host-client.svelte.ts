@@ -52,7 +52,11 @@ export class HostClient {
 
   async act(action: HostAction): Promise<void> {
     try {
-      await this.transport.json("/api/host", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) });
+      await this.transport.json("/api/host", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(action),
+      });
     } catch (error) {
       throw new CommandFailed((error as Error).message);
     }
@@ -94,8 +98,4 @@ export class HostClient {
   dispose() {
     clearTimeout(this.watch);
   }
-}
-
-export function formatBytes(bytes: number) {
-  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(0)} MB` : `${Math.round(bytes / 1024)} KB`;
 }

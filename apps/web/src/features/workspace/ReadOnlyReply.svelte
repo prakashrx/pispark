@@ -16,11 +16,7 @@
   const provider = $derived(catalog.providers.find((p) => p.id === doc?.model?.provider));
   const signedIn = $derived(!!provider?.configured);
   const usable = $derived(signedIn && !!provider?.models.some((m) => m.id === doc?.model?.id && m.available));
-  const models = $derived(
-    catalog.providers.flatMap((p) =>
-      p.models.filter((m) => m.available).map((m) => ({ value: JSON.stringify({ provider: p.id, id: m.id }), label: `${m.name} · ${p.name}` })),
-    ),
-  );
+  const models = $derived(sessions.providers.modelOptions);
   const reason = $derived(
     doc?.readOnly === "agent"
       ? `its agent “${doc.agent.name}” can’t be found`

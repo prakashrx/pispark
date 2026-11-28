@@ -13,10 +13,14 @@ export class Tray {
   ) {}
   start() {
     const powershell = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-    const child = spawn(powershell, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", this.release.tray, "-Icon", this.release.icon], {
-      windowsHide: true,
-      stdio: ["pipe", "pipe", "ignore"],
-    });
+    const child = spawn(
+      powershell,
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", this.release.tray, "-Icon", this.release.icon],
+      {
+        windowsHide: true,
+        stdio: ["pipe", "pipe", "ignore"],
+      },
+    );
     this.child = child;
     let buffer = "";
     child.stdout!.setEncoding("utf8");

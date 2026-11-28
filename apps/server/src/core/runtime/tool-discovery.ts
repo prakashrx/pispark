@@ -34,14 +34,23 @@ export class ToolDiscovery {
    * A running session of a setup has these tools (Pi's `getAllTools`). Those an extension registered
    * only once running, or MCP servers' tools, are remembered for the editor; Pi's own are listed anyway.
    */
-  remember(fingerprint: string, extensionPaths: string[], tools: { name: string; description?: string; sourceInfo?: { path?: string } }[]): void {
+  remember(
+    fingerprint: string,
+    extensionPaths: string[],
+    tools: { name: string; description?: string; sourceInfo?: { path?: string } }[],
+  ): void {
     const names = new Map(extensionPaths.map((path) => [path, extensionName(path)]));
     const known = this.seen.get(fingerprint) ?? new Map<string, DiscoveredTool>();
     for (const tool of tools.slice(0, 500)) {
       const mcp = /^mcp__([^_]+(?:_[^_]+)*)__/.exec(tool.name);
       const extension = tool.sourceInfo?.path ? names.get(tool.sourceInfo.path) : undefined;
-      const source: DiscoveredTool["source"] | undefined = mcp ? { kind: "mcp", name: mcp[1]! } : extension ? { kind: "extension", name: extension } : undefined;
-      if (source) known.set(tool.name, { name: tool.name, ...(tool.description ? { description: tool.description.slice(0, 1000) } : {}), source });
+      const source: DiscoveredTool["source"] | undefined = mcp
+        ? { kind: "mcp", name: mcp[1]! }
+        : extension
+          ? { kind: "extension", name: extension }
+          : undefined;
+      if (source)
+        known.set(tool.name, { name: tool.name, ...(tool.description ? { description: tool.description.slice(0, 1000) } : {}), source });
     }
     if (!known.size) return;
     if (!this.seen.has(fingerprint) && this.seen.size >= 64) this.seen.delete(this.seen.keys().next().value!);
@@ -50,7 +59,9 @@ export class ToolDiscovery {
 
   async tools(setup: Setup): Promise<Discovered> {
     const discovered = await this.discovered(setup);
-    const extra = [...(this.seen.get(setup.fingerprint)?.values() ?? [])].filter((tool) => !discovered.tools.some((each) => each.name === tool.name));
+    const extra = [...(this.seen.get(setup.fingerprint)?.values() ?? [])].filter(
+      (tool) => !discovered.tools.some((each) => each.name === tool.name),
+    );
     return extra.length ? { ...discovered, tools: [...discovered.tools, ...extra] } : discovered;
   }
   private discovered(setup: Setup): Promise<Discovered> {
@@ -70,12 +81,17 @@ export class ToolDiscovery {
     const loaded = await loadExplicitExtensions([builtIn, ...setup.extensionPaths], setup.folder ?? this.cwd, createEventBus());
     try {
       const tools = loaded.extensions.flatMap((extension) =>
-        [...extension.tools.values()].map(({ definition }): DiscoveredTool => ({
-          name: definition.name,
-          ...(definition.label ? { label: definition.label } : {}),
-          ...(definition.description ? { description: definition.description } : {}),
-          source: extension.path === builtIn || extension.path.startsWith("builtin:") ? { kind: "core" } : { kind: "extension", name: extensionName(extension.path) },
-        })),
+        [...extension.tools.values()].map(
+          ({ definition }): DiscoveredTool => ({
+            name: definition.name,
+            ...(definition.label ? { label: definition.label } : {}),
+            ...(definition.description ? { description: definition.description } : {}),
+            source:
+              extension.path === builtIn || extension.path.startsWith("builtin:")
+                ? { kind: "core" }
+                : { kind: "extension", name: extensionName(extension.path) },
+          }),
+        ),
       );
       return { tools, incomplete: loaded.errors.length > 0 };
     } finally {

@@ -1,22 +1,14 @@
 import { expect } from "@playwright/test";
 import { hostedTest as test } from "./isolated-host";
 
-test("saved assistant Markdown stays inert and keeps normal formatting after reopen", async ({
-  page,
-  request,
-}) => {
+test("saved assistant Markdown stays inert and keeps normal formatting after reopen", async ({ page, request }) => {
   await page.goto("/");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
-  await expect(
-    page.getByRole("button", { name: "Start session" }),
-  ).not.toHaveAttribute("aria-disabled", "true");
-  const prompt =
-    '**safe bold** <img src="/invalid" onerror="document.body.dataset.injected=1"> [unsafe](javascript:alert(1))';
+  await expect(page.getByRole("button", { name: "Start session" })).not.toHaveAttribute("aria-disabled", "true");
+  const prompt = '**safe bold** <img src="/invalid" onerror="document.body.dataset.injected=1"> [unsafe](javascript:alert(1))';
   await ask.fill(prompt);
   await ask.press("Enter");
-  const prose = page
-    .locator(".prose")
-    .filter({ has: page.locator("strong", { hasText: "safe bold" }) });
+  const prose = page.locator(".prose").filter({ has: page.locator("strong", { hasText: "safe bold" }) });
   for (const reopen of [false, true]) {
     if (reopen) {
       // Unloaded on the server, the session opens again by itself.
@@ -27,20 +19,12 @@ test("saved assistant Markdown stays inert and keeps normal formatting after reo
       await page.reload();
     }
     await expect(prose).toBeVisible();
-    await expect(
-      prose.locator("img, [onerror], a[href^='javascript:']"),
-    ).toHaveCount(0);
-    await expect(page.locator("body")).not.toHaveAttribute(
-      "data-injected",
-      "1",
-    );
+    await expect(prose.locator("img, [onerror], a[href^='javascript:']")).toHaveCount(0);
+    await expect(page.locator("body")).not.toHaveAttribute("data-injected", "1");
   }
 });
 
-test("blocked browser storage supports live replies and a session unloaded by a peer opens again by itself", async ({
-  page,
-  request,
-}) => {
+test("blocked browser storage supports live replies and a session unloaded by a peer opens again by itself", async ({ page, request }) => {
   await page.addInitScript(() => {
     for (const method of ["getItem", "setItem"])
       Object.defineProperty(Storage.prototype, method, {
@@ -51,24 +35,16 @@ test("blocked browser storage supports live replies and a session unloaded by a 
   });
   await page.goto("/");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
-  await expect(
-    page.getByRole("button", { name: "Start session" }),
-  ).not.toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByRole("button", { name: "Start session" })).not.toHaveAttribute("aria-disabled", "true");
   await ask.fill("peer unload regression");
   await ask.press("Enter");
-  await expect(
-    page.getByText("local:peer unload regression", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("local:peer unload regression", { exact: true })).toBeVisible();
   const reply = page.getByRole("textbox", { name: "Reply to session" });
   await reply.fill("keep through reopen");
   const { sessions } = await (await request.get("/api/sessions")).json();
-  const id = sessions.findLast(
-    (s: { title: string }) => s.title === "peer unload regression",
-  ).id;
+  const id = sessions.findLast((s: { title: string }) => s.title === "peer unload regression").id;
   // The old stream can still report Live until it sees the unload. Wait for its replacement.
-  const reconnected = page.waitForResponse((response) =>
-    response.ok() && response.url().endsWith(`/api/sessions/${id}/live`),
-  );
+  const reconnected = page.waitForResponse((response) => response.ok() && response.url().endsWith(`/api/sessions/${id}/live`));
   const stop = await request.post("/api/commands", {
     data: { type: "stop", commandId: crypto.randomUUID(), sessionId: id },
   });
@@ -77,24 +53,16 @@ test("blocked browser storage supports live replies and a session unloaded by a 
   await expect(page.getByRole("img", { name: "Backend: Live" })).toBeVisible({
     timeout: 15_000,
   });
-  await expect(
-    page.getByRole("button", { name: "Send message" }),
-  ).not.toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByRole("button", { name: "Send message" })).not.toHaveAttribute("aria-disabled", "true");
   await expect(reply).toHaveText("keep through reopen");
   await reply.press("Enter");
-  await expect(
-    page.getByText("local:keep through reopen", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("local:keep through reopen", { exact: true })).toBeVisible();
 });
 
-test("a long reply is shown whole in the conversation, not clipped", async ({
-  page,
-}) => {
+test("a long reply is shown whole in the conversation, not clipped", async ({ page }) => {
   await page.goto("/");
   const ask = page.getByRole("textbox", { name: "Ask anything", exact: true });
-  await expect(
-    page.getByRole("button", { name: "Start session" }),
-  ).not.toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByRole("button", { name: "Start session" })).not.toHaveAttribute("aria-disabled", "true");
   await ask.fill("long reply " + "a".repeat(10000) + " END-OF-REPLY");
   await ask.press("Enter");
   // Both the question and the answer arrive complete: nothing needs a "read full message" step.

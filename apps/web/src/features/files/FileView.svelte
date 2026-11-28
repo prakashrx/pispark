@@ -45,7 +45,8 @@
     {#if error}<p role="alert" class="note danger">{error}</p>
     {:else if text === undefined}<p class="note">Reading…</p>
     {:else if kind === "markdown"}{#key name}<Markdown {text} options={{ images: (href) => sessionImageUrl(sessionId, href) }} />{/key}
-    {:else}<!-- svelte-ignore a11y_no_noninteractive_tabindex --><pre class="text" tabindex="0" aria-label={`Contents of ${name}`}>{text}</pre>{/if}
+    {:else}<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <pre class="text" tabindex="0" aria-label={`Contents of ${name}`}>{text}</pre>{/if}
   {:else}<p class="note">No preview for this kind of file. Download it to open it.</p>{/if}
 </div>
 

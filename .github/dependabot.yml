@@ -1,0 +1,24 @@
+# Updates arrive as one grouped pull request a week per ecosystem, never sooner than a week after a
+# version is published: most poisoned releases are found and pulled within days. Nothing merges itself.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+  # Actions are pinned to a commit; this keeps the pins (and their version comments) current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

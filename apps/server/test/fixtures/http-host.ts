@@ -43,16 +43,12 @@ export async function httpFixture(t: TestContext, extensions: Record<string, str
   const settle = async (receipt: Receipt) => {
     while (receipt.state === "accepted") {
       await new Promise((r) => setTimeout(r, 5));
-      receipt = (await (
-        await fetch(`${base}/api/receipts/${receipt.commandId}`)
-      ).json()) as Receipt;
+      receipt = (await (await fetch(`${base}/api/receipts/${receipt.commandId}`)).json()) as Receipt;
     }
     return receipt;
   };
   const create = async (folder: "a" | "b") => {
-    const r = await settle(
-      await post({ type: "create", folder: folders[folder] }),
-    );
+    const r = await settle(await post({ type: "create", folder: folders[folder] }));
     assert.equal(r.outcome, "completed");
     return r.sessionId!;
   };

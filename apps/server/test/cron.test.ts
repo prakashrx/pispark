@@ -8,7 +8,21 @@ const next = (cron: string, after: string) => nextRun(parseCron(cron)!, local(af
 test("cron: the five fields, ranges, steps and lists; anything else is refused", () => {
   for (const good of ["* * * * *", "0 9 * * 1-5", "*/15 * * * *", "0 */2 * * *", "30 7 1,15 * *", "0 0 * * 7", "5/20 * * * *"])
     assert.ok(parseCron(good), good);
-  for (const bad of ["", "* * * *", "* * * * * *", "60 * * * *", "* 24 * * *", "* * 0 * *", "* * * 13 *", "* * * * 8", "*/0 * * * *", "5-1 * * * *", "MON * * * *", "@daily", "0 9 * * L"])
+  for (const bad of [
+    "",
+    "* * * *",
+    "* * * * * *",
+    "60 * * * *",
+    "* 24 * * *",
+    "* * 0 * *",
+    "* * * 13 *",
+    "* * * * 8",
+    "*/0 * * * *",
+    "5-1 * * * *",
+    "MON * * * *",
+    "@daily",
+    "0 9 * * L",
+  ])
     assert.equal(parseCron(bad), undefined, bad);
   assert.deepEqual([...parseCron("0 0 * * 7")!.weekdays], [0]);
 });

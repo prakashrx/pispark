@@ -55,15 +55,17 @@ export async function isolatedHost(info: TestInfo) {
       });
     // A cold Windows CI machine can take more than the default 5 s to start the test server.
     await expect
-      .poll(async () => {
-        if (child?.exitCode !== null)
-          throw new Error("Owned fixture child exited");
-        try {
-          return (await fetch(`${baseURL}/api/health`)).status;
-        } catch {
-          return 0;
-        }
-      }, { timeout: 30_000 })
+      .poll(
+        async () => {
+          if (child?.exitCode !== null) throw new Error("Owned fixture child exited");
+          try {
+            return (await fetch(`${baseURL}/api/health`)).status;
+          } catch {
+            return 0;
+          }
+        },
+        { timeout: 30_000 },
+      )
       .toBe(200);
   }
   async function stop() {

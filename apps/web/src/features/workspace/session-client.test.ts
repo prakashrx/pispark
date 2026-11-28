@@ -53,21 +53,15 @@ test("no-session reconnect recovers catalog without duplicate timers/listeners o
     await waitFor(() => expect(client.connection).toBe("Connected"));
     expect(client.catalogError).toBe(false);
     expect(client.error).toBe("");
-    expect(
-      timers.mock.calls.filter(([, delay]) => delay === 60_000),
-    ).toHaveLength(1);
+    expect(timers.mock.calls.filter(([, delay]) => delay === 60_000)).toHaveLength(1);
     // Changes come on one workspace stream, opened once.
     expect(calls.mock.calls.filter(([url]) => url === "/api/live")).toHaveLength(1);
     for (const type of ["beforeunload", "offline", "online"]) {
-      const handlers = listeners.mock.calls
-        .filter(([name]) => name === type)
-        .map(([, handler]) => handler);
+      const handlers = listeners.mock.calls.filter(([name]) => name === type).map(([, handler]) => handler);
       expect(handlers).toHaveLength(2);
       expect(handlers[0]).toBe(handlers[1]); // Native addEventListener deduplicates the same listener.
     }
-    expect(calls.mock.calls.some(([url]) => url === "/api/commands")).toBe(
-      false,
-    );
+    expect(calls.mock.calls.some(([url]) => url === "/api/commands")).toBe(false);
   } finally {
     client.dispose();
   }
@@ -77,16 +71,12 @@ test("successful truncated lists have a separate notice and later nontruncated r
   let truncated = true;
   vi.stubGlobal(
     "fetch",
-    vi.fn(
-      async () => new Response(JSON.stringify({ sessions: [], truncated })),
-    ),
+    vi.fn(async () => new Response(JSON.stringify({ sessions: [], truncated }))),
   );
   const client = new SessionClient();
   client.error = "unrelated operation";
   await client.refresh();
-  expect(client.listNotice).toBe(
-    "Showing your latest 256 sessions. Older sessions are still saved.",
-  );
+  expect(client.listNotice).toBe("Showing your latest 256 sessions. Older sessions are still saved.");
   expect(client.error).toBe("unrelated operation");
   truncated = false;
   await client.refresh();
@@ -134,19 +124,23 @@ test("accepted receipt polling loss is settlement uncertainty, not acceptance fa
   const origin = client.session("origin");
   await origin.stop();
   expect(origin.errorKind).toBe("settlement-unknown");
-  expect(origin.error).toBe(
-    "receipt connection lost (session origin)",
-  );
+  expect(origin.error).toBe("receipt connection lost (session origin)");
   // Foreground/reconnect checks this same receipt, then clears only its warning.
-  calls.mockImplementation(async () => new Response(JSON.stringify({
-    commandId: "accepted-command", sessionId: "origin", state: "settled", outcome: "completed",
-  })));
+  calls.mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({
+          commandId: "accepted-command",
+          sessionId: "origin",
+          state: "settled",
+          outcome: "completed",
+        }),
+      ),
+  );
   await origin.recheckCommand();
   expect(origin.error).toBe("");
   expect(calls.mock.calls.at(-1)?.[0]).toBe("/api/receipts/accepted-command");
-  expect(
-    calls.mock.calls.filter(([url]) => url === "/api/commands"),
-  ).toHaveLength(1);
+  expect(calls.mock.calls.filter(([url]) => url === "/api/commands")).toHaveLength(1);
   client.dispose();
 });
 
@@ -210,9 +204,7 @@ test("unknown initial create acceptance and settlement are explicit without an i
     );
     const client = new SessionClient();
     expect(await client.ask("initial draft", "/folder")).toBe(false);
-    expect(client.errorKind).toBe(
-      accepted ? "settlement-unknown" : "acceptance-unknown",
-    );
+    expect(client.errorKind).toBe(accepted ? "settlement-unknown" : "acceptance-unknown");
     expect(client.error).toContain("lost create response");
     expect(commands).toBe(1);
     client.dispose();

@@ -6,8 +6,12 @@
   import Modal from "../../lib/ui/Modal.svelte";
   import type { SessionCommand } from "../../../../server/src/contract/protocol";
 
-  let { commands, ready, onrun, onclose }: { commands: SessionCommand[]; ready: boolean; onrun: (name: string) => void; onclose: () => void } =
-    $props();
+  let {
+    commands,
+    ready,
+    onrun,
+    onclose,
+  }: { commands: SessionCommand[]; ready: boolean; onrun: (name: string) => void; onclose: () => void } = $props();
   let query = $state("");
   const shown = $derived(
     commands.filter(({ name, description }) => `${name} ${description ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())),

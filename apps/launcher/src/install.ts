@@ -1,4 +1,16 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RELEASE_CHANNELS, compareVersions, type ReleaseChannel } from "../../server/src/contract/host-protocol.ts";
@@ -81,7 +93,8 @@ export function ensureWindowless(release: Release) {
   if (!windows || existsSync(release.windowless)) return;
   const exe = readFileSync(release.node);
   const pe = exe.length >= 0x40 ? exe.readUInt32LE(0x3c) : -1;
-  if (pe < 0 || pe + 24 + 70 > exe.length || exe.toString("latin1", pe, pe + 4) !== "PE\0\0") throw new Error(`${release.node} is not a Windows program`);
+  if (pe < 0 || pe + 24 + 70 > exe.length || exe.toString("latin1", pe, pe + 4) !== "PE\0\0")
+    throw new Error(`${release.node} is not a Windows program`);
   exe.writeUInt16LE(2, pe + 24 + 68);
   writeAtomic(release.windowless, exe);
 }
@@ -193,7 +206,11 @@ export class Install {
   }
   /** Asked for by name: no longer counted as failed. */
   unmarkFailed(version: string) {
-    if (this.failed().includes(version)) this.writeLines("failed", this.failed().filter((v) => v !== version));
+    if (this.failed().includes(version))
+      this.writeLines(
+        "failed",
+        this.failed().filter((v) => v !== version),
+      );
   }
   markFailed(version: string) {
     if (!this.failed().includes(version)) this.writeLines("failed", [...this.failed(), version]);
@@ -227,7 +244,10 @@ export class Install {
   }
   private readLines(name: string): string[] {
     try {
-      return readFileSync(join(this.update, name), "utf8").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      return readFileSync(join(this.update, name), "utf8")
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
     } catch {
       return [];
     }

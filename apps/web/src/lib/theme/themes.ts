@@ -70,34 +70,29 @@ export interface FontChoice {
   stack: string;
 }
 
-const sansStack =
-  '"Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif';
+const sansStack = '"Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif';
 
 export const fonts: FontChoice[] = [
   { id: "sans", name: "Sans", stack: sansStack },
   {
     id: "system",
     name: "System",
-    stack:
-      'system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, Ubuntu, sans-serif',
+    stack: 'system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, Ubuntu, sans-serif',
   },
   {
     id: "humanist",
     name: "Humanist",
-    stack:
-      'Seravek, "Gill Sans Nova", Ubuntu, Calibri, "DejaVu Sans", source-sans-pro, sans-serif',
+    stack: 'Seravek, "Gill Sans Nova", Ubuntu, Calibri, "DejaVu Sans", source-sans-pro, sans-serif',
   },
   {
     id: "serif",
     name: "Serif",
-    stack:
-      '"Iowan Old Style", Charter, "Sitka Text", Cambria, Georgia, "Times New Roman", serif',
+    stack: '"Iowan Old Style", Charter, "Sitka Text", Cambria, Georgia, "Times New Roman", serif',
   },
   {
     id: "mono",
     name: "Mono",
-    stack:
-      '"JetBrains Mono", "Cascadia Code", "SF Mono", Menlo, Consolas, ui-monospace, monospace',
+    stack: '"JetBrains Mono", "Cascadia Code", "SF Mono", Menlo, Consolas, ui-monospace, monospace',
   },
 ];
 

@@ -63,8 +63,8 @@
     <div>
       <h1 id="pair-heading">Pair this device</h1>
       <p class="text-sm text-muted-foreground mt-1">
-        {#if codeShown}On your computer, open PiSpark → Settings → Remote access → Pair a device, then scan the code with this device’s camera, or
-          type the code here.{:else}The code came with the QR code. Give this device a name so you can recognise it in PiSpark.{/if}
+        {#if codeShown}On your computer, open PiSpark → Settings → Remote access → Pair a device, then scan the code with this device’s
+          camera, or type the code here.{:else}The code came with the QR code. Give this device a name so you can recognise it in PiSpark.{/if}
       </p>
     </div>
     {#if codeShown}
@@ -123,7 +123,9 @@
     font-size: 1.375rem;
     font-weight: 700;
     line-height: 1;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.25);
   }
   h1 {
     font-size: 1.375rem;

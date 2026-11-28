@@ -15,7 +15,8 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  // Preserve source alpha values: CSS minification rounds .7 to 8-bit hex alpha.
-  build: { cssMinify: false },
+  // One KaTeX for math and for diagrams (both ask for 0.18): npm keeps a copy under each.
+  resolve: { dedupe: ["katex"] },
+  // CSS is minified like the code: a few colours become 8-digit hex, an alpha change under 1/255.
   test: { environment: "jsdom", include: ["src/**/*.test.ts"], setupFiles: ["src/test-setup.ts"] },
 }));

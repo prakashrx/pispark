@@ -1,3 +1,4 @@
+import { formatBytes } from "../../lib/bytes";
 import type { RichPiece, RichToken } from "../../lib/ui/RichInput.svelte";
 
 /** The most one attachment may weigh, and how many one message may carry (the server's limits). */
@@ -29,8 +30,6 @@ export const BLOCKED: Record<AttachmentsBlock, string> = {
 
 const TAG = /<file name="([^"]+)"><\/file>/g;
 const tag = (name: string) => `<file name="${name}"></file>`;
-const size = (bytes: number) =>
-  bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 let next = 0;
 
 /**
@@ -127,14 +126,19 @@ export class Attachments {
   get tokens(): Record<string, RichToken> {
     const out: Record<string, RichToken> = {};
     for (const item of Object.values(this.items)) {
-      const words = `${item.file.name}, ${size(item.file.size)}`;
+      const words = `${item.file.name}, ${formatBytes(item.file.size)}`;
       out[item.id] = {
         label: item.file.name,
-        detail: item.problem ? PROBLEM[item.problem] : size(item.file.size),
+        detail: item.problem ? PROBLEM[item.problem] : formatBytes(item.file.size),
         ...(item.thumbnail && !item.problem ? { thumbnail: item.thumbnail } : {}),
         ...(item.state === "uploading" ? { state: "working" as const, progress: item.progress } : {}),
         ...(item.state === "failed" ? { state: "failed" as const } : {}),
-        description: item.state === "failed" ? `${words}: ${PROBLEM[item.problem ?? "failed"]}` : item.state === "uploading" ? `${words}, uploading` : words,
+        description:
+          item.state === "failed"
+            ? `${words}: ${PROBLEM[item.problem ?? "failed"]}`
+            : item.state === "uploading"
+              ? `${words}, uploading`
+              : words,
       };
     }
     return out;

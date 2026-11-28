@@ -7,13 +7,15 @@
    * forks and its agent's routines. The longer work (a schedule's form, a process's output, editing
    * the agent) opens as a view in the same panel, with Back to here.
    */
+  import { modelKey } from "../settings/provider-client.svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Fold from "../../lib/ui/Fold.svelte";
   import Selector from "../../lib/ui/Selector.svelte";
   import type { ThinkingLevel } from "../../../../server/src/contract/agent-protocol";
   import { contributionsFor } from "./extension-views";
   import type { SessionFile, SessionInfo } from "../../../../server/src/contract/protocol";
-  import { fileKind, fileSize, fileUrl } from "../files/file-kinds";
+  import { fileKind, fileUrl } from "../files/file-kinds";
+  import { formatBytes } from "../../lib/bytes";
   import Icon from "../../lib/ui/Icon.svelte";
   import Toggle from "../../lib/ui/Toggle.svelte";
   import StartedHere from "../started/StartedHere.svelte";
@@ -43,13 +45,9 @@
   // next reply (chosen while it works, they wait for the reply to finish).
   const between = $derived((doc?.status === "idle" || doc?.status === "error") && !doc.readOnly && !doc.compacting);
   const changeable = $derived(!!doc && !doc.readOnly && !doc.compacting && doc.status !== "starting" && doc.status !== "stopping");
-  const models = $derived(
-    client.providers.catalog.providers.flatMap((p) =>
-      p.models.filter((m) => m.available).map((m) => ({ value: JSON.stringify({ provider: p.id, id: m.id }), label: `${m.name} · ${p.name}` })),
-    ),
-  );
+  const models = $derived(client.providers.modelOptions);
   const shownModel = $derived(doc?.pending?.model ?? doc?.model);
-  const modelValue = $derived(shownModel ? JSON.stringify({ provider: shownModel.provider, id: shownModel.id }) : "");
+  const modelValue = $derived(shownModel ? modelKey(shownModel) : "");
   const thinkingValue = $derived(doc?.pending?.thinking ?? doc?.thinking?.level);
   const levels = $derived((doc?.thinking?.levels ?? []).map((level) => ({ value: level, label: THINKING_WORDS[level] ?? level })));
   let configureError = $state("");
@@ -124,7 +122,9 @@
       <dl class="facts">
         <div>
           <dt>Agent</dt>
-          <dd>{info.agent.name}{#if info.agent.layered}<span class="muted"> · edited for this session</span>{/if}</dd>
+          <dd>
+            {info.agent.name}{#if info.agent.layered}<span class="muted"> · edited for this session</span>{/if}
+          </dd>
         </div>
         <div>
           <dt>Model</dt>
@@ -145,7 +145,9 @@
                 label="Thinking"
                 options={levels}
                 disabled={!changeable}
-                bind:value={() => thinkingValue, (value) => void (value && value !== thinkingValue && configure({ thinking: value as ThinkingLevel }))}
+                bind:value={
+                  () => thinkingValue, (value) => void (value && value !== thinkingValue && configure({ thinking: value as ThinkingLevel }))
+                }
               />
             </dd>
           </div>{/if}
@@ -180,11 +182,15 @@
             <span style:width={`${Math.min(100, context.percent)}%`}></span>
           </div>{/if}
         <p class="note">
-          {context.percent === null ? "Measured again after the next reply. " : ""}Earlier messages are summarized when it fills up, before your next message where it can.
+          {context.percent === null ? "Measured again after the next reply. " : ""}Earlier messages are summarized when it fills up, before
+          your next message where it can.
         </p>
-        <Button size="compact" variant="ghost"
+        <Button
+          size="compact"
+          variant="ghost"
           unavailable={!between || requestingCompaction ? "The session is busy" : undefined}
-          onclick={compactContext}>{requestingCompaction || doc.compacting ? "Compacting…" : "Compact context"}</Button>
+          onclick={compactContext}>{requestingCompaction || doc.compacting ? "Compacting…" : "Compact context"}</Button
+        >
         {#if doc.compacting}<Button size="compact" variant="ghost" onclick={() => void session.stop()}>Cancel compaction</Button>{/if}
         {#if compactResult}<p role="status">{compactResult}</p>{/if}
       </Fold>{/if}
@@ -196,7 +202,7 @@
                 type="button"
                 class="tile"
                 aria-label={`${file.name}${file.by ? `, ${file.by === "you" ? "uploaded" : "made"}` : ""}`}
-                title={`${file.name} · ${fileSize(file.size)}`}
+                title={`${file.name} · ${formatBytes(file.size)}`}
                 onclick={() => details.show(session.id, "file", file.name)}
               >
                 <span class="thumb">
@@ -240,11 +246,14 @@
         </ul>
         {#if routineError}<p role="alert" class="note danger">{routineError}</p>{/if}
       </Fold>{/if}
-
   </div>
 {/if}
 
-{#if editing}<ScheduleDialog sessionId={session.id} schedule={editing === true ? undefined : editing} onclose={() => (editing = undefined)} />{/if}
+{#if editing}<ScheduleDialog
+    sessionId={session.id}
+    schedule={editing === true ? undefined : editing}
+    onclose={() => (editing = undefined)}
+  />{/if}
 
 {#snippet relatedRows(label: string, sessions: SessionInfo[])}
   <ul class="rows" aria-label={label}>
@@ -253,7 +262,13 @@
       <li class="row">
         <button type="button" class="grow link line" onclick={() => client.open(child.id)}>{sessionName(child)}</button>
         {#if state}<StatusMark
-            kind={state === "needs-you" ? "attention" : state === "failed" || state === "interrupted" ? "error" : state === "queued" ? "waiting" : "busy"}
+            kind={state === "needs-you"
+              ? "attention"
+              : state === "failed" || state === "interrupted"
+                ? "error"
+                : state === "queued"
+                  ? "waiting"
+                  : "busy"}
             label={sessionStatus(child)}
             words
           />{:else}<span class="sub">Finished</span>{/if}

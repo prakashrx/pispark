@@ -13,10 +13,7 @@
    * prefill) and answers with a value, or skips with `null`. A replacement view would take the
    * same input and call the same `onanswer`.
    */
-  let {
-    dialog,
-    onanswer,
-  }: { dialog: ExtensionDialog; onanswer: (value: string | boolean | null) => void } = $props();
+  let { dialog, onanswer }: { dialog: ExtensionDialog; onanswer: (value: string | boolean | null) => void } = $props();
 
   // Each question mounts once (keyed by id); its editor starts from the prefill.
   let text = $state(untrack(() => (dialog.kind === "editor" ? (dialog.prefill ?? "") : "")));
@@ -46,12 +43,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div onkeydown={shortcut} role="presentation">
-  <PromptFrame
-    title={dialog.title}
-    expiresAt={dialog.expiresAt}
-    hint={hints[dialog.kind]}
-    onskip={() => onanswer(null)}
-  >
+  <PromptFrame title={dialog.title} expiresAt={dialog.expiresAt} hint={hints[dialog.kind]} onskip={() => onanswer(null)}>
     {#if dialog.kind === "confirm"}
       {#if dialog.message}<p class="message">{dialog.message}</p>{/if}
       <div class="actions">

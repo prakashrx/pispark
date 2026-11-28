@@ -29,7 +29,9 @@ async function packageJson(path: string): Promise<Package> {
   } catch {
     /* A missing or malformed package is reported with its file name. */
   }
-  throw new DependencyPreparationError(`Give the extension a valid ${path.endsWith("package-lock.json") ? "package-lock.json" : "package.json"}.`);
+  throw new DependencyPreparationError(
+    `Give the extension a valid ${path.endsWith("package-lock.json") ? "package-lock.json" : "package.json"}.`,
+  );
 }
 
 /** Session drafts use frozen registry packages. npm is allowed to unpack them, not to run install scripts. */
@@ -43,7 +45,12 @@ async function validateLock(source: string): Promise<void> {
     const entry = raw as Package | undefined;
     if (!entry || typeof entry !== "object" || !path.startsWith("node_modules/") || entry.link)
       throw new DependencyPreparationError("Extension dependencies must be locked npm registry packages.");
-    if (typeof entry.resolved === "string" && entry.resolved.startsWith(registry + "/") && typeof entry.integrity === "string" && /^sha(?:256|384|512)-/.test(entry.integrity))
+    if (
+      typeof entry.resolved === "string" &&
+      entry.resolved.startsWith(registry + "/") &&
+      typeof entry.integrity === "string" &&
+      /^sha(?:256|384|512)-/.test(entry.integrity)
+    )
       continue;
     // Bundled dependencies travel inside a checked registry tarball.
     if (entry.inBundle === true) continue;
@@ -62,20 +69,40 @@ export async function prepareDependencies(source: string, destination: string): 
   await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
   try {
     await cp(source, temp, { recursive: true, errorOnExist: true, force: false });
-    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(npm_config_|node_options$|node_auth_token$|npm_token$)/i.test(key)));
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([key]) => !/^(npm_config_|node_options$|node_auth_token$|npm_token$)/i.test(key)),
+    );
     try {
-      await run(process.execPath, [
-        cli, "ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund",
-        "--registry", registry, "--userconfig", join(temp, ".npmrc"),
-        "--globalconfig", join(temp, ".npm-globalrc"),
-        "--fetch-retries=0", "--loglevel=error",
-      ], { cwd: temp, env, windowsHide: true, timeout: 90_000, maxBuffer: 128 * 1024 });
+      await run(
+        process.execPath,
+        [
+          cli,
+          "ci",
+          "--omit=dev",
+          "--ignore-scripts",
+          "--no-audit",
+          "--no-fund",
+          "--registry",
+          registry,
+          "--userconfig",
+          join(temp, ".npmrc"),
+          "--globalconfig",
+          join(temp, ".npm-globalrc"),
+          "--fetch-retries=0",
+          "--loglevel=error",
+        ],
+        { cwd: temp, env, windowsHide: true, timeout: 90_000, maxBuffer: 128 * 1024 },
+      );
     } catch (error) {
       const failure = error as { killed?: boolean; stderr?: string };
       if (failure.killed) throw new DependencyPreparationError("Preparing extension dependencies exceeded its time or output limit.");
       const code = /(?:npm (?:ERR!|error) code )([A-Z0-9_]+)/.exec(failure.stderr ?? "")?.[1];
-      throw new DependencyPreparationError(`Could not install locked extension dependencies${code ? ` (${code})` : ""}. Check package.json and package-lock.json.`);
+      throw new DependencyPreparationError(
+        `Could not install locked extension dependencies${code ? ` (${code})` : ""}. Check package.json and package-lock.json.`,
+      );
     }
     await rename(temp, destination);
-  } finally { await rm(temp, { recursive: true, force: true }).catch(() => {}); }
+  } finally {
+    await rm(temp, { recursive: true, force: true }).catch(() => {});
+  }
 }

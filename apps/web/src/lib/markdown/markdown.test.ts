@@ -58,7 +58,9 @@ test("active content stays inert while links open outside the app", () => {
 
 test("images show from the web and from the host's own files; anything else is just its alt text", () => {
   const images = (href: string) => (href.startsWith("files/") ? `/api/sessions/a/attachments/${href.slice(6)}` : undefined);
-  const root = shown(["![Chart](https://example.org/chart.png)", "![Shot](files/shot.png)", "![Other](ftp://x/y.png)"].join("\n\n"), { images });
+  const root = shown(["![Chart](https://example.org/chart.png)", "![Shot](files/shot.png)", "![Other](ftp://x/y.png)"].join("\n\n"), {
+    images,
+  });
   const sources = [...root.querySelectorAll("img")].map((img) => img.getAttribute("src"));
   expect(sources).toEqual(["https://example.org/chart.png", "/api/sessions/a/attachments/shot.png"]);
   expect(root.querySelector("img")?.closest("a")?.getAttribute("href")).toBe("https://example.org/chart.png");
@@ -66,7 +68,9 @@ test("images show from the web and from the host's own files; anything else is j
 });
 
 test("math, code languages and known diagrams are marked for their renderers; prices stay text", () => {
-  const root = shown(["Energy $E = mc^2$ and \\(a+b\\); it costs $5 and $10.", "$$\n\\int_0^1 x\\,dx\n$$", "```ts\nconst a = 1;\n```"].join("\n\n"));
+  const root = shown(
+    ["Energy $E = mc^2$ and \\(a+b\\); it costs $5 and $10.", "$$\n\\int_0^1 x\\,dx\n$$", "```ts\nconst a = 1;\n```"].join("\n\n"),
+  );
   expect([...root.querySelectorAll("[data-math]")].map((m) => m.getAttribute("data-math"))).toEqual(["inline", "inline", "block"]);
   expect(root.textContent).toContain("costs $5 and $10");
   expect(root.querySelector("pre")?.dataset.lang).toBe("ts");
@@ -138,6 +142,38 @@ test("half-written Markdown reads as intended: open fences, spans, emphasis and 
   expect(repairOpenBlock("see [the docs")).toBe("see \\[the docs");
   expect(repairOpenBlock("see [docs](https://exam")).toBe("see [docs](https://exam)");
   expect(repairOpenBlock("**done** and `code` and [x](y)")).toBe("**done** and `code` and [x](y)");
+});
+
+test("half-written Markdown: strikethrough, underscores, images, math and a line that would make a heading", () => {
+  expect(repairOpenBlock("was ~~wrong")).toBe("was ~~wrong~~");
+  expect(repairOpenBlock("an _aside")).toBe("an _aside_");
+  expect(repairOpenBlock("a __strong point")).toBe("a __strong point__");
+  // Underscores inside words are names, not emphasis.
+  expect(repairOpenBlock("call snake_case_name and max_tokens")).toBe("call snake_case_name and max_tokens");
+  expect(repairOpenBlock("see _this_ and my_var")).toBe("see _this_ and my_var");
+  // Nested and trailing space: closed innermost first, before the space.
+  expect(repairOpenBlock("**bold _and ")).toBe("**bold _and_** ");
+  // An image shows once its address is whole.
+  expect(repairOpenBlock("look: ![a cha")).toBe("look: ");
+  expect(repairOpenBlock("look: ![chart](https://exa")).toBe("look: ");
+  expect(repairOpenBlock("look: ![chart](a.png)")).toBe("look: ![chart](a.png)");
+  // Math being written is closed, so it shows as math.
+  expect(repairOpenBlock("$$\nx^2 +")).toBe("$$\nx^2 +\n$$");
+  expect(repairOpenBlock("$$\nx^2\n$$")).toBe("$$\nx^2\n$$");
+  expect(repairOpenBlock("\\[\na +")).toBe("\\[\na +\n\\]");
+  // A line of - or = under text would turn it into a heading before the line is finished.
+  expect(repairOpenBlock("Results so far\n---")).toBe("Results so far");
+  expect(repairOpenBlock("Results\n=")).toBe("Results");
+  expect(repairOpenBlock("- one\n- two")).toBe("- one\n- two");
+});
+
+test("math being written renders as math, not as dollar signs", () => {
+  const root = shown("$$\nx^2 +");
+  expect(root.querySelector('[data-math="block"]')).toBeNull();
+  const live = document.createElement("div");
+  new MarkdownView(live).update("$$\nx^2 +", true);
+  expect(live.querySelector('[data-math="block"]')?.textContent).toBe("x^2 +");
+  expect(live.textContent).not.toContain("$$");
 });
 
 test("a selection in the text being written survives it growing", () => {

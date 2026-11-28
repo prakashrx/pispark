@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, untrack, type Snippet } from "svelte";
   import Button from "../../lib/ui/Button.svelte";
+  import { useNow } from "../../lib/clock.svelte";
 
   /**
    * What every question shares, whatever it asks: focus moves in and comes back, Escape skips, a
@@ -19,15 +20,10 @@
 
   const titleId = $props.id();
   let section = $state<HTMLElement>();
-  let now = $state(Date.now());
+  const clock = useNow(() => !!expiresAt);
   // The countdown bar needs how long the question waits in all, taken when it appears.
   const total = untrack(() => (expiresAt ? Math.max(1, expiresAt - Date.now()) : 0));
-  $effect(() => {
-    if (!expiresAt) return;
-    const timer = setInterval(() => (now = Date.now()), 1000);
-    return () => clearInterval(timer);
-  });
-  const seconds = $derived(expiresAt ? Math.max(0, Math.ceil((expiresAt - now) / 1000)) : undefined);
+  const seconds = $derived(expiresAt ? Math.max(0, Math.ceil((expiresAt - clock.now) / 1000)) : undefined);
 
   // The run waits on this answer, so the question takes focus; focus goes back where it was after.
   onMount(() => {

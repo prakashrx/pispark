@@ -75,7 +75,8 @@ export class Daemon {
     setInterval(trimLogs, 10 * 60_000).unref();
     this.readRollback();
     // Versions that failed here are never used again.
-    for (const version of this.install.failed()) if (version !== this.own.info.version && this.install.installed().includes(version)) this.install.remove(version);
+    for (const version of this.install.failed())
+      if (version !== this.own.info.version && this.install.installed().includes(version)) this.install.remove(version);
     // A version being tried (Linux handover): it has this long to come up, or systemd starts the previous one.
     const trying = this.install.trying()?.version === this.own.info.version;
     if (trying) setTimeout(() => this.supervisor.state !== "running" && process.exit(1), HEALTH_MS + 15_000).unref();
@@ -121,9 +122,12 @@ export class Daemon {
     if (!this.tray) return;
     const version = this.supervisor.runningRelease?.info.version ?? this.own.info.version;
     const state =
-      { starting: "starting", running: "running", stopping: "stopping", stopped: "stopped", crashed: "stopped after repeated crashes" }[this.supervisor.state] ?? this.supervisor.state;
+      { starting: "starting", running: "running", stopping: "stopping", stopped: "stopped", crashed: "stopped after repeated crashes" }[
+        this.supervisor.state
+      ] ?? this.supervisor.state;
     const u = this.update;
-    const label = u.phase === "available" ? `Update to v${u.version} and restart` : u.phase === "waiting" ? `Update to v${u.version} now` : undefined;
+    const label =
+      u.phase === "available" ? `Update to v${u.version} and restart` : u.phase === "waiting" ? `Update to v${u.version} now` : undefined;
     this.tray.show(`${identity(this.install.choices().name).label} · ${state} · v${version}`, label);
   }
 
@@ -154,7 +158,10 @@ export class Daemon {
       case "install":
         return this.installVersion(request.version);
       case "update":
-        if (this.install.choices().kept) throw new Error(`PiSpark is kept at ${this.install.choices().kept}. Resume updates in Settings → About, or install another version with: pispark install <version>`);
+        if (this.install.choices().kept)
+          throw new Error(
+            `PiSpark is kept at ${this.install.choices().kept}. Resume updates in Settings → About, or install another version with: pispark install <version>`,
+          );
         await this.updateNow();
         return this.update;
     }
@@ -198,7 +205,10 @@ export class Daemon {
         return this.check();
       case "configure": {
         const before = this.install.choices();
-        this.install.choose({ ...(action.channel ? { channel: action.channel } : {}), ...(action.autoUpdate !== undefined ? { autoUpdate: action.autoUpdate } : {}) });
+        this.install.choose({
+          ...(action.channel ? { channel: action.channel } : {}),
+          ...(action.autoUpdate !== undefined ? { autoUpdate: action.autoUpdate } : {}),
+        });
         if (action.channel && action.channel !== before.channel && !this.busyPhase()) {
           this.available = undefined;
           this.update = { phase: "idle" };
@@ -219,7 +229,11 @@ export class Daemon {
       case "cancel":
         if (this.update.phase === "waiting") {
           clearTimeout(this.idleTimer);
-          this.setUpdate({ phase: "available", version: this.update.version, ...(this.available?.notes ? { notes: this.available.notes } : {}) });
+          this.setUpdate({
+            phase: "available",
+            version: this.update.version,
+            ...(this.available?.notes ? { notes: this.available.notes } : {}),
+          });
         }
         return;
       case "apply":
@@ -258,7 +272,13 @@ export class Daemon {
     const choices = this.install.choices();
     try {
       const current = this.supervisor.runningRelease?.info.version ?? this.own.info.version;
-      const found = await check(choices.releases ?? RELEASES_URL, { channel: choices.channel, os: this.own.info.os, arch: this.own.info.arch, current, failed: this.install.failed() });
+      const found = await check(choices.releases ?? RELEASES_URL, {
+        channel: choices.channel,
+        os: this.own.info.os,
+        arch: this.own.info.arch,
+        current,
+        failed: this.install.failed(),
+      });
       this.checkedAt = new Date().toISOString();
       this.available = found;
       if (!found) this.setUpdate({ phase: "current", checkedAt: this.checkedAt });
@@ -303,14 +323,16 @@ export class Daemon {
    */
   private async installVersion(version: string): Promise<UpdateState & { kept?: string }> {
     if (!VERSION.test(version)) throw new Error(`Not a version: ${version}`);
-    if (this.busy || ["downloading", "restarting"].includes(this.update.phase)) throw new Error("PiSpark is updating; try again when it is done.");
+    if (this.busy || ["downloading", "restarting"].includes(this.update.phase))
+      throw new Error("PiSpark is updating; try again when it is done.");
     const current = this.supervisor.runningRelease?.info.version ?? this.own.info.version;
     this.install.unmarkFailed(version);
     if (version !== current && !this.install.installed().includes(version)) {
       const choices = this.install.choices();
       const found = find(await listReleases(choices.releases ?? RELEASES_URL), version, this.own.info.os, this.own.info.arch);
       if (!found) throw new Error(`There is no release ${version} for ${this.own.info.os}-${this.own.info.arch}.`);
-      if (!(await this.download(found, " (asked for)"))) throw new Error(this.update.phase === "error" ? this.update.message : `Downloading ${version} failed.`);
+      if (!(await this.download(found, " (asked for)")))
+        throw new Error(this.update.phase === "error" ? this.update.message : `Downloading ${version} failed.`);
     }
     this.install.choose({ kept: version });
     if (version === current) {
@@ -379,7 +401,13 @@ export class Daemon {
       return this.setUpdate(this.checked());
     }
     const exit = this.supervisor.lastExit;
-    await this.rollBack(old, version, exit ? `It stopped while starting (exit code ${exit.code ?? exit.signal}). See the server log.` : "It did not answer within 30 seconds. See the server log.");
+    await this.rollBack(
+      old,
+      version,
+      exit
+        ? `It stopped while starting (exit code ${exit.code ?? exit.signal}). See the server log.`
+        : "It did not answer within 30 seconds. See the server log.",
+    );
   }
 
   /** After a switch: up to date as of the last real check, never a check that did not happen. */
@@ -446,7 +474,13 @@ export class Daemon {
     if (!existsSync(file)) return;
     const version = readFileSync(file, "utf8").trim();
     rmSync(file, { force: true });
-    if (version) this.update = { phase: "failed", version, reason: "Its launcher did not start. PiSpark went back to this version.", at: new Date().toISOString() };
+    if (version)
+      this.update = {
+        phase: "failed",
+        version,
+        reason: "Its launcher did not start. PiSpark went back to this version.",
+        at: new Date().toISOString(),
+      };
   }
 
   async quit() {

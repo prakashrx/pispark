@@ -8,10 +8,22 @@
 <div class="thought">
   <button type="button" class="thought-toggle" onclick={() => (expanded = !expanded)} aria-expanded={expanded}>
     <svg class="thought-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.9V16h5v-.2c0-.8.4-1.5 1-1.9A6 6 0 0 0 12 3Z" />
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.9V16h5v-.2c0-.8.4-1.5 1-1.9A6 6 0 0 0 12 3Z"
+      />
     </svg>
     <span>{label}</span>
-    <svg class="thought-chevron" class:open={expanded} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <svg
+      class="thought-chevron"
+      class:open={expanded}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      aria-hidden="true"
+    >
       <path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6" />
     </svg>
   </button>
@@ -42,7 +54,9 @@
     font-weight: 500;
     color: var(--muted-foreground);
     cursor: pointer;
-    transition: color 0.12s, background 0.12s;
+    transition:
+      color 0.12s,
+      background 0.12s;
   }
   .thought-toggle:hover {
     color: var(--foreground);

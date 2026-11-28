@@ -76,7 +76,12 @@ const scheduleRow = (x: ScheduleSummary, from: Sources, now: number, owner?: Ses
     kind: "schedule",
     ref: x.id,
     title: describeSchedule(x),
-    detail: [last ? `${failed ? "Failed" : "Ran"} ${shortDate(new Date(last.at), new Date(now))}` : "", nextText(x, from.paused, new Date(now))].filter(Boolean).join(" · "),
+    detail: [
+      last ? `${failed ? "Failed" : "Ran"} ${shortDate(new Date(last.at), new Date(now))}` : "",
+      nextText(x, from.paused, new Date(now)),
+    ]
+      .filter(Boolean)
+      .join(" · "),
     open: true,
     of: owner ? sessionName(owner) : `Archived · ${x.session.title ?? "a session"}`,
     schedule: x,
@@ -91,8 +96,32 @@ function background(owner: SessionInfo, from: Sources, now: number): Work[] {
   return [
     ...from.processes
       .filter((p) => p.sessionId === owner.id)
-      .map((p): Work => ({ key: `process:${p.id}`, kind: "process", ref: p.id, title: processName(p), detail: processState(p, now), open: true, owner, of })),
-    ...(owner.held ? [{ key: `kept:${owner.id}`, kind: "kept", ref: owner.id, title: `Kept running by ${owner.held.extension}`, detail: owner.held.reason, open: true, owner, of } satisfies Work] : []),
+      .map(
+        (p): Work => ({
+          key: `process:${p.id}`,
+          kind: "process",
+          ref: p.id,
+          title: processName(p),
+          detail: processState(p, now),
+          open: true,
+          owner,
+          of,
+        }),
+      ),
+    ...(owner.held
+      ? [
+          {
+            key: `kept:${owner.id}`,
+            kind: "kept",
+            ref: owner.id,
+            title: `Kept running by ${owner.held.extension}`,
+            detail: owner.held.reason,
+            open: true,
+            owner,
+            of,
+          } satisfies Work,
+        ]
+      : []),
     ...from.schedules.filter((x) => x.sessionId === owner.id).map((x) => scheduleRow(x, from, now, owner)),
   ];
 }
@@ -103,7 +132,19 @@ export function startedBy(owner: SessionInfo, from: Sources, now: number): Work[
   return [
     ...from.sessions
       .filter((s) => s.parent === owner.id && s.ask)
-      .map((s): Work => ({ key: `session:${s.id}`, kind: "session", ref: s.id, title: sessionName(s), detail: askLine(s, now), state: s.ask!.state, open: OPEN.includes(s.ask!.state), owner, of })),
+      .map(
+        (s): Work => ({
+          key: `session:${s.id}`,
+          kind: "session",
+          ref: s.id,
+          title: sessionName(s),
+          detail: askLine(s, now),
+          state: s.ask!.state,
+          open: OPEN.includes(s.ask!.state),
+          owner,
+          of,
+        }),
+      ),
     ...background(owner, from, now),
   ];
 }
@@ -120,13 +161,21 @@ export function everywhere(from: Sources, now: number): Work[] {
     ...from.schedules.filter((x) => !listed.has(x.sessionId)).map((x) => scheduleRow(x, from, now)),
     ...from.routines.map((routine): Work => {
       const last = routine.runs[0];
-      const next = !routine.on ? "Off" : from.paused ? "Paused" : routine.next ? `Next ${shortDate(new Date(routine.next), new Date(now))}` : "On";
+      const next = !routine.on
+        ? "Off"
+        : from.paused
+          ? "Paused"
+          : routine.next
+            ? `Next ${shortDate(new Date(routine.next), new Date(now))}`
+            : "On";
       return {
         key: `routine:${routine.agent.id}:${routine.id}`,
         kind: "routine",
         ref: routine.id,
         title: routine.name,
-        detail: [describeSchedule({ cron: routine.cron }), last ? `Ran ${shortDate(new Date(last.due), new Date(now))}` : "", next].filter(Boolean).join(" · "),
+        detail: [describeSchedule({ cron: routine.cron }), last ? `Ran ${shortDate(new Date(last.due), new Date(now))}` : "", next]
+          .filter(Boolean)
+          .join(" · "),
         open: true,
         of: routine.agent.name,
         routine,

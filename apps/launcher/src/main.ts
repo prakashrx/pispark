@@ -16,7 +16,6 @@ import {
   removeCommand,
   removeStartMenu,
   systemd,
-  underSystemd,
   writeStartScript,
 } from "./desktop.ts";
 import { Install, NAME, ensureWindowless, identity, ownRelease, windows, type Release } from "./install.ts";
@@ -125,7 +124,9 @@ async function setup(args: string[]) {
       if (windows) throw error;
       // No systemd user manager (a container, or WSL without systemd): no start at login.
       writeStartScript(install);
-      console.log(`Could not set up the systemd user service (${(error as Error).message}). PiSpark will not start at login; start it with: pispark start`);
+      console.log(
+        `Could not set up the systemd user service (${(error as Error).message}). PiSpark will not start at login; start it with: pispark start`,
+      );
     }
     addStartMenu(install);
   } else if (!windows) writeStartScript(install);
@@ -148,7 +149,8 @@ function purgeable(folder: string): string {
   const data = resolve(folder);
   const toHome = relative(data, homedir());
   const holdsHome = !toHome || (!toHome.startsWith("..") && !isAbsolute(toHome));
-  if (!isAbsolute(folder) || data === parse(data).root || holdsHome) throw new Error(`Refusing to delete the data folder ${folder}: it must be a folder of its own`);
+  if (!isAbsolute(folder) || data === parse(data).root || holdsHome)
+    throw new Error(`Refusing to delete the data folder ${folder}: it must be a folder of its own`);
   return data;
 }
 
@@ -171,7 +173,11 @@ async function uninstall(args: string[]) {
   if (windows) {
     // This program runs from the folder being removed: remove it once it has exited.
     const cmd = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe");
-    spawn(cmd, ["/d", "/c", `ping -n 3 127.0.0.1 >nul & rmdir /s /q "${install.root}"`], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+    spawn(cmd, ["/d", "/c", `ping -n 3 127.0.0.1 >nul & rmdir /s /q "${install.root}"`], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    }).unref();
   } else rmSync(install.root, { recursive: true, force: true });
 }
 
@@ -208,7 +214,9 @@ async function main(args: string[]) {
         console.log(`${identity(install.choices().name).label} ${release.info.version} is not running. (${install.root})`);
         process.exit(3);
       }
-      console.log(`${identity(install.choices().name).label} ${s.version}: ${s.server} at ${s.address} (launcher pid ${s.pid}, channel ${install.choices().channel})`);
+      console.log(
+        `${identity(install.choices().name).label} ${s.version}: ${s.server} at ${s.address} (launcher pid ${s.pid}, channel ${install.choices().channel})`,
+      );
       return;
     }
     case "stop": {
@@ -238,10 +246,15 @@ async function main(args: string[]) {
       const version = rest[0]?.replace(/^v/, "");
       if (!version) return void console.log("Which version? pispark install <version>, e.g. pispark install 0.2.0");
       console.log(`Installing PiSpark ${version}…`);
-      const result = await callControl<{ phase: string; version?: string; reason?: string; message?: string; kept?: string }>(install.root, { cmd: "install", version }, 30 * 60_000);
+      const result = await callControl<{ phase: string; version?: string; reason?: string; message?: string; kept?: string }>(
+        install.root,
+        { cmd: "install", version },
+        30 * 60_000,
+      );
       if (!result) return void console.log("PiSpark is not running, or it restarted into another launcher. Check with: pispark status");
       if (result.kept) console.log(`PiSpark ${result.kept} is running and kept there. Resume updates in Settings → About.`);
-      else if (result.phase === "failed") console.log(`${version} did not start (${result.reason}). PiSpark went back to the version before.`);
+      else if (result.phase === "failed")
+        console.log(`${version} did not start (${result.reason}). PiSpark went back to the version before.`);
       else console.log(`Install: ${result.phase}${result.message ? ` (${result.message})` : ""}`);
       return;
     }

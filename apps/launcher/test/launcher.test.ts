@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { Install, NAME, Release, ensureWindowless, identity, windows } from "../src/install.ts";
@@ -12,7 +23,10 @@ const release = (tag: string, prerelease: boolean, names = ["linux-x64", "win-x6
   draft: false,
   prerelease,
   html_url: `https://example.test/${tag}`,
-  assets: [...names.map((n) => ({ name: `pispark-${tag}-${n}.tar.gz`, browser_download_url: `https://example.test/${tag}/${n}` })), { name: "SHA256SUMS", browser_download_url: `https://example.test/${tag}/sums` }],
+  assets: [
+    ...names.map((n) => ({ name: `pispark-${tag}-${n}.tar.gz`, browser_download_url: `https://example.test/${tag}/${n}` })),
+    { name: "SHA256SUMS", browser_download_url: `https://example.test/${tag}/sums` },
+  ],
 });
 
 test("an update is the newest release for the channel and platform, newer than this one and not failed here", () => {
@@ -28,7 +42,10 @@ test("an update is the newest release for the channel and platform, newer than t
   assert.equal(found.sums, "https://example.test/0.4.3/sums");
   // A draft, or a release without SHA256SUMS, is never offered.
   assert.equal(pick([{ ...release("0.9.0", false), draft: true }], { ...base, channel: "stable" }), undefined);
-  assert.equal(pick([{ ...release("0.9.0", false), assets: release("0.9.0", false).assets.slice(0, 2) }], { ...base, channel: "stable" }), undefined);
+  assert.equal(
+    pick([{ ...release("0.9.0", false), assets: release("0.9.0", false).assets.slice(0, 2) }], { ...base, channel: "stable" }),
+    undefined,
+  );
 });
 
 test("SHA256SUMS: the line for exactly this file", () => {
@@ -41,7 +58,10 @@ test("SHA256SUMS: the line for exactly this file", () => {
 function fakeRelease(install: Install, version: string) {
   const dir = install.release(version);
   mkdirSync(join(dir, "node"), { recursive: true });
-  writeFileSync(join(dir, "release.json"), JSON.stringify({ version, channel: "latest", launcher: 1, os: "win", arch: "x64", node: "22.23.4" }));
+  writeFileSync(
+    join(dir, "release.json"),
+    JSON.stringify({ version, channel: "latest", launcher: 1, os: "win", arch: "x64", node: "22.23.4" }),
+  );
   return Release.at(dir);
 }
 
@@ -64,7 +84,13 @@ test("install folder: current points at a version, choices persist, old versions
 
   assert.deepEqual(install.choices(), { channel: "stable", port: 3000, autoUpdate: false });
   install.choose({ channel: "latest", port: 3100, home: "/data", releases: "https://releases.example.test/list" });
-  assert.deepEqual(install.choices(), { channel: "latest", port: 3100, autoUpdate: false, home: "/data", releases: "https://releases.example.test/list" });
+  assert.deepEqual(install.choices(), {
+    channel: "latest",
+    port: 3100,
+    autoUpdate: false,
+    home: "/data",
+    releases: "https://releases.example.test/list",
+  });
   for (const releases of ["http://releases.example.test/list", "https://example.test@evil.test/list"]) {
     writeFileSync(join(root, "state.json"), JSON.stringify({ releases }));
     assert.equal(install.choices().releases, undefined);

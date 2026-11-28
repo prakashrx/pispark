@@ -50,7 +50,8 @@ export class Handles {
       const path = join(this.directory(owner), "handles.json");
       try {
         const read = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as File) : undefined;
-        if (read?.version === 1 && Number.isSafeInteger(read.next) && read.next > 0 && read.names && typeof read.names === "object") file = read;
+        if (read?.version === 1 && Number.isSafeInteger(read.next) && read.next > 0 && read.names && typeof read.names === "object")
+          file = read;
       } catch {
         /* Unreadable: handles are given anew. */
       }

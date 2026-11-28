@@ -8,7 +8,7 @@
   import Icon from "../../../lib/ui/Icon.svelte";
   import AskMark from "../../started/AskMark.svelte";
   import { askLine, endedState } from "../../started/work";
-  import { useNow } from "../clock.svelte";
+  import { useNow } from "../../../lib/clock.svelte";
   import { useSessions } from "../session-client.svelte";
   import { sessionName } from "../session-presentation";
   import SessionMarkdown from "../SessionMarkdown.svelte";
@@ -51,10 +51,20 @@
         <span class="state">{ended ?? "put away"}</span>
       </button>
     {:else}
-      <span class="go"><Icon name="sessionOut" class="h-3.5 w-3.5 shrink-0" /><span class="title">{segment.title}</span><span class="state">starting…</span></span>
+      <span class="go"
+        ><Icon name="sessionOut" class="h-3.5 w-3.5 shrink-0" /><span class="title">{segment.title}</span><span class="state"
+          >starting…</span
+        ></span
+      >
     {/if}
     {#if segment.answer}
-      <button type="button" class="fold" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} the answer from ${segment.title}`} onclick={() => (open = !open)}>
+      <button
+        type="button"
+        class="fold"
+        aria-expanded={open}
+        aria-label={`${open ? "Hide" : "Show"} the answer from ${segment.title}`}
+        onclick={() => (open = !open)}
+      >
         <Icon name={open ? "chevronDown" : "chevronRight"} class="h-3.5 w-3.5" />
       </button>
     {/if}

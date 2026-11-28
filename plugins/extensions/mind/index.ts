@@ -49,7 +49,11 @@ const today = () => {
 /** What an `edit` would leave in the file, when its replacements can be applied exactly; else nothing. */
 export function edited(before: string | undefined, input: Record<string, unknown>): string | undefined {
   if (before === undefined) return undefined;
-  const edits = Array.isArray(input.edits) ? input.edits : input.oldText !== undefined ? [{ oldText: input.oldText, newText: input.newText }] : [];
+  const edits = Array.isArray(input.edits)
+    ? input.edits
+    : input.oldText !== undefined
+      ? [{ oldText: input.oldText, newText: input.newText }]
+      : [];
   const spots: { at: number; oldText: string; newText: string }[] = [];
   for (const each of edits as { oldText?: unknown; newText?: unknown }[]) {
     if (typeof each?.oldText !== "string" || typeof each.newText !== "string" || !each.oldText) return undefined;
@@ -126,7 +130,13 @@ export default function mind(pi: ExtensionAPI) {
     const branch = ctx.sessionManager.getBranch() as readonly Entry[];
     if (!ours) {
       const byPerson = startedByPerson(event.messageType, branch);
-      run = { worked: false, kept: false, reminded: false, byPerson, said: byPerson && event.messageType === "user" ? event.prompt : undefined };
+      run = {
+        worked: false,
+        kept: false,
+        reminded: false,
+        byPerson,
+        said: byPerson && event.messageType === "user" ? event.prompt : undefined,
+      };
     }
     child ||= startedBySession(branch);
     homes = findHomes(pi, ctx, event.systemPromptOptions.contextFiles);
@@ -159,7 +169,11 @@ export default function mind(pi: ExtensionAPI) {
     }
     const refused = refusePath(rel);
     if (refused) return { block: true, reason: `Not saved. ${refused}` };
-    if (child && rel === TASKS) return { block: true, reason: `Not saved. \`${FOLDER}/${TASKS}\` is kept by the session that started you: put this in your report to it instead.` };
+    if (child && rel === TASKS)
+      return {
+        block: true,
+        reason: `Not saved. \`${FOLDER}/${TASKS}\` is kept by the session that started you: put this in your report to it instead.`,
+      };
     const before = await readText(file);
     const after = event.toolName === "write" ? (typeof input.content === "string" ? input.content : undefined) : edited(before, input);
     const reason = after === undefined ? undefined : check(rel, after);
@@ -175,10 +189,23 @@ export default function mind(pi: ExtensionAPI) {
     if (!change) {
       // A shell command may have put files in the folder: say what is out of place.
       const command = (event.input as { command?: unknown }).command;
-      if ((event.toolName !== "bash" && event.toolName !== "powershell") || typeof command !== "string" || !command.includes(FOLDER) || !m.exists()) return undefined;
+      if (
+        (event.toolName !== "bash" && event.toolName !== "powershell") ||
+        typeof command !== "string" ||
+        !command.includes(FOLDER) ||
+        !m.exists()
+      )
+        return undefined;
       const problems = await m.problems();
       await show(ctx);
-      return problems.length ? { content: [...event.content, { type: "text" as const, text: `\n${FOLDER}/ is out of shape. Fix it now:\n${problems.map((p) => `- ${p}`).join("\n")}` }] } : undefined;
+      return problems.length
+        ? {
+            content: [
+              ...event.content,
+              { type: "text" as const, text: `\n${FOLDER}/ is out of shape. Fix it now:\n${problems.map((p) => `- ${p}`).join("\n")}` },
+            ],
+          }
+        : undefined;
     }
     if (event.isError) return undefined;
     const after = await readText(change.file);
@@ -209,14 +236,24 @@ export default function mind(pi: ExtensionAPI) {
     });
     if (!checkpointed && nearCompaction(ctx) && section((await m.text(TASKS)) ?? "", "Doing")) {
       checkpointed = true;
-      return remind(CHECKPOINT, `The conversation will soon be compacted and its older details summarised. Bring \`${FOLDER}/${TASKS}\` up to date now: where each thing you are doing stands, its next step, and any constraint or decision from this conversation that isn't written down yet. Then end your turn without saying anything more.`);
+      return remind(
+        CHECKPOINT,
+        `The conversation will soon be compacted and its older details summarised. Bring \`${FOLDER}/${TASKS}\` up to date now: where each thing you are doing stands, its next step, and any constraint or decision from this conversation that isn't written down yet. Then end your turn without saying anything more.`,
+      );
     }
     if (run.reminded || run.kept || !(run.worked || (run.said && LASTING.test(run.said)))) return undefined;
     run.reminded = true;
     if (child)
-      return remind(REMINDER, `Before you finish: if you learned something true about this place that will matter later, add it to \`${FOLDER}/${NOTES}\`, and fix a skill you used if it was wrong. Leave \`${FOLDER}/${TASKS}\` to the session that started you, and say in your report what changed. If nothing needs changing, end your turn without saying anything more.`);
-    const notes = (await m.text(NOTES)) === undefined ? ` This place has no \`${FOLDER}/${NOTES}\` yet: write it if you now know enough to.` : "";
-    return remind(REMINDER, `Before you finish, bring \`${FOLDER}/\` up to date for this run: move the entries in \`${FOLDER}/${TASKS}\` that changed (something important you did or decided becomes a dated line under "Done lately"), and fix any note that is no longer true.${notes} If the person's last message carried a lasting instruction or a correction, save it where it belongs. Write only what someone picking this up later would need: never a line that only says nothing changed. If nothing needs changing, write nothing and end your turn without saying anything more.`);
+      return remind(
+        REMINDER,
+        `Before you finish: if you learned something true about this place that will matter later, add it to \`${FOLDER}/${NOTES}\`, and fix a skill you used if it was wrong. Leave \`${FOLDER}/${TASKS}\` to the session that started you, and say in your report what changed. If nothing needs changing, end your turn without saying anything more.`,
+      );
+    const notes =
+      (await m.text(NOTES)) === undefined ? ` This place has no \`${FOLDER}/${NOTES}\` yet: write it if you now know enough to.` : "";
+    return remind(
+      REMINDER,
+      `Before you finish, bring \`${FOLDER}/\` up to date for this run: move the entries in \`${FOLDER}/${TASKS}\` that changed (something important you did or decided becomes a dated line under "Done lately"), and fix any note that is no longer true.${notes} If the person's last message carried a lasting instruction or a correction, save it where it belongs. Write only what someone picking this up later would need: never a line that only says nothing changed. If nothing needs changing, write nothing and end your turn without saying anything more.`,
+    );
   });
 
   // ---- After a run: clean up, then take new questions to the person ------------------------------
@@ -247,7 +284,10 @@ export default function mind(pi: ExtensionAPI) {
     if (!open.length) return;
     if (byPerson) {
       const { asked } = await m.questionState();
-      await m.defer(open.filter((q) => !asked[q.id]).map((q) => q.id), Date.now() + LATER_MS);
+      await m.defer(
+        open.filter((q) => !asked[q.id]).map((q) => q.id),
+        Date.now() + LATER_MS,
+      );
       return;
     }
     const due = new Set(await m.takeDue(open.map((q) => q.id)));
@@ -257,7 +297,9 @@ export default function mind(pi: ExtensionAPI) {
       let choice: string | undefined;
       try {
         // The card shows the whole entry: the question first, then what is recommended and what happens meanwhile.
-        choice = await ctx.ui.select(spoken([question.text, question.detail].filter(Boolean).join(" ")), [DO_IT, NO, LATER, DISCUSS], { signal: stop.signal });
+        choice = await ctx.ui.select(spoken([question.text, question.detail].filter(Boolean).join(" ")), [DO_IT, NO, LATER, DISCUSS], {
+          signal: stop.signal,
+        });
       } catch {
         choice = undefined;
       } finally {
@@ -310,7 +352,11 @@ export default function mind(pi: ExtensionAPI) {
     try {
       const tasks = (await m.text(TASKS)) ?? "";
       // A card for a question that was answered elsewhere, or is gone, closes.
-      const open = new Set(questions(tasks).filter((q) => q.answer === undefined).map((q) => q.id));
+      const open = new Set(
+        questions(tasks)
+          .filter((q) => q.answer === undefined)
+          .map((q) => q.id),
+      );
       for (const [id, stop] of asking) if (!open.has(id)) stop.abort();
       snapshot = {
         waiting: questions(tasks),
@@ -354,7 +400,11 @@ export default function mind(pi: ExtensionAPI) {
         tidy: () => void pi.sendUserMessage(TIDY, ctx.isIdle() ? undefined : { deliverAs: "followUp" }),
         weekly: () =>
           new Promise<string>((done) => {
-            const message = { request: { verb: "schedule", cron: WEEKLY, prompt: TIDY, run: "new" }, reply: (answer: { text: string }) => done(answer.text), taken: false };
+            const message = {
+              request: { verb: "schedule", cron: WEEKLY, prompt: TIDY, run: "new" },
+              reply: (answer: { text: string }) => done(answer.text),
+              taken: false,
+            };
             pi.events.emit(VERB, message);
             if (!message.taken) done("Schedules are not available here.");
           }),
@@ -369,7 +419,10 @@ export default function mind(pi: ExtensionAPI) {
       await show(ctx, true);
       const m = mindOf(ctx);
       const waiting = questions((await m.text(TASKS)) ?? "").filter((q) => q.answer === undefined).length;
-      ctx.ui.notify(m.exists() ? `${waiting} waiting on you. The Mind view shows the rest.` : `Nothing is kept for this place yet.`, "info");
+      ctx.ui.notify(
+        m.exists() ? `${waiting} waiting on you. The Mind view shows the rest.` : `Nothing is kept for this place yet.`,
+        "info",
+      );
     },
   });
 }

@@ -30,7 +30,9 @@
   const narrow = $derived(width > 0 && width < 760);
   let tab = $state<string>("instructions");
   const kinds: Kind[] = ["instructions", "skills", "prompts", "extensions"];
-  const tabs = $derived(kinds.map((k) => ({ id: k, label: KINDS[k].title, count: (view?.items ?? []).filter((item) => item.type === k && item.on).length })));
+  const tabs = $derived(
+    kinds.map((k) => ({ id: k, label: KINDS[k].title, count: (view?.items ?? []).filter((item) => item.type === k && item.on).length })),
+  );
 </script>
 
 <div class="session-agent" bind:clientWidth={width}>

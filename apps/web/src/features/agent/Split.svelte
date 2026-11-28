@@ -50,7 +50,10 @@
     const was = selected;
     onselect(undefined);
     await tick();
-    (was ? list?.querySelector<HTMLElement>(`[data-key="${CSS.escape(keyOf(was))}"]`) : list?.querySelector<HTMLElement>("button"))?.focus();
+    (was
+      ? list?.querySelector<HTMLElement>(`[data-key="${CSS.escape(keyOf(was))}"]`)
+      : list?.querySelector<HTMLElement>("button")
+    )?.focus();
   }
 </script>
 

@@ -1,15 +1,8 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { ThinkingLevel } from "../../contract/agent-protocol.js";
+import { THINKING_LEVELS, type ThinkingLevel } from "../../contract/agent-protocol.js";
+import { UUID } from "../../contract/ids.js";
 import type { Ask } from "../../contract/protocol.js";
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-} from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { RuntimeError } from "./errors.js";
 import { writeAtomic } from "../files.js";
@@ -69,12 +62,12 @@ export interface SessionMetadata {
   held?: { extension: string; reason: string };
 }
 
-const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
-const UUID =
-  /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 export function validateId(id: string): void {
-  if (typeof id !== "string" || !UUID.test(id))
-    throw new RuntimeError("invalid-input");
+  if (typeof id !== "string" || !UUID.test(id)) throw new RuntimeError("invalid-input");
+}
+/** An entry of a session's history, named as Pi named it. */
+export function validateEntryId(entryId: string): void {
+  if (typeof entryId !== "string" || !entryId || entryId.length > 64) throw new RuntimeError("invalid-input");
 }
 
 /** `<home>/sessions/<id>/`. The session ID is the folder name and is not repeated in session.json. */
@@ -84,6 +77,13 @@ export class SessionStorage {
   private rescanAt = 0;
   /** When each session last did something (ms), from its transcript or its running session; cleared on rescan. */
   private readonly activity = new Map<string, number>();
+  /**
+   * Each session's transcript once it has one. Pi names it once and never renames it, so a path found
+   * stays right until the session is removed; a session without one yet is looked for again.
+   */
+  private readonly transcripts = new Map<string, string>();
+  /** Transcripts found whole, by path, with the size and time they had then: unchanged, they aren't read again. */
+  private readonly validated = new Map<string, string>();
   unreadable = 0;
   constructor(root: string) {
     this.root = resolve(root);
@@ -109,9 +109,7 @@ export class SessionStorage {
   }
   read(id: string): SessionMetadata {
     try {
-      const value = JSON.parse(
-        readFileSync(join(this.directory(id), "session.json"), "utf8"),
-      ) as Omit<SessionMetadata, "id">;
+      const value = JSON.parse(readFileSync(join(this.directory(id), "session.json"), "utf8")) as Omit<SessionMetadata, "id">;
       if (
         value.version !== 2 ||
         typeof value.cwd !== "string" ||
@@ -143,16 +141,23 @@ export class SessionStorage {
             typeof value.schedule.due !== "string" ||
             Number.isNaN(new Date(value.schedule.due).getTime()))) ||
         (value.held !== undefined &&
-          (!value.held || typeof value.held.extension !== "string" || typeof value.held.reason !== "string" || value.held.reason.length > 200))
+          (!value.held ||
+            typeof value.held.extension !== "string" ||
+            typeof value.held.reason !== "string" ||
+            value.held.reason.length > 200))
       )
         throw new Error();
       // What older versions kept: Agent Builder's hidden sessions (`edits`, `context`), and how a child reported (`report`).
-      const { edits: _edits, context: _context, report: _report, ...kept } = value as SessionMetadata & { edits?: unknown; context?: unknown; report?: unknown };
+      const {
+        edits: _edits,
+        context: _context,
+        report: _report,
+        ...kept
+      } = value as SessionMetadata & { edits?: unknown; context?: unknown; report?: unknown };
       return { ...kept, id };
     } catch (error) {
       if (error instanceof RuntimeError) throw error;
-      if ((error as NodeJS.ErrnoException).code === "ENOENT")
-        throw new RuntimeError("not-found");
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new RuntimeError("not-found");
       throw new RuntimeError("storage");
     }
   }
@@ -176,8 +181,7 @@ export class SessionStorage {
           try {
             entries.set(id, this.read(id));
           } catch (error) {
-            if (!(error instanceof RuntimeError && error.code === "not-found"))
-              unreadable++;
+            if (!(error instanceof RuntimeError && error.code === "not-found")) unreadable++;
           }
         }
         this.catalog = entries;
@@ -210,12 +214,12 @@ export class SessionStorage {
     }
     this.catalog.delete(id);
     this.activity.delete(id);
+    this.transcripts.delete(id);
   }
   /** Remove a session folder that never got a session.json (a failed first start). */
   discardUnpublished(id: string): void {
     const dir = this.directory(id);
-    if (!existsSync(join(dir, "session.json")))
-      rmSync(dir, { recursive: true, force: true });
+    if (!existsSync(join(dir, "session.json"))) rmSync(dir, { recursive: true, force: true });
   }
   /** Materialize Pi's buffered entries when a host status must outlive an empty conversation. */
   persistStatusHistory(manager: SessionManager): void {
@@ -229,10 +233,14 @@ export class SessionStorage {
   }
   /** Pi names the transcript `<time>_<id>.jsonl`; it's the only such file in the folder. */
   transcript(id: string): string | undefined {
+    const known = this.transcripts.get(id);
+    if (known) return known;
     const dir = this.directory(id);
     if (!existsSync(dir)) return undefined;
     const file = readdirSync(dir).find((name) => name.endsWith(`_${id}.jsonl`));
-    return file ? join(dir, file) : undefined;
+    if (!file) return undefined;
+    this.transcripts.set(id, join(dir, file));
+    return join(dir, file);
   }
   /**
    * When the session last did something: Pi writes every entry to the transcript as it happens, so its
@@ -264,17 +272,15 @@ export class SessionStorage {
     const path = this.transcript(metadata.id);
     if (!path) return undefined;
     try {
-      if (lstatSync(path).isSymbolicLink() || statSync(path).size > 64 * 1024 * 1024)
-        throw new Error();
+      const stats = statSync(path);
+      if (lstatSync(path).isSymbolicLink() || stats.size > 64 * 1024 * 1024) throw new Error();
+      const seen = `${stats.size}:${stats.mtimeMs}`;
+      if (this.validated.get(path) === seen) return path;
       const lines = readFileSync(path, "utf8").trim().split("\n");
       const entries = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
       const header = entries[0];
-      if (
-        header?.type !== "session" ||
-        header.id !== metadata.id ||
-        header.version !== 3
-      )
-        throw new Error();
+      if (header?.type !== "session" || header.id !== metadata.id || header.version !== 3) throw new Error();
+      this.validated.set(path, seen);
       return path;
     } catch {
       throw new RuntimeError("storage");

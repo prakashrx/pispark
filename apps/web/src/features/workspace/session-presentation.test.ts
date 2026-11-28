@@ -24,18 +24,12 @@ const session: SessionInfo = {
   interrupted: false,
 };
 test("one friendly title policy handles new, legacy, unavailable dates and explicit stored names", () => {
-  expect(
-    sessionName({ ...session, title: "My first question", hasHistory: false }),
-  ).toBe("My first question");
+  expect(sessionName({ ...session, title: "My first question", hasHistory: false })).toBe("My first question");
   expect(sessionName({ ...session, hasHistory: false })).toBe("New session");
   for (const hasHistory of [true, undefined]) {
     expect(sessionName({ ...session, hasHistory })).toBe("Untitled session");
-    expect(sessionName({ ...session, hasHistory, createdAt: "invalid" })).toBe(
-      "Untitled session",
-    );
-    expect(sessionName({ ...session, hasHistory, createdAt: "" })).toBe(
-      "Untitled session",
-    );
+    expect(sessionName({ ...session, hasHistory, createdAt: "invalid" })).toBe("Untitled session");
+    expect(sessionName({ ...session, hasHistory, createdAt: "" })).toBe("Untitled session");
   }
   expect(sessionName()).toBe("This session");
   expect(sessionName(session)).not.toMatch(/private-uuid|revision-setup/);
@@ -49,8 +43,7 @@ test("an app's session goes by the app's name until it has a title of its own", 
   expect(goesByApp(session)).toBe(false);
 });
 test("normal status is quiet and cancellation/agent errors remain distinct", () => {
-  for (const status of ["idle", "unloaded"] as const)
-    expect(sessionStatus({ status, interrupted: false })).toBe("");
+  for (const status of ["idle", "unloaded"] as const) expect(sessionStatus({ status, interrupted: false })).toBe("");
   expect(sessionStatus()).toBe("");
   expect(sessionStatus({ status: "running", interrupted: false })).toBe("Working");
   expect(sessionStatus({ status: "cancelling", interrupted: false })).toBe("Stopping");
@@ -69,7 +62,11 @@ test("normal status is quiet and cancellation/agent errors remain distinct", () 
 });
 test("a session's mark speaks for the sessions it started: it needs you when one does, and works while any ask is open", () => {
   const idle = { status: "idle", interrupted: false };
-  const child = (state: "working" | "waiting" | "asked" | "answered" | "stopped" | "failed", extra: object = {}) => ({ ...idle, ask: { state }, ...extra });
+  const child = (state: "working" | "waiting" | "asked" | "answered" | "stopped" | "failed", extra: object = {}) => ({
+    ...idle,
+    ask: { state },
+    ...extra,
+  });
   expect(parentState(idle, [])).toBe("");
   // Its own state comes first, except that needing you is the one loud state.
   expect(parentState({ status: "error", interrupted: false }, [child("working")])).toBe("failed");
@@ -102,9 +99,7 @@ test("uncertainty primary copy distinguishes acceptance, settlement and known-se
   expect(commandUncertainty("acceptance-unknown", false)).toBe(
     "We couldn’t confirm whether that action went through. Check your sessions before trying again.",
   );
-  expect(commandUncertainty("settlement-unknown", true)).toBe(
-    "That action may still be running. Check this session before trying again.",
-  );
+  expect(commandUncertainty("settlement-unknown", true)).toBe("That action may still be running. Check this session before trying again.");
   expect(commandUncertainty("settlement-unknown", false)).toBe(
     "That action may still be running. Check your sessions before trying again.",
   );

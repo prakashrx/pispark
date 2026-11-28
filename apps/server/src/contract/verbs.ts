@@ -37,7 +37,16 @@ export type Verb =
    * answered, to be told more later; left out, it is put away once it is done (it leaves the
    * lists and can no longer be told anything; the person can bring it back).
    */
-  | ({ verb: "start_session"; brief: string; title?: string; agent?: string | AgentDefinition; folder?: string; model?: string; keep?: boolean; data?: unknown } & Collect)
+  | ({
+      verb: "start_session";
+      brief: string;
+      title?: string;
+      agent?: string | AgentDefinition;
+      folder?: string;
+      model?: string;
+      keep?: boolean;
+      data?: unknown;
+    } & Collect)
   /** Ask: run a command in the background. `raise_on`: a regular expression; a matching line of output is raised. */
   | ({ verb: "start_process"; command: string; title?: string; folder?: string; stop_after_seconds?: number; raise_on?: string } & Collect)
   /** Ask, with a time: send `prompt` later, once (`in_minutes` or `at`) or repeating (`cron`). The person is asked first. */

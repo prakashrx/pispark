@@ -10,11 +10,7 @@ import {
 import type { ModelsStore } from "@earendil-works/pi-ai";
 import { RuntimeError } from "./errors.js";
 
-type ExplicitLoader = (
-  paths: string[],
-  cwd: string,
-  bus: EventBus,
-) => Promise<LoadExtensionsResult>;
+type ExplicitLoader = (paths: string[], cwd: string, bus: EventBus) => Promise<LoadExtensionsResult>;
 type FactoryLoader = (
   factory: ExtensionFactory,
   cwd: string,
@@ -23,12 +19,8 @@ type FactoryLoader = (
   path: string,
 ) => Promise<Extension>;
 
-export function assertPiBoundary(
-  version: unknown,
-  loader: unknown,
-): asserts loader is ExplicitLoader {
-  if (version !== "1.5.2" || typeof loader !== "function")
-    throw new RuntimeError("sdk-version");
+export function assertPiBoundary(version: unknown, loader: unknown): asserts loader is ExplicitLoader {
+  if (version !== "1.5.2" || typeof loader !== "function") throw new RuntimeError("sdk-version");
 }
 
 // Both internal entry points are checked against the pinned SDK before use.
@@ -42,8 +34,7 @@ async function pinnedVersion() {
 /** Pi 1.5 couples its default disk store to loading a models.json. Keep those choices independent. */
 export async function nativeCatalogStore(path: string): Promise<ModelsStore> {
   const module = await import(new URL("./core/models-store.js", packageEntry).href);
-  if (await pinnedVersion() !== "1.5.2" || typeof module.FileModelsStore !== "function")
-    throw new RuntimeError("sdk-version");
+  if ((await pinnedVersion()) !== "1.5.2" || typeof module.FileModelsStore !== "function") throw new RuntimeError("sdk-version");
   return new module.FileModelsStore(path);
 }
 
@@ -58,11 +49,7 @@ const PI_BUILT_INS: { name: string; factory: ExtensionFactory }[] = [
 ];
 
 /** Compatibility debt: 1.5.2 exports discovery, but not its explicit native loader. No discovery fallback. */
-export async function loadExplicitExtensions(
-  paths: string[],
-  cwd: string,
-  bus: EventBus,
-): Promise<LoadExtensionsResult> {
+export async function loadExplicitExtensions(paths: string[], cwd: string, bus: EventBus): Promise<LoadExtensionsResult> {
   let loader: ExplicitLoader;
   let fromFactory: FactoryLoader;
   try {

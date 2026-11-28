@@ -28,7 +28,11 @@ test("the form's plain choices write cron, and read it back", () => {
   for (const cron of ["0 9 * * *", "30 17 * * 1-5", "0 9 * * 5", "0 */3 * * *", "*/30 * * * *"])
     expect(whenOf(choiceOf({ cron }, now), now)).toEqual({ cron });
   expect(choiceOf({ cron: "0 9 1 * *" }, now).repeat).toBe("cron");
-  expect(choiceOf({ at: new Date("2026-11-14T07:15").toISOString() }, now)).toMatchObject({ repeat: "once", date: "2026-11-14", time: "07:15" });
+  expect(choiceOf({ at: new Date("2026-11-14T07:15").toISOString() }, now)).toMatchObject({
+    repeat: "once",
+    date: "2026-11-14",
+    time: "07:15",
+  });
 });
 
 test("what a run did and when the next one is, in words", () => {

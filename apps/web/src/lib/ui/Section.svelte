@@ -4,14 +4,12 @@
     title,
     description,
     children,
-    variant = "settings",
     layout = "stacked",
     class: className = "",
   }: {
     title: string;
     description: string;
     children: Snippet;
-    variant?: "agent" | "settings";
     layout?: "stacked" | "split";
     class?: string;
   } = $props();

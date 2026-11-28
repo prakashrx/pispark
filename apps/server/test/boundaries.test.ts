@@ -33,9 +33,7 @@ const walk = (dir: string): string[] =>
   );
 /** Relative specifiers a file imports, statically or dynamically. */
 const imports = (file: string): string[] =>
-  [...readFileSync(file, "utf8").matchAll(/(?:from\s+|import\s*\(\s*|import\s+)["'](\.{1,2}\/[^"']+)["']/g)].map(
-    (match) => match[1]!,
-  );
+  [...readFileSync(file, "utf8").matchAll(/(?:from\s+|import\s*\(\s*|import\s+)["'](\.{1,2}\/[^"']+)["']/g)].map((match) => match[1]!);
 const zone = (file: string) => relative(src, file).split(sep)[0]!;
 const inside = (root: string, file: string) => !relative(root, file).startsWith("..");
 
@@ -64,7 +62,9 @@ test("the contract depends on nothing but itself", () => {
 
 test("the web and the launcher import the server only through its contract", () => {
   const broken: string[] = [];
-  for (const root of [...["src", "tests"].map((name) => join(web, name)), ...["src", "test"].map((name) => join(launcher, name))].filter((dir) => existsSync(dir) && statSync(dir).isDirectory()))
+  for (const root of [...["src", "tests"].map((name) => join(web, name)), ...["src", "test"].map((name) => join(launcher, name))].filter(
+    (dir) => existsSync(dir) && statSync(dir).isDirectory(),
+  ))
     for (const file of walk(root))
       for (const spec of imports(file)) {
         const target = resolve(dirname(file), spec);

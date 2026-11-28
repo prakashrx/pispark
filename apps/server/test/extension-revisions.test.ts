@@ -112,7 +112,10 @@ test("stage, deny, reload, replace, recover and remove without changing a siblin
     assert.deepEqual(runtime.session(sibling.id).extensions.views, []);
     await invoke("revision_probe", {}, sibling.id);
     assert.match(sessionText(runtime, sibling.id), /not found/i);
-  } finally { await runtime.shutdown(); await h.remove(); }
+  } finally {
+    await runtime.shutdown();
+    await h.remove();
+  }
 });
 
 test("staging rejects paths outside the checkout and verifies copied bytes", async () => {
@@ -127,5 +130,7 @@ test("staging rejects paths outside the checkout and verifies copied bytes", asy
     store.verify(staged);
     await writeFile(store.path(staged), probe("tampered"));
     assert.throws(() => store.verify(staged), /staged files changed/);
-  } finally { await h.remove(); }
+  } finally {
+    await h.remove();
+  }
 });

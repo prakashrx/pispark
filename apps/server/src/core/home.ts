@@ -1,13 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  closeSync,
-  existsSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
@@ -43,11 +35,8 @@ export function homePaths(root: string): HomePaths {
 /** `PISPARK_HOME`, with a leading `~` expanded, or `~/.pispark`. */
 export function resolveHome(value = process.env.PISPARK_HOME): string {
   const input = value?.trim() || join(homedir(), ".pispark");
-  const expanded = /^~(?=$|[\\/])/.test(input)
-    ? join(homedir(), input.slice(1))
-    : input;
-  if (!isAbsolute(expanded))
-    throw new Error("PISPARK_HOME must be an absolute path (or start with ~).");
+  const expanded = /^~(?=$|[\\/])/.test(input) ? join(homedir(), input.slice(1)) : input;
+  if (!isAbsolute(expanded)) throw new Error("PISPARK_HOME must be an absolute path (or start with ~).");
   return resolve(expanded);
 }
 
@@ -66,16 +55,20 @@ export function prepareHome(root: string): HomePaths {
   try {
     format = (JSON.parse(readFileSync(file, "utf8")) as { format?: unknown }).format;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error(`${file} cannot be read. It records the layout of this data folder.`);
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      throw new Error(`${file} cannot be read. It records the layout of this data folder.`);
   }
-  if (format !== undefined && (!Number.isInteger(format) || (format as number) < 1)) throw new Error(`${file} names no layout this PiSpark knows.`);
+  if (format !== undefined && (!Number.isInteger(format) || (format as number) < 1))
+    throw new Error(`${file} names no layout this PiSpark knows.`);
   if ((format as number) > HOME_FORMAT)
     throw new Error(
       `${paths.root} was written by a newer PiSpark (data layout ${format}; this version reads up to ${HOME_FORMAT}). Update PiSpark, or point PISPARK_HOME at another folder.`,
     );
   // Layout 1 (agents and sessions under their old names) is no longer read.
   if (format === 1 || (format === undefined && ["personas", "chats"].some((old) => existsSync(join(paths.root, old)))))
-    throw new Error(`${paths.root} was written by an older PiSpark (data layout 1), which this version no longer reads. Point PISPARK_HOME at another folder.`);
+    throw new Error(
+      `${paths.root} was written by an older PiSpark (data layout 1), which this version no longer reads. Point PISPARK_HOME at another folder.`,
+    );
   for (const dir of [paths.sessions, paths.agents, paths.providers]) mkdirSync(dir, { recursive: true, mode: 0o700 });
   if (format !== HOME_FORMAT) writeFileSync(file, JSON.stringify({ format: HOME_FORMAT }, null, 2) + "\n");
   return paths;
@@ -110,10 +103,7 @@ export function lockHome(paths: HomePaths): () => void {
     acquire();
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    if (ownerAlive())
-      throw new Error(
-        `Another PiSpark server is using ${paths.root}. Stop it or set PISPARK_HOME to another folder.`,
-      );
+    if (ownerAlive()) throw new Error(`Another PiSpark server is using ${paths.root}. Stop it or set PISPARK_HOME to another folder.`);
     unlinkSync(lock);
     acquire();
   }

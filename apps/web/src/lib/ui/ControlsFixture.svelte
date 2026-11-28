@@ -13,10 +13,7 @@
   import Section from "./Section.svelte";
   import ContentDialog from "./ContentDialog.svelte";
   let contentOpen = $state(false);
-  let contentValue = $state(
-    "  Literal <b>literal markup</b>\n" +
-      "Readable line of content.\n".repeat(120),
-  );
+  let contentValue = $state("  Literal <b>literal markup</b>\n" + "Readable line of content.\n".repeat(120));
   let name = $state("");
   let checked = $state(false);
   let switched = $state(false);
@@ -35,19 +32,10 @@
 </script>
 
 {#if contentCases}
-  <Section
-    title="Split section"
-    description="Readable help"
-    layout="split"
-    class="fixture-section"
-  >
+  <Section title="Split section" description="Readable help" layout="split" class="fixture-section">
     <Button onclick={() => (contentOpen = true)}>Read content</Button>
   </Section>
-  <Section
-    title="Stacked section"
-    description="Existing layout"
-    class="existing-class"><p>Existing content</p></Section
-  >
+  <Section title="Stacked section" description="Existing layout" class="existing-class"><p>Existing content</p></Section>
   <output aria-label="Applied text">{contentValue}</output>
   {#if contentOpen}
     <ContentDialog
@@ -64,13 +52,7 @@
   {/if}
 {:else}
   <FormField label="Name" help="Visible help" error="Required name" required>
-    {#snippet children(id, describedby)}<Input
-        {id}
-        aria-describedby={describedby}
-        required
-        invalid
-        bind:value={name}
-      />{/snippet}
+    {#snippet children(id, describedby)}<Input {id} aria-describedby={describedby} required invalid bind:value={name} />{/snippet}
   </FormField>
   <output aria-label="Draft name">{name}</output>
   <Textarea label="Description" readonly value="Read only" />
@@ -89,9 +71,7 @@
     bind:value={tab}
   >
     {#snippet children(id)}
-      {#if id === "first"}<Input
-          label="Retained draft"
-        />{:else if id === "last"}<p>Last panel</p>{/if}
+      {#if id === "first"}<Input label="Retained draft" />{:else if id === "last"}<p>Last panel</p>{/if}
     {/snippet}
   </Tabs>
   <Menu
@@ -123,24 +103,18 @@
         {#if focusCases}
           <details>
             <summary>Dialog details</summary>
-            <textarea aria-label="Read-only detail" readonly
-              >Saved text</textarea
-            >
+            <textarea aria-label="Read-only detail" readonly>Saved text</textarea>
           </details>
           <button type="button" disabled>Disabled target</button>
           <fieldset disabled>
             <button type="button">Disabled by fieldset</button>
           </fieldset>
           <div hidden><button type="button">Hidden target</button></div>
-          <button type="button" style="display: none"
-            >Non-rendered target</button
-          >
+          <button type="button" style="display: none">Non-rendered target</button>
           <button type="button" tabindex="-1">Negative target</button>
           <details><summary tabindex="-1">Negative summary</summary></details>
         {/if}
       {/snippet}
     </Modal>{/if}
-  <FieldGroup title="Resources" help="Group help"
-    ><Disclosure title="Details"><p>Optional detail</p></Disclosure></FieldGroup
-  >
+  <FieldGroup title="Resources" help="Group help"><Disclosure title="Details"><p>Optional detail</p></Disclosure></FieldGroup>
 {/if}

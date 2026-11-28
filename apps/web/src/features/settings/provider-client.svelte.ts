@@ -1,16 +1,7 @@
-import type {
-  ProviderCatalog,
-  ModelChoice,
-  AuthView,
-} from "../../../../server/src/contract/provider-protocol";
+import type { ProviderCatalog, ModelChoice, AuthView } from "../../../../server/src/contract/provider-protocol";
 import { providerErrorMessages } from "../../../../server/src/contract/provider-protocol";
 import { RequestFailed, ResponseTooLarge, requestJson } from "../workspace/transport";
-export async function providerRequest<T>(
-  path: string,
-  value?: unknown,
-  token?: string,
-  signal?: AbortSignal,
-): Promise<T> {
+export async function providerRequest<T>(path: string, value?: unknown, token?: string, signal?: AbortSignal): Promise<T> {
   try {
     return await requestJson<T>(
       `/api/providers${path}`,
@@ -35,12 +26,23 @@ export async function providerRequest<T>(
     throw error;
   }
 }
+/** How a model selector knows a model: one string for its provider and id. */
+export const modelKey = (model: { provider: string; id: string }) => JSON.stringify({ provider: model.provider, id: model.id });
+
 export class ProviderClient {
   catalog = $state<ProviderCatalog>({
     providers: [],
     defaultModel: null,
     networkBlocked: false,
   });
+  /** Every model that can be chosen now, named the way every selector names it. */
+  readonly available = $derived(
+    this.catalog.providers.flatMap((p) =>
+      p.models.filter((m) => m.available).map((m) => ({ provider: p.id, id: m.id, label: `${m.name} · ${p.name}` })),
+    ),
+  );
+  /** `available` as a selector's options, valued by `modelKey`. */
+  readonly modelOptions = $derived(this.available.map((model) => ({ value: modelKey(model), label: model.label })));
   loading = $state(false);
   /** Nothing to start a session with yet: no default and no available model (a truthful first run). */
   get noModel(): boolean {
@@ -57,12 +59,7 @@ export class ProviderClient {
     const generation = ++this.generation;
     this.loading = true;
     try {
-      const data = await providerRequest<ProviderCatalog>(
-        options.check ? "?check" : "",
-        undefined,
-        undefined,
-        this.controller.signal,
-      );
+      const data = await providerRequest<ProviderCatalog>(options.check ? "?check" : "", undefined, undefined, this.controller.signal);
       // What a check found holds even if a newer read overtook it.
       if (options.check) this.expired = new Set(data.providers.filter((p) => p.health === "expired").map((p) => p.id));
       if (generation === this.generation) {
@@ -73,16 +70,12 @@ export class ProviderClient {
       }
     } catch {
       if (!this.controller.signal.aborted && generation === this.generation)
-        this.error =
-          "Provider settings unavailable. Retry loading; existing sessions and drafts are unchanged.";
+        this.error = "Provider settings unavailable. Retry loading; existing sessions and drafts are unchanged.";
     } finally {
       if (generation === this.generation) this.loading = false;
     }
   }
-  async change(
-    path: "/default" | "/logout" | "/refresh",
-    value: { model: ModelChoice | null } | { provider: string },
-  ) {
+  async change(path: "/default" | "/logout" | "/refresh", value: { model: ModelChoice | null } | { provider: string }) {
     if (this.busy) return false;
     this.busy = true;
     this.error = "";
@@ -91,8 +84,7 @@ export class ProviderClient {
       await this.refresh();
       return true;
     } catch (error) {
-      this.error =
-        error instanceof Error ? error.message : "Provider operation failed.";
+      this.error = error instanceof Error ? error.message : "Provider operation failed.";
       return false;
     } finally {
       this.busy = false;
@@ -119,10 +111,7 @@ export class AuthClient {
     this.busy = true;
     this.error = "";
     try {
-      const capability = await providerRequest<{ id: string; token: string }>(
-        "/auth/start",
-        { provider, method },
-      );
+      const capability = await providerRequest<{ id: string; token: string }>("/auth/start", { provider, method });
       this.capability = capability;
       this.expires = Date.now() + 600_000;
       this.lastObserved = Date.now();
@@ -132,9 +121,7 @@ export class AuthClient {
       }
       await this.poll();
     } catch (error) {
-      if (!this.disposed)
-        this.error =
-          error instanceof Error ? error.message : "Sign-in could not start.";
+      if (!this.disposed) this.error = error instanceof Error ? error.message : "Sign-in could not start.";
     } finally {
       this.busy = false;
     }
@@ -145,16 +132,11 @@ export class AuthClient {
     if (Date.now() >= this.expires || Date.now() - this.lastObserved > 30_000) {
       this.cancel();
       this.view = undefined;
-      this.error =
-        "Sign-in expired or disconnected. Reload provider status before starting again; no successful save is confirmed.";
+      this.error = "Sign-in expired or disconnected. Reload provider status before starting again; no successful save is confirmed.";
       return;
     }
     try {
-      const view = await providerRequest<AuthView>(
-        "/auth/observe",
-        { id: c.id },
-        c.token,
-      );
+      const view = await providerRequest<AuthView>("/auth/observe", { id: c.id }, c.token);
       if (this.disposed) return;
       this.view = view;
       this.error = "";
@@ -176,17 +158,10 @@ export class AuthClient {
     if (!c || this.busy) return;
     this.busy = true;
     try {
-      await providerRequest(
-        "/auth/respond",
-        { id: c.id, prompt, value },
-        c.token,
-      );
+      await providerRequest("/auth/respond", { id: c.id, prompt, value }, c.token);
       if (this.view?.prompt?.id === prompt) this.view.prompt = undefined;
     } catch (error) {
-      this.error =
-        error instanceof Error
-          ? error.message
-          : "Prompt response was not accepted.";
+      this.error = error instanceof Error ? error.message : "Prompt response was not accepted.";
     } finally {
       this.busy = false;
     }
@@ -194,10 +169,7 @@ export class AuthClient {
   private cancel() {
     const c = this.capability;
     this.capability = undefined;
-    if (c)
-      void providerRequest("/auth/cancel", { id: c.id }, c.token).catch(
-        () => {},
-      );
+    if (c) void providerRequest("/auth/cancel", { id: c.id }, c.token).catch(() => {});
   }
   dispose() {
     this.disposed = true;

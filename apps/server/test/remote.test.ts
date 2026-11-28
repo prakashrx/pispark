@@ -21,7 +21,14 @@ test("remote actions and pair requests: only the known shapes pass", () => {
   for (const bad of [null, [], { action: "on", x: 1 }, { action: "remove" }, { action: "remove", device: "../x" }, { action: "reset" }])
     assert.equal(validRemoteAction(bad), undefined, JSON.stringify(bad));
   assert.deepEqual(validPairRequest({ code: "012345", name: "  My   phone " }), { code: "012345", name: "My phone" });
-  for (const bad of [{ code: "12345", name: "a" }, { code: "123456" }, { code: "123456", name: "" }, { code: "123456", name: "a\u0007" }, { code: "123456", name: "x".repeat(61) }, { code: "123456", name: "a", more: 1 }])
+  for (const bad of [
+    { code: "12345", name: "a" },
+    { code: "123456" },
+    { code: "123456", name: "" },
+    { code: "123456", name: "a\u0007" },
+    { code: "123456", name: "x".repeat(61) },
+    { code: "123456", name: "a", more: 1 },
+  ])
     assert.equal(validPairRequest(bad), undefined, JSON.stringify(bad));
   assert.equal(deviceName(5), undefined);
 });
@@ -106,7 +113,10 @@ test("remote access: only paired devices at the address, managed only from this 
     await rm(root, { recursive: true, force: true });
   });
   const remoteHost = `desk.tail0.ts.net:${port}`;
-  const call = (path: string, options: { host?: string; origin?: string; cookie?: string; body?: unknown; headers?: Record<string, string> } = {}) =>
+  const call = (
+    path: string,
+    options: { host?: string; origin?: string; cookie?: string; body?: unknown; headers?: Record<string, string> } = {},
+  ) =>
     new Promise<{ status: number; body: any; cookie?: string }>((resolve, reject) => {
       const data = options.body === undefined ? undefined : JSON.stringify(options.body);
       const req = httpRequest(
@@ -126,7 +136,9 @@ test("remote access: only paired devices at the address, managed only from this 
         (res) => {
           let text = "";
           res.on("data", (c) => (text += c));
-          res.on("end", () => resolve({ status: res.statusCode!, body: text ? JSON.parse(text) : undefined, cookie: res.headers["set-cookie"]?.[0] }));
+          res.on("end", () =>
+            resolve({ status: res.statusCode!, body: text ? JSON.parse(text) : undefined, cookie: res.headers["set-cookie"]?.[0] }),
+          );
         },
       );
       req.on("error", reject);

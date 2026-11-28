@@ -46,7 +46,6 @@ export const placedPoints = (view: ExtensionView | undefined): Set<string> =>
  */
 export function pointOf(segment: Segment): { point: string; data: unknown } | undefined {
   if (segment.kind === "view") return { point: segment.point, data: segment.call };
-  if (segment.kind === "custom" && segment.item.customType)
-    return { point: `item.custom:${segment.item.customType}`, data: segment.item };
+  if (segment.kind === "custom" && segment.item.customType) return { point: `item.custom:${segment.item.customType}`, data: segment.item };
   return undefined;
 }

@@ -4,9 +4,12 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import webResearch from "../index.js";
 
 function session(key = "test-search-key") {
-  const tools = new Map<string, {
-    execute(id: string, input: object, signal?: AbortSignal): Promise<{ content: [{ text: string }] }>;
-  }>();
+  const tools = new Map<
+    string,
+    {
+      execute(id: string, input: object, signal?: AbortSignal): Promise<{ content: [{ text: string }] }>;
+    }
+  >();
   let start: (() => void) | undefined;
   const pi = {
     on(event: string, handler: () => void) {
@@ -44,16 +47,18 @@ test("search returns compact, distinct public sources from the search endpoint",
     assert.equal(args.query, "widgets");
     assert.equal(args.max_results, 5);
     assert.equal(args.include_raw_content, false);
-    return Response.json({ results: [
-      { url: "https://user:secret@example.com/", title: "Credentials" },
-      { url: "http://127.0.0.1/", title: "Local" },
-      ...Array.from({ length: 8 }, (_, n) => ({
-        url: "https://example.com/source/" + n,
-        title: "Title " + n,
-        content: "relevant text ".repeat(100) + "unreachable tail",
-        raw_content: "DO NOT INCLUDE",
-      })),
-    ] });
+    return Response.json({
+      results: [
+        { url: "https://user:secret@example.com/", title: "Credentials" },
+        { url: "http://127.0.0.1/", title: "Local" },
+        ...Array.from({ length: 8 }, (_, n) => ({
+          url: "https://example.com/source/" + n,
+          title: "Title " + n,
+          content: "relevant text ".repeat(100) + "unreachable tail",
+          raw_content: "DO NOT INCLUDE",
+        })),
+      ],
+    });
   });
   const web = session();
   const search = await web.run("search", { query: "widgets" });
@@ -82,9 +87,9 @@ test("page reading requests actual relevant passages and shares a UTF-8 budget w
   });
   const web = session();
   const index = await web.run("search", { query: "widgets" });
-  const answers = await Promise.all(Array.from({ length: 4 }, (_, n) =>
-    web.run("read", { url: "https://example.com/guide", focus: "Installation " + n }),
-  ));
+  const answers = await Promise.all(
+    Array.from({ length: 4 }, (_, n) => web.run("read", { url: "https://example.com/guide", focus: "Installation " + n })),
+  );
   assert.ok(answers.every((answer) => answer.startsWith("Source: https://example.com/guide\n")));
   assert.match(answers[0]!, /Requirements\n\n😀/);
   assert.doesNotMatch(answers.join(""), /\uFFFD/);
@@ -123,8 +128,7 @@ test("unavailable sources, bounded responses, credentials, and cancellation are 
 test("empty results cannot bypass the outbound request limit", async (t) => {
   const request = t.mock.method(globalThis, "fetch", async () => Response.json({ results: [] }));
   const web = session();
-  for (let i = 0; i < 6; i++)
-    assert.match(await web.run("search", { query: "look up " + i }), /No usable public sources/);
+  for (let i = 0; i < 6; i++) assert.match(await web.run("search", { query: "look up " + i }), /No usable public sources/);
   assert.match(await web.run("search", { query: "one more" }), /budget/);
   assert.equal(request.mock.callCount(), 6);
 });

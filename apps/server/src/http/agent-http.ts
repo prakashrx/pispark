@@ -1,51 +1,43 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { body, sendJson } from "./io.js";
+import { body, logFailure, sendJson, statusOf } from "./io.js";
 import { correlated } from "../core/logger.js";
-import type { DiscoveredTool, AgentTarget, ItemTarget, ItemType, ResourceReference } from "../contract/agent-protocol.js";
+import { Type, type Static, type TProperties } from "typebox";
+import { ITEM_TYPES, type DiscoveredTool, type AgentTarget, type ItemTarget, type ResourceReference } from "../contract/agent-protocol.js";
 import type { AgentStore } from "../core/agents/store.js";
-import { AgentError, ITEM_TYPES, parseResource } from "../core/agents/format.js";
+import { AgentError, parseResource } from "../core/agents/format.js";
 import { checkCycles, listAgents, viewAgent } from "../core/agents/resolve.js";
 import { RuntimeError } from "../core/runtime/errors.js";
+import { exact, shaped, type Same } from "./shape.js";
 
 const MAXIMUM = 512 * 1024;
-const REVISION = /^[a-f0-9]{64}$/;
-function itemType(value: unknown): ItemType {
-  if (!ITEM_TYPES.includes(value as ItemType)) throw new AgentError("invalid-input");
-  return value as ItemType;
-}
-
-const plain = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === "object" && !Array.isArray(value);
-
-/** Exactly the keys an operation takes; anything else is refused. */
-function input(value: unknown, keys: string[], optional: string[] = []) {
-  if (!plain(value)) throw new AgentError("invalid-input");
-  for (const key of Object.keys(value))
-    if (!keys.includes(key) && !optional.includes(key))
-      throw new AgentError("invalid-input");
-  for (const key of keys)
-    if (!(key in value)) throw new AgentError("invalid-input");
-  return value;
-}
-function target(value: unknown): AgentTarget {
-  if (!plain(value) || Object.keys(value).length !== 1)
-    throw new AgentError("invalid-input");
-  if (typeof value.agent === "string") return { agent: value.agent };
-  if (typeof value.session === "string") return { session: value.session };
-  throw new AgentError("invalid-input");
-}
+const target = Type.Union([exact({ agent: Type.String() }), exact({ session: Type.String() })]);
+true satisfies Same<Static<typeof target>, AgentTarget>;
 /** A layer, or `{library: "shared" | "bundled"}` for a file that lives in a library. */
-function itemTarget(value: unknown): ItemTarget {
-  if (plain(value) && Object.keys(value).length === 1 && (value.library === "shared" || value.library === "bundled"))
-    return { library: value.library };
-  return target(value);
-}
-function revision(value: unknown, allowEmpty = false): string {
-  if (typeof value !== "string" || !(REVISION.test(value) || (allowEmpty && !value)))
-    throw new AgentError("invalid-input");
-  return value;
-}
+const itemTarget = Type.Union([...target.anyOf, exact({ library: Type.Enum(["shared", "bundled"]) })]);
+true satisfies Same<Static<typeof itemTarget>, ItemTarget>;
+const type = Type.Enum(ITEM_TYPES);
+const revision = Type.String({ pattern: "^[a-f0-9]{64}$" });
+/** The revision a change was made against; empty for a layer that has none yet. */
+const expectedRevision = Type.Union([revision, Type.Literal("")]);
+const name = Type.String();
+const path = Type.String();
+
+/** What each operation takes: exactly these keys, each of its kind. What the values mean is the store's to check. */
+const operation = <P extends TProperties>(properties: P) => shaped(exact(properties), () => new AgentError("invalid-input"));
+const OPERATIONS = {
+  read: operation({ target }),
+  resources: operation({ target, type }),
+  "resource/select": operation({ target, type, reference: Type.String(), on: Type.Boolean(), expectedRevision }),
+  "resource/copy": operation({ target, type, name, from: itemTarget, expectedRevision }),
+  "resource/promote": operation({ target, type, name, expectedRevision: revision }),
+  create: operation({ name, description: Type.Optional(Type.String()), base: Type.Optional(Type.Array(Type.String())) }),
+  save: operation({ target, expectedRevision, definition: Type.Unknown() }),
+  delete: operation({ id: Type.String() }),
+  "file/read": operation({ target: itemTarget, path }),
+  "file/write": operation({ target: itemTarget, path, expectedRevision: Type.Union([revision, Type.Null()]), text: Type.String() }),
+  "file/delete": operation({ target, path, expectedRevision: revision }),
+};
 
 /**
  * GET /api/agents, then POST /api/agents/{read,create,save,delete,resources,resource/select,
@@ -67,98 +59,66 @@ export class AgentHttp {
       const path = url.pathname;
       try {
         let result: unknown;
-        if (request.method === "GET" && path === "/api/agents" && !url.search)
-          result = { agents: listAgents(this.store) };
+        if (request.method === "GET" && path === "/api/agents" && !url.search) result = { agents: listAgents(this.store) };
         else {
-          if (request.method !== "POST" || url.search)
-            throw new AgentError("not-found", 404);
-          const operation = path.slice("/api/agents/".length);
+          if (request.method !== "POST" || url.search) throw new AgentError("not-found", 404);
           const value = await body(request, MAXIMUM);
-          switch (operation) {
+          switch (path.slice("/api/agents/".length)) {
             case "read": {
-              const i = input(value, ["target"]);
-              const viewed = target(i.target);
+              const viewed = OPERATIONS.read(value).target;
               // Listing an agent's tools loads its extensions; a failure leaves the list as switched.
               const discovered = await this.tools?.(viewed).catch(() => undefined);
               result = viewAgent(this.store, viewed, discovered);
               break;
             }
             case "resources": {
-              const i = input(value, ["target", "type"]);
-              result = { resources: this.store.available(target(i.target), itemType(i.type)) };
+              const i = OPERATIONS.resources(value);
+              result = { resources: this.store.available(i.target, i.type) };
               break;
             }
             case "resource/select": {
-              const i = input(value, ["target", "type", "reference", "on", "expectedRevision"]);
-              if (typeof i.on !== "boolean" || !parseResource(i.reference)) throw new AgentError("invalid-input");
-              result = this.store.select(target(i.target), itemType(i.type), i.reference as ResourceReference, i.on, revision(i.expectedRevision, true));
+              const i = OPERATIONS["resource/select"](value);
+              if (!parseResource(i.reference)) throw new AgentError("invalid-input");
+              result = this.store.select(i.target, i.type, i.reference as ResourceReference, i.on, i.expectedRevision);
               break;
             }
             case "resource/copy": {
-              const i = input(value, ["target", "type", "name", "from", "expectedRevision"]);
-              if (typeof i.name !== "string") throw new AgentError("invalid-input");
-              result = this.store.copyIn(target(i.target), itemType(i.type), i.name, itemTarget(i.from), revision(i.expectedRevision, true));
+              const i = OPERATIONS["resource/copy"](value);
+              result = this.store.copyIn(i.target, i.type, i.name, i.from, i.expectedRevision);
               break;
             }
             case "resource/promote": {
-              const i = input(value, ["target", "type", "name", "expectedRevision"]);
-              if (typeof i.name !== "string") throw new AgentError("invalid-input");
-              result = this.store.promote(target(i.target), itemType(i.type), i.name, revision(i.expectedRevision));
+              const i = OPERATIONS["resource/promote"](value);
+              result = this.store.promote(i.target, i.type, i.name, i.expectedRevision);
               break;
             }
-            case "create": {
-              const i = input(value, ["name"], ["description", "base"]);
-              if (typeof i.name !== "string") throw new AgentError("invalid-input");
-              // The definition check refuses bad values; a wrong type is refused here, not dropped.
-              if (i.description !== undefined && typeof i.description !== "string") throw new AgentError("invalid-input");
-              if (i.base !== undefined && !Array.isArray(i.base)) throw new AgentError("invalid-input");
-              result = this.store.create({
-                name: i.name,
-                ...(i.description !== undefined ? { description: i.description } : {}),
-                ...(i.base !== undefined ? { base: i.base as string[] } : {}),
-              });
+            case "create":
+              result = this.store.create(OPERATIONS.create(value));
               break;
-            }
             case "save": {
-              const i = input(value, ["target", "expectedRevision", "definition"]);
-              const t = target(i.target);
-              result = this.store.save(
-                t,
-                revision(i.expectedRevision, true),
-                i.definition,
-                (definition) => checkCycles(this.store, t, definition),
+              const i = OPERATIONS.save(value);
+              result = this.store.save(i.target, i.expectedRevision, i.definition, (definition) =>
+                checkCycles(this.store, i.target, definition),
               );
               break;
             }
-            case "delete": {
-              const i = input(value, ["id"]);
-              if (typeof i.id !== "string") throw new AgentError("invalid-input");
-              this.store.remove(i.id);
+            case "delete":
+              this.store.remove(OPERATIONS.delete(value).id);
               result = {};
               break;
-            }
             case "file/read": {
-              const i = input(value, ["target", "path"]);
-              result = this.store.readFile(itemTarget(i.target), i.path as string);
+              const i = OPERATIONS["file/read"](value);
+              result = this.store.readFile(i.target, i.path);
               break;
             }
             case "file/write": {
-              const i = input(value, ["target", "path", "expectedRevision", "text"]);
-              result = this.store.writeFile(
-                itemTarget(i.target),
-                i.path as string,
-                i.expectedRevision === null ? null : revision(i.expectedRevision),
-                i.text as string,
-              );
+              const i = OPERATIONS["file/write"](value);
+              result = this.store.writeFile(i.target, i.path, i.expectedRevision, i.text);
               break;
             }
             case "file/delete": {
-              const i = input(value, ["target", "path", "expectedRevision"]);
-              this.store.deleteFile(
-                target(i.target),
-                i.path as string,
-                revision(i.expectedRevision),
-              );
+              const i = OPERATIONS["file/delete"](value);
+              this.store.deleteFile(i.target, i.path, i.expectedRevision);
               result = {};
               break;
             }
@@ -171,26 +131,15 @@ export class AgentHttp {
       } catch (error) {
         const known = error instanceof AgentError || error instanceof RuntimeError;
         const code = known ? error.code : "storage";
-        const status =
-          error instanceof AgentError
-            ? error.status
-            : error instanceof RuntimeError
-              ? 400
-              : 500;
-        this.store.logger.event(
-          "http.failure",
-          { durationMs: Date.now() - started, outcome: "failed", code },
-          "error",
-        );
+        const status = error instanceof AgentError ? error.status : error instanceof RuntimeError ? statusOf(error) : 500;
+        logFailure(this.store.logger, request, error, { status, code, durationMs: Date.now() - started });
         sendJson(
           response,
           status,
           {
             error: code,
             requestId,
-            ...(error instanceof AgentError && error.detail
-              ? { detail: error.detail }
-              : {}),
+            ...(error instanceof AgentError && error.detail ? { detail: error.detail } : {}),
           },
           MAXIMUM,
         );

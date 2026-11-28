@@ -5,7 +5,9 @@ import { request, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
+import { SafeLogger } from "../src/core/logger.js";
 import { createAppServer } from "../src/http/server.js";
+import type { SessionHttp } from "../src/http/session-http.js";
 
 async function listen(t: TestContext, server: Server): Promise<string> {
   server.listen(0, "127.0.0.1");
@@ -24,23 +26,19 @@ async function listen(t: TestContext, server: Server): Promise<string> {
 
 // The HTTP client's path option preserves malicious paths that fetch would normalize.
 function rawGet(base: string, path: string) {
-  return new Promise<{ status: number | undefined; body: string }>(
-    (resolve, reject) => {
-      const req = request(base, { path }, (response) => {
-        let body = "";
-        response.setEncoding("utf8");
-        response.on("data", (chunk: string) => {
-          body += chunk;
-        });
-        response.on("end", () =>
-          resolve({ status: response.statusCode, body }),
-        );
-        response.on("error", reject);
+  return new Promise<{ status: number | undefined; body: string }>((resolve, reject) => {
+    const req = request(base, { path }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk: string) => {
+        body += chunk;
       });
-      req.on("error", reject);
-      req.end();
-    },
-  );
+      response.on("end", () => resolve({ status: response.statusCode, body }));
+      response.on("error", reject);
+    });
+    req.on("error", reject);
+    req.end();
+  });
 }
 
 async function fixture(t: TestContext) {
@@ -48,10 +46,7 @@ async function fixture(t: TestContext) {
   t.after(() => rm(directory, { recursive: true, force: true }));
   const webRoot = join(directory, "web");
   await mkdir(join(webRoot, "assets"), { recursive: true });
-  await writeFile(
-    join(webRoot, "index.html"),
-    "<!doctype html><title>PiSpark</title>",
-  );
+  await writeFile(join(webRoot, "index.html"), "<!doctype html><title>PiSpark</title>");
   await writeFile(join(webRoot, "assets", "app.js"), 'console.log("starter");');
   await writeFile(join(directory, "private.js"), "PRIVATE");
   return { directory, webRoot };
@@ -71,17 +66,10 @@ test("GET /api/health returns real service health", async (t) => {
 test("unknown API and asset paths return 404, never the app entry", async (t) => {
   const { webRoot } = await fixture(t);
   const base = await listen(t, createAppServer({ webRoot }));
-  for (const path of [
-    "/api",
-    "/api/missing",
-    "/assets/missing.js",
-  ]) {
+  for (const path of ["/api", "/api/missing", "/assets/missing.js"]) {
     const response = await fetch(`${base}${path}`);
     assert.equal(response.status, 404, path);
-    assert.match(
-      response.headers.get("content-type") ?? "",
-      /application\/json/,
-    );
+    assert.match(response.headers.get("content-type") ?? "", /application\/json/);
   }
 });
 
@@ -145,11 +133,7 @@ test("rejects raw/encoded traversal, hidden files, backslashes and malformed pat
 test("does not follow asset directory symlinks outside the build root", async (t) => {
   const { directory, webRoot } = await fixture(t);
   // Windows directory junctions need no elevated symlink privilege.
-  await symlink(
-    directory,
-    join(webRoot, "assets", "outside"),
-    process.platform === "win32" ? "junction" : "dir",
-  );
+  await symlink(directory, join(webRoot, "assets", "outside"), process.platform === "win32" ? "junction" : "dir");
   const base = await listen(t, createAppServer({ webRoot }));
   const response = await fetch(`${base}/assets/outside/private.js`);
   assert.equal(response.status, 404);
@@ -160,4 +144,30 @@ test("health works without a frontend build", async (t) => {
   const base = await listen(t, createAppServer());
   assert.equal((await fetch(base)).status, 404);
   assert.equal((await fetch(`${base}/api/health`)).status, 200);
+});
+
+test("a request that breaks is answered 500 and logged by its shape, not by what broke", async (t) => {
+  const lines: string[] = [];
+  const logger = new SafeLogger({ sink: async (line) => void lines.push(line) });
+  const sessions = {
+    handle: async () => {
+      throw new RangeError("SECRET");
+    },
+  } as unknown as SessionHttp;
+  const base = await listen(t, createAppServer({ sessions, logger }));
+  const response = await fetch(`${base}/api/sessions/3f2b8c1e-9a4d-4e6f-8b1a-2c3d4e5f6a7b/items?limit=2`);
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: "execution" });
+  await logger.close();
+  const { timestamp, ...record } = JSON.parse(lines[0]!);
+  assert.deepEqual(record, {
+    level: "error",
+    event: "http.failure",
+    outcome: "failed",
+    code: "execution",
+    method: "GET",
+    route: "/api/sessions/:id/items",
+    status: 500,
+    error: "RangeError",
+  });
 });

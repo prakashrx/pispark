@@ -33,7 +33,13 @@ export function archiveName(version: string, os: ReleaseInfo["os"], arch: Releas
  */
 export function pick(
   releases: GitHubRelease[],
-  { channel, os, arch, current, failed }: { channel: ReleaseChannel; os: ReleaseInfo["os"]; arch: ReleaseInfo["arch"]; current: string; failed: string[] },
+  {
+    channel,
+    os,
+    arch,
+    current,
+    failed,
+  }: { channel: ReleaseChannel; os: ReleaseInfo["os"]; arch: ReleaseInfo["arch"]; current: string; failed: string[] },
 ): Available | undefined {
   let best: Available | undefined;
   for (const r of releases) {
@@ -46,7 +52,12 @@ export function pick(
     const sums = r.assets.find((a) => a.name === "SHA256SUMS");
     if (!archive || !sums) continue;
     if (best && compareVersions(version, best.version) <= 0) continue;
-    best = { version, archive: { name, url: archive.browser_download_url }, sums: sums.browser_download_url, ...(r.html_url ? { notes: r.html_url } : {}) };
+    best = {
+      version,
+      archive: { name, url: archive.browser_download_url },
+      sums: sums.browser_download_url,
+      ...(r.html_url ? { notes: r.html_url } : {}),
+    };
   }
   return best;
 }
@@ -59,7 +70,12 @@ export function find(releases: GitHubRelease[], version: string, os: ReleaseInfo
   const archive = r.assets.find((a) => a.name === name);
   const sums = r.assets.find((a) => a.name === "SHA256SUMS");
   if (!archive || !sums) return;
-  return { version, archive: { name, url: archive.browser_download_url }, sums: sums.browser_download_url, ...(r.html_url ? { notes: r.html_url } : {}) };
+  return {
+    version,
+    archive: { name, url: archive.browser_download_url },
+    sums: sums.browser_download_url,
+    ...(r.html_url ? { notes: r.html_url } : {}),
+  };
 }
 
 export async function listReleases(url: string): Promise<GitHubRelease[]> {
@@ -78,7 +94,11 @@ export async function check(url: string, options: Parameters<typeof pick>[1]): P
  * Downloads a release, checks it against the release's SHA256SUMS and unpacks it into
  * `versions/<version>/`. Nothing running is touched; a failure leaves no partial version behind.
  */
-export async function fetchRelease(install: Install, available: Available, progress: (received: number, total?: number) => void): Promise<void> {
+export async function fetchRelease(
+  install: Install,
+  available: Available,
+  progress: (received: number, total?: number) => void,
+): Promise<void> {
   const target = install.release(available.version);
   if (existsSync(join(target, "release.json"))) return;
   mkdirSync(install.downloads, { recursive: true });
@@ -89,7 +109,10 @@ export async function fetchRelease(install: Install, available: Available, progr
 
   const file = join(install.downloads, available.archive.name);
   const partial = `${file}.part`;
-  const response = await fetch(available.archive.url, { headers: { "User-Agent": headers["User-Agent"] }, signal: AbortSignal.timeout(15 * 60_000) });
+  const response = await fetch(available.archive.url, {
+    headers: { "User-Agent": headers["User-Agent"] },
+    signal: AbortSignal.timeout(15 * 60_000),
+  });
   if (!response.ok || !response.body) throw new Error(`Download: HTTP ${response.status}`);
   const total = Number(response.headers.get("content-length")) || undefined;
   const hash = createHash("sha256");

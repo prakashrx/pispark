@@ -1,4 +1,5 @@
 import { NOTIFY_EVENTS, type NotificationState, type NotifyEvent } from "../../../../server/src/contract/notification-protocol";
+import { RequestFailed, requestJson } from "../workspace/transport";
 
 /**
  * Notifications on this device (design set 9): whether this browser can show them, whether it may,
@@ -26,7 +27,8 @@ class DeviceNotifications {
     if (typeof window === "undefined") return;
     const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     const standalone =
-      (typeof matchMedia === "function" && matchMedia("(display-mode: standalone)").matches) || (navigator as { standalone?: boolean }).standalone === true;
+      (typeof matchMedia === "function" && matchMedia("(display-mode: standalone)").matches) ||
+      (navigator as { standalone?: boolean }).standalone === true;
     const capable = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && window.isSecureContext;
     this.support = capable ? "yes" : ios && !standalone ? "home-screen" : "no";
     this.permission = "Notification" in window ? Notification.permission : "denied";
@@ -128,9 +130,16 @@ class DeviceNotifications {
 export const deviceNotifications = new DeviceNotifications();
 
 async function post<T = unknown>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`/api/notifications/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!response.ok) throw new Error(response.status === 400 ? "refused" : `error ${response.status}`);
-  return (await response.json()) as T;
+  // Bounded in size and time like every other request; a refusal reads as one.
+  try {
+    return await requestJson<T>(`/api/notifications/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    throw error instanceof RequestFailed ? new Error(error.status === 400 ? "refused" : `error ${error.status}`) : error;
+  }
 }
 /** What the browser allows now; the Permissions API where it answers (it follows a change made in the browser's settings). */
 async function permission(): Promise<NotificationPermission> {
@@ -154,14 +163,22 @@ export function followPresence(): () => void {
   const page = crypto.randomUUID();
   const say = (visible: boolean) => {
     const body = JSON.stringify({ page, visible });
-    if (!visible && navigator.sendBeacon) navigator.sendBeacon("/api/notifications/presence", new Blob([body], { type: "application/json" }));
-    else void fetch("/api/notifications/presence", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {});
+    if (!visible && navigator.sendBeacon)
+      navigator.sendBeacon("/api/notifications/presence", new Blob([body], { type: "application/json" }));
+    else
+      void fetch("/api/notifications/presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      }).catch(() => {});
   };
   const now = () => say(document.visibilityState === "visible");
   const timer = setInterval(() => document.visibilityState === "visible" && say(true), 45_000);
   const gone = () => say(false);
   const opened = (event: MessageEvent) => {
-    if (event.data?.type === "pispark:open" && typeof event.data.hash === "string" && event.data.hash.startsWith("#/")) location.hash = event.data.hash;
+    if (event.data?.type === "pispark:open" && typeof event.data.hash === "string" && event.data.hash.startsWith("#/"))
+      location.hash = event.data.hash;
   };
   document.addEventListener("visibilitychange", now);
   window.addEventListener("pagehide", gone);

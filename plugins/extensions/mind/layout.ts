@@ -57,20 +57,31 @@ export function refusePath(rel: string): string | undefined {
   return `${FOLDER}/${rel} is not part of the layout. The layout is: ${LAYOUT}.`;
 }
 
-const plain = (text: string) => text.replace(/[\u2018\u2019]/g, "'").replace(/\s+/g, " ").trim();
-const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((value, i) => plain(value).toLowerCase() === plain(b[i]!).toLowerCase());
+const plain = (text: string) =>
+  text
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+const same = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((value, i) => plain(value).toLowerCase() === plain(b[i]!).toLowerCase());
 
 /** A document's lines, with those inside code fences marked so headings in examples don't count. */
 function lines(content: string): { text: string; code: boolean }[] {
   let code = false;
-  return content.replace(/\r\n?/g, "\n").split("\n").map((text) => {
-    const fence = /^\s*(```|~~~)/.test(text);
-    const line = { text, code: code || fence };
-    if (fence) code = !code;
-    return line;
-  });
+  return content
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((text) => {
+      const fence = /^\s*(```|~~~)/.test(text);
+      const line = { text, code: code || fence };
+      if (fence) code = !code;
+      return line;
+    });
 }
-const headings = (content: string) => lines(content).filter((l) => !l.code && /^## /.test(l.text)).map((l) => l.text.slice(3));
+const headings = (content: string) =>
+  lines(content)
+    .filter((l) => !l.code && /^## /.test(l.text))
+    .map((l) => l.text.slice(3));
 
 /** Why this content may not be saved as that file, or nothing when it may. */
 export function check(rel: string, content: string): string | undefined {
@@ -97,7 +108,11 @@ function checkNotes(content: string): string | undefined {
 }
 
 function checkPage(content: string): string | undefined {
-  const [title, summary] = content.replace(/\r\n?/g, "\n").split("\n").map((l) => l.trim()).filter(Boolean);
+  const [title, summary] = content
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   if (!title || !/^# \S/.test(title)) return `A notes page starts with its title: "# Title".`;
   if (!summary || summary.startsWith("#") || summary.length > SUMMARY_LIMIT)
     return `After the title, a notes page has a one-sentence summary (at most ${SUMMARY_LIMIT} characters). It is what is listed every run.`;
@@ -134,8 +149,10 @@ function checkTasks(content: string): string | undefined {
     }
     // Before the first section: a title and blank lines only. Inside one: an entry per bullet, with indented lines under it.
     if (!text.trim() || /^\s+\S/.test(text) || (!section && /^# /.test(text))) continue;
-    if (!text.startsWith("- ")) return `In ${TASKS} every item is one bullet ("- ..."), with any detail indented under it. This line is not: "${text.slice(0, 80)}"`;
-    if (section === "done lately" && !DATED.test(text)) return `Under "Done lately" each line starts with its date: "- YYYY-MM-DD: what was done or decided". This line does not: "${text.slice(0, 80)}"`;
+    if (!text.startsWith("- "))
+      return `In ${TASKS} every item is one bullet ("- ..."), with any detail indented under it. This line is not: "${text.slice(0, 80)}"`;
+    if (section === "done lately" && !DATED.test(text))
+      return `Under "Done lately" each line starts with its date: "- YYYY-MM-DD: what was done or decided". This line does not: "${text.slice(0, 80)}"`;
   }
   return undefined;
 }
@@ -146,7 +163,11 @@ export const EMPTY_TASKS = TASK_HEADINGS.map((h) => `## ${h}\n`).join("\n");
 
 /** A notes page's title and summary, as listed every run. */
 export function pageHead(content: string): { title: string; summary: string } {
-  const [title = "", summary = ""] = content.replace(/\r\n?/g, "\n").split("\n").map((l) => l.trim()).filter(Boolean);
+  const [title = "", summary = ""] = content
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   return { title: title.replace(/^#\s*/, ""), summary: summary.startsWith("#") ? "" : summary.slice(0, SUMMARY_LIMIT) };
 }
 
@@ -154,7 +175,9 @@ export function pageHead(content: string): { title: string; summary: string } {
 export function skillHead(content: string): { name: string; description: string } | undefined {
   try {
     const front = parseFrontmatter<Record<string, unknown>>(content).frontmatter ?? {};
-    return typeof front.name === "string" && typeof front.description === "string" ? { name: front.name, description: front.description.trim() } : undefined;
+    return typeof front.name === "string" && typeof front.description === "string"
+      ? { name: front.name, description: front.description.trim() }
+      : undefined;
   } catch {
     return undefined;
   }

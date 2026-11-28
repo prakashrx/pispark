@@ -51,7 +51,10 @@ export class Routines {
     return this.host.agents().flatMap((agent) =>
       agent.routines.map((routine) => {
         const key = routineKey(agent.id, routine.id);
-        const next = routine.on && !this.wakes.paused() ? nextRun(parseCron(routine.cron)!, new Date(Math.max(this.now(), new Date(this.since(key)).getTime()))) : undefined;
+        const next =
+          routine.on && !this.wakes.paused()
+            ? nextRun(parseCron(routine.cron)!, new Date(Math.max(this.now(), new Date(this.since(key)).getTime())))
+            : undefined;
         const { on, ...definition } = routine;
         return {
           ...definition,
@@ -72,7 +75,10 @@ export class Routines {
   }
   /** Run now, with the person watching, switched on or not. */
   async runNow(agent: string, id: string): Promise<void> {
-    const routine = this.host.agents().find((p) => p.id === agent)?.routines.find((r) => r.id === id);
+    const routine = this.host
+      .agents()
+      .find((p) => p.id === agent)
+      ?.routines.find((r) => r.id === id);
     if (!routine) throw new RuntimeError("not-found");
     await this.run(agent, routine, new Date(this.now()).toISOString(), true);
   }
@@ -93,7 +99,12 @@ export class Routines {
         try {
           await this.run(agent.id, routine, due, false);
         } catch (error) {
-          this.logger.event("schedule.failure", { agentId: agent.id, outcome: "failed", code: runtimeError(error, "execution").code });
+          this.logger.event("schedule.failure", {
+            agentId: agent.id,
+            outcome: "failed",
+            code: runtimeError(error, "execution").code,
+            cause: error,
+          });
         }
       }
     // Switched off: switched on again later, it counts from then.

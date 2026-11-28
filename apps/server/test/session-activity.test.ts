@@ -37,3 +37,42 @@ test("last activity: when a session last did something, not when it was opened",
   await sessions.start(id, "again").completion;
   assert(row(id).lastActivity > replied);
 });
+
+test("a session's history is found once it has one, a transcript changed on disk is checked again, and the listing's counts agree", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pispark-listing-"));
+  const f = await localProviderSettings(root);
+  f.control.automatic = true;
+  await writeFile(f.authPath, JSON.stringify({ [provider]: { type: "api_key", key: "test-key" } }));
+  await f.runtime.refresh({ allowNetwork: false });
+  const sessions = new SessionRuntime({ home: join(root, "pispark") }, f.settings);
+  t.after(async () => {
+    await sessions.shutdown();
+    await f.settings.close();
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  });
+  const row = (id: string) => sessions.list().find((each) => each.id === id)!;
+  const model = { provider, id: "deterministic" };
+  const { id } = await sessions.create({ folder: root, model });
+  await sessions.stop(id);
+  // Asked while it has none, then again once it has one: not remembered as having none.
+  assert.equal(row(id).hasHistory, false);
+  await sessions.open(id);
+  await sessions.start(id, "hello").completion;
+  await sessions.stop(id);
+  assert.equal(row(id).hasHistory, true);
+
+  // A transcript damaged after it was found whole is refused when the session opens again.
+  const metadata = (
+    sessions as unknown as { storage: { read(id: string): never; transcript(id: string): string; validateHistory(m: never): string } }
+  ).storage;
+  assert.equal(metadata.validateHistory(metadata.read(id)), metadata.transcript(id));
+  await writeFile(metadata.transcript(id), "not a transcript\n", { flag: "a" });
+  assert.throws(() => metadata.validateHistory(metadata.read(id)), { code: "storage" });
+
+  // The archive count and what a restart would interrupt agree with the full listing.
+  const other = (await sessions.create({ folder: root, model })).id;
+  await sessions.archive(other);
+  assert.equal(sessions.archivedCount(), sessions.archived().length);
+  assert.equal(sessions.archivedCount(), 1);
+  assert.deepEqual(sessions.runningWork().replies, []);
+});

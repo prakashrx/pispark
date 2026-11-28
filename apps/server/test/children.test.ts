@@ -32,7 +32,12 @@ async function fixture() {
     answer: async (id: string, prompt: string) => {
       await idle(id);
       await runtime.start(id, prompt).completion;
-      return text(runtime.items(id, {}).items.filter((item) => item.role === "toolResult").at(-1)!);
+      return text(
+        runtime
+          .items(id, {})
+          .items.filter((item) => item.role === "toolResult")
+          .at(-1)!,
+      );
     },
     /** What a parent was sent by one of its children: each message's text, by how its card reads ("finished", "raised"). */
     heard: (parentId: string, childId: string, how = "finished") => {
@@ -42,7 +47,13 @@ async function fixture() {
         return details?.source.id === childId && details.card?.how === how ? [text(items[i + 1]!)] : [];
       });
     },
-    metadata: (id: string) => JSON.parse(readFileSync(join(h.home, "sessions", id, "session.json"), "utf8")) as { ask?: unknown; raise?: string; note?: string; archived?: true },
+    metadata: (id: string) =>
+      JSON.parse(readFileSync(join(h.home, "sessions", id, "session.json"), "utf8")) as {
+        ask?: unknown;
+        raise?: string;
+        note?: string;
+        archived?: true;
+      },
     cleanup: async () => {
       await runtime.shutdown();
       await h.remove();
@@ -79,7 +90,9 @@ test("a session starts a child; the child's answer comes back to the parent as a
 
     // A child is a worker: it has six of the ten verbs, and is told who asked, how it talks and that it starts no sessions.
     const told = (request: LocalRequest) => JSON.stringify(request.context.messages);
-    const childRequest = f.provider.requests.find((request) => /started this one and gave it its first message\. What you say when you finish is your answer to it/.test(told(request)))!;
+    const childRequest = f.provider.requests.find((request) =>
+      /started this one and gave it its first message\. What you say when you finish is your answer to it/.test(told(request)),
+    )!;
     assert.ok(childRequest, "the child is told who asked and how it talks");
     assert.match(told(childRequest), /You cannot start sessions\./);
     assert.deepEqual(
@@ -87,17 +100,29 @@ test("a session starts a child; the child's answer comes back to the parent as a
       ["start_process", "wait", "look", "stop", "raise", "note"],
     );
     const parentRequest = f.provider.requests.find((request) => toolsOf(request).includes(toolOf("start_session")))!;
-    assert.deepEqual(VERBS.filter((verb) => toolsOf(parentRequest).includes(toolOf(verb))), [...VERBS]);
+    assert.deepEqual(
+      VERBS.filter((verb) => toolsOf(parentRequest).includes(toolOf(verb))),
+      [...VERBS],
+    );
 
     // Its answer wakes the parent as soon as the parent is free, naming the child by its handle.
     await eventually(() => f.runtime.items(parent.id, {}).items.some((item) => item.customType === WOKEN_ENTRY));
     const parentItems = f.runtime.items(parent.id, {}).items;
     const report = parentItems.findIndex((item) => item.customType === WOKEN_ENTRY);
-    assert.deepEqual((parentItems[report]!.details as { source: unknown }).source, { kind: "session", id: child.id, label: "Zustand research · finished" });
+    assert.deepEqual((parentItems[report]!.details as { source: unknown }).source, {
+      kind: "session",
+      id: child.id,
+      label: "Zustand research · finished",
+    });
     const heading = 'The session "Zustand research" (session-1) you started finished:\n\n';
     assert.equal(text(parentItems[report + 1]!), `${heading}local:research zustand`);
     // Its card: whose it is, how it ended, and the answer after the line the agent needs.
-    assert.deepEqual(cardBody(parentItems[report]!, parentItems[report + 1]!), { title: "Zustand research", how: "finished", start: heading.length, body: "local:research zustand" });
+    assert.deepEqual(cardBody(parentItems[report]!, parentItems[report + 1]!), {
+      title: "Zustand research",
+      how: "finished",
+      start: heading.length,
+      body: "local:research zustand",
+    });
   } finally {
     await f.cleanup();
   }
@@ -114,7 +139,10 @@ test("look, send and stop find a child by its handle; a session's handles are it
     assert.equal(await f.answer(parent.id, say("look")), 'session-1: "Helper" — at rest');
     assert.equal(await f.answer(parent.id, say("look", { id: "session-1" })), '"Helper" — at rest\nIt last said:\nlocal:first');
     // A message to a child at rest is a new ask, with its own answer.
-    assert.equal(await f.answer(parent.id, say("send", { id: "session-1", text: "second" })), "Sent. Its answer arrives here as a message when it is done.");
+    assert.equal(
+      await f.answer(parent.id, say("send", { id: "session-1", text: "second" })),
+      "Sent. Its answer arrives here as a message when it is done.",
+    );
     await eventually(() => f.heard(parent.id, child!.id).length === 2);
     assert.match(f.heard(parent.id, child!.id)[1]!, /finished:\n\nlocal:second$/);
     assert.match(await f.answer(parent.id, say("send", { id: "session-1", raise_on: "error" })), /A session is sent text/);
@@ -158,7 +186,10 @@ test("a child notes (a line, no turn) and raises (its parent is woken); it waits
     await f.idle(child.id);
     await pause(300);
     assert.deepEqual(f.heard(parent.id, child.id), []);
-    assert.equal(await f.answer(parent.id, say("look", { id: "session-1" })).then((seen) => seen.split("\n").slice(0, 3).join("\n")), '"Builder" — waiting for your answer\nIt raised: Postgres or SQLite?\nIts last note: half way');
+    assert.equal(
+      await f.answer(parent.id, say("look", { id: "session-1" })).then((seen) => seen.split("\n").slice(0, 3).join("\n")),
+      '"Builder" — waiting for your answer\nIt raised: Postgres or SQLite?\nIts last note: half way',
+    );
 
     // The parent answers. The child carries on, comes to rest, and answers once, with everything it said.
     assert.match(await f.answer(parent.id, say("send", { id: "session-1", text: "SQLite" })), /^Sent\./);
@@ -181,7 +212,10 @@ test("what a parent already has is not sent again: a raise it answered, an answe
   try {
     const parent = await f.runtime.create({ folder: f.folder });
     // The parent stays in its turn (waiting for its own slow processes) while its child raises and then answers.
-    const hold = (title: string): ["start_process", object] => ["start_process", { command: `node -e "setTimeout(() => {}, 2500)"`, title }];
+    const hold = (title: string): ["start_process", object] => [
+      "start_process",
+      { command: `node -e "setTimeout(() => {}, 2500)"`, title },
+    ];
     const last = await f.answer(
       parent.id,
       steps(
@@ -205,8 +239,13 @@ test("what a parent already has is not sent again: a raise it answered, an answe
     // Nothing from the child was sent to the parent afterwards; both are recorded as taken.
     assert.deepEqual(f.heard(parent.id, child.id, "raised"), []);
     assert.deepEqual(f.heard(parent.id, child.id), []);
-    const records = JSON.parse(readFileSync(join(f.home, "sessions", parent.id, "wakes.json"), "utf8")).records[child.id] as { outcome: string }[];
-    assert.deepEqual(records.map((record) => record.outcome), ["handled", "handled"]);
+    const records = JSON.parse(readFileSync(join(f.home, "sessions", parent.id, "wakes.json"), "utf8")).records[child.id] as {
+      outcome: string;
+    }[];
+    assert.deepEqual(
+      records.map((record) => record.outcome),
+      ["handled", "handled"],
+    );
   } finally {
     await f.cleanup();
   }
@@ -226,13 +265,18 @@ test("setup: the Default agent unless one is named, the parent's folder unless o
     const child = (title: string) => f.children(parent.id).find((each) => each.title === title)!;
 
     // Nothing but a brief: Default, where the parent works, named from the brief.
-    assert.match(await f.answer(parent.id, say("start_session", { brief: "Summarise the README", keep: true })), /^Started "Summarise the README" \(session-1\)/);
+    assert.match(
+      await f.answer(parent.id, say("start_session", { brief: "Summarise the README", keep: true })),
+      /^Started "Summarise the README" \(session-1\)/,
+    );
     assert.equal(child("Summarise the README").agent.id, "default");
     assert.equal(child("Summarise the README").folder, parent.folder);
     // "Another me": the parent names its own agent, which its own guidance tells it.
     await f.answer(parent.id, say("start_session", { brief: "b", title: "Same agent", keep: true, agent: "dev" }));
     assert.equal(child("Same agent").agent.id, "dev");
-    const told = f.provider.requests.map((request) => JSON.stringify(request.context.messages)).find((messages) => messages.includes("to pass when it should work as you do"))!;
+    const told = f.provider.requests
+      .map((request) => JSON.stringify(request.context.messages))
+      .find((messages) => messages.includes("to pass when it should work as you do"))!;
     assert.match(told, /this session's agent is \\"dev\\" and its model is \\"[^"\\]+\/[^"\\]+\\"/);
     // A folder of its own, absolute or relative to the parent's.
     await f.answer(parent.id, say("start_session", { brief: "c", title: "Elsewhere", keep: true, folder: other }));
@@ -241,13 +285,21 @@ test("setup: the Default agent unless one is named, the parent's folder unless o
     assert.equal(child("Inside").folder, join(parent.folder, "packages"));
     // A child is named by its parent or from its brief: it has no tool to name itself.
     await f.idle(child("Inside").id);
-    const childRequest = f.provider.requests.find((request) => JSON.stringify(request.context.messages).includes("started this one and gave it its first message"))!;
+    const childRequest = f.provider.requests.find((request) =>
+      JSON.stringify(request.context.messages).includes("started this one and gave it its first message"),
+    )!;
     assert.ok(!toolsOf(childRequest).includes("pispark_set_title"));
 
     // What can't be used is said, and nothing is started for it.
     const before = f.children(parent.id).length;
-    assert.match(await f.answer(parent.id, say("start_session", { brief: "e", agent: "nobody" })), /^There is no such agent, or it cannot be used now\. The agents here: (.+, )?default(, .+)?\.$/);
-    assert.match(await f.answer(parent.id, say("start_session", { brief: "f", folder: join(f.folder, "missing") })), /^That folder cannot be used/);
+    assert.match(
+      await f.answer(parent.id, say("start_session", { brief: "e", agent: "nobody" })),
+      /^There is no such agent, or it cannot be used now\. The agents here: (.+, )?default(, .+)?\.$/,
+    );
+    assert.match(
+      await f.answer(parent.id, say("start_session", { brief: "f", folder: join(f.folder, "missing") })),
+      /^That folder cannot be used/,
+    );
     assert.match(await f.answer(parent.id, say("start_session", { brief: "g", model: "no-slash" })), /not well formed/);
     assert.equal(f.children(parent.id).length, before);
   } finally {
@@ -268,14 +320,20 @@ test("setup: an agent made for the child is its own layer, as Edit agent for thi
     assert.deepEqual(child.agent, { id: "dev", name: "Dev", layered: true });
     assert.deepEqual(f.runtime.agents.read({ session: child.id }).definition, { ...reviewer, resources: {} });
     await f.idle(child.id);
-    const childRequest = f.provider.requests.find((request) => JSON.stringify(request.context.messages).includes("review the change") && !toolsOf(request).includes(toolOf("start_session")))!;
+    const childRequest = f.provider.requests.find(
+      (request) =>
+        JSON.stringify(request.context.messages).includes("review the change") && !toolsOf(request).includes(toolOf("start_session")),
+    )!;
     assert.match(JSON.stringify(childRequest.context.messages), /DEV-INSTRUCTIONS/);
     assert.ok(!toolsOf(childRequest).includes("bash") && toolsOf(childRequest).includes("read"));
 
     // A definition that is not one is refused with why, and leaves nothing behind.
     const sessions = () => readdirSync(join(f.home, "sessions")).length;
     const before = sessions();
-    assert.equal(await f.answer(parent.id, say("start_session", { brief: "x", agent: { code: "console.log(1)" } })), "That agent definition cannot be used: invalid-definition (code).");
+    assert.equal(
+      await f.answer(parent.id, say("start_session", { brief: "x", agent: { code: "console.log(1)" } })),
+      "That agent definition cannot be used: invalid-definition (code).",
+    );
     assert.match(await f.answer(parent.id, say("start_session", { brief: "x", agent: { base: ["nobody"] } })), /^There is no such agent/);
     assert.equal(sessions(), before);
   } finally {
@@ -289,7 +347,10 @@ test("join: a parent waits for every session it started and takes their answers 
   const f = await fixture();
   try {
     const parent = await f.runtime.create({ folder: f.folder });
-    const joined = await f.answer(parent.id, steps(["start_session", { brief: "alpha", title: "A" }], ["start_session", { brief: "beta", title: "B" }], ["wait"]));
+    const joined = await f.answer(
+      parent.id,
+      steps(["start_session", { brief: "alpha", title: "A" }], ["start_session", { brief: "beta", title: "B" }], ["wait"]),
+    );
     assert.equal(joined, 'session-1: "A" finished:\n\nlocal:alpha\n\nsession-2: "B" finished:\n\nlocal:beta');
     // The answers were taken in the turn, so nothing is sent afterwards.
     await f.idle(parent.id);
@@ -299,7 +360,12 @@ test("join: a parent waits for every session it started and takes their answers 
     // For clients, the wait names the sessions that answered in it and how each ended.
     const results = f.runtime.items(parent.id, {}).items.filter((item) => item.role === "toolResult");
     const [a, b] = results.slice(0, 2).map((item) => (item.details as { id: string }).id);
-    assert.deepEqual(results[2]!.details, { answers: [{ id: a, how: "finished" }, { id: b, how: "finished" }] });
+    assert.deepEqual(results[2]!.details, {
+      answers: [
+        { id: a, how: "finished" },
+        { id: b, how: "finished" },
+      ],
+    });
     // Neither was kept, so both are put away: off the lists, still found by their ids.
     await eventually(() => f.children(parent.id).length === 0);
     assert.equal(await f.answer(parent.id, say("look")), "Everything this session started is done and put away.");
@@ -316,10 +382,19 @@ test("race: wait for any returns with the first answer; the parent stops the res
     const slow = steps(["start_process", { command: `node -e "setTimeout(() => {}, 20000)"`, title: "long job" }], ["wait"]);
     const raced = await f.answer(
       parent.id,
-      steps(["start_session", { brief: slow, title: "Slow" }], ["start_session", { brief: "quick", title: "Quick" }], ["wait", { for: "any", seconds: 30 }], ["stop", { id: "session-1" }]),
+      steps(
+        ["start_session", { brief: slow, title: "Slow" }],
+        ["start_session", { brief: "quick", title: "Quick" }],
+        ["wait", { for: "any", seconds: 30 }],
+        ["stop", { id: "session-1" }],
+      ),
     );
     assert.equal(raced, "Stopped.");
-    const waited = f.runtime.items(parent.id, {}).items.filter((item) => item.role === "toolResult").map(text).at(-2);
+    const waited = f.runtime
+      .items(parent.id, {})
+      .items.filter((item) => item.role === "toolResult")
+      .map(text)
+      .at(-2);
     assert.equal(waited, 'session-2: "Quick" finished:\n\nlocal:quick\n\nStill open: session-1.');
     await f.idle(parent.id);
     await pause(400);
@@ -335,10 +410,21 @@ test("pipeline: one after another, each answer in hand before the next starts", 
     const parent = await f.runtime.create({ folder: f.folder });
     await f.answer(
       parent.id,
-      steps(["start_session", { brief: "draft", title: "Writer", keep: true }], ["wait", { ids: ["session-1"] }], ["start_session", { brief: "review the draft", title: "Reviewer", keep: true }], ["wait", { ids: ["session-2"] }]),
+      steps(
+        ["start_session", { brief: "draft", title: "Writer", keep: true }],
+        ["wait", { ids: ["session-1"] }],
+        ["start_session", { brief: "review the draft", title: "Reviewer", keep: true }],
+        ["wait", { ids: ["session-2"] }],
+      ),
     );
-    const results = f.runtime.items(parent.id, {}).items.filter((item) => item.role === "toolResult").map(text);
-    assert.deepEqual([results[1], results[3]], ['session-1: "Writer" finished:\n\nlocal:draft', 'session-2: "Reviewer" finished:\n\nlocal:review the draft']);
+    const results = f.runtime
+      .items(parent.id, {})
+      .items.filter((item) => item.role === "toolResult")
+      .map(text);
+    assert.deepEqual(
+      [results[1], results[3]],
+      ['session-1: "Writer" finished:\n\nlocal:draft', 'session-2: "Reviewer" finished:\n\nlocal:review the draft'],
+    );
     // The reviewer was started only once the writer's answer was in.
     const [writer, reviewer] = f.children(parent.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     assert.ok(f.runtime.items(writer!.id, {}).items.some((item) => text(item) === "local:draft"));
@@ -352,7 +438,10 @@ test("a wait never traps its session: a raise from what it started ends it, with
   const f = await fixture();
   try {
     const parent = await f.runtime.create({ folder: f.folder });
-    const waited = await f.answer(parent.id, steps(["start_session", { brief: say("raise", { text: "A or B?" }), title: "Asker" }], ["wait"]));
+    const waited = await f.answer(
+      parent.id,
+      steps(["start_session", { brief: say("raise", { text: "A or B?" }), title: "Asker" }], ["wait"]),
+    );
     assert.equal(
       waited,
       'The session "Asker" (session-1) you started raises this, and waits for your answer (pispark_send):\n\nA or B?\n\nThe wait ended early: something this session started raised (above). Still open: session-1.',
@@ -373,14 +462,20 @@ test("a wait never traps its session: a message the person types ends it, and is
   const f = await fixture();
   try {
     const session = await f.runtime.create({ folder: f.folder });
-    const run = f.runtime.start(session.id, steps(["start_process", { command: `node -e "setTimeout(() => {}, 20000)"`, title: "long job" }], ["wait"]));
+    const run = f.runtime.start(
+      session.id,
+      steps(["start_process", { command: `node -e "setTimeout(() => {}, 20000)"`, title: "long job" }], ["wait"]),
+    );
     // The wait is under way once the start has answered.
     await eventually(() => f.runtime.items(session.id, {}).items.some((item) => item.role === "toolResult"));
     await pause(300);
     await f.runtime.queue(session.id, "never mind, stop there", "steer");
     await run.completion;
     const items = f.runtime.items(session.id, {}).items;
-    assert.equal(text(items.filter((item) => item.role === "toolResult").at(-1)!), "The wait ended early: a message arrived for this session. Still open: process-1.");
+    assert.equal(
+      text(items.filter((item) => item.role === "toolResult").at(-1)!),
+      "The wait ended early: a message arrived for this session. Still open: process-1.",
+    );
     assert.equal(text(items.findLast((item) => item.role === "assistant")!), "local:never mind, stop there");
     f.runtime.stopProcess(session.id, f.runtime.listProcesses(session.id)[0]!.id);
   } finally {
@@ -407,7 +502,10 @@ test("a parent stops a child and what it started; it knows, so no answer comes b
   try {
     const parent = await f.runtime.create({ folder: f.folder });
     const server = `node -e "setInterval(() => {}, 1000)"`;
-    await f.runtime.start(parent.id, say("start_session", { brief: say("start_process", { command: server, title: "server" }), title: "Runner" })).completion;
+    await f.runtime.start(
+      parent.id,
+      say("start_session", { brief: say("start_process", { command: server, title: "server" }), title: "Runner" }),
+    ).completion;
     const [child] = f.children(parent.id);
     assert.ok(child);
     await f.idle(child.id);
@@ -438,11 +536,18 @@ test("a message to a working child reaches it at once, even while it waits, and 
     const [child] = f.children(parent.id);
     assert.ok(child);
     await eventually(() => f.runtime.listProcesses(child.id).length === 1);
-    assert.equal(await f.answer(parent.id, say("send", { id: "session-1", text: "also run the linter" })), "Sent. It reads this at its next pause.");
+    assert.equal(
+      await f.answer(parent.id, say("send", { id: "session-1", text: "also run the linter" })),
+      "Sent. It reads this at its next pause.",
+    );
     await eventually(() => f.heard(parent.id, child.id).length === 1, 20_000);
     // The message ended its wait, so the process's end reached it afterwards: both replies are its one answer.
     const answer = f.heard(parent.id, child.id)[0]!;
-    assert.ok(answer.indexOf("local:also run the linter") > 0 && answer.indexOf('local:The process "build" (process-1) exited 0') > answer.indexOf("local:also run the linter"), answer);
+    assert.ok(
+      answer.indexOf("local:also run the linter") > 0 &&
+        answer.indexOf('local:The process "build" (process-1) exited 0') > answer.indexOf("local:also run the linter"),
+      answer,
+    );
     await pause(300);
     assert.equal(f.heard(parent.id, child.id).length, 1);
   } finally {
@@ -467,13 +572,19 @@ test("a child that is not kept is put away once it is done: its answer still arr
     await f.idle(parent.id);
     assert.equal(await f.answer(parent.id, say("look")), "Everything this session started is done and put away.");
     assert.equal(await f.answer(parent.id, say("look", { id: "session-1" })), '"Helper" — put away');
-    assert.match(await f.answer(parent.id, say("send", { id: "session-1", text: "second" })), /^That session was put away when it was done, so it cannot be told more\. Start a new one with what it needs to know, and pass keep: true/);
+    assert.match(
+      await f.answer(parent.id, say("send", { id: "session-1", text: "second" })),
+      /^That session was put away when it was done, so it cannot be told more\. Start a new one with what it needs to know, and pass keep: true/,
+    );
     assert.equal(await f.answer(parent.id, say("stop", { id: "session-1" })), "It is already put away.");
 
     // The person brings it back: it is at rest, can be told more, and is put away again when it has answered.
     f.runtime.restore(id);
     assert.equal(await f.answer(parent.id, say("look")), 'session-1: "Helper" — at rest');
-    assert.equal(await f.answer(parent.id, say("send", { id: "session-1", text: "second" })), "Sent. Its answer arrives here as a message when it is done.");
+    assert.equal(
+      await f.answer(parent.id, say("send", { id: "session-1", text: "second" })),
+      "Sent. Its answer arrives here as a message when it is done.",
+    );
     await eventually(() => f.heard(parent.id, id).length === 2);
     await eventually(() => f.children(parent.id).length === 0);
   } finally {
@@ -497,7 +608,10 @@ test("a kept child stays when it has answered; stopping it at work leaves it, st
     await f.answer(parent.id, say("send", { id: "session-1", text: server }));
     await eventually(() => f.runtime.listProcesses(child!.id)[0]?.state === "running");
     await f.idle(child!.id);
-    assert.equal(await f.answer(parent.id, say("stop", { id: "session-1" })), "Stopped. It is kept: pispark_send tells it more, and pispark_stop again puts it away.");
+    assert.equal(
+      await f.answer(parent.id, say("stop", { id: "session-1" })),
+      "Stopped. It is kept: pispark_send tells it more, and pispark_stop again puts it away.",
+    );
     assert.equal(await f.answer(parent.id, say("look")), 'session-1: "Helper" — stopped');
     assert.equal(await f.answer(parent.id, say("stop", { id: "session-1" })), "Put away.");
     assert.equal(f.children(parent.id).length, 0);
@@ -511,7 +625,10 @@ test("a child the person has open when it is done is not put away under them", a
   try {
     const parent = await f.runtime.create({ folder: f.folder });
     const slow = `node -e "setTimeout(() => console.log('built'), 1500)"`;
-    await f.runtime.start(parent.id, say("start_session", { brief: say("start_process", { command: slow, title: "build" }), title: "Builder" })).completion;
+    await f.runtime.start(
+      parent.id,
+      say("start_session", { brief: say("start_process", { command: slow, title: "build" }), title: "Builder" }),
+    ).completion;
     const [child] = f.children(parent.id);
     assert.ok(child);
     const watching = f.runtime.observeLive(child.id);
@@ -529,27 +646,46 @@ test("archiving a parent takes its children along; restore brings them back; del
   const f = await fixture();
   try {
     const parent = await f.runtime.create({ folder: f.folder });
-    await f.runtime.start(parent.id, steps(["start_session", { brief: "work", title: "Child", keep: true }], ["start_session", { brief: "once", title: "Done" }], ["wait"])).completion;
+    await f.runtime.start(
+      parent.id,
+      steps(
+        ["start_session", { brief: "work", title: "Child", keep: true }],
+        ["start_session", { brief: "once", title: "Done" }],
+        ["wait"],
+      ),
+    ).completion;
     const [child] = f.children(parent.id).filter((each) => each.title === "Child");
-    const done = f.runtime.items(parent.id, {}).items.filter((item) => item.role === "toolResult").map((item) => (item.details as { id?: string } | undefined)?.id)[1]!;
+    const done = f.runtime
+      .items(parent.id, {})
+      .items.filter((item) => item.role === "toolResult")
+      .map((item) => (item.details as { id?: string } | undefined)?.id)[1]!;
     // One child was kept; the other was put away when it was done.
     await eventually(() => f.children(parent.id).length === 1);
     await f.idle(parent.id);
     await f.runtime.archive(parent.id);
     // With its parent archived too, every child of it is among the archived.
     assert.deepEqual(
-      f.runtime.archived().map((s) => s.id).sort(),
+      f.runtime
+        .archived()
+        .map((s) => s.id)
+        .sort(),
       [parent.id, child!.id, done].sort(),
     );
     // Restoring brings back the child it still had, not the one that was put away when it was done.
     f.runtime.restore(parent.id);
-    assert.deepEqual(f.children(parent.id).map((s) => s.id), [child!.id]);
+    assert.deepEqual(
+      f.children(parent.id).map((s) => s.id),
+      [child!.id],
+    );
     assert.equal(f.metadata(done).archived, true);
     await f.runtime.archive(parent.id);
     f.runtime.delete(parent.id);
     assert.equal(existsSync(join(f.home, "sessions", child!.id)), false);
     assert.equal(existsSync(join(f.home, "sessions", done)), false);
-    assert.throws(() => f.runtime.restore(child!.id), (e) => e instanceof RuntimeError && e.code === "not-found");
+    assert.throws(
+      () => f.runtime.restore(child!.id),
+      (e) => e instanceof RuntimeError && e.code === "not-found",
+    );
   } finally {
     await f.cleanup();
   }
@@ -631,7 +767,10 @@ test("a child answers once, when at rest: a process it still waits for holds the
     const parent = await f.runtime.create({ folder: f.folder });
     // The child's first turn starts a process that outlives the turn.
     const slow = `node -e "setTimeout(() => console.log('tests passed'), 3000)"`;
-    await f.runtime.start(parent.id, say("start_session", { brief: say("start_process", { command: slow, title: "tests" }), title: "Builder" })).completion;
+    await f.runtime.start(
+      parent.id,
+      say("start_session", { brief: say("start_process", { command: slow, title: "tests" }), title: "Builder" }),
+    ).completion;
     const [child] = f.children(parent.id);
     assert.ok(child);
     await f.idle(child.id);
@@ -669,7 +808,12 @@ test("a process end the child has already taken is not told again: one run, one 
     await pause(400);
     // The end was not sent to the child as a second message, so the child ran once.
     const childItems = f.runtime.items(child.id, {}).items;
-    assert.equal(childItems.filter((item) => item.customType === WOKEN_ENTRY && (item.details as { source: { kind: string } }).source.kind === "process").length, 0);
+    assert.equal(
+      childItems.filter(
+        (item) => item.customType === WOKEN_ENTRY && (item.details as { source: { kind: string } }).source.kind === "process",
+      ).length,
+      0,
+    );
     assert.equal(childItems.filter((item) => item.role === "assistant" && text(item).startsWith("local:")).length, 1);
     assert.equal(f.heard(parent.id, child.id).length, 1);
   } finally {
@@ -707,7 +851,10 @@ test("the real case in small: several processes, some already taken, one answer 
     const parent = await f.runtime.create({ folder: f.folder });
     // Two checks the child waits for in its turn, and one that ends after the turn.
     const check = (title: string): ["start_process", object] => ["start_process", { command: `node -e "console.log('done')"`, title }];
-    const late: ["start_process", object] = ["start_process", { command: `node -e "setTimeout(() => console.log('late'), 3000)"`, title: "late check" }];
+    const late: ["start_process", object] = [
+      "start_process",
+      { command: `node -e "setTimeout(() => console.log('late'), 3000)"`, title: "late check" },
+    ];
     const brief = steps(check("typecheck"), check("unit tests"), late, ["wait", { ids: ["process-1", "process-2"] }]);
     await f.runtime.start(parent.id, say("start_session", { brief, title: "Implementer", keep: true })).completion;
     const [child] = f.children(parent.id);
@@ -715,8 +862,14 @@ test("the real case in small: several processes, some already taken, one answer 
     await eventually(() => f.heard(parent.id, child.id).length === 1, 20_000);
     await pause(400);
     // Only the end it had not taken was sent to it; its parent heard once.
-    const woken = f.runtime.items(child.id, {}).items.filter((item) => item.customType === WOKEN_ENTRY).map((item) => (item.details as { source: { kind: string; label: string } }).source);
-    assert.deepEqual(woken.filter((source) => source.kind === "process").map((source) => source.label), ["late check · exited 0"]);
+    const woken = f.runtime
+      .items(child.id, {})
+      .items.filter((item) => item.customType === WOKEN_ENTRY)
+      .map((item) => (item.details as { source: { kind: string; label: string } }).source);
+    assert.deepEqual(
+      woken.filter((source) => source.kind === "process").map((source) => source.label),
+      ["late check · exited 0"],
+    );
     assert.equal(f.heard(parent.id, child.id).length, 1);
   } finally {
     await f.cleanup();
@@ -763,7 +916,12 @@ test("reaching in: a parent waiting for a child the person stops gets that as th
     await pause(300);
     await f.runtime.cancel(child!.id);
     await run.completion;
-    const waited = text(f.runtime.items(parent.id, {}).items.filter((item) => item.role === "toolResult").at(-1)!);
+    const waited = text(
+      f.runtime
+        .items(parent.id, {})
+        .items.filter((item) => item.role === "toolResult")
+        .at(-1)!,
+    );
     assert.match(waited, /^session-1: "Runner" stopped by the person:\n\n/);
     // Taken by the wait: no line is added as well.
     await pause(300);
@@ -779,7 +937,10 @@ test("reaching in: telling a child that works for its parent is noted for the pa
   try {
     const parent = await f.runtime.create({ folder: f.folder });
     const slow = `node -e "setTimeout(() => console.log('built'), 3000)"`;
-    await f.runtime.start(parent.id, say("start_session", { brief: say("start_process", { command: slow, title: "build" }), title: "Builder", keep: true })).completion;
+    await f.runtime.start(
+      parent.id,
+      say("start_session", { brief: say("start_process", { command: slow, title: "build" }), title: "Builder", keep: true }),
+    ).completion;
     const [child] = f.children(parent.id);
     assert.ok(child);
     await f.idle(child.id);
@@ -817,7 +978,14 @@ test("the session list says where each child's ask stands: working, waiting and 
 
     // Working, then waiting for what it started, then answered.
     const slow = `node -e "setTimeout(() => console.log('ok'), 2500)"`;
-    await f.answer(parent.id, say("start_session", { brief: steps(["note", { text: "starting the tests" }], ["start_process", { command: slow, title: "tests" }]), title: "Tester", keep: true }));
+    await f.answer(
+      parent.id,
+      say("start_session", {
+        brief: steps(["note", { text: "starting the tests" }], ["start_process", { command: slow, title: "tests" }]),
+        title: "Tester",
+        keep: true,
+      }),
+    );
     assert.equal(ask("Tester")?.state, "working");
     await eventually(() => ask("Tester")?.state === "waiting");
     assert.deepEqual(ask("Tester"), { state: "waiting", detail: "for tests", note: "starting the tests" });
@@ -833,7 +1001,10 @@ test("the session list says where each child's ask stands: working, waiting and 
 
     // Stopped by its parent's agent, and stopped by the person.
     const long = steps(["start_process", { command: `node -e "setTimeout(() => {}, 20000)"`, title: "long job" }], ["wait"]);
-    await f.answer(parent.id, steps(["start_session", { brief: long, title: "One", keep: true }], ["start_session", { brief: long, title: "Two", keep: true }]));
+    await f.answer(
+      parent.id,
+      steps(["start_session", { brief: long, title: "One", keep: true }], ["start_session", { brief: long, title: "Two", keep: true }]),
+    );
     const two = f.children(parent.id).find((child) => child.title === "Two")!;
     await eventually(() => f.runtime.listProcesses(two.id).length === 1);
     await f.answer(parent.id, say("stop", { id: "session-3" }));
@@ -845,7 +1016,14 @@ test("the session list says where each child's ask stands: working, waiting and 
     await eventually(() => f.runtime.listProcesses(two.id)[0]!.state === "stopped", 20_000);
 
     // A child that only waits (its run ended, a process still runs) is stopped the same way.
-    await f.answer(parent.id, say("start_session", { brief: say("start_process", { command: `node -e "setTimeout(() => {}, 20000)"`, title: "server" }), title: "Three", keep: true }));
+    await f.answer(
+      parent.id,
+      say("start_session", {
+        brief: say("start_process", { command: `node -e "setTimeout(() => {}, 20000)"`, title: "server" }),
+        title: "Three",
+        keep: true,
+      }),
+    );
     const three = f.children(parent.id).find((child) => child.title === "Three")!;
     await eventually(() => ask("Three")?.state === "waiting");
     await f.runtime.cancel(three.id);

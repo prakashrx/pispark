@@ -34,7 +34,8 @@ for (const built of ["apps/server/dist/index.js", "apps/web/dist/index.html", "a
 
 const windowsHost = process.platform === "win32";
 // Windows cannot record Linux file modes (the executable bit on node and esbuild): build Linux releases on Linux.
-if (windowsHost && os === "linux") throw new Error("Build Linux releases on Linux (or in WSL); a Windows-made archive loses the executable bits.");
+if (windowsHost && os === "linux")
+  throw new Error("Build Linux releases on Linux (or in WSL); a Windows-made archive loses the executable bits.");
 const tar = windowsHost ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe") : "tar";
 const run = (file, argv, options = {}) => {
   const result = spawnSync(file, argv, { stdio: "inherit", shell: false, ...options });
@@ -52,7 +53,10 @@ mkdirSync(cache, { recursive: true });
 const cached = join(cache, nodeFile);
 if (!existsSync(cached)) {
   const sums = await (await fetch(`https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt`)).text();
-  const expected = sums.split("\n").find((l) => l.endsWith(`  ${nodeFile}`))?.split(" ")[0];
+  const expected = sums
+    .split("\n")
+    .find((l) => l.endsWith(`  ${nodeFile}`))
+    ?.split(" ")[0];
   if (!expected) throw new Error(`nodejs.org lists no ${nodeFile}`);
   console.log(`Downloading ${nodeFile}`);
   const response = await fetch(`https://nodejs.org/dist/v${NODE_VERSION}/${nodeFile}`);
@@ -66,7 +70,23 @@ mkdirSync(unpacked, { recursive: true });
 run(tar, ["-xf", cached, "-C", unpacked]);
 renameSync(join(unpacked, readdirSync(unpacked)[0]), join(stage, "node"));
 // Keep the bundled npm CLI for locked dependencies in session extension drafts.
-for (const extra of ["node_modules/corepack", "npm", "npm.cmd", "npm.ps1", "npx", "npx.cmd", "npx.ps1", "corepack", "corepack.cmd", "install_tools.bat", "nodevars.bat", "include", "share", "CHANGELOG.md", "README.md"])
+for (const extra of [
+  "node_modules/corepack",
+  "npm",
+  "npm.cmd",
+  "npm.ps1",
+  "npx",
+  "npx.cmd",
+  "npx.ps1",
+  "corepack",
+  "corepack.cmd",
+  "install_tools.bat",
+  "nodevars.bat",
+  "include",
+  "share",
+  "CHANGELOG.md",
+  "README.md",
+])
   rmSync(join(stage, "node", extra), { recursive: true, force: true });
 for (const extra of ["npm", "npx", "corepack"]) rmSync(join(stage, "node", "bin", extra), { force: true });
 rmSync(join(stage, "node", "lib", "node_modules", "corepack"), { recursive: true, force: true });
@@ -74,16 +94,31 @@ rmSync(join(stage, "node", "lib", "node_modules", "corepack"), { recursive: true
 // 2. The app: production dependencies of the server for the target platform, from the lockfile.
 const app = join(stage, "app");
 mkdirSync(app, { recursive: true });
-for (const file of ["package.json", "package-lock.json", "LICENSE", "VISION.md"]) if (existsSync(join(repo, file))) cpSync(join(repo, file), join(app, file));
+for (const file of ["package.json", "package-lock.json", "LICENSE", "VISION.md"])
+  if (existsSync(join(repo, file))) cpSync(join(repo, file), join(app, file));
 for (const workspace of ["server", "web", "launcher"]) {
   mkdirSync(join(app, "apps", workspace), { recursive: true });
   cpSync(join(repo, "apps", workspace, "package.json"), join(app, "apps", workspace, "package.json"));
 }
 const npm = windowsHost ? "npm.cmd" : "npm";
-run(npm, ["ci", "--omit=dev", "--workspace=@pispark/server", `--os=${os === "win" ? "win32" : "linux"}`, `--cpu=${arch}`, "--ignore-scripts", "--no-audit", "--no-fund", "--loglevel=error"], {
-  cwd: app,
-  shell: windowsHost,
-});
+run(
+  npm,
+  [
+    "ci",
+    "--omit=dev",
+    "--workspace=@pispark/server",
+    `--os=${os === "win" ? "win32" : "linux"}`,
+    `--cpu=${arch}`,
+    "--ignore-scripts",
+    "--no-audit",
+    "--no-fund",
+    "--loglevel=error",
+  ],
+  {
+    cwd: app,
+    shell: windowsHost,
+  },
+);
 rmSync(join(app, "node_modules", "@pispark"), { recursive: true, force: true });
 rmSync(join(app, "node_modules", ".package-lock.json"), { force: true });
 for (const [from, to] of [
@@ -110,7 +145,11 @@ try {
 }
 writeFileSync(
   join(stage, "release.json"),
-  JSON.stringify({ version, channel, launcher, os, arch, node: NODE_VERSION, ...(commit ? { commit } : {}), builtAt: new Date().toISOString() }, null, 2) + "\n",
+  JSON.stringify(
+    { version, channel, launcher, os, arch, node: NODE_VERSION, ...(commit ? { commit } : {}), builtAt: new Date().toISOString() },
+    null,
+    2,
+  ) + "\n",
 );
 
 // 4. The archive and SHA256SUMS.
@@ -119,7 +158,9 @@ rmSync(archive, { force: true });
 run(tar, ["-czf", archive, "-C", join(out, ".stage"), name]);
 rmSync(join(out, ".stage"), { recursive: true, force: true });
 const lines = [];
-for (const file of readdirSync(out).filter((f) => f.endsWith(".tar.gz")).sort()) {
+for (const file of readdirSync(out)
+  .filter((f) => f.endsWith(".tar.gz"))
+  .sort()) {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(join(out, file))) hash.update(chunk);
   lines.push(`${hash.digest("hex")}  ${file}`);

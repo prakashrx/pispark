@@ -20,7 +20,13 @@
   const compact = $derived(layout.size === "compact");
   const shown = $derived(section ?? "appearance");
   const sections = Object.entries(settingsSections) as [SettingsSection, (typeof settingsSections)[SettingsSection]][];
-  const icons: Record<SettingsSection, IconName> = { appearance: "general", providers: "providers", notifications: "bell", remote: "globe", about: "info" };
+  const icons: Record<SettingsSection, IconName> = {
+    appearance: "general",
+    providers: "providers",
+    notifications: "bell",
+    remote: "globe",
+    about: "info",
+  };
 </script>
 
 {#snippet page(which: SettingsSection)}
@@ -57,7 +63,8 @@
       <nav aria-label="Settings sections" class="sections">
         {#each sections as [id, info] (id)}
           <a class="nav-item" href={href({ name: "settings", section: id })} aria-current={shown === id ? "page" : undefined}
-            ><Icon name={icons[id]} class="h-4 w-4 text-muted-foreground" /><span class="flex-1">{info.label}</span>{#if id === "about" && sessions.host.available}<span class="update">Update</span>{/if}</a
+            ><Icon name={icons[id]} class="h-4 w-4 text-muted-foreground" /><span class="flex-1">{info.label}</span
+            >{#if id === "about" && sessions.host.available}<span class="update">Update</span>{/if}</a
           >
         {/each}
       </nav>

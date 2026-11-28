@@ -92,7 +92,14 @@
 <div class="markdown-editor" data-tone={tone} data-mode={editing ? "edit" : "preview"}>
   {#if editable}
     <div class="bar">
-      <Segmented label={`Show ${label} as`} options={[{ value: "preview", label: "Preview" }, { value: "edit", label: "Edit" }]} bind:value={mode} />
+      <Segmented
+        label={`Show ${label} as`}
+        options={[
+          { value: "preview", label: "Preview" },
+          { value: "edit", label: "Edit" },
+        ]}
+        bind:value={mode}
+      />
     </div>
   {/if}
   {#if editing}

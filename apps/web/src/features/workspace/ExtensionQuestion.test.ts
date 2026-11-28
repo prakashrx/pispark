@@ -36,7 +36,12 @@ test("a long list is filtered by typing, Enter picks the first match, and no mat
   const filter = screen.getByRole("searchbox", { name: "Filter options" });
   expect(document.activeElement).toBe(filter);
   await fireEvent.input(filter, { target: { value: "option 1" } });
-  expect(screen.getAllByRole("button", { name: /Option 1/ }).map((b) => b.textContent!.replace(/\s+/g, " ").trim())).toEqual(["1 Option 1", "2 Option 10", "3 Option 11", "4 Option 12"]);
+  expect(screen.getAllByRole("button", { name: /Option 1/ }).map((b) => b.textContent!.replace(/\s+/g, " ").trim())).toEqual([
+    "1 Option 1",
+    "2 Option 10",
+    "3 Option 11",
+    "4 Option 12",
+  ]);
   await fireEvent.keyDown(filter, { key: "Enter" });
   expect(onanswer).toHaveBeenLastCalledWith("Option 1");
   await fireEvent.input(filter, { target: { value: "zzz" } });

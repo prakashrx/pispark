@@ -19,18 +19,14 @@
 
   let { screen = false }: { screen?: boolean } = $props();
   const client = useSessions();
-  let query = $state(untrack(() => screen ? client.phoneList.query : ""));
+  let query = $state(untrack(() => (screen ? client.phoneList.query : "")));
   function restoreList(node: HTMLElement) {
     if (screen) node.scrollTop = client.phoneList.top;
   }
   let step = 0;
 
   const backend = $derived(
-    ["Connected", "Live", "Unloaded"].includes(client.connection)
-      ? "ok"
-      : client.connection === "Disconnected"
-        ? "offline"
-        : "connecting",
+    ["Connected", "Live", "Unloaded"].includes(client.connection) ? "ok" : client.connection === "Disconnected" ? "offline" : "connecting",
   );
   const apps = $derived(client.agents.items.filter((agent) => agent.valid && agent.home));
   // Most recently active first (L-07): a session you just replied to is at the top, whenever it started.
@@ -39,7 +35,9 @@
   // sessions under the app.
   const listed = $derived(new Set(client.sessions.map((session) => session.id)));
   const roots = $derived(newestFirst.filter((session) => !session.agent?.home && !(session.parent && listed.has(session.parent))));
-  $effect(() => { if (screen) client.phoneList.query = query; });
+  $effect(() => {
+    if (screen) client.phoneList.query = query;
+  });
   const needle = $derived(query.trim().toLowerCase());
   const found = $derived(needle ? newestFirst.filter((session) => sessionName(session).toLowerCase().includes(needle)) : []);
   const groups = $derived(dateGroups(roots));
@@ -74,7 +72,12 @@
       <span class="brand-name">PiSpark</span>
     </a>
     <!-- Quiet when the server is reached; otherwise said in words, not only colour. -->
-    <span class="backend" data-state={backend} role="img" aria-label={`Backend: ${client.connection}`} title={`Backend: ${client.connection}`}
+    <span
+      class="backend"
+      data-state={backend}
+      role="img"
+      aria-label={`Backend: ${client.connection}`}
+      title={`Backend: ${client.connection}`}
       >{#if backend !== "ok"}<span aria-hidden="true">{backend === "offline" ? "Offline" : "Connecting…"}</span>{/if}</span
     >
     <span class="grow"></span>
@@ -100,47 +103,56 @@
       </button>{/if}
   </div>
 
-  <div class="list" use:restoreList onscroll={(event) => { if (screen) client.phoneList.top = event.currentTarget.scrollTop; }}>
+  <div
+    class="list"
+    use:restoreList
+    onscroll={(event) => {
+      if (screen) client.phoneList.top = event.currentTarget.scrollTop;
+    }}
+  >
     {#if apps.length && !needle}
       <nav aria-label="Apps">
         <p class="label">Apps</p>
-        <div class="space-y-px">{#each apps as app (app.id)}<AppEntry {app} />{/each}</div>
+        <div class="space-y-px">
+          {#each apps as app (app.id)}<AppEntry {app} />{/each}
+        </div>
       </nav>
     {/if}
-  <nav aria-label="Sessions" bind:this={sessionsNav}>
-    {#if needle}
-      <p class="label">Results</p>
-      {#each found as session (session.id)}<SessionRow {session} name={sessionName(session)} />{:else}<p class="empty">
-          No session matches “{query.trim()}”.
-        </p>{/each}
-    {:else}
-      {#each groups as group (group.label)}
-        <p class="label">{group.label}</p>
-        <div class="space-y-px">
-          {#each group.items as session (session.id)}<SessionTree {session} name={sessionName(session)} />{/each}
-        </div>
+    <nav aria-label="Sessions" bind:this={sessionsNav}>
+      {#if needle}
+        <p class="label">Results</p>
+        {#each found as session (session.id)}<SessionRow {session} name={sessionName(session)} />{:else}<p class="empty">
+            No session matches “{query.trim()}”.
+          </p>{/each}
       {:else}
-        {#if screen && !client.catalogLoading && client.providers.noModel}
-          <div class="first">
-            <span class="brand-mark first-mark" aria-hidden="true">π</span>
-            <p class="first-title">Welcome to PiSpark</p>
-            <p class="first-text">Connect a model provider first, such as OpenAI or Anthropic. It takes a minute.</p>
-            <a class="ui-button" data-variant="primary" href="#/settings/providers">Set up a provider</a>
+        {#each groups as group (group.label)}
+          <p class="label">{group.label}</p>
+          <div class="space-y-px">
+            {#each group.items as session (session.id)}<SessionTree {session} name={sessionName(session)} />{/each}
           </div>
-        {:else if screen && !client.catalogLoading}
-          <div class="first">
-            <span class="brand-mark first-mark" aria-hidden="true">π</span>
-            <p class="first-title">No sessions yet</p>
-            <p class="first-text">Ask anything to start one. Sessions keep running here, even with the browser closed.</p>
-            <a class="ui-button" data-variant="primary" href="#/new">New session</a>
-          </div>
-        {:else}<p class="empty">No sessions yet.</p>{/if}
-      {/each}
-      {#if client.archivedCount}<a class="nav-item archived" href="#/archived" aria-current={at("archived")}
-          ><Icon name="archive" class="h-4 w-4" /><span class="flex-1">Archived</span> <span class="count">{client.archivedCount}</span></a
-        >{/if}
-    {/if}
-  </nav>
+        {:else}
+          {#if screen && !client.catalogLoading && client.providers.noModel}
+            <div class="first">
+              <span class="brand-mark first-mark" aria-hidden="true">π</span>
+              <p class="first-title">Welcome to PiSpark</p>
+              <p class="first-text">Connect a model provider first, such as OpenAI or Anthropic. It takes a minute.</p>
+              <a class="ui-button" data-variant="primary" href="#/settings/providers">Set up a provider</a>
+            </div>
+          {:else if screen && !client.catalogLoading}
+            <div class="first">
+              <span class="brand-mark first-mark" aria-hidden="true">π</span>
+              <p class="first-title">No sessions yet</p>
+              <p class="first-text">Ask anything to start one. Sessions keep running here, even with the browser closed.</p>
+              <a class="ui-button" data-variant="primary" href="#/new">New session</a>
+            </div>
+          {:else}<p class="empty">No sessions yet.</p>{/if}
+        {/each}
+        {#if client.archivedCount}<a class="nav-item archived" href="#/archived" aria-current={at("archived")}
+            ><Icon name="archive" class="h-4 w-4" /><span class="flex-1">Archived</span>
+            <span class="count">{client.archivedCount}</span></a
+          >{/if}
+      {/if}
+    </nav>
   </div>
 
   <div class="foot" class:bar={screen}>
@@ -215,7 +227,9 @@
     color: #fff;
     font-weight: 700;
     line-height: 1;
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.25);
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.12),
+      inset 0 1px 0 rgb(255 255 255 / 0.25);
   }
   .backend {
     display: inline-flex;

@@ -5,6 +5,7 @@ import { extname, resolve } from "node:path";
 import type { SessionHttp } from "./session-http.js";
 import { silentLogger, type SafeLogger } from "../core/logger.js";
 import { isInside } from "../core/files.js";
+import { logFailure } from "./io.js";
 
 const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -25,28 +26,18 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
-async function serveStatic(
-  path: string,
-  webRoot: string,
-  response: ServerResponse,
-  head: boolean,
-) {
+async function serveStatic(path: string, webRoot: string, response: ServerResponse, head: boolean) {
   // Only the built entry, icon, and assets are served directly.
-  if (path !== "/" && !ROOT_FILES.has(path) && !path.startsWith("/assets/"))
-    return false;
+  if (path !== "/" && !ROOT_FILES.has(path) && !path.startsWith("/assets/")) return false;
   const file = resolve(webRoot, path === "/" ? "index.html" : `.${path}`);
   if (!isInside(webRoot, file)) return false;
   const contentType = contentTypes[extname(file)];
   if (!contentType) return false;
 
   try {
-    const [root, canonicalFile] = await Promise.all([
-      realpath(webRoot),
-      realpath(file),
-    ]);
+    const [root, canonicalFile] = await Promise.all([realpath(webRoot), realpath(file)]);
     // Containment must hold after resolving symlinks as well as before.
-    if (!isInside(root, canonicalFile) || !(await stat(canonicalFile)).isFile())
-      return false;
+    if (!isInside(root, canonicalFile) || !(await stat(canonicalFile)).isFile()) return false;
     const body = await readFile(canonicalFile);
     response.writeHead(200, {
       "Content-Type": contentType,
@@ -55,12 +46,7 @@ async function serveStatic(
     response.end(head ? undefined : body);
     return true;
   } catch (error) {
-    if (
-      ["ENOENT", "ENOTDIR"].includes(
-        (error as NodeJS.ErrnoException).code ?? "",
-      )
-    )
-      return false;
+    if (["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) return false;
     throw error;
   }
 }
@@ -84,40 +70,32 @@ export function createAppServer({
         // Read the raw path, not a URL-normalized path which could hide traversal segments.
         path = decodeURIComponent((request.url ?? "/").split("?")[0] ?? "/");
       } catch {
-        json(response, 400, { error: "Invalid path" });
+        json(response, 400, { error: "invalid-input" });
         return;
       }
-      if (
-        !path.startsWith("/") ||
-        /[\\\0]/.test(path) ||
-        path.split("/").some((part) => part.startsWith("."))
-      ) {
-        json(response, 400, { error: "Invalid path" });
+      if (!path.startsWith("/") || /[\\\0]/.test(path) || path.split("/").some((part) => part.startsWith("."))) {
+        json(response, 400, { error: "invalid-input" });
         return;
       }
       if (path === "/api" || path.startsWith("/api/")) {
         if (sessions && path !== "/api/health") {
           await sessions.handle(request, response);
         } else if (path !== "/api/health") {
-          json(response, 404, { error: "API route not found" });
+          json(response, 404, { error: "not-found" });
         } else if (request.method === "GET") {
           json(response, 200, { status: "ok", service: "pispark" });
         } else {
           response.setHeader("Allow", "GET");
-          json(response, 405, { error: "Method not allowed" });
+          json(response, 405, { error: "invalid-input" });
         }
         return;
       }
       if (request.method !== "GET" && request.method !== "HEAD") {
         response.setHeader("Allow", "GET, HEAD");
-        json(response, 405, { error: "Method not allowed" });
+        json(response, 405, { error: "invalid-input" });
         return;
       }
-      if (
-        root &&
-        (await serveStatic(path, root, response, request.method === "HEAD"))
-      )
-        return;
+      if (root && (await serveStatic(path, root, response, request.method === "HEAD"))) return;
       // SPA fallback for non-asset, non-API GET requests.
       if (
         root &&
@@ -127,16 +105,12 @@ export function createAppServer({
         (await serveStatic("/", root, response, false))
       )
         return;
-      json(response, 404, { error: "Not found" });
-    } catch {
-      // Request errors can contain provider/tool secrets; never log raw exceptions.
-      logger.event(
-        "http.failure",
-        { code: "execution", outcome: "failed" },
-        "error",
-      );
+      json(response, 404, { error: "not-found" });
+    } catch (error) {
+      // Request errors can contain provider/tool secrets: the logger keeps only what kind of error it was.
+      logFailure(logger, request, error, { status: 500, code: "execution" });
       if (response.headersSent) response.end();
-      else json(response, 500, { error: "Internal server error" });
+      else json(response, 500, { error: "execution" });
     }
   });
 }

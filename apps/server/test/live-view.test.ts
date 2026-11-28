@@ -33,7 +33,10 @@ test("a live view turns a growing answer into appends and a commit keeps the ite
     const runtime = new SessionRuntime(h.configuration);
     const session = await runtime.create({ folder: await h.folder("work") });
     const { view, events } = runtime.observeLive(session.id);
-    const state = { doc: (view.snapshot() as { doc: unknown }).doc as { [key: string]: Json }, head: (view.snapshot() as { head: string | null }).head };
+    const state = {
+      doc: (view.snapshot() as { doc: unknown }).doc as { [key: string]: Json },
+      head: (view.snapshot() as { head: string | null }).head,
+    };
     const committed: Item[] = [];
     const ops: LiveOp[] = [];
     const pump = () => {
@@ -62,7 +65,10 @@ test("a live view turns a growing answer into appends and a commit keeps the ite
     // After the first sight of the message, each tick only appended what was new.
     const appends = ops.filter((op) => op.op === "append");
     assert(appends.length >= 5);
-    assert(appends.every((op) => op.op === "append" && op.text.length <= 1000 + 5), "appends carry only new text");
+    assert(
+      appends.every((op) => op.op === "append" && op.text.length <= 1000 + 5),
+      "appends carry only new text",
+    );
     h.provider.requests[0]!.release();
     await run.completion;
     await eventually(() => {
@@ -114,7 +120,7 @@ test("images are described in items and served as bytes with a sandboxing policy
     await runtime.start(session.id, "tool:pictures:{}").completion;
     const result = runtime.items(session.id, {}).items.find((item) => item.role === "toolResult")!;
     assert.deepEqual(
-      result.parts.map((part) => part.type === "image" ? [part.type, part.mimeType] : [part.type]),
+      result.parts.map((part) => (part.type === "image" ? [part.type, part.mimeType] : [part.type])),
       [["text"], ["image", "image/png"], ["image", "image/svg+xml"]],
     );
     assert(!JSON.stringify(result).includes("iVBOR"), "no base64 travels in the item");

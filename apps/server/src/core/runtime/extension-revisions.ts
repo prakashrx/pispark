@@ -1,6 +1,20 @@
 import { prepareDependencies } from "./extension-dependencies.js";
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { writeAtomic } from "../files.js";
@@ -52,11 +66,17 @@ function snapshot(source: string, savedEntry?: string): Snapshot {
         throw new Error("Source changed while staging.");
       remaining -= length;
       files.set(key || basename(path), bytes.subarray(0, length));
-    } finally { closeSync(fd); }
+    } finally {
+      closeSync(fd);
+    }
   }
   const folder = lstatSync(source).isDirectory();
   visit(source, "", 0);
-  const entries = savedEntry ? [savedEntry] : folder ? ["index.ts", "index.js", "index.mjs", "index.mts"].filter((entry) => files.has(entry)) : [basename(source)];
+  const entries = savedEntry
+    ? [savedEntry]
+    : folder
+      ? ["index.ts", "index.js", "index.mjs", "index.mts"].filter((entry) => files.has(entry))
+      : [basename(source)];
   if (entries.length !== 1 || !files.has(entries[0]!) || !FILE.test(entries[0]!) || !ENTRY.test(entries[0]!))
     throw new Error("Give a Pi extension file or a folder with exactly one index.ts, index.js, index.mjs or index.mts.");
   const entry = entries[0]!;
@@ -72,10 +92,19 @@ export class ExtensionRevisions {
   read(): ExtensionState {
     try {
       const state = JSON.parse(readFileSync(join(this.root, "state.json"), "utf8")) as ExtensionState;
-      const valid = (change: ExtensionChange) => extensionNameValid(change.name) && hashValid(change.revision) &&
+      const valid = (change: ExtensionChange) =>
+        extensionNameValid(change.name) &&
+        hashValid(change.revision) &&
         (change.scope === undefined || change.scope === "session") &&
-        (change.snapshot === undefined ? change.entry === undefined : hashValid(change.snapshot) && typeof change.entry === "string" && FILE.test(change.entry) && ENTRY.test(change.entry));
-      if (!Array.isArray(state.active) || state.active.length > 16 || !state.active.every((change) => valid(change) && change.snapshot) || (state.staged && !valid(state.staged)))
+        (change.snapshot === undefined
+          ? change.entry === undefined
+          : hashValid(change.snapshot) && typeof change.entry === "string" && FILE.test(change.entry) && ENTRY.test(change.entry));
+      if (
+        !Array.isArray(state.active) ||
+        state.active.length > 16 ||
+        !state.active.every((change) => valid(change) && change.snapshot) ||
+        (state.staged && !valid(state.staged))
+      )
         throw new Error("Invalid session extension state.");
       return state;
     } catch (error) {
@@ -125,12 +154,22 @@ export class ExtensionRevisions {
           mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
           writeFileSync(file, bytes, { flag: "wx", mode: 0o600 });
         }
-        try { renameSync(temp, destination); }
-        catch (error) {
+        try {
+          renameSync(temp, destination);
+        } catch (error) {
           if (snapshot(destination, copy.entry).hash !== copy.hash) throw error;
         }
-      } finally { rmSync(temp, { recursive: true, force: true }); }
-      change = { name, ...(sessionRoot ? { scope: "session" } : {}), source: sessionRoot ? `extension-drafts/${source}` : source, entry: copy.entry, snapshot: copy.hash, revision: randomRevision(name, copy.hash) };
+      } finally {
+        rmSync(temp, { recursive: true, force: true });
+      }
+      change = {
+        name,
+        ...(sessionRoot ? { scope: "session" } : {}),
+        source: sessionRoot ? `extension-drafts/${source}` : source,
+        entry: copy.entry,
+        snapshot: copy.hash,
+        revision: randomRevision(name, copy.hash),
+      };
     } else change = { name, revision: randomRevision(name, prior!.snapshot!) };
     this.write({ ...state, staged: change });
     this.prune(state.staged?.snapshot);
@@ -146,7 +185,11 @@ export class ExtensionRevisions {
     const state = this.read();
     if (state.staged?.snapshot !== hash && !state.active.some((change) => change.snapshot === hash)) {
       for (const folder of [join(this.root, hash), join(this.root, "prepared", hash)]) {
-        try { rmSync(folder, { recursive: true, force: true }); } catch { /* A retained snapshot is harmless. */ }
+        try {
+          rmSync(folder, { recursive: true, force: true });
+        } catch {
+          /* A retained snapshot is harmless. */
+        }
       }
     }
   }

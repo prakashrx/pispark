@@ -16,8 +16,7 @@ import type { Wake } from "./wakes.js";
 /** A child's result data as the parent's agent reads it, if it fits in `room` characters. */
 function dataText(data: unknown, room: number): string {
   if (data === undefined) return "";
-  for (const text of [JSON.stringify(data, null, 2), JSON.stringify(data)])
-    if (text.length + 16 <= room) return `\n\nIts data:\n${text}`;
+  for (const text of [JSON.stringify(data, null, 2), JSON.stringify(data)]) if (text.length + 16 <= room) return `\n\nIts data:\n${text}`;
   return "\n\n(It also set data, too large to show here; this session's extensions received it.)";
 }
 /** What a child said, short enough for its parent's agent. */
@@ -26,19 +25,29 @@ const short = (text: string) => (text.length > 160 ? `${text.slice(0, 159)}…` 
 
 /** Why a session could not be started, for whoever asked for it. A wrong agent is answered with the ones there are. */
 function notStarted(error: unknown, agents: AgentStore): Answer {
-  if (error instanceof AgentError) return { ok: false, text: `That agent definition cannot be used: ${error.code}${error.detail ? ` (${error.detail})` : ""}.` };
+  if (error instanceof AgentError)
+    return { ok: false, text: `That agent definition cannot be used: ${error.code}${error.detail ? ` (${error.detail})` : ""}.` };
   const { code } = runtimeError(error, "execution");
   if (code === "agent") {
-    const usable = agents.list().filter((agent) => agent.valid).map(({ id, name }) => ({ id, name }));
-    return { ok: false, text: `There is no such agent, or it cannot be used now. The agents here: ${usable.map(({ id }) => id).join(", ")}.`, data: { agents: usable } };
+    const usable = agents
+      .list()
+      .filter((agent) => agent.valid)
+      .map(({ id, name }) => ({ id, name }));
+    return {
+      ok: false,
+      text: `There is no such agent, or it cannot be used now. The agents here: ${usable.map(({ id }) => id).join(", ")}.`,
+      data: { agents: usable },
+    };
   }
-  if (code === "invalid-input" || code === "folder") return { ok: false, text: "That folder cannot be used: it must exist, and a project agent works only in its own." };
+  if (code === "invalid-input" || code === "folder")
+    return { ok: false, text: "That folder cannot be used: it must exist, and a project agent works only in its own." };
   return { ok: false, text: `The session could not be started (${code}).` };
 }
 
 type Report = NonNullable<Wake["report"]>;
 /** Picks, among what waits for a parent, one child's messages of one kind. */
-const from = (childId: string, word?: Wake["word"]) => (wake: Wake) => wake.source.id === childId && (word === undefined || wake.word === word);
+const from = (childId: string, word?: Wake["word"]) => (wake: Wake) =>
+  wake.source.id === childId && (word === undefined || wake.word === word);
 
 /**
  * Sessions started by other sessions, as one kind of thing a session can start: starting one,
@@ -96,13 +105,25 @@ export class Children implements Kind {
           ...(typeof agent === "string" ? { agent } : agent ? { layer: agent } : {}),
           ...(model ? { model: { provider: model.slice(0, slash), id: model.slice(slash + 1) } } : {}),
         },
-        { parent: parent.id, ...(title ? { title } : {}), ...(request.collect ? { collect: true as const } : {}), ...(request.keep ? { keep: true as const } : {}) },
+        {
+          parent: parent.id,
+          ...(title ? { title } : {}),
+          ...(request.collect ? { collect: true as const } : {}),
+          ...(request.keep ? { keep: true as const } : {}),
+        },
       );
     } catch (error) {
       return notStarted(error, this.sessions.agents);
     }
     const session = this.sessions.get(doc.id);
-    this.down(session, parent, "ask", request.brief, request.data, (brief) => void session.start(brief, this.from(parent)).completion.catch(() => {}));
+    this.down(
+      session,
+      parent,
+      "ask",
+      request.brief,
+      request.data,
+      (brief) => void session.start(brief, this.from(parent)).completion.catch(() => {}),
+    );
     const handle = this.handles.of(owner, this.name, doc.id);
     return {
       ok: true,
@@ -117,7 +138,14 @@ export class Children implements Kind {
    * the parent's side attached: they may reword it, or take it, in which case the agent is not
    * sent it and the child answers with whatever data they set.
    */
-  private down(child: Session, parent: SessionMetadata, word: "ask" | "tell", text: string, data: unknown, send: (text: string) => void): void {
+  private down(
+    child: Session,
+    parent: SessionMetadata,
+    word: "ask" | "tell",
+    text: string,
+    data: unknown,
+    send: (text: string) => void,
+  ): void {
     const from: Heard["from"] = { kind: "parent", title: titleOf(parent) };
     const heard = child.hear({ word, from, text, ...(data !== undefined ? { data } : {}) });
     if (heard?.action !== "skip") return send(heard?.text ?? text);
@@ -181,7 +209,10 @@ export class Children implements Kind {
     if (!child) return this.gone;
     if (text === undefined) return { ok: false, text: "A session is sent text; raise_on is for a process." };
     if (child.archived)
-      return { ok: false, text: "That session was put away when it was done, so it cannot be told more. Start a new one with what it needs to know, and pass keep: true if you will tell it more after its answer." };
+      return {
+        ok: false,
+        text: "That session was put away when it was done, so it cannot be told more. Start a new one with what it needs to know, and pass keep: true if you will tell it more after its answer.",
+      };
     this.sessions.admit();
     await this.sessions.ensure(child.id);
     validateText(text);
@@ -198,9 +229,13 @@ export class Children implements Kind {
       let queued: Promise<unknown> = Promise.resolve();
       this.down(session, parent, "tell", text, data, (words) => (queued = session.queue(words, when === "after" ? "follow-up" : "steer")));
       await queued;
-      return { ok: true, text: when === "after" ? "Sent. It reads this when it has finished what it is doing." : "Sent. It reads this at its next pause." };
+      return {
+        ok: true,
+        text: when === "after" ? "Sent. It reads this when it has finished what it is doing." : "Sent. It reads this at its next pause.",
+      };
     } catch (error) {
-      if (runtimeError(error, "execution").code === "busy") return { ok: false, text: "It cannot take a message right now; try again in a moment." };
+      if (runtimeError(error, "execution").code === "busy")
+        return { ok: false, text: "It cannot take a message right now; try again in a moment." };
       throw error;
     }
   }
@@ -211,8 +246,15 @@ export class Children implements Kind {
       const child = this.child(owner, id);
       if (!child) return undefined;
       const report = this.sessions.take(owner, from(id, "answer"))[0]?.report;
-      if (report) return { words: `"${report.title}" ${report.how}:\n\n${report.text}${dataText(report.data, 56 * 1024 - report.text.length)}`, ...report };
-      if (!child.ask) return { words: `"${titleOf(child)}" — ${this.state(child)}. It gave its answer before${child.archived ? "" : " (pispark_look shows what it last said)"}.` };
+      if (report)
+        return {
+          words: `"${report.title}" ${report.how}:\n\n${report.text}${dataText(report.data, 56 * 1024 - report.text.length)}`,
+          ...report,
+        };
+      if (!child.ask)
+        return {
+          words: `"${titleOf(child)}" — ${this.state(child)}. It gave its answer before${child.archived ? "" : " (pispark_look shows what it last said)"}.`,
+        };
       if (!(await this.sessions.arrival(owner, signal))) return undefined;
     }
   }
@@ -249,7 +291,10 @@ export class Children implements Kind {
       report: { title, how: "raised", text, ...attached },
       ...(child.collect ? { collect: true as const } : {}),
     });
-    return { ok: true, text: `Raised with "${titleOf(parent)}". Its answer arrives here as a message: carry on with what does not depend on it, or finish your turn to wait.` };
+    return {
+      ok: true,
+      text: `Raised with "${titleOf(parent)}". Its answer arrives here as a message: carry on with what does not depend on it, or finish your turn to wait.`,
+    };
   }
 
   /**
@@ -285,7 +330,9 @@ export class Children implements Kind {
     if (!parent || !child.ask) return;
     const title = titleOf(child);
     const line = `The person told the session "${title}" (${this.handles.of(parent.id, this.name, child.id)}): ${text}`;
-    void this.line(parent, line, { session: child.id, title, how: `was told by you: ${short(text)}` }).catch((error: unknown) => this.failed(parent.id, error));
+    void this.line(parent, line, { session: child.id, title, how: `was told by you: ${short(text)}` }).catch((error: unknown) =>
+      this.failed(parent.id, error),
+    );
   }
 
   /**
@@ -346,10 +393,20 @@ export class Children implements Kind {
         quiet: true,
       });
     // A run the clock asked for, not the parent's agent: a line, so a schedule does not cost the parent a turn each time.
-    if (child.schedule) return void this.sessions.deliver(parent.id, { ...answer, text: `The session "${title}" you started ${how}.`, card: { title, how, start: 0 }, quiet: true });
+    if (child.schedule)
+      return void this.sessions.deliver(parent.id, {
+        ...answer,
+        text: `The session "${title}" you started ${how}.`,
+        card: { title, how, start: 0 },
+        quiet: true,
+      });
     // The line the agent needs; the card says it already, so it shows the answer after it.
     const heading = `The session "${title}" (${handle}) you started ${how}:\n\n`;
-    void this.sessions.deliver(parent.id, { ...answer, text: `${heading}${body}${dataText(data, 56 * 1024 - body.length)}`, card: { title, how, start: heading.length } });
+    void this.sessions.deliver(parent.id, {
+      ...answer,
+      text: `${heading}${body}${dataText(data, 56 * 1024 - body.length)}`,
+      card: { title, how, start: heading.length },
+    });
   }
 
   /**
@@ -371,7 +428,11 @@ export class Children implements Kind {
     const heard = this.sessions.get(parent.id).hear(note);
     if (heard?.action === "skip") return;
     const text = heard?.text ?? note.text;
-    await this.line(parent, `"${note.from.title}" (${note.from.id}) notes: ${text}`, { session: childId, title: note.from.title, how: `notes: ${short(text)}` });
+    await this.line(parent, `"${note.from.title}" (${note.from.id}) notes: ${text}`, {
+      session: childId,
+      title: note.from.title,
+      how: `notes: ${short(text)}`,
+    });
   }
 
   /** A line in a parent's conversation, without a turn: its agent reads it the next time it runs. */
@@ -383,7 +444,10 @@ export class Children implements Kind {
 
   // ---- Reading ----------------------------------------------------------------------------------
 
-  private readonly gone: Answer = { ok: false, text: "This session did not start a session with that id (pispark_look lists what it started)." };
+  private readonly gone: Answer = {
+    ok: false,
+    text: "This session did not start a session with that id (pispark_look lists what it started).",
+  };
 
   private child(owner: string, id: string): SessionMetadata | undefined {
     return this.under(owner).find((each) => each.id === id);
@@ -436,6 +500,6 @@ export class Children implements Kind {
   }
 
   private failed(sessionId: string, error: unknown): void {
-    this.sessions.logger.event("wake.failure", { sessionId, outcome: "failed", code: runtimeError(error, "execution").code });
+    this.sessions.logger.event("wake.failure", { sessionId, outcome: "failed", code: runtimeError(error, "execution").code, cause: error });
   }
 }

@@ -28,10 +28,8 @@ export async function agentRequest<T>(operation: string, input?: unknown): Promi
   }
 }
 
-export const sameTarget = (a?: AgentTarget, b?: AgentTarget) =>
-  !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
-const layerId = (target: AgentTarget) =>
-  "agent" in target ? target.agent : "session";
+export const sameTarget = (a?: AgentTarget, b?: AgentTarget) => !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+const layerId = (target: AgentTarget) => ("agent" in target ? target.agent : "session");
 
 /**
  * Agent list, the Ask selection and the open editor. Every change is saved as it is made;
@@ -57,16 +55,9 @@ export class AgentClient {
   async refresh() {
     this.loading = true;
     try {
-      this.items = (
-        await agentRequest<{ agents: AgentSummary[] }>("")
-      ).agents;
+      this.items = (await agentRequest<{ agents: AgentSummary[] }>("")).agents;
       this.error = "";
-      if (
-        this.selected &&
-        this.items.length &&
-        !this.items.some((p) => p.id === this.selected)
-      )
-        this.selected = "default";
+      if (this.selected && this.items.length && !this.items.some((p) => p.id === this.selected)) this.selected = "default";
     } catch (error) {
       this.error = (error as Error).message;
     } finally {
@@ -93,8 +84,7 @@ export class AgentClient {
       if (sameTarget(target, this.target)) this.view = view;
       return view;
     } catch (error) {
-      if (sameTarget(target, this.target))
-        this.editorError = (error as Error).message;
+      if (sameTarget(target, this.target)) this.editorError = (error as Error).message;
     }
   }
   /** Run a change, then refresh the view and list; report errors in the editor. */
@@ -183,13 +173,17 @@ export class AgentClient {
     return agentRequest<{ resources: AvailableResource[] }>("resources", { target: this.target, type });
   }
   selectResource(type: ItemType, reference: ResourceReference, on: boolean) {
-    return this.change(() => agentRequest("resource/select", {
-      target: this.target,
-      expectedRevision: this.view?.revision ?? "",
-      type,
-      reference,
-      on,
-    }), on ? "Added" : "Removed");
+    return this.change(
+      () =>
+        agentRequest("resource/select", {
+          target: this.target,
+          expectedRevision: this.view?.revision ?? "",
+          type,
+          reference,
+          on,
+        }),
+      on ? "Added" : "Removed",
+    );
   }
   readFile(path: string, target: ItemTarget | undefined = this.target) {
     return agentRequest<ItemFile>("file/read", { target, path });
@@ -212,7 +206,13 @@ export class AgentClient {
     return this.change(async () => {
       await agentRequest<ItemFile>("file/write", { target: { library: "shared" }, path, expectedRevision: null, text });
       const { revision } = await agentRequest<AgentView>("read", { target: this.target });
-      await agentRequest("resource/select", { target: this.target, type, reference: `shared:${name}`, on: true, expectedRevision: revision });
+      await agentRequest("resource/select", {
+        target: this.target,
+        type,
+        reference: `shared:${name}`,
+        on: true,
+        expectedRevision: revision,
+      });
     }, "Saved to the Shared library");
   }
   /** Move one of this agent's own items into the Shared library. */
@@ -240,7 +240,14 @@ export class AgentClient {
     const from = this.fileTarget(item);
     if (!from || !this.view || this.owns(item)) return Promise.resolve(false);
     return this.change(
-      () => agentRequest("resource/copy", { target: this.target, type: item.type, name: item.name, from, expectedRevision: this.view?.revision ?? "" }),
+      () =>
+        agentRequest("resource/copy", {
+          target: this.target,
+          type: item.type,
+          name: item.name,
+          from,
+          expectedRevision: this.view?.revision ?? "",
+        }),
       "Copied here",
     );
   }

@@ -125,7 +125,8 @@ function read(file: string): Stored {
   if (!existsSync(file)) return { devices: [] };
   try {
     const value = JSON.parse(readFileSync(file, "utf8")) as Partial<Stored>;
-    const address = typeof value.address === "string" && /^https:\/\/[a-z0-9.-]+(?::\d{1,5})?$/i.test(value.address) ? value.address : undefined;
+    const address =
+      typeof value.address === "string" && /^https:\/\/[a-z0-9.-]+(?::\d{1,5})?$/i.test(value.address) ? value.address : undefined;
     const devices = Array.isArray(value.devices)
       ? value.devices.filter(
           (d): d is StoredDevice =>

@@ -45,9 +45,11 @@ async function fixture(t: TestContext) {
     return response.json() as Promise<T>;
   };
   const list = async () =>
-    ((await (await fetch(`${base}/api/agents`)).json()) as {
-      agents: AgentSummary[];
-    }).agents;
+    (
+      (await (await fetch(`${base}/api/agents`)).json()) as {
+        agents: AgentSummary[];
+      }
+    ).agents;
   return { ...h, runtime, base, logs, post, ok, list };
 }
 
@@ -55,7 +57,10 @@ test("agent HTTP: list Default, create, view the resolved layers, revision-check
   const f = await fixture(t);
   assert.deepEqual(
     (await f.list()).map((p) => [p.id, p.builtIn, p.bundled]),
-    [["default", true, undefined], ["agent-builder", false, true]],
+    [
+      ["default", true, undefined],
+      ["agent-builder", false, true],
+    ],
   );
   const { id } = await f.ok<{ id: string }>("create", {
     name: "Dev helper",
@@ -63,7 +68,10 @@ test("agent HTTP: list Default, create, view the resolved layers, revision-check
   });
   assert.equal(id, "dev-helper");
   const view = await f.ok<AgentView>("read", { target: { agent: id } });
-  assert.deepEqual(view.layers.map((l) => l.id), ["default", "dev-helper"]);
+  assert.deepEqual(
+    view.layers.map((l) => l.id),
+    ["default", "dev-helper"],
+  );
   assert.ok(view.tools.find((tool) => tool.name === "bash")!.on);
   const saved = await f.ok<{ revision: string }>("save", {
     target: { agent: id },
@@ -102,10 +110,7 @@ test("agent HTTP: item files, session layers and delete rules", async (t) => {
   const skill = view.items.find((item) => item.name === "review")!;
   assert.equal(skill.description, "Review code");
   assert.equal(skill.path, "skills/review/SKILL.md");
-  assert.equal(
-    (await f.ok<{ text: string }>("file/read", { target, path: skill.path })).text.includes("Steps"),
-    true,
-  );
+  assert.equal((await f.ok<{ text: string }>("file/read", { target, path: skill.path })).text.includes("Steps"), true);
   // A session layer is created by its first edit and stacks on the session's agent.
   const session = await f.runtime.create({ folder: await f.folder("work"), agent: "dev" });
   const layer = { session: session.id };
@@ -118,7 +123,10 @@ test("agent HTTP: item files, session layers and delete rules", async (t) => {
     definition: { base: ["dev"], off: ["skill:review"] },
   });
   const layered = await f.ok<AgentView>("read", { target: layer });
-  assert.deepEqual(layered.layers.map((l) => l.id), ["default", "dev", "session"]);
+  assert.deepEqual(
+    layered.layers.map((l) => l.id),
+    ["default", "dev", "session"],
+  );
   assert.equal(layered.items.find((i) => i.name === "review")!.on, false);
   assert.equal(f.runtime.list()[0]!.agent.layered, true);
   await f.ok("file/delete", { target, path: skill.path, expectedRevision: file.revision });
@@ -126,7 +134,10 @@ test("agent HTTP: item files, session layers and delete rules", async (t) => {
   const builtIn = await f.post("delete", { id: "default" });
   assert.equal((await builtIn.json()).error, "built-in");
   await f.ok("delete", { id: "dev" });
-  assert.deepEqual((await f.list()).map((p) => p.id), ["default", "agent-builder"]);
+  assert.deepEqual(
+    (await f.list()).map((p) => p.id),
+    ["default", "agent-builder"],
+  );
 });
 
 test("agent HTTP: strict inputs, same-origin guard and content-free failure logs", async (t) => {
@@ -149,10 +160,7 @@ test("agent HTTP: strict inputs, same-origin guard and content-free failure logs
   }
   assert.equal((await f.post("unknown", {})).status, 404);
   assert.equal((await f.post("read", { target: { agent: "missing" } })).status, 404);
-  assert.equal(
-    (await f.post("create", { name: "Evil" }, "http://evil.invalid")).status,
-    403,
-  );
+  assert.equal((await f.post("create", { name: "Evil" }, "http://evil.invalid")).status, 403);
   await f.post("create", { name: "PRIVATE-NAME", base: ["missing"] });
   assert.doesNotMatch(f.logs.join(""), /PRIVATE-NAME/);
   assert.match(f.logs.join(""), /missing-parent/);
@@ -184,7 +192,12 @@ test("agent HTTP: library files and Move to Shared library", async (t) => {
   const f = await fixture(t);
   const { id } = await f.ok<{ id: string }>("create", { name: "Owner" });
   const target = { agent: id };
-  await f.ok("file/write", { target, path: "skills/notes/SKILL.md", expectedRevision: null, text: "---\nname: notes\ndescription: Notes\n---\n# Notes\n" });
+  await f.ok("file/write", {
+    target,
+    path: "skills/notes/SKILL.md",
+    expectedRevision: null,
+    text: "---\nname: notes\ndescription: Notes\n---\n# Notes\n",
+  });
   const view = await f.ok<AgentView>("read", { target });
   await f.ok("resource/promote", { target, type: "skills", name: "notes", expectedRevision: view.revision });
   const after = await f.ok<AgentView>("read", { target });
@@ -194,8 +207,17 @@ test("agent HTTP: library files and Move to Shared library", async (t) => {
   const shared = { library: "shared" };
   const file = await f.ok<{ text: string; revision: string }>("file/read", { target: shared, path: notes.path });
   await f.ok("file/write", { target: shared, path: notes.path, expectedRevision: file.revision, text: file.text + "More.\n" });
-  assert.equal((await f.post("file/write", { target: { library: "bundled" }, path: "skills/x/SKILL.md", expectedRevision: null, text: "x" })).status, 400);
+  assert.equal(
+    (await f.post("file/write", { target: { library: "bundled" }, path: "skills/x/SKILL.md", expectedRevision: null, text: "x" })).status,
+    400,
+  );
   assert.equal((await f.post("file/read", { target: { library: "other" }, path: notes.path })).status, 400);
+  // A path or a text that is not text is refused as bad input, not handed to the store.
+  assert.equal((await f.post("file/read", { target: shared, path: { a: 1 } })).status, 400);
+  assert.equal((await f.post("file/write", { target: shared, path: notes.path, expectedRevision: file.revision, text: 7 })).status, 400);
   assert.equal((await f.post("file/delete", { target: shared, path: notes.path, expectedRevision: file.revision })).status, 400);
-  assert.equal((await f.post("resource/promote", { target, type: "skills", name: "notes", expectedRevision: after.revision, extra: 1 })).status, 400);
+  assert.equal(
+    (await f.post("resource/promote", { target, type: "skills", name: "notes", expectedRevision: after.revision, extra: 1 })).status,
+    400,
+  );
 });

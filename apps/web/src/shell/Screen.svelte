@@ -57,7 +57,11 @@
   const compact = $derived(layout.size === "compact");
   let main = $state<HTMLElement>();
   // What scrolls this screen, for content that follows its end or reads in above (a conversation).
-  setContext("screen", { get main() { return main; } });
+  setContext("screen", {
+    get main() {
+      return main;
+    },
+  });
   const bar = $derived(compact || layout.menuShown || !hideTitle || !!actions);
 </script>
 
@@ -75,7 +79,9 @@
         >
       {/if}
       {#if backLabel}
-        <a class="crumb" href={href(back)} aria-label={backLabel}><Icon name="back" class="h-4 w-4" />{#if !compact}<span>{backLabel}</span>{/if}</a>
+        <a class="crumb" href={href(back)} aria-label={backLabel}
+          ><Icon name="back" class="h-4 w-4" />{#if !compact}<span>{backLabel}</span>{/if}</a
+        >
       {:else if compact}
         <a class="tap" href={href(back)} aria-label="Back"><Icon name="back" class="h-5 w-5" /></a>
       {/if}
@@ -94,8 +100,13 @@
         </div>
       {:else if rename}<div class="title named">
           <h1>{title}</h1>
-          <button type="button" class="pencil" data-rename-title aria-label={`Rename ${title}`} title="Rename" onclick={() => (renaming = true)}
-            ><Icon name="pencil" class="h-3.5 w-3.5" /></button
+          <button
+            type="button"
+            class="pencil"
+            data-rename-title
+            aria-label={`Rename ${title}`}
+            title="Rename"
+            onclick={() => (renaming = true)}><Icon name="pencil" class="h-3.5 w-3.5" /></button
           >
         </div>
       {:else}<h1 class="title">{title}</h1>{/if}
@@ -206,7 +217,8 @@
     flex: 1;
   }
   @media (pointer: coarse) {
-    .actions :global(.ui-button[aria-haspopup]), .actions :global([data-details-toggle]) {
+    .actions :global(.ui-button[aria-haspopup]),
+    .actions :global([data-details-toggle]) {
       min-width: 44px;
       min-height: 44px;
     }
@@ -269,8 +281,12 @@
     flex-shrink: 0;
     padding: 0 1rem calc(0.5rem + env(safe-area-inset-bottom));
   }
-  .dock.flush { padding-inline: var(--conversation-gutter); }
-  .dock.flush .column { max-width: var(--conversation-width); }
+  .dock.flush {
+    padding-inline: var(--conversation-gutter);
+  }
+  .dock.flush .column {
+    max-width: var(--conversation-width);
+  }
   @media (max-width: 599.98px) {
     .topbar {
       padding-left: 0.25rem;

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Optional: checks the format of what you commit, as CI will. Turn it on once with
+#   git config core.hooksPath .githooks
+# and fix what it finds with npm run format.
+files=$(git diff --cached --name-only --diff-filter=ACMR -- 'apps/*' 'plugins/*' 'scripts/*' | grep -E '\.(ts|js|mjs|svelte|css)$')
+[ -z "$files" ] && exit 0
+echo "$files" | xargs npx --no-install prettier --check --log-level warn || {
+  echo "Some files aren't formatted: run npm run format, then add them again." >&2
+  exit 1
+}

@@ -25,7 +25,9 @@
 
 <section class="pane" style:grid-area={area}>
   <div class="pane-head">
-    <h3>{title}{#if count}<span class="count">{count}</span>{/if}</h3>
+    <h3>
+      {title}{#if count}<span class="count">{count}</span>{/if}
+    </h3>
     {@render action?.()}
   </div>
   {@render children()}

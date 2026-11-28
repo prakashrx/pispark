@@ -43,8 +43,14 @@ test("archive puts a session away and restore brings it back; a busy session is 
 
     // Settled and loaded: it unloads and leaves the list; opening it is refused until it is restored.
     await f.runtime.archive(session.id);
-    assert.deepEqual(f.runtime.list().map((s) => s.id), [other.id]);
-    assert.deepEqual(f.runtime.archived().map((s) => s.id), [session.id]);
+    assert.deepEqual(
+      f.runtime.list().map((s) => s.id),
+      [other.id],
+    );
+    assert.deepEqual(
+      f.runtime.archived().map((s) => s.id),
+      [session.id],
+    );
     assert.equal(f.runtime.archived()[0]!.status, "unloaded");
     assert.throws(() => f.runtime.session(session.id), code("not-found"));
     await assert.rejects(f.runtime.open(session.id), code("not-found"));

@@ -9,9 +9,7 @@ test("styled text: Pi theme colors become PiSpark roles; raw colors, links and l
   assert.deepEqual(styledLines(`${t.fg("accent", "a")} ${t.bold(t.fg("error", "b"))}`), [
     [{ text: "a", fg: "accent" }, { text: " " }, { text: "b", fg: "danger", bold: true }],
   ]);
-  assert.deepEqual(styledLines(t.bg("selectedBg", t.fg("dim", "x"))), [
-    [{ text: "x", fg: "subtle", bg: "selected" }],
-  ]);
+  assert.deepEqual(styledLines(t.bg("selectedBg", t.fg("dim", "x"))), [[{ text: "x", fg: "subtle", bg: "selected" }]]);
   assert.deepEqual(styledLines("\x1b[31mred\x1b[0m \x1b[38;2;16;32;48mrgb\x1b[39m\x1b[38;5;196m!"), [
     [{ text: "red", fg: "danger" }, { text: " " }, { text: "rgb", fg: "#102030" }, { text: "!", fg: "#ff0000" }],
   ]);
@@ -65,11 +63,19 @@ test("extension renderers draw tool calls and results, custom messages and entri
     const { items, head } = runtime.items(session.id, {});
     const tool = items.find((m) => m.role === "toolResult");
     assert.deepEqual(tool?.rendered, {
-      call: [[{ text: "shout ", bold: true }, { text: "hi", fg: "accent" }]],
+      call: [
+        [
+          { text: "shout ", bold: true },
+          { text: "hi", fg: "accent" },
+        ],
+      ],
       body: [[{ text: "HI", fg: "success" }]],
     });
     // Entries are items in the order Pi appended them; messages marked display: false stay hidden.
-    assert.deepEqual(items.map((m) => m.role), ["user", "assistant", "toolResult", "assistant", "entry", "custom"]);
+    assert.deepEqual(
+      items.map((m) => m.role),
+      ["user", "assistant", "toolResult", "assistant", "entry", "custom"],
+    );
     const [entry, custom] = items.slice(-2);
     assert.deepEqual(entry!.rendered?.body, [[{ text: "note: saved", fg: "muted" }]]);
     assert.deepEqual(custom!.rendered?.body, [[{ text: "[card]", fg: "accent" }, { text: " shown" }]]);

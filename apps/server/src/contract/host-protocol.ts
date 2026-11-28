@@ -77,9 +77,7 @@ export type LauncherMessage =
   | { type: "running?"; id: number };
 
 /** Server to launcher. */
-export type ServerMessage =
-  | { type: "action"; action: HostAction }
-  | { type: "running"; id: number; running: RunningWork };
+export type ServerMessage = { type: "action"; action: HostAction } | { type: "running"; id: number; running: RunningWork };
 
 export function validHostAction(value: unknown): HostAction | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return;

@@ -56,7 +56,11 @@ export interface JsonOptions {
  * A bounded JSON request: the answer is refused past its limit, and the request past its time or when
  * `init.signal` aborts. An error answer throws `RequestFailed`; a removed device reloads the page.
  */
-export async function requestJson<T>(path: string, init: RequestInit = {}, { limit = 1024 * 1024, timeout = 12_000 }: JsonOptions = {}): Promise<T> {
+export async function requestJson<T>(
+  path: string,
+  init: RequestInit = {},
+  { limit = 1024 * 1024, timeout = 12_000 }: JsonOptions = {},
+): Promise<T> {
   const timer = AbortSignal.timeout(timeout);
   const response = await fetch(path, { ...init, signal: init.signal ? AbortSignal.any([init.signal, timer]) : timer });
   // The host bounds every response. Refuse unexpectedly large payloads before JSON parsing too.
@@ -80,7 +84,11 @@ export async function requestJson<T>(path: string, init: RequestInit = {}, { lim
   // A device removed while open: start again, at the pairing screen.
   if (response.status === 401 && result.error === "unpaired") location.reload();
   if (!response.ok)
-    throw new RequestFailed(response.status, typeof result.error === "string" ? result.error : undefined, typeof result.detail === "string" ? result.detail : undefined);
+    throw new RequestFailed(
+      response.status,
+      typeof result.error === "string" ? result.error : undefined,
+      typeof result.detail === "string" ? result.detail : undefined,
+    );
   return result as T;
 }
 
@@ -127,11 +135,17 @@ export class Transport {
   async settled(receipt: Receipt, longRunning = false): Promise<Receipt> {
     const started = Date.now();
     const uncertain = (message: string) =>
-      new CommandUncertainty("settlement-unknown", `${message}${receipt.sessionId ? ` (session ${receipt.sessionId})` : ""}`, receipt, longRunning);
+      new CommandUncertainty(
+        "settlement-unknown",
+        `${message}${receipt.sessionId ? ` (session ${receipt.sessionId})` : ""}`,
+        receipt,
+        longRunning,
+      );
     let failed = 0;
     while (receipt.state === "accepted") {
       if (this.closed) throw uncertain("Client closed");
-      if (!longRunning && Date.now() - started > 310_000) throw uncertain(`Settlement unknown for ${receipt.commandId}; do not automatically retry.`);
+      if (!longRunning && Date.now() - started > 310_000)
+        throw uncertain(`Settlement unknown for ${receipt.commandId}; do not automatically retry.`);
       await new Promise((resolve) => setTimeout(resolve, longRunning && Date.now() - started > 5_000 ? 2_000 : 250));
       try {
         receipt = await this.json<Receipt>(`/api/receipts/${receipt.commandId}`);

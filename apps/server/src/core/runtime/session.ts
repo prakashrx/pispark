@@ -3,7 +3,17 @@ import { basename, dirname, join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, EventBus, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage, Provider } from "@earendil-works/pi-ai";
-import { NOTICE_ENTRY, type Ask, type ReadOnlyReason, type ItemsPage, type LiveDoc, type PartPage, type PendingSetup, type SessionCommand, type SessionDoc } from "../../contract/protocol.js";
+import {
+  NOTICE_ENTRY,
+  type Ask,
+  type ReadOnlyReason,
+  type ItemsPage,
+  type LiveDoc,
+  type PartPage,
+  type PendingSetup,
+  type SessionCommand,
+  type SessionDoc,
+} from "../../contract/protocol.js";
 import { ExtensionUI } from "../extensions/extension-ui.js";
 import { ExtensionRendering } from "../extensions/extension-render.js";
 import { ExtensionViews } from "../extensions/views.js";
@@ -99,7 +109,13 @@ export interface RunResult {
 function answerOf(entry: SessionEntry | undefined): string | undefined {
   if (entry?.type !== "message" || entry.message.role !== "assistant") return undefined;
   if (entry.message.stopReason !== "stop" && entry.message.stopReason !== "length") return undefined;
-  return entry.message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim() || undefined;
+  return (
+    entry.message.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n")
+      .trim() || undefined
+  );
 }
 export interface RunHandle {
   completion: Promise<RunResult>;
@@ -137,9 +153,16 @@ export interface SessionHost {
     handle(sessionId: string, kind: string, id: string): string;
   };
   /** The tools a running session of a setup has (`fingerprint`), from Pi's `getAllTools`. */
-  toolsSeen?(fingerprint: string, extensionPaths: string[], tools: { name: string; description?: string; sourceInfo?: { path?: string } }[]): void;
+  toolsSeen?(
+    fingerprint: string,
+    extensionPaths: string[],
+    tools: { name: string; description?: string; sourceInfo?: { path?: string } }[],
+  ): void;
   /** An extension asks to keep the session loaded (or lets go). */
-  hold?(session: Session, request: { extension: string; hold: boolean; reason: string }): { state: "held" | "asked" | "released" | "refused"; text: string };
+  hold?(
+    session: Session,
+    request: { extension: string; hold: boolean; reason: string },
+  ): { state: "held" | "asked" | "released" | "refused"; text: string };
   /** One of the session's runs ended (a child reports back). Called outside Pi's listeners. */
   ended?(session: Session, result: RunResult): void;
   /** A message from above reached the session while it works: a wait inside its turn ends early. */
@@ -209,8 +232,7 @@ export function extensionName(path: string): string {
   return name === "index" ? basename(dirname(path)) : name;
 }
 export function validateText(text: string): void {
-  if (typeof text !== "string" || !text.trim() || Buffer.byteLength(text, "utf8") > 64 * 1024)
-    throw new RuntimeError("invalid-input");
+  if (typeof text !== "string" || !text.trim() || Buffer.byteLength(text, "utf8") > 64 * 1024) throw new RuntimeError("invalid-input");
 }
 
 /**
@@ -483,7 +505,12 @@ export class Session {
         this.closed = true;
         this.status = "stopping";
         // Setup may still own extension work. Keep admission until it actually finishes.
-        void operation.then(() => this.dispose(), () => {}).catch(() => {});
+        void operation
+          .then(
+            () => this.dispose(),
+            () => {},
+          )
+          .catch(() => {});
       }
       throw runtimeError(error, "configuration");
     }
@@ -520,7 +547,9 @@ export class Session {
    * The folder, agent and model the session runs with. When one of them can't be had, a session with a
    * past opens to be read: the answer is which one.
    */
-  private async needs(reopening: boolean): Promise<{ cwd: string; setup: Setup; model: Awaited<ReturnType<SessionHost["model"]>> } | ReadOnlyReason> {
+  private async needs(
+    reopening: boolean,
+  ): Promise<{ cwd: string; setup: Setup; model: Awaited<ReturnType<SessionHost["model"]>> } | ReadOnlyReason> {
     const { metadata, host } = this;
     let step: ReadOnlyReason = "folder";
     try {
@@ -600,7 +629,14 @@ export class Session {
   }
 
   /** Pi's services for this session, with PiSpark's admission hooks and its requests on the session's bus. */
-  private services(setup: Setup, extensionPaths: string[], views: ExtensionViews, cwd: string, dir: string, { managed, fixed }: Awaited<ReturnType<SessionHost["model"]>>) {
+  private services(
+    setup: Setup,
+    extensionPaths: string[],
+    views: ExtensionViews,
+    cwd: string,
+    dir: string,
+    { managed, fixed }: Awaited<ReturnType<SessionHost["model"]>>,
+  ) {
     const { metadata, host } = this;
     const development = !setup.toolsOff.includes(EXTENSION_TOOL);
     return createSessionServices({
@@ -650,7 +686,14 @@ export class Session {
   }
 
   /** Pi's agent session on the transcript, at the session's model and thinking level. */
-  private async createPi(services: Awaited<ReturnType<typeof createSessionServices>>, manager: SessionManager, setup: Setup, cwd: string, dir: string, reopening: boolean): Promise<AgentSession> {
+  private async createPi(
+    services: Awaited<ReturnType<typeof createSessionServices>>,
+    manager: SessionManager,
+    setup: Setup,
+    cwd: string,
+    dir: string,
+    reopening: boolean,
+  ): Promise<AgentSession> {
     const { metadata } = this;
     // The level chosen for this session wins over its agent's.
     const thinkingLevel = metadata.thinking ?? setup.settings.thinking ?? "off";
@@ -676,7 +719,8 @@ export class Session {
       throw error;
     }
     this.pi = session;
-    if (session.model?.provider !== metadata.model!.provider || session.model?.id !== metadata.model!.id) throw new RuntimeError("configuration");
+    if (session.model?.provider !== metadata.model!.provider || session.model?.id !== metadata.model!.id)
+      throw new RuntimeError("configuration");
     if (this.error) throw new RuntimeError(this.error);
     return session;
   }
@@ -694,7 +738,8 @@ export class Session {
           if (options?.withSession) throw new Error("withSession is not available in PiSpark: the fork is a session of its own.");
           const entry = session.sessionManager.getEntry(entryId);
           const position = options?.position ?? "before";
-          if (!entry || (position === "before" && (entry.type !== "message" || entry.message.role !== "user"))) throw new Error("Invalid entry ID for forking");
+          if (!entry || (position === "before" && (entry.type !== "message" || entry.message.role !== "user")))
+            throw new Error("Invalid entry ID for forking");
           const at = position === "at" ? entry.id : entry.parentId;
           if (!at) throw new Error("There is nothing before this message to fork.");
           if (!this.host.fork) throw new Error("Forking is not available here.");
@@ -723,7 +768,11 @@ export class Session {
   }
 
   /** The session is open: what it loaded is noted, it is saved and published, and a waiting prompt rejoins the queue. */
-  private opened(setup: Setup, resources: Awaited<ReturnType<typeof createSessionServices>>["resourceLoader"], reopening: boolean): SessionDoc {
+  private opened(
+    setup: Setup,
+    resources: Awaited<ReturnType<typeof createSessionServices>>["resourceLoader"],
+    reopening: boolean,
+  ): SessionDoc {
     const { metadata, host } = this;
     this.extensionPaths = setup.extensionPaths;
     this.resources = {
@@ -743,7 +792,11 @@ export class Session {
     this.changed();
     host.storage.write(metadata);
     this.published = true;
-    host.logger.event(reopening ? "session.recover" : "session.create", { sessionId: metadata.id, agentId: metadata.agent, outcome: "completed" });
+    host.logger.event(reopening ? "session.recover" : "session.create", {
+      sessionId: metadata.id,
+      agentId: metadata.agent,
+      outcome: "completed",
+    });
     // A prompt that was waiting when PiSpark stopped rejoins the queue now that the session is open.
     if (reopening && metadata.queued !== undefined) this.restoreQueued(metadata.queued);
     return this.doc();
@@ -763,7 +816,11 @@ export class Session {
     this.readOnly = reason;
     this.status = "read-only";
     this.changed();
-    host.logger.event("session.recover", { sessionId: metadata.id, outcome: "rejected", code: reason === "model" ? "configuration" : reason });
+    host.logger.event("session.recover", {
+      sessionId: metadata.id,
+      outcome: "rejected",
+      code: reason === "model" ? "configuration" : reason,
+    });
     return this.doc();
   }
 
@@ -777,7 +834,12 @@ export class Session {
     const reply: Heard["reply"] = (value) => {
       if (answer || !value || typeof value !== "object") return;
       if (value.action === "skip") answer = { action: "skip" };
-      else if (value.action === "send" && typeof value.text === "string" && value.text.trim() && Buffer.byteLength(value.text, "utf8") <= 64 * 1024)
+      else if (
+        value.action === "send" &&
+        typeof value.text === "string" &&
+        value.text.trim() &&
+        Buffer.byteLength(value.text, "utf8") <= 64 * 1024
+      )
         answer = { action: "send", text: value.text };
     };
     try {
@@ -801,19 +863,36 @@ export class Session {
   }
   private resources?: object;
   private inspect(): string {
-    return JSON.stringify({
-      session: this.id, startedBy: this.startedBy, agent: this.metadata.agent, model: this.metadata.model && `${this.metadata.model.provider}/${this.metadata.model.id}`,
-      cwd: this.metadata.cwd, status: this.status,
-      setupChanged: this.setupChanged, resources: this.resources, activeTools: this.pi?.getActiveToolNames(),
-      local: this.extensionRevisions.read(), pending: this.host.pendingSetup?.(this.id) ?? null,
-      offeredViews: this.views?.view().map(({ point, key, title }) => ({ point, key, title })),
-      extensionErrors: this.extensionErrors,
-      recentErrors: this.ui?.view().notices.filter(({ kind }) => kind === "error").slice(-5).map(({ lines }) => lines),
-      viewStatus: "Contributions only; browser mounting is not verified.",
-    }, null, 2);
+    return JSON.stringify(
+      {
+        session: this.id,
+        startedBy: this.startedBy,
+        agent: this.metadata.agent,
+        model: this.metadata.model && `${this.metadata.model.provider}/${this.metadata.model.id}`,
+        cwd: this.metadata.cwd,
+        status: this.status,
+        setupChanged: this.setupChanged,
+        resources: this.resources,
+        activeTools: this.pi?.getActiveToolNames(),
+        local: this.extensionRevisions.read(),
+        pending: this.host.pendingSetup?.(this.id) ?? null,
+        offeredViews: this.views?.view().map(({ point, key, title }) => ({ point, key, title })),
+        extensionErrors: this.extensionErrors,
+        recentErrors: this.ui
+          ?.view()
+          .notices.filter(({ kind }) => kind === "error")
+          .slice(-5)
+          .map(({ lines }) => lines),
+        viewStatus: "Contributions only; browser mounting is not verified.",
+      },
+      null,
+      2,
+    );
   }
   /** The last run was cancelled or failed: what was asked for from inside it is not carried out. */
-  get lastRunStopped(): boolean { return this.lastRunCancelled; }
+  get lastRunStopped(): boolean {
+    return this.lastRunCancelled;
+  }
   private lastRunCancelled = false;
   /** A change to the session's setup failed: said in the session, as an extension's failure is. */
   setupNotice(text: string): void {
@@ -903,7 +982,8 @@ export class Session {
     // when a client asks, never here. Calls nested inside another tool are not shown.
     const tool = event as { type: string; toolCallId?: string; partialResult?: unknown; parentToolCallId?: string };
     if (tool.toolCallId && !tool.parentToolCallId) {
-      if (tool.type === "tool_execution_start" || tool.type === "tool_execution_update") this.running.set(tool.toolCallId, tool.partialResult);
+      if (tool.type === "tool_execution_start" || tool.type === "tool_execution_update")
+        this.running.set(tool.toolCallId, tool.partialResult);
       else if (tool.type === "tool_execution_end") this.running.delete(tool.toolCallId);
     }
     if (event.type === "agent_settled") this.running.clear();
@@ -913,7 +993,11 @@ export class Session {
         attempt: event.attempt,
         of: event.maxAttempts,
         at: new Date(Date.now() + event.delayMs).toISOString(),
-        failure: replyFailure({ stopReason: "error", errorMessage: event.errorMessage, provider: this.pi?.model?.provider } as AssistantMessage),
+        failure: replyFailure({
+          stopReason: "error",
+          errorMessage: event.errorMessage,
+          provider: this.pi?.model?.provider,
+        } as AssistantMessage),
       };
     if (event.type === "auto_retry_end" || event.type === "agent_settled") this.retrying = undefined;
     // Pi compacts by itself when the context nearly fills in the middle of a run; the session says so.
@@ -941,8 +1025,8 @@ export class Session {
     if (event.type === "message_end") this.host.storage.active(this.id);
     if (event.type === "message_end" && event.message.role === "assistant" && this.run && !this.run.cancelled) {
       const { stopReason, provider, errorMessage } = event.message;
-      this.run.providerError = stopReason !== "error" ? undefined
-        : providerUsageLimited(provider, errorMessage) ? "usage-limit" : "execution";
+      this.run.providerError =
+        stopReason !== "error" ? undefined : providerUsageLimited(provider, errorMessage) ? "usage-limit" : "execution";
     }
     this.changed();
   }
@@ -1061,10 +1145,8 @@ export class Session {
     } catch (error) {
       if (error instanceof Error && /^(Already compacted|Nothing to compact)/.test(error.message))
         throw new RuntimeError("nothing-to-compact");
-      if (error instanceof Error && error.message === "Compaction cancelled")
-        throw new RuntimeError("compaction-cancelled");
-      if (error instanceof Error && providerUsageLimited(session.model?.provider, error.message))
-        throw new RuntimeError("usage-limit");
+      if (error instanceof Error && error.message === "Compaction cancelled") throw new RuntimeError("compaction-cancelled");
+      if (error instanceof Error && providerUsageLimited(session.model?.provider, error.message)) throw new RuntimeError("usage-limit");
       throw new RuntimeError("execution");
     } finally {
       this.input = undefined;
@@ -1495,5 +1577,11 @@ export class Session {
 function contextOf(session: AgentSession): { context?: { tokens: number | null; window: number; percent: number | null } } {
   const usage = session.getContextUsage();
   if (!usage) return {};
-  return { context: { tokens: usage.tokens, window: usage.contextWindow, percent: usage.percent === null ? null : Math.round(usage.percent * 10) / 10 } };
+  return {
+    context: {
+      tokens: usage.tokens,
+      window: usage.contextWindow,
+      percent: usage.percent === null ? null : Math.round(usage.percent * 10) / 10,
+    },
+  };
 }

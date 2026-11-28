@@ -18,7 +18,5 @@ const messages: Record<string, string> = {
 /** Plain-language agent errors; details are agent IDs, never file contents. */
 export function agentError(code: string, detail?: string): string {
   const message = messages[code] ?? "Something went wrong.";
-  return detail && ["missing-parent", "cycle", "in-use"].includes(code)
-    ? `${message}: ${detail}.`
-    : message;
+  return detail && ["missing-parent", "cycle", "in-use"].includes(code) ? `${message}: ${detail}.` : message;
 }

@@ -55,7 +55,15 @@
 <Pane {title} {area}>
   {#snippet action()}
     {#if can && !editing}
-      <button bind:this={pencil} type="button" class="ui-button" data-size="icon" aria-label={`Edit ${title.toLowerCase()}`} title="Edit" onclick={() => void edit()}><Icon name="pencil" class="h-3.5 w-3.5" /></button>
+      <button
+        bind:this={pencil}
+        type="button"
+        class="ui-button"
+        data-size="icon"
+        aria-label={`Edit ${title.toLowerCase()}`}
+        title="Edit"
+        onclick={() => void edit()}><Icon name="pencil" class="h-3.5 w-3.5" /></button
+      >
     {/if}
   {/snippet}
   <div class="box">

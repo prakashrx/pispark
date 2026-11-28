@@ -4,45 +4,36 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AgentStore } from "../src/core/agents/store.js";
-import {
-  bindingOf,
-  checkCycles,
-  listAgents,
-  resolveSetup,
-  viewAgent,
-} from "../src/core/agents/resolve.js";
-import {
-  DEFAULT_TOOLS,
-  frontmatter,
-  AgentError,
-  slug,
-  validateDefinition,
-} from "../src/core/agents/format.js";
+import { bindingOf, checkCycles, listAgents, resolveSetup, viewAgent } from "../src/core/agents/resolve.js";
+import { DEFAULT_TOOLS, frontmatter, AgentError, slug, validateDefinition } from "../src/core/agents/format.js";
 import { testHome } from "./fixtures/home.js";
 
-const code = (expected: string) => (error: unknown) =>
-  error instanceof AgentError && error.code === expected;
+const code = (expected: string) => (error: unknown) => error instanceof AgentError && error.code === expected;
 const SESSION = "11111111-1111-4111-8111-111111111111";
 
 async function store() {
   const h = await testHome("pispark-agents-");
-  const s = new AgentStore(
-    join(h.home, "agents"),
-    join(h.home, "sessions"),
-    () => "dev",
-  );
+  const s = new AgentStore(join(h.home, "agents"), join(h.home, "sessions"), () => "dev");
   // The store watches its folder; stop watching before the folder is removed.
-  return { ...h, store: s, remove: async () => { await s.shutdown(); await h.remove(); } };
+  return {
+    ...h,
+    store: s,
+    remove: async () => {
+      await s.shutdown();
+      await h.remove();
+    },
+  };
 }
 
 test("first start creates a Default agent with Pi's built-in tools", async (t) => {
   const { store: s, home, remove } = await store();
   t.after(remove);
-  const saved = JSON.parse(
-    readFileSync(join(home, "agents", "default", "agent.json"), "utf8"),
-  );
+  const saved = JSON.parse(readFileSync(join(home, "agents", "default", "agent.json"), "utf8"));
   assert.equal(saved.name, "Default");
-  assert.deepEqual(saved.on, DEFAULT_TOOLS.map((tool) => `tool:${tool}`));
+  assert.deepEqual(
+    saved.on,
+    DEFAULT_TOOLS.map((tool) => `tool:${tool}`),
+  );
   const setup = resolveSetup(s, { agent: "default" });
   assert.deepEqual(setup.toolsOn, [...DEFAULT_TOOLS]);
   assert.deepEqual(setup.layers, [{ id: "default", name: "Default" }]);
@@ -52,20 +43,19 @@ test("first start creates a Default agent with Pi's built-in tools", async (t) =
 test("readable slug IDs, revision-checked saves, delete rules", async (t) => {
   const { store: s, remove } = await store();
   t.after(remove);
-  assert.equal(slug("My Dev Helper!", () => false), "my-dev-helper");
-  assert.equal(slug("Default", () => false), "default-2");
+  assert.equal(
+    slug("My Dev Helper!", () => false),
+    "my-dev-helper",
+  );
+  assert.equal(
+    slug("Default", () => false),
+    "default-2",
+  );
   const dev = s.create({ name: "Dev" });
   assert.equal(dev.id, "dev");
   assert.equal(s.create({ name: "Dev" }).id, "dev-2");
-  const saved = s.save(
-    { agent: "dev" },
-    dev.revision,
-    { name: "Dev", description: "Coding" },
-  );
-  assert.throws(
-    () => s.save({ agent: "dev" }, dev.revision, { name: "Stale" }),
-    code("revision-conflict"),
-  );
+  const saved = s.save({ agent: "dev" }, dev.revision, { name: "Dev", description: "Coding" });
+  assert.throws(() => s.save({ agent: "dev" }, dev.revision, { name: "Stale" }), code("revision-conflict"));
   assert.equal(s.read({ agent: "dev" }).revision, saved.revision);
   s.create({ name: "Child", base: ["dev"] });
   assert.throws(() => s.remove("dev"), code("in-use"));
@@ -78,7 +68,7 @@ test("readable slug IDs, revision-checked saves, delete rules", async (t) => {
 
 test("frontmatter reads plain, quoted, folded and literal values", () => {
   const { data, body } = frontmatter(
-    "---\nname: review\ndescription: >-\n  Split work into\n  small PRs.\nnote: |\n  line one\n  line two\nquoted: \"hi\"\n---\nBody",
+    '---\nname: review\ndescription: >-\n  Split work into\n  small PRs.\nnote: |\n  line one\n  line two\nquoted: "hi"\n---\nBody',
   );
   assert.deepEqual(data, {
     name: "review",
@@ -108,11 +98,7 @@ test("the format is strict: unknown keys, bad switches and Default as a parent a
 test("resolution: Default first, diamond parents once, later layers win, off and back on", async (t) => {
   const { store: s, agent, remove } = await store();
   t.after(remove);
-  await agent(
-    "default",
-    { name: "Default", on: ["tool:read", "tool:bash"] },
-    { "instructions/tone.md": "Be friendly." },
-  );
+  await agent("default", { name: "Default", on: ["tool:read", "tool:bash"] }, { "instructions/tone.md": "Be friendly." });
   await agent(
     "dev",
     { name: "Dev", off: ["instruction:tone", "tool:bash"] },
@@ -167,14 +153,8 @@ test("fingerprints follow content; cycles are refused; a missing parent is repor
 
   await agent("a", { name: "A", base: ["b"] });
   await agent("b", { name: "B" });
-  assert.throws(
-    () => checkCycles(s, { agent: "b" }, { name: "B", base: ["a"] }),
-    code("cycle"),
-  );
-  assert.throws(
-    () => s.save({ agent: "a" }, s.read({ agent: "a" }).revision, { name: "A", base: ["a"] }),
-    code("cycle"),
-  );
+  assert.throws(() => checkCycles(s, { agent: "b" }, { name: "B", base: ["a"] }), code("cycle"));
+  assert.throws(() => s.save({ agent: "a" }, s.read({ agent: "a" }).revision, { name: "A", base: ["a"] }), code("cycle"));
   await agent("orphan", { name: "Orphan", base: ["gone"] });
   const view = viewAgent(s, { agent: "orphan" });
   assert.equal(view.error, "missing-parent");
@@ -188,13 +168,17 @@ test("item files: create, revision-checked replace, path rules, skill folders de
   s.create({ name: "Dev" });
   const target = { agent: "dev" };
   const created = s.writeFile(target, "instructions/tone.md", null, "Short.");
-  assert.throws(
-    () => s.writeFile(target, "instructions/tone.md", null, "again"),
-    code("revision-conflict"),
-  );
+  assert.throws(() => s.writeFile(target, "instructions/tone.md", null, "again"), code("revision-conflict"));
   const replaced = s.writeFile(target, "instructions/tone.md", created.revision, "Shorter.");
   assert.equal(s.readFile(target, "instructions/tone.md").text, "Shorter.");
-  for (const bad of ["../x.md", "instructions/a/b.md", "agent.json", "instructions/.hidden.md", "skills/x/.env", "skills/x/../../agent.json"])
+  for (const bad of [
+    "../x.md",
+    "instructions/a/b.md",
+    "agent.json",
+    "instructions/.hidden.md",
+    "skills/x/.env",
+    "skills/x/../../agent.json",
+  ])
     assert.throws(() => s.readFile(target, bad), code("invalid-path"));
   // A skill's other files can be read, not written.
   assert.throws(() => s.readFile(target, "skills/x/run.sh"), code("not-found"));
@@ -220,22 +204,37 @@ test("session layers: a session reads its agent until edited, then layers on top
   s.writeFile(session, "instructions/b.md", null, "session only");
   assert.equal(s.exists(session), true);
   const setup = resolveSetup(s, session);
-  assert.deepEqual(setup.layers.map((l) => l.id), ["default", "dev", "session"]);
-  assert.deepEqual(setup.instructions.map((i) => i.text), ["agent", "session only"]);
-  assert.deepEqual(resolveSetup(s, { agent: "dev" }).instructions.map((i) => i.text), ["agent"]);
+  assert.deepEqual(
+    setup.layers.map((l) => l.id),
+    ["default", "dev", "session"],
+  );
+  assert.deepEqual(
+    setup.instructions.map((i) => i.text),
+    ["agent", "session only"],
+  );
+  assert.deepEqual(
+    resolveSetup(s, { agent: "dev" }).instructions.map((i) => i.text),
+    ["agent"],
+  );
   assert.ok(changes.length >= 1);
 });
 
 test("a session on Default gets a layer with no listed parents", async (t) => {
   const h = await testHome("pispark-agents-");
   const s = new AgentStore(join(h.home, "agents"), join(h.home, "sessions"), () => "default");
-  t.after(async () => { await s.shutdown(); await h.remove(); });
+  t.after(async () => {
+    await s.shutdown();
+    await h.remove();
+  });
   const session = { session: SESSION };
   assert.deepEqual(s.read(session), { definition: {}, revision: "" });
   assert.equal(resolveSetup(s, session).fingerprint, resolveSetup(s, { agent: "default" }).fingerprint);
   s.save(session, "", { off: ["tool:bash"] });
   const setup = resolveSetup(s, session);
-  assert.deepEqual(setup.layers.map((l) => l.id), ["default", "session"]);
+  assert.deepEqual(
+    setup.layers.map((l) => l.id),
+    ["default", "session"],
+  );
   assert.ok(!setup.toolsOn.includes("bash"));
   assert.ok(resolveSetup(s, { agent: "default" }).toolsOn.includes("bash"));
 });
@@ -245,7 +244,11 @@ test("a working folder: absolute, inherited from the nearest layer, not for Defa
   t.after(remove);
   const project = await folder("project");
   const other = await folder("other");
-  for (const bad of [{ name: "A", folder: "relative/path" }, { name: "A", folder: "" }, { name: "A", folder: 3 }])
+  for (const bad of [
+    { name: "A", folder: "relative/path" },
+    { name: "A", folder: "" },
+    { name: "A", folder: 3 },
+  ])
     assert.throws(() => validateDefinition(bad), code("invalid-definition"));
   assert.throws(() => validateDefinition({ base: ["dev"], folder: project }, { sessionLayer: true }), code("invalid-definition"));
 
@@ -259,8 +262,16 @@ test("a working folder: absolute, inherited from the nearest layer, not for Defa
   assert.equal(viewAgent(s, { agent: "reviewer" }).folder, project);
   assert.equal(bindingOf(s, { agent: "moved" }).folder, other);
   assert.deepEqual(
-    listAgents(s).filter((summary) => !summary.bundled).map((summary) => [summary.id, summary.folder]),
-    [["default", undefined], ["moved", other], ["project", project], ["reviewer", project], ["role", undefined]],
+    listAgents(s)
+      .filter((summary) => !summary.bundled)
+      .map((summary) => [summary.id, summary.folder]),
+    [
+      ["default", undefined],
+      ["moved", other],
+      ["project", project],
+      ["reviewer", project],
+      ["role", undefined],
+    ],
   );
   // A project agent's sessions read their folder's AGENTS.md: becoming one changes the setup, which folder does not.
   assert.notEqual(setup("project").fingerprint, setup("role").fingerprint);
@@ -282,7 +293,12 @@ test("a working folder: absolute, inherited from the nearest layer, not for Defa
 test("a home view: a view key, inherited from the nearest layer, not for Default or a session's own layer, and no part of the setup", async (t) => {
   const { store: s, agent, remove } = await store();
   t.after(remove);
-  for (const bad of [{ name: "A", home: "two words" }, { name: "A", home: "" }, { name: "A", home: 3 }, { name: "A", home: "x".repeat(65) }])
+  for (const bad of [
+    { name: "A", home: "two words" },
+    { name: "A", home: "" },
+    { name: "A", home: 3 },
+    { name: "A", home: "x".repeat(65) },
+  ])
     assert.throws(() => validateDefinition(bad), code("invalid-definition"));
   assert.throws(() => validateDefinition({ base: ["dev"], home: "desk" }, { sessionLayer: true }), code("invalid-definition"));
 
@@ -294,8 +310,16 @@ test("a home view: a view key, inherited from the nearest layer, not for Default
   assert.deepEqual(bindingOf(s, { agent: "variant" }), { home: "desk" });
   assert.equal(viewAgent(s, { agent: "other" }).home, "board");
   assert.deepEqual(
-    listAgents(s).filter((summary) => !summary.bundled).map((summary) => [summary.id, summary.home]),
-    [["default", undefined], ["app", "desk"], ["other", "board"], ["role", undefined], ["variant", "desk"]],
+    listAgents(s)
+      .filter((summary) => !summary.bundled)
+      .map((summary) => [summary.id, summary.home]),
+    [
+      ["default", undefined],
+      ["app", "desk"],
+      ["other", "board"],
+      ["role", undefined],
+      ["variant", "desk"],
+    ],
   );
   // Which view shows first is the client's business: the agent's setup is the same.
   assert.equal(resolveSetup(s, { agent: "app" }).fingerprint, resolveSetup(s, { agent: "role" }).fingerprint);

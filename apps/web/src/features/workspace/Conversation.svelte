@@ -49,8 +49,7 @@
   let lastTop = 0;
   let loadingEarlier = $state(false);
   let earlierFailed = $state(false);
-  const atBottom = () =>
-    !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+  const atBottom = () => !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
   async function earlier() {
     if (loadingEarlier || !session.more || !scroller) return;
     loadingEarlier = true;
@@ -130,7 +129,9 @@
         {#each turns as turn (turn.key)}
           <ResponseTurn {turn} sessionId={session.id} />
         {/each}
-        {#if answered}<p class="answered" data-purpose="sent-up"><Icon name="checkBold" class="h-3.5 w-3.5 shrink-0" />Answered {answered}</p>{/if}
+        {#if answered}<p class="answered" data-purpose="sent-up">
+            <Icon name="checkBold" class="h-3.5 w-3.5 shrink-0" />Answered {answered}
+          </p>{/if}
         {#if doc.queuedText && (doc.status === "queued" || doc.compacting)}<div class="queued-turn">
             <UserTurn text={doc.queuedText} />
             <p role="status" class="queued-note">
@@ -153,7 +154,10 @@
     overflow-anchor: none;
     padding-inline: var(--conversation-gutter);
   }
-  .conversation-content { max-width: var(--conversation-width); --reading-width: none; }
+  .conversation-content {
+    max-width: var(--conversation-width);
+    --reading-width: none;
+  }
   .queued-turn {
     display: flex;
     flex-direction: column;

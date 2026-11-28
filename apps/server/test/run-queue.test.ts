@@ -151,8 +151,19 @@ test("the run limit is a setting: saved in the data folder, applied at once, val
     // A change names only what changes; Pause all keeps the run limit.
     assert.deepEqual(runtime.updateSettings({ unattendedPaused: true }), { maxRunning: 1, unattendedPaused: true });
     assert.deepEqual(runtime.updateSettings({ unattendedPaused: false }), { maxRunning: 1, unattendedPaused: false });
-    for (const bad of [{ maxRunning: 0 }, { maxRunning: 33 }, { maxRunning: 1.5 }, { maxRunning: 2, extra: 1 }, { unattendedPaused: "yes" }, {}, null])
-      assert.throws(() => runtime.updateSettings(bad), (error: { code?: string }) => error.code === "invalid-input");
+    for (const bad of [
+      { maxRunning: 0 },
+      { maxRunning: 33 },
+      { maxRunning: 1.5 },
+      { maxRunning: 2, extra: 1 },
+      { unattendedPaused: "yes" },
+      {},
+      null,
+    ])
+      assert.throws(
+        () => runtime.updateSettings(bad),
+        (error: { code?: string }) => error.code === "invalid-input",
+      );
 
     // With one slot, a second prompt waits; raising the limit starts it.
     const folder = await h.folder("work");
@@ -186,7 +197,11 @@ test("settings over HTTP: read, change, refuse a bad value", async () => {
     await once(server, "listening");
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const post = (body: unknown) =>
-      fetch(`${base}/api/settings`, { method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify(body) });
+      fetch(`${base}/api/settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: base },
+        body: JSON.stringify(body),
+      });
     assert.deepEqual(await (await fetch(`${base}/api/settings`)).json(), { maxRunning: 8, unattendedPaused: false });
     const saved = await post({ maxRunning: 3 });
     assert.equal(saved.status, 200);

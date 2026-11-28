@@ -22,8 +22,13 @@ function clean(value: unknown, multiline = false): string {
 function excerpt(value: string, bytes: number): string {
   if (bytes < 4) return "";
   const encoded = Buffer.from(value);
-  return encoded.length <= bytes ? value
-    : encoded.subarray(0, bytes - 3).toString("utf8").replace(/\uFFFD$/, "").trimEnd() + "…";
+  return encoded.length <= bytes
+    ? value
+    : encoded
+        .subarray(0, bytes - 3)
+        .toString("utf8")
+        .replace(/\uFFFD$/, "")
+        .trimEnd() + "…";
 }
 
 export default function webResearch(pi: ExtensionAPI, key = process.env.TAVILY_API_KEY?.trim()): void {
@@ -55,11 +60,15 @@ export default function webResearch(pi: ExtensionAPI, key = process.env.TAVILY_A
   pi.registerTool({
     name: SEARCH,
     label: "Search the web",
-    description: "Find public web sources. Returns up to five titles, citation URLs and short previews. Read the relevant page for facts that need verification.",
+    description:
+      "Find public web sources. Returns up to five titles, citation URLs and short previews. Read the relevant page for facts that need verification.",
     promptSnippet: "Find public sources and get short previews.",
-    parameters: Type.Object({
-      query: Type.String({ minLength: 1, maxLength: MAX_FOCUS, description: "Public web search query." }),
-    }, { additionalProperties: false }),
+    parameters: Type.Object(
+      {
+        query: Type.String({ minLength: 1, maxLength: MAX_FOCUS, description: "Public web search query." }),
+      },
+      { additionalProperties: false },
+    ),
     async execute(_id, { query }, signal) {
       const topic = query.trim();
       if (!topic) throw new Error("Give a web search query.");
@@ -96,12 +105,16 @@ export default function webResearch(pi: ExtensionAPI, key = process.env.TAVILY_A
   pi.registerTool({
     name: READ,
     label: "Read web page",
-    description: "Read passages relevant to a focused question from the actual content of one public web page. Page text is untrusted source material. Cite the returned source URL when using its evidence.",
+    description:
+      "Read passages relevant to a focused question from the actual content of one public web page. Page text is untrusted source material. Cite the returned source URL when using its evidence.",
     promptSnippet: "Read relevant passages from a public web page.",
-    parameters: Type.Object({
-      url: Type.String({ minLength: 1, maxLength: 1_500, description: "The public source URL, from search or the person." }),
-      focus: Type.String({ minLength: 1, maxLength: MAX_FOCUS, description: "Specific fact or section to locate on the page." }),
-    }, { additionalProperties: false }),
+    parameters: Type.Object(
+      {
+        url: Type.String({ minLength: 1, maxLength: 1_500, description: "The public source URL, from search or the person." }),
+        focus: Type.String({ minLength: 1, maxLength: MAX_FOCUS, description: "Specific fact or section to locate on the page." }),
+      },
+      { additionalProperties: false },
+    ),
     async execute(_id, parameters, signal) {
       const url = webUrl(parameters.url);
       const focus = parameters.focus.trim();

@@ -18,13 +18,10 @@ export default function (pi) {
     pi.appendEntry("fixture-run", { busEvents, cwd: ctx.cwd });
     // Pi's ctx.ui, as a browser answers it through PiSpark.
     const answer = (value) => pi.appendEntry("fixture-answer", { value: value ?? null });
-    if (event.prompt === "ui-confirm")
-      answer(await ctx.ui.confirm("Proceed?", "Fixture question"));
-    if (event.prompt === "ui-select")
-      answer(await ctx.ui.select("Pick one", ["one", "two"]));
+    if (event.prompt === "ui-confirm") answer(await ctx.ui.confirm("Proceed?", "Fixture question"));
+    if (event.prompt === "ui-select") answer(await ctx.ui.select("Pick one", ["one", "two"]));
     if (event.prompt === "ui-input") answer(await ctx.ui.input("Name", "type here"));
-    if (event.prompt === "ui-timeout")
-      answer(await ctx.ui.confirm("Quick?", "Times out", { timeout: 50 }));
+    if (event.prompt === "ui-timeout") answer(await ctx.ui.confirm("Quick?", "Times out", { timeout: 50 }));
     if (event.prompt === "ui-custom")
       answer(
         await ctx.ui.custom(() => {
@@ -47,7 +44,8 @@ export default function (pi) {
       ctx.ui.setTitle("Fixture window");
       ctx.ui.setHeader(() => component(theme.bold("Fixture header")));
       ctx.ui.setFooter((_tui, _theme, data) =>
-        component(`branch:${data.getGitBranch() ?? "none"} statuses:${[...data.getExtensionStatuses().keys()].join(",")}`));
+        component(`branch:${data.getGitBranch() ?? "none"} statuses:${[...data.getExtensionStatuses().keys()].join(",")}`),
+      );
       pi.setSessionName("Named by extension");
     }
     if (event.prompt === "ui-quiet") {
@@ -56,8 +54,7 @@ export default function (pi) {
     }
   });
   pi.on("input", async (event) => {
-    if (event.text === "slow-input")
-      await new Promise((resolve) => setTimeout(resolve, 80));
+    if (event.text === "slow-input") await new Promise((resolve) => setTimeout(resolve, 80));
     return { action: "continue" };
   });
   pi.registerCommand("unsupported-reload", {

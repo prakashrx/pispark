@@ -15,10 +15,7 @@
   const id = $props.id();
 </script>
 
-<label
-  class="relative inline-flex items-center cursor-pointer"
-  class:opacity-50={disabled}
->
+<label class="relative inline-flex items-center cursor-pointer" class:opacity-50={disabled}>
   <input
     type="checkbox"
     role="switch"
@@ -30,9 +27,7 @@
     {onchange}
   />
   <span class="toggle-track" aria-hidden="true"></span>
-  {#if help}<span id={`${id}-help`} class="ml-2 text-xs text-neutral-500"
-      >{help}</span
-    >{/if}
+  {#if help}<span id={`${id}-help`} class="ml-2 text-xs text-neutral-500">{help}</span>{/if}
 </label>
 
 <style>

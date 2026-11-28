@@ -23,10 +23,7 @@ function valid(value: Partial<Appearance>): Appearance {
   const pick = <T extends { id: string }>(list: T[], id: unknown, fallback: string) =>
     list.some((item) => item.id === id) ? (id as string) : fallback;
   return {
-    theme:
-      value.theme === "system"
-        ? "system"
-        : pick(themes, value.theme, defaultAppearance.theme),
+    theme: value.theme === "system" ? "system" : pick(themes, value.theme, defaultAppearance.theme),
     interfaceFont: pick(fonts, value.interfaceFont, defaultAppearance.interfaceFont),
     messageFont: pick(fonts, value.messageFont, defaultAppearance.messageFont),
     textSize: pick(textSizes, value.textSize, defaultAppearance.textSize),
@@ -41,10 +38,7 @@ function load(): Appearance {
   }
 }
 
-const darkQuery =
-  typeof window !== "undefined" && window.matchMedia
-    ? window.matchMedia("(prefers-color-scheme: dark)")
-    : undefined;
+const darkQuery = typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : undefined;
 
 class AppearanceState {
   current = $state<Appearance>(load());
@@ -52,9 +46,7 @@ class AppearanceState {
 
   /** The concrete theme id in effect, resolving "system". */
   get resolvedTheme(): string {
-    return this.current.theme === "system"
-      ? systemThemes[this.systemDark ? "dark" : "light"]
-      : this.current.theme;
+    return this.current.theme === "system" ? systemThemes[this.systemDark ? "dark" : "light"] : this.current.theme;
   }
 
   constructor() {

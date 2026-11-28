@@ -31,7 +31,12 @@ interface Run {
 }
 const ENABLE_URL = /https:\/\/login\.tailscale\.com\/f\/serve\?node=[\w-]+/;
 /** A short, single-line account of what the CLI said, for the page. */
-const said = (out: string) => out.split(/\r?\n/).map((line) => line.trim()).find(Boolean)?.slice(0, 200) ?? "Tailscale didn’t say why.";
+const said = (out: string) =>
+  out
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean)
+    ?.slice(0, 200) ?? "Tailscale didn’t say why.";
 
 /**
  * The `tailscale` command on this computer: from PATH, or where the installers put it. PiSpark only
@@ -75,7 +80,9 @@ export class Tailscale implements TailscaleCli {
         };
         child.stdout.on("data", read);
         child.stderr.on("data", read);
-        child.on("error", (error: NodeJS.ErrnoException) => finish(error.code === "ENOENT" ? "missing" : { code: null, out: error.message }));
+        child.on("error", (error: NodeJS.ErrnoException) =>
+          finish(error.code === "ENOENT" ? "missing" : { code: null, out: error.message }),
+        );
         child.on("close", (code) => finish({ code, out }));
       });
     return (async () => {

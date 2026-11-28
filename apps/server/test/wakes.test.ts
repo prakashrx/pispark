@@ -30,7 +30,9 @@ async function fixture() {
       if (busy.has(id)) throw new RuntimeError("busy");
       busy.add(id);
       let finish!: (result?: RunResult) => void;
-      const completion = new Promise<RunResult>((resolve) => (finish = (result) => (busy.delete(id), resolve(result ?? { outcome: "completed" }))));
+      const completion = new Promise<RunResult>(
+        (resolve) => (finish = (result) => (busy.delete(id), resolve(result ?? { outcome: "completed" }))),
+      );
       sent.push({ text, details, finish });
       return { completion };
     },
@@ -99,7 +101,10 @@ test("busy: one waiting wake stands for a latest source; a queue source waits fo
     assert.equal(again.records(SESSION, "clock")[0]!.reason, "busy");
     assert.equal(again.waiting(SESSION, "inbox"), false);
     // One run for both messages, recorded for each.
-    assert.deepEqual(again.records(SESSION, "inbox").map((record) => record.outcome), ["ran", "ran"]);
+    assert.deepEqual(
+      again.records(SESSION, "inbox").map((record) => record.outcome),
+      ["ran", "ran"],
+    );
   } finally {
     await f.cleanup();
   }
@@ -175,7 +180,11 @@ test("everything that waited arrives together: one message, each part with its s
   try {
     const wakes = f.make();
     f.busy.add(SESSION);
-    const from = (id: string, text: string, start: number): Wake => ({ ...f.wake(id, text, "queue"), source: { kind: "process", id, label: `${id} · exited 0` }, card: { title: id, how: "exited 0", start } });
+    const from = (id: string, text: string, start: number): Wake => ({
+      ...f.wake(id, text, "queue"),
+      source: { kind: "process", id, label: `${id} · exited 0` },
+      card: { title: id, how: "exited 0", start },
+    });
     await wakes.deliver(SESSION, from("typecheck", "typecheck exited 0. Output: clean", 28));
     await wakes.deliver(SESSION, f.wake("taken", "skip me", "queue"));
     await wakes.deliver(SESSION, from("tests", "tests exited 0. Output: 212 passed", 24));

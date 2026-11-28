@@ -7,60 +7,66 @@ const fresh = hostedTest;
 const SERVER = `node -e "console.log('ready on 5199'); setInterval(() => console.log('tick'), 200)"`;
 const start = (args: object) => `tool:pispark_start_process:${JSON.stringify(args)}`;
 
-fresh("a process the agent starts: a row in the reply, on Background naming its session, live output in the panel, Stop", async ({ page }) => {
-  await page.goto("/");
-  const box = page.getByRole("textbox", { name: "Ask anything", exact: true });
-  await box.fill(start({ command: SERVER, title: "dev server" }));
-  await box.press("Enter");
+fresh(
+  "a process the agent starts: a row in the reply, on Background naming its session, live output in the panel, Stop",
+  async ({ page }) => {
+    await page.goto("/");
+    const box = page.getByRole("textbox", { name: "Ask anything", exact: true });
+    await box.fill(start({ command: SERVER, title: "dev server" }));
+    await box.press("Enter");
 
-  // The reply shows the process with its state; the session's row in the sidebar counts what is still going.
-  const row = page.locator('[data-purpose="process-row"]');
-  await expect(row).toContainText("dev server");
-  await expect(row).toContainText("Running");
-  await expect(page.getByRole("navigation", { name: "Sessions" }).getByText("Still going: 1 process")).toBeAttached();
+    // The reply shows the process with its state; the session's row in the sidebar counts what is still going.
+    const row = page.locator('[data-purpose="process-row"]');
+    await expect(row).toContainText("dev server");
+    await expect(row).toContainText("Running");
+    await expect(page.getByRole("navigation", { name: "Sessions" }).getByText("Still going: 1 process")).toBeAttached();
 
-  // Background lists it among what is running, naming its session; its row opens the session on its output.
-  const session = page.url();
-  await page.getByRole("complementary", { name: "Sidebar" }).getByRole("link", { name: /^Background/ }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Background" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Running 1" })).toBeVisible();
-  await page.getByRole("button", { name: "Running 1" }).click();
-  await expect(page.getByRole("button", { name: "Running 1" })).toHaveAttribute("aria-pressed", "true");
-  const running = page.getByRole("region", { name: "Running" });
-  await expect(running.getByRole("listitem")).toHaveCount(1);
-  await expect(running.getByRole("listitem")).toContainText(/tool:pispark_start_process.* · Running/);
-  await running.getByRole("button", { name: /^dev server/ }).click();
-  await expect(page).toHaveURL(session);
-  const panel = page.getByRole("complementary", { name: "Process output" });
-  await expect(panel.getByLabel("Output of dev server")).toBeVisible();
+    // Background lists it among what is running, naming its session; its row opens the session on its output.
+    const session = page.url();
+    await page
+      .getByRole("complementary", { name: "Sidebar" })
+      .getByRole("link", { name: /^Background/ })
+      .click();
+    await expect(page.getByRole("heading", { level: 1, name: "Background" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Running 1" })).toBeVisible();
+    await page.getByRole("button", { name: "Running 1" }).click();
+    await expect(page.getByRole("button", { name: "Running 1" })).toHaveAttribute("aria-pressed", "true");
+    const running = page.getByRole("region", { name: "Running" });
+    await expect(running.getByRole("listitem")).toHaveCount(1);
+    await expect(running.getByRole("listitem")).toContainText(/tool:pispark_start_process.* · Running/);
+    await running.getByRole("button", { name: /^dev server/ }).click();
+    await expect(page).toHaveURL(session);
+    const panel = page.getByRole("complementary", { name: "Process output" });
+    await expect(panel.getByLabel("Output of dev server")).toBeVisible();
 
-  // Show output in the reply opens the panel on it too; output keeps coming while it runs.
-  await panel.getByRole("button", { name: "Back to Details" }).click();
-  await row.getByRole("button", { name: /^Show output/ }).click();
-  const output = panel.getByLabel("Output of dev server");
-  await expect(output).toContainText("ready on 5199");
-  await expect(output).toContainText("tick");
+    // Show output in the reply opens the panel on it too; output keeps coming while it runs.
+    await panel.getByRole("button", { name: "Back to Details" }).click();
+    await row.getByRole("button", { name: /^Show output/ }).click();
+    const output = panel.getByLabel("Output of dev server");
+    await expect(output).toContainText("ready on 5199");
+    await expect(output).toContainText("tick");
 
-  // Stop ends it; the session gets a line saying you stopped it, not a turn. On Windows, finding the process
-  // tree starts PowerShell, which can take seconds on a cold machine.
-  await panel.getByRole("button", { name: "Stop dev server" }).click();
-  await expect(panel).toContainText("Stopped", { timeout: 20_000 });
-  await expect(page.locator('[data-purpose="status-line"]')).toContainText("dev server was stopped", { timeout: 20_000 });
+    // Stop ends it; the session gets a line saying you stopped it, not a turn. On Windows, finding the process
+    // tree starts PowerShell, which can take seconds on a cold machine.
+    await panel.getByRole("button", { name: "Stop dev server" }).click();
+    await expect(panel).toContainText("Stopped", { timeout: 20_000 });
+    await expect(page.locator('[data-purpose="status-line"]')).toContainText("dev server was stopped", { timeout: 20_000 });
 
-  // Escape goes back to Details, which take focus.
-  await panel.getByRole("heading", { name: "Process output" }).focus();
-  await page.keyboard.press("Escape");
-  await expect(panel).toHaveCount(0);
-  await expect(page.getByRole("heading", { level: 2, name: "Details" })).toBeFocused();
+    // Escape goes back to Details, which take focus.
+    await panel.getByRole("heading", { name: "Process output" }).focus();
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 2, name: "Details" })).toBeFocused();
 
-  // With it stopped, nothing runs in the background.
-  await page.goto("/#/background");
-  await expect(page.getByRole("button", { name: "Running 0" })).toBeVisible();
-  await expect(page.getByText(/^Nothing runs in the background/)).toBeVisible();
+    // With it stopped, nothing runs in the background.
+    await page.goto("/#/background");
+    await expect(page.getByRole("button", { name: "Running 0" })).toBeVisible();
+    await expect(page.getByText(/^Nothing runs in the background/)).toBeVisible();
 
-  await page.setViewportSize({ width: 390, height: 844 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-});
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  },
+);
 
 fresh("a session is not a row on Background: a working reply shows in the session list", async ({ page }) => {
   await page.goto("/");

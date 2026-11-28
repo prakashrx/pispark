@@ -118,12 +118,13 @@ test("the New session composer stays typeable and its controls inside it at ever
     await expect.poll(async () => (await ask.boundingBox())?.width ?? 0).toBeGreaterThan(200);
     const form = page.getByRole("form", { name: "New session" });
     const start = page.getByRole("button", { name: "Start session", exact: true });
-    await expect.poll(async () => {
-      const surface = await form.boundingBox();
-      const run = await start.boundingBox();
-      return !!surface && !!run && run.x + run.width <= surface.x + surface.width &&
-        run.y + run.height <= surface.y + surface.height;
-    }).toBe(true);
+    await expect
+      .poll(async () => {
+        const surface = await form.boundingBox();
+        const run = await start.boundingBox();
+        return !!surface && !!run && run.x + run.width <= surface.x + surface.width && run.y + run.height <= surface.y + surface.height;
+      })
+      .toBe(true);
     // The choices are reachable and their picker returns focus.
     await folderButton(page).click();
     await expect(page.getByRole("combobox", { name: "Search Working folder" })).toBeFocused();

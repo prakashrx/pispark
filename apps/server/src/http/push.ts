@@ -33,7 +33,11 @@ export class PushKeys {
   authorization(endpoint: string, now = Date.now()): string {
     const header = base64url(JSON.stringify({ typ: "JWT", alg: "ES256" }));
     const claims = base64url(
-      JSON.stringify({ aud: new URL(endpoint).origin, exp: Math.floor(now / 1000) + 12 * 60 * 60, sub: "https://github.com/prakashrx/pispark" }),
+      JSON.stringify({
+        aud: new URL(endpoint).origin,
+        exp: Math.floor(now / 1000) + 12 * 60 * 60,
+        sub: "https://github.com/prakashrx/pispark",
+      }),
     );
     const signature = sign("sha256", Buffer.from(`${header}.${claims}`), { key: this.privateKey, dsaEncoding: "ieee-p1363" });
     return `vapid t=${header}.${claims}.${base64url(signature)}, k=${this.publicKey}`;

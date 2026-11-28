@@ -31,12 +31,18 @@
     void page.view?.revision;
     void refresh();
   });
-  const present = $derived(new Set((page.view?.items ?? []).filter((item) => item.type === kind && item.origin.id === page.agent).map((item) => item.name)));
-  const from = (reference: string) => (reference.startsWith("bundled:") ? "Bundled" : reference.startsWith("shared:") ? "Shared" : "This agent's folder");
+  const present = $derived(
+    new Set((page.view?.items ?? []).filter((item) => item.type === kind && item.origin.id === page.agent).map((item) => item.name)),
+  );
+  const from = (reference: string) =>
+    reference.startsWith("bundled:") ? "Bundled" : reference.startsWith("shared:") ? "Shared" : "This agent's folder";
   const options = $derived(
     available
       .filter((entry) => !present.has(entry.name))
-      .map((entry) => ({ value: entry.reference, label: `${kind === "prompts" ? "/" : ""}${entry.name} · ${from(entry.reference)}${entry.usedBy ? ` · ${entry.usedBy} ${entry.usedBy === 1 ? "agent" : "agents"}` : ""}` })),
+      .map((entry) => ({
+        value: entry.reference,
+        label: `${kind === "prompts" ? "/" : ""}${entry.name} · ${from(entry.reference)}${entry.usedBy ? ` · ${entry.usedBy} ${entry.usedBy === 1 ? "agent" : "agents"}` : ""}`,
+      })),
   );
   $effect(() => {
     if (!chosen) return;
@@ -50,10 +56,24 @@
   <p class="lead">{@render children()}</p>
   {#if !page.readOnly}
     <div class="actions">
-      <Selector label={`Add ${KINDS[kind].one}`} options={options} bind:value={chosen} searchable action {loading} error={error || undefined} emptyText={oncreate ? "Nothing else to add. Create one, or put one in the Shared library." : "Nothing else to add. Put one in the Shared library."} disabled={page.client.busy}>
+      <Selector
+        label={`Add ${KINDS[kind].one}`}
+        {options}
+        bind:value={chosen}
+        searchable
+        action
+        {loading}
+        error={error || undefined}
+        emptyText={oncreate
+          ? "Nothing else to add. Create one, or put one in the Shared library."
+          : "Nothing else to add. Put one in the Shared library."}
+        disabled={page.client.busy}
+      >
         {#snippet children()}<Icon name="plus" class="h-4 w-4" /><span>Add</span>{/snippet}
       </Selector>
-      {#if oncreate}<button type="button" class="ui-button create" data-variant="primary" data-size="compact" onclick={oncreate}><Icon name="plus" class="h-4 w-4" />Create</button>{/if}
+      {#if oncreate}<button type="button" class="ui-button create" data-variant="primary" data-size="compact" onclick={oncreate}
+          ><Icon name="plus" class="h-4 w-4" />Create</button
+        >{/if}
     </div>
   {/if}
 </div>

@@ -19,9 +19,7 @@
   } = $props();
   const id = $props.id();
   let root: HTMLDivElement;
-  const selected = $derived(
-    value || tabs.find((tab) => !tab.disabled)?.id || "",
-  );
+  const selected = $derived(value || tabs.find((tab) => !tab.disabled)?.id || "");
   function navigate(event: KeyboardEvent, current: string) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
@@ -32,17 +30,10 @@
         ? enabled[0]
         : event.key === "End"
           ? enabled.at(-1)
-          : enabled[
-              (index + (event.key === "ArrowRight" ? 1 : -1) + enabled.length) %
-                enabled.length
-            ];
+          : enabled[(index + (event.key === "ArrowRight" ? 1 : -1) + enabled.length) % enabled.length];
     if (next) {
       value = next.id;
-      root
-        .querySelector<HTMLButtonElement>(
-          `[data-tab-index="${tabs.indexOf(next)}"]`,
-        )
-        ?.focus();
+      root.querySelector<HTMLButtonElement>(`[data-tab-index="${tabs.indexOf(next)}"]`)?.focus();
     }
   }
 </script>
@@ -61,7 +52,8 @@
         disabled={tab.disabled}
         onclick={() => (value = tab.id)}
         onkeydown={(event) => navigate(event, tab.id)}
-        class="tab">{tab.label}{#if tab.count !== undefined}<span class="count">{tab.count}</span>{/if}</button
+        class="tab"
+        >{tab.label}{#if tab.count !== undefined}<span class="count">{tab.count}</span>{/if}</button
       >
     {/each}
   </div>

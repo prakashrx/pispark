@@ -40,7 +40,9 @@ test("attachments sit in the text where they were added, go with the message, an
   const items = await (await page.request.get(`/api/sessions/${id}/items`)).json();
   const user = items.items.find((item: { role: string }) => item.role === "user");
   const sent = user.parts.find((part: { type: string }) => part.type === "text").text as string;
-  expect(sent).toMatch(/^See <file name="[^"]*[\\/]sessions[\\/][\w-]+[\\/]files[\\/]shot\.png"><\/file>\s*<file name="[^"]*notes\.txt"><\/file>\s*and fix it$/);
+  expect(sent).toMatch(
+    /^See <file name="[^"]*[\\/]sessions[\\/][\w-]+[\\/]files[\\/]shot\.png"><\/file>\s*<file name="[^"]*notes\.txt"><\/file>\s*and fix it$/,
+  );
   expect(user.parts.filter((part: { type: string }) => part.type === "image")).toHaveLength(1);
 
   // A reply uploads at once; Backspace removes a chip like one character.

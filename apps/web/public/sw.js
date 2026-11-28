@@ -79,7 +79,13 @@ self.addEventListener("push", (event) => {
       if (!list.length) list = [{ title: "PiSpark", body: "A session may need you.", url: "/#/", tag: "pispark" }];
       await Promise.all(
         list.map((each) =>
-          self.registration.showNotification(each.title, { body: each.body, tag: each.tag, icon: "/icon-192.png", badge: "/icon-192.png", data: { url: each.url } }),
+          self.registration.showNotification(each.title, {
+            body: each.body,
+            tag: each.tag,
+            icon: "/icon-192.png",
+            badge: "/icon-192.png",
+            data: { url: each.url },
+          }),
         ),
       );
     })(),

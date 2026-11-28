@@ -14,8 +14,7 @@ import { addControlledExtension, addFrontendExtension, addViewExtension, writeAg
 
 // Optional harness-owned persistent state; never a production configuration switch.
 const persistentRoot = process.argv[2];
-const root =
-  persistentRoot ?? (await mkdtemp(join(tmpdir(), "pispark-browser-")));
+const root = persistentRoot ?? (await mkdtemp(join(tmpdir(), "pispark-browser-")));
 const home = join(root, "home");
 await mkdir(home, { recursive: true });
 const workspace = join(root, "workspace");
@@ -24,8 +23,7 @@ await writeFile(join(workspace, "sample.txt"), "native browser tool result");
 // Ask starts sessions in the host's home folder. The harness points HOME at a temporary folder;
 // only then is the sample file placed there too.
 const testHome = homedir();
-if (testHome.startsWith(tmpdir()) && existsSync(testHome))
-  await writeFile(join(testHome, "sample.txt"), "native browser tool result");
+if (testHome.startsWith(tmpdir()) && existsSync(testHome)) await writeFile(join(testHome, "sample.txt"), "native browser tool result");
 // First start of this data folder: a Default with read and the controlled extension,
 // and a Review agent with a skill and a command.
 if (!existsSync(join(home, "agents", "default", "agent.json"))) {
@@ -59,21 +57,14 @@ if (!existsSync(join(home, "agents", "default", "agent.json"))) {
 }
 const settingsFixture = await localProviderSettings(join(home, "providers"));
 // The local auth provider is signed in and the default, so sessions can start without setup.
-await writeFile(
-  settingsFixture.authPath,
-  JSON.stringify({ "pispark-local-test": { type: "api_key", key: "test-key" } }),
-);
+await writeFile(settingsFixture.authPath, JSON.stringify({ "pispark-local-test": { type: "api_key", key: "test-key" } }));
 await settingsFixture.runtime.refresh({ allowNetwork: false });
 await settingsFixture.settings.setDefault({
   provider: "pispark-local-test",
   id: "deterministic",
 });
 const runtime = new SessionRuntime({ home, points: WORKSPACE_POINTS }, settingsFixture.settings);
-const sessions = new SessionHttp(
-  runtime,
-  process.env.PISPARK_DEV_ORIGIN,
-  new ProviderHttp(settingsFixture.settings),
-);
+const sessions = new SessionHttp(runtime, process.env.PISPARK_DEV_ORIGIN, new ProviderHttp(settingsFixture.settings));
 const server = createAppServer({
   sessions,
   webRoot: fileURLToPath(new URL("../../../web/dist/", import.meta.url)),
@@ -83,11 +74,8 @@ const interval = setInterval(() => {
   for (const request of settingsFixture.control.requests)
     if (!seen.has(request)) {
       seen.add(request);
-      const last = request.context.messages.findLast(
-        (message) => message.role === "user",
-      );
-      if (!JSON.stringify(last).includes("hold"))
-        setTimeout(request.release, 800);
+      const last = request.context.messages.findLast((message) => message.role === "user");
+      if (!JSON.stringify(last).includes("hold")) setTimeout(request.release, 800);
     }
 }, 20);
 server.listen(Number(process.env.PORT ?? 4182), "127.0.0.1");

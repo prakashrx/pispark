@@ -4,9 +4,7 @@
   let { text, label }: { text: string; label: string } = $props();
   const qr = $derived(encode(text, { ecc: "M", border: 2 }));
   const size = $derived(qr.data.length);
-  const path = $derived(
-    qr.data.flatMap((row, y) => row.map((dark, x) => (dark ? `M${x} ${y}h1v1h-1z` : ""))).join(""),
-  );
+  const path = $derived(qr.data.flatMap((row, y) => row.map((dark, x) => (dark ? `M${x} ${y}h1v1h-1z` : ""))).join(""));
 </script>
 
 <svg class="qr" viewBox="0 0 {size} {size}" shape-rendering="crispEdges" role="img" aria-label={label}>

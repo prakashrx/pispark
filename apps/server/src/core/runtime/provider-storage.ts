@@ -11,15 +11,10 @@ export async function providerStores(root: string) {
   let deviceId: string;
   try {
     const value = JSON.parse(await readFile(path, "utf8"));
-    if (
-      typeof value.deviceId !== "string" ||
-      !/^[a-f0-9-]{36}$/.test(value.deviceId)
-    )
-      throw new ProviderError("provider-storage");
+    if (typeof value.deviceId !== "string" || !/^[a-f0-9-]{36}$/.test(value.deviceId)) throw new ProviderError("provider-storage");
     deviceId = value.deviceId;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
-      throw new ProviderError("provider-storage");
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new ProviderError("provider-storage");
     deviceId = randomUUID();
     await writeMetadata(path, { deviceId });
   }
@@ -59,15 +54,10 @@ export class ModelDefaults {
       const text = await readFile(join(this.root, "settings.json"), "utf8");
       if (text.length > 4096) throw new Error();
       const data = JSON.parse(text);
-      if (
-        data.version !== 1 ||
-        (data.defaultModel !== null && !validChoice(data.defaultModel))
-      )
-        throw new Error();
+      if (data.version !== 1 || (data.defaultModel !== null && !validChoice(data.defaultModel))) throw new Error();
       this.value = data.defaultModel;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT")
-        throw new ProviderError("provider-storage");
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new ProviderError("provider-storage");
     }
   }
   async save(value: ModelChoice | null) {
@@ -75,9 +65,7 @@ export class ModelDefaults {
     try {
       const file = await open(temporary, "wx", 0o600);
       try {
-        await file.writeFile(
-          JSON.stringify({ version: 1, defaultModel: value }),
-        );
+        await file.writeFile(JSON.stringify({ version: 1, defaultModel: value }));
         await file.sync();
       } finally {
         await file.close();

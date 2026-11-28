@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
-import { fileKind, fileSize } from "./file-kinds";
+import { formatBytes as fileSize } from "../../lib/bytes";
+import { fileKind } from "./file-kinds";
 
 test("a file is shown by what its name says it is", () => {
   expect(fileKind("photo.PNG")).toBe("image");

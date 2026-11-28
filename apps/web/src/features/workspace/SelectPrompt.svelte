@@ -6,9 +6,7 @@
   let query = $state("");
   let list = $state<HTMLElement>();
   let filter = $state<HTMLInputElement>();
-  const shown = $derived(
-    options.filter((option) => !query.trim() || option.toLowerCase().includes(query.trim().toLowerCase())),
-  );
+  const shown = $derived(options.filter((option) => !query.trim() || option.toLowerCase().includes(query.trim().toLowerCase())));
   /** "Label — what it does": the label leads and the rest reads as a second, quieter line. */
   const split = (option: string) => {
     const at = option.search(/\s[—–]\s/);
@@ -45,14 +43,30 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="select" onkeydown={keydown}>
   {#if options.length >= FILTER_FROM}
-    <input class="filter" type="search" aria-label="Filter options" placeholder="Type to filter…" bind:value={query} bind:this={filter} data-autofocus />
+    <input
+      class="filter"
+      type="search"
+      aria-label="Filter options"
+      placeholder="Type to filter…"
+      bind:value={query}
+      bind:this={filter}
+      data-autofocus
+    />
   {/if}
   <div class="options" bind:this={list}>
     {#each shown as option, index (option)}
       {@const [label, detail] = split(option)}
-      <button type="button" class="option" data-option data-autofocus={options.length < FILTER_FROM && index === 0 ? "" : undefined} onclick={() => onanswer(option)}>
+      <button
+        type="button"
+        class="option"
+        data-option
+        data-autofocus={options.length < FILTER_FROM && index === 0 ? "" : undefined}
+        onclick={() => onanswer(option)}
+      >
         <span class="number" aria-hidden="true">{index < 9 ? index + 1 : ""}</span>
-        <span class="text"><span>{label}</span>{#if detail}<span class="detail">{detail}</span>{/if}</span>
+        <span class="text"
+          ><span>{label}</span>{#if detail}<span class="detail">{detail}</span>{/if}</span
+        >
       </button>
     {:else}
       <p class="none" role="status">Nothing matches “{query}”.</p>

@@ -3,32 +3,21 @@ import { providerUsageLimited } from "../src/core/runtime/errors.js";
 import { SafeLogger } from "../src/core/logger.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  mkdtemp,
-  mkdir,
-  writeFile,
-  readFile,
-  readdir,
-  rm,
-} from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fork, spawn } from "node:child_process";
 import { once } from "node:events";
-import {
-  SessionRuntime,
-  RuntimeError,
-} from "../src/core/runtime/session-runtime.js";
+import { SessionRuntime, RuntimeError } from "../src/core/runtime/session-runtime.js";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { assertPiBoundary } from "../src/core/runtime/pi-boundary.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { addControlledExtension, selectLocal, testHome } from "./fixtures/home.js";
 import { sessionItems, sessionNotices, sessionText, inFlight } from "./fixtures/session.js";
 
-const hasCode = (code: string) => (error: unknown) =>
-  error instanceof RuntimeError && error.code === code;
+const hasCode = (code: string) => (error: unknown) => error instanceof RuntimeError && error.code === code;
 const ambient = (root: string) => ({
   "value.txt": "",
   "AGENTS.md": "FORBIDDEN-AMBIENT-CONTEXT",
@@ -46,9 +35,7 @@ async function fixture(logger?: SafeLogger) {
   // Default grants nothing here; agents "a" and "b" each add read, an instruction and the controlled extension.
   await h.agent("default", { name: "Default" });
   for (const key of ["a", "b"] as const) {
-    folders[key] = realpathSync.native(
-      await h.folder(key, { ...ambient(h.root), "value.txt": `workspace-${key}` }),
-    );
+    folders[key] = realpathSync.native(await h.folder(key, { ...ambient(h.root), "value.txt": `workspace-${key}` }));
     await h.agent(
       key,
       { name: key.toUpperCase(), on: ["tool:read"] },
@@ -62,12 +49,7 @@ async function fixture(logger?: SafeLogger) {
   const configuration = h.configuration;
   const runtime = new SessionRuntime(configuration, undefined, logger);
   const sessionsDir = join(h.home, "sessions");
-  const transcript = async (id: string) =>
-    join(
-      sessionsDir,
-      id,
-      (await readdir(join(sessionsDir, id))).find((n) => n.endsWith(".jsonl"))!,
-    );
+  const transcript = async (id: string) => join(sessionsDir, id, (await readdir(join(sessionsDir, id))).find((n) => n.endsWith(".jsonl"))!);
   /** Write an extension file into agent `agent`. */
   const extension = async (agent: string, name: string, source: string) => {
     const dir = join(h.home, "agents", agent, "extensions");
@@ -86,8 +68,7 @@ async function fixture(logger?: SafeLogger) {
     history: h.history,
     transcript,
     extension,
-    create: (key: "a" | "b", target = runtime) =>
-      target.create({ folder: folders[key], agent: key }),
+    create: (key: "a" | "b", target = runtime) => target.create({ folder: folders[key], agent: key }),
     cleanup: async () => {
       await runtime.shutdown();
       await h.remove();
@@ -104,12 +85,7 @@ function setupGate(f: Awaited<ReturnType<typeof fixture>>) {
   (globalThis as unknown as Record<string, unknown>)[key] = pending;
   return {
     release,
-    install: () =>
-      f.extension(
-        "a",
-        "gate.mjs",
-        `export default async () => { await globalThis[${JSON.stringify(key)}]; }`,
-      ),
+    install: () => f.extension("a", "gate.mjs", `export default async () => { await globalThis[${JSON.stringify(key)}]; }`),
   };
 }
 
@@ -118,22 +94,14 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
   const originalCwd = process.cwd();
   const originalEnv = { ...process.env };
   try {
-    const [a, b] = await Promise.all([
-      f.create("a"),
-      f.create("b"),
-    ]);
+    const [a, b] = await Promise.all([f.create("a"), f.create("b")]);
     const observerA = f.runtime.observeLive(a.id);
     const observerB = f.runtime.observeLive(b.id);
     const runA = f.runtime.start(a.id, "first-a");
     const runB = f.runtime.start(b.id, "read:value.txt");
-    await eventually(
-      () => f.provider.active === 2 && inFlight(f.runtime, a.id).length > 0,
-    );
+    await eventually(() => f.provider.active === 2 && inFlight(f.runtime, a.id).length > 0);
     assert.equal(f.provider.peak, 2);
-    assert.match(
-      JSON.stringify(inFlight(f.runtime, a.id)),
-      /partial-local/,
-    );
+    assert.match(JSON.stringify(inFlight(f.runtime, a.id)), /partial-local/);
     assert.equal((await observerA.events.next()).value?.sessionId, a.id);
     assert.equal((await observerB.events.next()).value?.sessionId, b.id);
     await f.runtime.queue(a.id, "must-not-run", "follow-up");
@@ -153,27 +121,15 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
     assert.deepEqual(await runB.completion, { outcome: "completed" });
     // A slow observer keeps one latest invalidation, not every event.
     assert.equal((await observerB.events.next()).value?.sessionId, b.id);
-    assert.match(
-      sessionText(f.runtime, b.id),
-      /workspace-b/,
-    );
-    assert.doesNotMatch(
-      sessionText(f.runtime, a.id),
-      /workspace-b|must-not-run|also-not-run/,
-    );
-    const requests = f.provider.requests.map((request) =>
-      JSON.stringify(request.context),
-    );
+    assert.match(sessionText(f.runtime, b.id), /workspace-b/);
+    assert.doesNotMatch(sessionText(f.runtime, a.id), /workspace-b|must-not-run|also-not-run/);
+    const requests = f.provider.requests.map((request) => JSON.stringify(request.context));
     assert.match(requests[0]!, /system-a/);
     assert.match(requests[0]!, /instructions-a/);
     assert.doesNotMatch(requests[0]!, /system-b|instructions-b|FORBIDDEN/);
     assert.match(requests[1]!, /system-b/);
     assert.doesNotMatch(requests[1]!, /instructions-a|FORBIDDEN/);
-    assert.ok(
-      f.provider.requests.every(
-        (request) => request.apiKey === "pispark-local-keyless",
-      ),
-    );
+    assert.ok(f.provider.requests.every((request) => request.apiKey === "pispark-local-keyless"));
     await assert.rejects(readFile(join(f.root, "ambient-executed")), {
       code: "ENOENT",
     });
@@ -182,35 +138,19 @@ test("SessionRuntime: real SDK concurrency, isolated resources/tools/history, pa
     await Promise.all([f.runtime.stop(a.id), f.runtime.stop(b.id)]);
     for (const id of [a.id, b.id]) {
       const entries = await f.history(id);
-      const start = entries.find(
-        (entry) => entry.customType === "fixture-start",
-      );
+      const start = entries.find((entry) => entry.customType === "fixture-start");
       assert.equal(start.data.starts, 1);
       assert.equal(start.data.hasUI, true);
       assert.equal(start.data.trusted, false);
-      assert.equal(
-        start.data.cwd,
-        f.folders[id === a.id ? "a" : "b"],
-      );
-      assert.equal(
-        entries.find((entry) => entry.customType === "fixture-run").data
-          .busEvents,
-        1,
-      );
-      assert.equal(
-        entries.find((entry) => entry.customType === "fixture-stop").data.idle,
-        true,
-      );
+      assert.equal(start.data.cwd, f.folders[id === a.id ? "a" : "b"]);
+      assert.equal(entries.find((entry) => entry.customType === "fixture-run").data.busEvents, 1);
+      assert.equal(entries.find((entry) => entry.customType === "fixture-stop").data.idle, true);
     }
     const reopened = await f.runtime.open(b.id);
     assert.equal(reopened.id, b.id);
     assert.equal(reopened.interrupted, false);
     assert.match(sessionText(f.runtime, b.id), /workspace-b/);
-    assert.equal(
-      f.provider.requests.length,
-      3,
-      "opening must never call a model or replay tools",
-    );
+    assert.equal(f.provider.requests.length, 3, "opening must never call a model or replay tools");
     assert.equal(process.cwd(), originalCwd);
     assert.deepEqual({ ...process.env }, originalEnv);
   } finally {
@@ -236,18 +176,13 @@ test("SessionRuntime: empty metadata, one live owner, a backstop that never refu
     await limited.stop(beside.id);
     watching.events.close();
     await assert.rejects(limited.open(a.id), hasCode("owned"));
-    const observations = Array.from({ length: 16 }, () =>
-      limited.observeLive(a.id),
-    );
+    const observations = Array.from({ length: 16 }, () => limited.observeLive(a.id));
     assert.throws(() => limited.observeLive(a.id), hasCode("limit"));
     observations.forEach((observation) => observation.events.close());
     const detached = limited.observeLive(a.id);
     detached.events.close();
     f.provider.automatic = true;
-    assert.deepEqual(
-      await limited.start(a.id, "detached-still-runs").completion,
-      { outcome: "completed" },
-    );
+    assert.deepEqual(await limited.start(a.id, "detached-still-runs").completion, { outcome: "completed" });
     await limited.stop(a.id);
     assert.equal((await second.open(a.id)).interrupted, false);
     await second.stop(a.id);
@@ -265,22 +200,10 @@ test("SessionRuntime: empty metadata, one live owner, a backstop that never refu
 test("SessionRuntime: errors are safe, missing model/auth/resources rejected, invalid commands rejected", async () => {
   const f = await fixture();
   try {
-    await assert.rejects(
-      f.runtime.create({ folder: join(f.root, "missing") }),
-      hasCode("folder"),
-    );
-    await assert.rejects(
-      f.runtime.create({ folder: "relative/path" }),
-      hasCode("invalid-input"),
-    );
-    await assert.rejects(
-      f.runtime.create({ folder: f.folders.a, agent: "nobody" }),
-      hasCode("agent"),
-    );
-    await assert.rejects(
-      f.runtime.open("/absolute/native.jsonl"),
-      hasCode("invalid-input"),
-    );
+    await assert.rejects(f.runtime.create({ folder: join(f.root, "missing") }), hasCode("folder"));
+    await assert.rejects(f.runtime.create({ folder: "relative/path" }), hasCode("invalid-input"));
+    await assert.rejects(f.runtime.create({ folder: f.folders.a, agent: "nobody" }), hasCode("agent"));
+    await assert.rejects(f.runtime.open("/absolute/native.jsonl"), hasCode("invalid-input"));
     await assert.rejects(
       f.runtime.create({
         folder: f.folders.a,
@@ -288,14 +211,8 @@ test("SessionRuntime: errors are safe, missing model/auth/resources rejected, in
       } as never),
       hasCode("invalid-input"),
     );
-    assert.throws(
-      () => assertPiBoundary("0.85.0", () => {}),
-      hasCode("sdk-version"),
-    );
-    assert.throws(
-      () => assertPiBoundary("1.5.2", undefined),
-      hasCode("sdk-version"),
-    );
+    assert.throws(() => assertPiBoundary("0.85.0", () => {}), hasCode("sdk-version"));
+    assert.throws(() => assertPiBoundary("1.5.2", undefined), hasCode("sdk-version"));
     const wrongModel = new SessionRuntime({
       ...f.configuration,
       fixedModel: { ...f.configuration.fixedModel!, id: "not-allowed" },
@@ -306,14 +223,8 @@ test("SessionRuntime: errors are safe, missing model/auth/resources rejected, in
     await assert.rejects(f.create("b"), hasCode("extension"));
     const a = await f.create("a");
     assert.throws(() => f.runtime.start(a.id, ""), hasCode("invalid-input"));
-    assert.throws(
-      () => f.runtime.start(a.id, "x".repeat(65537)),
-      hasCode("invalid-input"),
-    );
-    await assert.rejects(
-      f.runtime.queue(a.id, "no active run", "steer"),
-      hasCode("busy"),
-    );
+    assert.throws(() => f.runtime.start(a.id, "x".repeat(65537)), hasCode("invalid-input"));
+    await assert.rejects(f.runtime.queue(a.id, "no active run", "steer"), hasCode("busy"));
     f.provider.automatic = true;
     const run = f.runtime.start(a.id, "provider-error");
     assert.throws(() => f.runtime.start(a.id, "duplicate"), hasCode("busy"));
@@ -322,10 +233,7 @@ test("SessionRuntime: errors are safe, missing model/auth/resources rejected, in
       error: "execution",
     });
     assert.equal(f.runtime.session(a.id).error, "execution");
-    assert.doesNotMatch(
-      JSON.stringify(f.runtime.session(a.id)),
-      /pispark-local-keyless|Fixture error/,
-    );
+    assert.doesNotMatch(JSON.stringify(f.runtime.session(a.id)), /pispark-local-keyless|Fixture error/);
   } finally {
     await f.cleanup();
   }
@@ -337,7 +245,9 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
     f.provider.automatic = true;
     const a = await f.create("a");
     const answers = async () =>
-      (await f.history(a.id)).filter((e: { customType?: string }) => e.customType === "fixture-answer").map((e: { data: { value: unknown } }) => e.data.value);
+      (await f.history(a.id))
+        .filter((e: { customType?: string }) => e.customType === "fixture-answer")
+        .map((e: { data: { value: unknown } }) => e.data.value);
     const ask = async (text: string, answer: string | boolean | null) => {
       const run = f.runtime.start(a.id, text);
       await eventually(() => f.runtime.session(a.id).extensions.dialogs.length === 1);
@@ -412,7 +322,10 @@ test("SessionRuntime: extension questions wait for an answer, cancel dismisses t
     await f.runtime.stop(a.id);
     // Reopened, the session still has its notices where they happened.
     await f.runtime.open(a.id);
-    assert.deepEqual(sessionNotices(f.runtime, a.id).map((n) => n.answered ?? [n.kind, n.lines[0]![0]!.text]), expectedNotices);
+    assert.deepEqual(
+      sessionNotices(f.runtime, a.id).map((n) => n.answered ?? [n.kind, n.lines[0]![0]!.text]),
+      expectedNotices,
+    );
     await f.runtime.stop(a.id);
     f.provider.automatic = false;
     await stopAbortsBeforeShutdown(f);
@@ -471,12 +384,8 @@ test("SessionRuntime: queue race with cancel clears delayed input, bounded queue
     const a = await f.create("a");
     const run = f.runtime.start(a.id, "run");
     await eventually(() => f.provider.active === 1);
-    for (let i = 0; i < 8; i++)
-      await f.runtime.queue(a.id, `queued-${i}`, "follow-up");
-    await assert.rejects(
-      f.runtime.queue(a.id, "overflow", "steer"),
-      hasCode("limit"),
-    );
+    for (let i = 0; i < 8; i++) await f.runtime.queue(a.id, `queued-${i}`, "follow-up");
+    await assert.rejects(f.runtime.queue(a.id, "overflow", "steer"), hasCode("limit"));
     await f.runtime.cancel(a.id);
     await run.completion;
     const next = f.runtime.start(a.id, "next");
@@ -492,10 +401,7 @@ test("SessionRuntime: queue race with cancel clears delayed input, bounded queue
     });
     assert.equal(f.provider.requests.length, 2);
     await f.runtime.shutdown();
-    await assert.rejects(
-      f.create("a"),
-      hasCode("closed"),
-    );
+    await assert.rejects(f.create("a"), hasCode("closed"));
   } finally {
     await f.cleanup();
   }
@@ -511,14 +417,10 @@ test("SessionRuntime: killed process recovers finalized native tool history, no 
       "side-effect.mjs",
       `import {appendFileSync} from 'node:fs'; export default (pi)=>{pi.on('tool_result',()=>{appendFileSync(${JSON.stringify(effects)},'effect\\n')})}`,
     );
-    child = fork(
-      fileURLToPath(new URL("./fixtures/crash-session.ts", import.meta.url)),
-      [f.root],
-      {
-        execArgv: ["--import", "tsx"],
-        stdio: ["ignore", "pipe", "pipe", "ipc"],
-      },
-    );
+    child = fork(fileURLToPath(new URL("./fixtures/crash-session.ts", import.meta.url)), [f.root], {
+      execArgv: ["--import", "tsx"],
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
+    });
     let stderr = "";
     child.stderr!.on("data", (chunk) => {
       stderr += String(chunk);
@@ -540,13 +442,7 @@ test("SessionRuntime: killed process recovers finalized native tool history, no 
     assert.equal(inFlight(f.runtime, ready.id).length, 0);
     assert.equal(f.provider.requests.length, 0);
     assert.equal(await readFile(effects, "utf8"), "effect\n");
-    assert.equal(
-      (await f.history(ready.id)).filter(
-        (entry) =>
-          entry.type === "message" && entry.message.role === "toolResult",
-      ).length,
-      1,
-    );
+    assert.equal((await f.history(ready.id)).filter((entry) => entry.type === "message" && entry.message.role === "toolResult").length, 1);
   } finally {
     child?.kill();
     await f.cleanup();
@@ -566,10 +462,7 @@ test("SessionRuntime: isolated child ignores home/project resources; native comm
       );
       await writeFile(join(dir, "AGENTS.md"), "FORBIDDEN ambient instructions");
       await writeFile(join(dir, "SYSTEM.md"), "FORBIDDEN ambient system");
-      await writeFile(
-        join(dir, "skills", "SKILL.md"),
-        "---\nname: forbidden\ndescription: FORBIDDEN skill\n---\nNo",
-      );
+      await writeFile(join(dir, "skills", "SKILL.md"), "---\nname: forbidden\ndescription: FORBIDDEN skill\n---\nNo");
       await writeFile(
         join(dir, "settings.json"),
         JSON.stringify({
@@ -580,12 +473,7 @@ test("SessionRuntime: isolated child ignores home/project resources; native comm
     }
     const child = spawn(
       process.execPath,
-      [
-        "--import",
-        "tsx",
-        fileURLToPath(new URL("./fixtures/ambient-probe.ts", import.meta.url)),
-        root,
-      ],
+      ["--import", "tsx", fileURLToPath(new URL("./fixtures/ambient-probe.ts", import.meta.url)), root],
       {
         env: {
           ...process.env,
@@ -619,10 +507,7 @@ test("SessionRuntime: storage write failures are not reported as success", async
     const original = await readFile(metadata, "utf8");
     await rm(metadata);
     await mkdir(metadata);
-    assert.throws(
-      () => f.runtime.start(a.id, "must-not-start"),
-      hasCode("storage"),
-    );
+    assert.throws(() => f.runtime.start(a.id, "must-not-start"), hasCode("storage"));
     assert.equal(f.provider.requests.length, 0);
     assert.equal(f.runtime.session(a.id).title, undefined);
     await rm(metadata, { recursive: true });
@@ -708,14 +593,8 @@ test("SessionRuntime: shutdown drains pending initialization; missing tool files
     assert.equal(initializing.list()[0]?.status, "unloaded");
     f.provider.automatic = true;
     const a = await f.create("b");
-    assert.equal(
-      (await f.runtime.start(a.id, "read:missing.txt").completion).outcome,
-      "completed",
-    );
-    assert.ok(
-      sessionItems(f.runtime, a.id).some((message) => message.role === "toolResult" && message.isError,
-        ),
-    );
+    assert.equal((await f.runtime.start(a.id, "read:missing.txt").completion).outcome, "completed");
+    assert.ok(sessionItems(f.runtime, a.id).some((message) => message.role === "toolResult" && message.isError));
   } finally {
     await initializing.shutdown();
     await f.cleanup();
@@ -732,10 +611,7 @@ test("SessionRuntime: timed-out setup stays owned even if shutdown is requested 
   });
   try {
     await gate.install();
-    await assert.rejects(
-      f.create("a", blocked),
-      hasCode("timeout"),
-    );
+    await assert.rejects(f.create("a", blocked), hasCode("timeout"));
     assert.deepEqual(blocked.list(), []);
     const [id] = await readdir(f.sessionsDir);
     assert(id);
@@ -775,9 +651,7 @@ for (const action of ["cancel", "stop", "shutdown"] as const) {
       f.provider.automatic = true;
       const a = await f.create("a");
       const run = f.runtime.start(a.id, "slow-input");
-      await (action === "shutdown"
-        ? f.runtime.shutdown()
-        : f.runtime[action](a.id));
+      await (action === "shutdown" ? f.runtime.shutdown() : f.runtime[action](a.id));
       assert.equal((await run.completion).outcome, "cancelled");
       assert.equal(f.provider.requests.length, 0);
       if (action === "cancel") {
@@ -801,19 +675,13 @@ for (const kind of ["steer", "follow-up"] as const) {
       const run = f.runtime.start(a.id, "original");
       await eventually(() => f.provider.requests.length === 1);
       const queued = f.runtime.queue(a.id, "slow-input", kind);
-      await assert.rejects(
-        f.runtime.queue(a.id, "concurrent", kind),
-        hasCode("busy"),
-      );
+      await assert.rejects(f.runtime.queue(a.id, "concurrent", kind), hasCode("busy"));
       f.provider.automatic = true;
       f.provider.requests[0]!.release();
       assert.equal(await queued, "queued");
       await run.completion;
       assert.equal(f.provider.requests.length, 2);
-      assert.match(
-        JSON.stringify(f.provider.requests[1]!.context),
-        /slow-input/,
-      );
+      assert.match(JSON.stringify(f.provider.requests[1]!.context), /slow-input/);
       f.provider.automatic = false;
       assert.deepEqual(f.runtime.session(a.id).queue, {
         steering: 0,
@@ -827,14 +695,8 @@ for (const kind of ["steer", "follow-up"] as const) {
       f.provider.requests[2]!.release();
       assert.equal((await next.completion).outcome, "completed");
       assert.equal(f.provider.requests.length, 4);
-      assert.doesNotMatch(
-        JSON.stringify(f.provider.requests.map((r) => r.context)),
-        /concurrent/,
-      );
-      assert.match(
-        JSON.stringify(f.provider.requests.at(-1)!.context),
-        /valid-next-input/,
-      );
+      assert.doesNotMatch(JSON.stringify(f.provider.requests.map((r) => r.context)), /concurrent/);
+      assert.match(JSON.stringify(f.provider.requests.at(-1)!.context), /valid-next-input/);
     } finally {
       await f.cleanup();
     }
@@ -857,23 +719,15 @@ for (const action of ["cancel", "stop", "shutdown"] as const) {
       const a = await f.create("a");
       const original = ModelRuntime.prototype.checkAuth;
       t.mock.method(ModelRuntime.prototype, "hasConfiguredAuth", () => false);
-      t.mock.method(
-        ModelRuntime.prototype,
-        "checkAuth",
-        async function (this: ModelRuntime, provider: string) {
-          entered();
-          await gate;
-          return original.call(this, provider);
-        },
-      );
+      t.mock.method(ModelRuntime.prototype, "checkAuth", async function (this: ModelRuntime, provider: string) {
+        entered();
+        await gate;
+        return original.call(this, provider);
+      });
       const run = f.runtime.start(a.id, "read:value.txt");
       await entering;
-      const stopping =
-        action === "shutdown" ? f.runtime.shutdown() : f.runtime[action](a.id);
-      assert.equal(
-        f.runtime.session(a.id).status,
-        action === "cancel" ? "cancelling" : "stopping",
-      );
+      const stopping = action === "shutdown" ? f.runtime.shutdown() : f.runtime[action](a.id);
+      assert.equal(f.runtime.session(a.id).status, action === "cancel" ? "cancelling" : "stopping");
       await assert.rejects(f.runtime.open(a.id), hasCode("owned"));
       release();
       await stopping;
@@ -948,39 +802,25 @@ for (const kind of ["steer", "follow-up"] as const) {
       const a = await f.create("a");
       const run = f.runtime.start(a.id, "original");
       await eventually(() => f.provider.active === 1);
-      assert.equal(
-        await f.runtime.queue(a.id, "handled-input", kind),
-        "handled",
-      );
+      assert.equal(await f.runtime.queue(a.id, "handled-input", kind), "handled");
       const queued = f.runtime.queue(a.id, "gated-input", kind);
       await gate.entering;
       f.provider.requests[0]!.release();
       await gate.settling;
       assert.equal(f.runtime.session(a.id).status, "running");
       assert.throws(() => f.runtime.start(a.id, "unrelated"), hasCode("busy"));
-      await assert.rejects(
-        f.runtime.queue(a.id, "concurrent", kind),
-        hasCode("busy"),
-      );
+      await assert.rejects(f.runtime.queue(a.id, "concurrent", kind), hasCode("busy"));
       f.provider.automatic = true;
       gate.release();
       assert.equal(await queued, "queued");
       assert.equal((await run.completion).outcome, "completed");
-      assert.equal(
-        f.provider.requests.length,
-        3,
-        "original request, queued tool call, tool result continuation",
-      );
+      assert.equal(f.provider.requests.length, 3, "original request, queued tool call, tool result continuation");
       assert.deepEqual(f.runtime.session(a.id).queue, {
         steering: 0,
         followUp: 0,
       });
       await f.runtime.start(a.id, "next").completion;
-      assert.equal(
-        f.provider.requests.length,
-        4,
-        "no stranded input consumed by next run",
-      );
+      assert.equal(f.provider.requests.length, 4, "no stranded input consumed by next run");
     } finally {
       gate.close();
       await f.cleanup();
@@ -999,10 +839,7 @@ for (const phase of ["initial", "queued"] as const) {
       });
       try {
         const a = await f.create("a", runtime);
-        const run = runtime.start(
-          a.id,
-          phase === "initial" ? "gated-input" : "original",
-        );
+        const run = runtime.start(a.id, phase === "initial" ? "gated-input" : "original");
         let queue: Promise<unknown> | undefined;
         if (phase === "queued") {
           await eventually(() => f.provider.active === 1);
@@ -1012,15 +849,9 @@ for (const phase of ["initial", "queued"] as const) {
           );
         }
         await gate.entering;
-        await assert.rejects(
-          action === "shutdown" ? runtime.shutdown() : runtime[action](a.id),
-          hasCode("timeout"),
-        );
+        await assert.rejects(action === "shutdown" ? runtime.shutdown() : runtime[action](a.id), hasCode("timeout"));
         await assert.rejects(runtime.open(a.id), hasCode("owned"));
-        assert.equal(
-          runtime.session(a.id).status,
-          action === "cancel" ? "cancelling" : "stopping",
-        );
+        assert.equal(runtime.session(a.id).status, action === "cancel" ? "cancelling" : "stopping");
         f.provider.automatic = true;
         gate.release();
         await queue;
@@ -1049,49 +880,36 @@ test("SessionRuntime: cancelled auth preflight cannot dispatch native history co
   try {
     f.provider.automatic = true;
     const a = await f.create("a");
-    for (let i = 0; i < 2; i++)
-      await f.runtime.start(a.id, "history".repeat(8000)).completion;
+    for (let i = 0; i < 2; i++) await f.runtime.start(a.id, "history".repeat(8000)).completion;
     await f.runtime.stop(a.id);
     const native = await f.transcript(a.id);
     const entries = (await readFile(native, "utf8"))
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    const last = entries.findLast(
-      (entry) => entry.message?.role === "assistant",
-    );
+    const last = entries.findLast((entry) => entry.message?.role === "assistant");
     // Past Pi's own threshold in an 8,192 window, under PiSpark's budget (5,734): Pi compacts inside the run.
     last.message.usage.input = 5000;
     last.message.usage.totalTokens = 5001;
-    await writeFile(
-      native,
-      entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
-    );
+    await writeFile(native, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
     f.configuration.fixedModel = {
       id: "deterministic",
       provider: () => {
         const provider = f.provider.provider();
         return {
           ...provider,
-          getModels: () =>
-            provider
-              .getModels()
-              .map((model) => ({ ...model, contextWindow: 8192 })),
+          getModels: () => provider.getModels().map((model) => ({ ...model, contextWindow: 8192 })),
         };
       },
     };
     await f.runtime.open(a.id);
     const original = ModelRuntime.prototype.checkAuth;
     t.mock.method(ModelRuntime.prototype, "hasConfiguredAuth", () => false);
-    t.mock.method(
-      ModelRuntime.prototype,
-      "checkAuth",
-      async function (this: ModelRuntime, provider: string) {
-        entered();
-        await gate;
-        return original.call(this, provider);
-      },
-    );
+    t.mock.method(ModelRuntime.prototype, "checkAuth", async function (this: ModelRuntime, provider: string) {
+      entered();
+      await gate;
+      return original.call(this, provider);
+    });
     const before = f.provider.requests.length;
     const run = f.runtime.start(a.id, "cancel before compaction");
     await entering;
@@ -1099,32 +917,16 @@ test("SessionRuntime: cancelled auth preflight cannot dispatch native history co
     release();
     await cancellation;
     assert.equal((await run.completion).outcome, "cancelled");
-    assert.equal(
-      f.provider.requests.length,
-      before,
-      "cancelled preflight must not dispatch the native compaction request",
-    );
+    assert.equal(f.provider.requests.length, before, "cancelled preflight must not dispatch the native compaction request");
     t.mock.restoreAll();
     await f.runtime.stop(a.id);
     await f.runtime.open(a.id);
     const positiveBefore = f.provider.requests.length;
-    assert.equal(
-      (await f.runtime.start(a.id, "valid after cancellation").completion)
-        .outcome,
-      "completed",
-    );
-    assert(
-      f.provider.requests.length > positiveBefore + 1,
-      "uncancelled native compaction plus prompt dispatch",
-    );
-    assert(
-      (await f.history(a.id)).some((entry) => entry.type === "compaction"),
-    );
+    assert.equal((await f.runtime.start(a.id, "valid after cancellation").completion).outcome, "completed");
+    assert(f.provider.requests.length > positiveBefore + 1, "uncancelled native compaction plus prompt dispatch");
+    assert((await f.history(a.id)).some((entry) => entry.type === "compaction"));
     const peer = await f.create("b");
-    assert.equal(
-      (await f.runtime.start(peer.id, "peer unaffected").completion).outcome,
-      "completed",
-    );
+    assert.equal((await f.runtime.start(peer.id, "peer unaffected").completion).outcome, "completed");
   } finally {
     release();
     t.mock.restoreAll();
@@ -1146,10 +948,7 @@ test("SessionRuntime: first accepted title survives cancellation, queueing and r
     assert.equal(session.hasHistory, false);
     assert.throws(() => f.runtime.start(session.id, ""), hasCode("invalid-input"));
     assert.equal(f.runtime.session(session.id).title, undefined);
-    const first = f.runtime.start(
-      session.id,
-      ["PRIVATE-TITLE first\tinput", "not the title"].join("\n"),
-    );
+    const first = f.runtime.start(session.id, ["PRIVATE-TITLE first\tinput", "not the title"].join("\n"));
     await eventually(() => f.provider.active === 1);
     assert.equal(f.runtime.session(session.id).title, "PRIVATE-TITLE first input");
     assert.equal(f.runtime.list()[0]!.title, "PRIVATE-TITLE first input");
@@ -1162,10 +961,7 @@ test("SessionRuntime: first accepted title survives cancellation, queueing and r
     await second.completion;
     await f.runtime.stop(session.id);
     assert.equal(f.runtime.list()[0]!.title, "PRIVATE-TITLE first input");
-    assert.equal(
-      (await f.runtime.open(session.id)).title,
-      "PRIVATE-TITLE first input",
-    );
+    assert.equal((await f.runtime.open(session.id)).title, "PRIVATE-TITLE first input");
     await f.runtime.stop(session.id);
     const path = join(f.sessionsDir, session.id, "session.json");
     const metadata = JSON.parse(await readFile(path, "utf8"));
@@ -1176,19 +972,12 @@ test("SessionRuntime: first accepted title survives cancellation, queueing and r
     await eventually(() => f.provider.active === 1);
     await f.runtime.cancel(session.id);
     await legacy.completion;
-    assert.equal(
-      f.runtime.session(session.id).title,
-      undefined,
-      "never backfill legacy history",
-    );
+    assert.equal(f.runtime.session(session.id).title, undefined, "never backfill legacy history");
   } finally {
     await f.cleanup();
     await logger.close();
   }
-  assert.doesNotMatch(
-    lines.join(""),
-    /PRIVATE-|first input|not the title|title/i,
-  );
+  assert.doesNotMatch(lines.join(""), /PRIVATE-|first input|not the title|title/i);
 });
 
 test("SessionRuntime: accepted invisible-only input keeps its fallback title after pre-dispatch cancel and later input", async () => {
@@ -1223,8 +1012,7 @@ test("SessionRuntime: manual compaction uses Pi and refuses concurrent work", as
     const a = await f.create("a");
     await assert.rejects(f.runtime.compact(a.id), hasCode("nothing-to-compact"));
     f.provider.automatic = true;
-    for (let i = 0; i < 3; i++)
-      await f.runtime.start(a.id, "The old conversation has useful context. ".repeat(1200)).completion;
+    for (let i = 0; i < 3; i++) await f.runtime.start(a.id, "The old conversation has useful context. ".repeat(1200)).completion;
     const requests = f.provider.requests.length;
     f.provider.automatic = false;
     const compacted = f.runtime.compact(a.id);
@@ -1267,8 +1055,7 @@ test("SessionRuntime: a context past its budget is compacted before the person's
   try {
     const a = await f.create("a");
     f.provider.automatic = true;
-    for (let i = 0; i < 3; i++)
-      await f.runtime.start(a.id, "The old conversation has useful context. ".repeat(1200)).completion;
+    for (let i = 0; i < 3; i++) await f.runtime.start(a.id, "The old conversation has useful context. ".repeat(1200)).completion;
     // The fixture's window is 100k: the budget is 70k, Pi's own threshold 83,616.
     f.provider.inputTokens = 69_000;
     await f.runtime.start(a.id, "under budget").completion;
@@ -1287,8 +1074,12 @@ test("SessionRuntime: a context past its budget is compacted before the person's
     await eventually(() => f.provider.requests.length > requests);
     await f.runtime.cancel(a.id);
     assert.equal((await stopped.completion).outcome, "cancelled");
-    const sentText = (from: number, text: string) => f.provider.requests.slice(from).some((r) => JSON.stringify(r.context.messages.filter((m) => m.role === "user")).includes(text) && !isSummary(r));
-    const isSummary = (r: (typeof f.provider.requests)[number]) => JSON.stringify(r.context.messages[0]).includes("context summarization assistant");
+    const sentText = (from: number, text: string) =>
+      f.provider.requests
+        .slice(from)
+        .some((r) => JSON.stringify(r.context.messages.filter((m) => m.role === "user")).includes(text) && !isSummary(r));
+    const isSummary = (r: (typeof f.provider.requests)[number]) =>
+      JSON.stringify(r.context.messages[0]).includes("context summarization assistant");
     assert.ok(f.provider.requests.slice(requests).every(isSummary), "the message is not sent after a stop");
     assert.ok(!sentText(requests, "never sent"));
     assert.equal(f.runtime.session(a.id).queuedText, undefined);
@@ -1303,11 +1094,16 @@ test("SessionRuntime: a context past its budget is compacted before the person's
     assert.equal((await sent.completion).outcome, "completed");
     const after = f.provider.requests.slice(requests);
     assert.ok(after.slice(0, -1).length > 0 && after.slice(0, -1).every(isSummary), "the summary first");
-    assert.ok(after.slice(0, -1).every((r) => JSON.stringify(r.context.messages).includes("Additional focus: Also keep the user's requests")), "with PiSpark's focus");
+    assert.ok(
+      after.slice(0, -1).every((r) => JSON.stringify(r.context.messages).includes("Additional focus: Also keep the user's requests")),
+      "with PiSpark's focus",
+    );
     assert.ok(!isSummary(after.at(-1)!) && sentText(f.provider.requests.length - 1, "after the summary"), "then the message");
     const history = await f.history(a.id);
     const compaction = history.findIndex((entry) => entry.type === "compaction");
-    const message = history.findIndex((entry) => entry.message?.role === "user" && JSON.stringify(entry.message.content).includes("after the summary"));
+    const message = history.findIndex(
+      (entry) => entry.message?.role === "user" && JSON.stringify(entry.message.content).includes("after the summary"),
+    );
     assert.ok(compaction >= 0 && compaction < message, "the summary comes before the message");
     assert.equal(f.runtime.session(a.id).compacting, undefined);
   } finally {
@@ -1320,8 +1116,7 @@ test("SessionRuntime: Pi's own compaction in a run shows as compacting, and its 
   try {
     const a = await f.create("a");
     f.provider.automatic = true;
-    for (let i = 0; i < 3; i++)
-      await f.runtime.start(a.id, "The old conversation has useful context. ".repeat(1200)).completion;
+    for (let i = 0; i < 3; i++) await f.runtime.start(a.id, "The old conversation has useful context. ".repeat(1200)).completion;
     // Past Pi's own threshold (100k less 16,384): Pi compacts after the reply, inside the run.
     f.provider.inputTokens = 90_000;
     f.provider.automatic = false;

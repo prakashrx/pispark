@@ -64,12 +64,9 @@ export const providerErrorMessages: Record<string, string> = {
     "PiSpark could not read or save its private settings. Check host storage permissions; no successful save is confirmed.",
   "provider-unavailable":
     "This model or provider is unavailable. Connect its provider or ask the host owner to review configuration. The saved choice was not replaced.",
-  "provider-busy":
-    "Another provider operation is still running. Wait for it to finish.",
-  "auth-invalid":
-    "This sign-in prompt is no longer current or is owned by another client. Close and start again.",
-  "auth-limit":
-    "Sign-in capacity or time limit reached. Close this dialog and try again later.",
+  "provider-busy": "Another provider operation is still running. Wait for it to finish.",
+  "auth-invalid": "This sign-in prompt is no longer current or is owned by another client. Close and start again.",
+  "auth-limit": "Sign-in capacity or time limit reached. Close this dialog and try again later.",
   "provider-failed":
     "The native provider operation failed. It may require a host-local browser or callback port; use Pi's manual prompt when offered. No successful save is confirmed.",
   "removed-sync-failed":

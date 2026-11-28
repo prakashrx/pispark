@@ -418,9 +418,7 @@ export interface CallResponse {
   detail?: string;
 }
 /** Changes to the live document, applied in order; a `commit` moves persisted items into history. */
-export type LiveOp =
-  | DocOp
-  | { op: "commit"; after: string | null; head: string | null; items?: Item[] };
+export type LiveOp = DocOp | { op: "commit"; after: string | null; head: string | null; items?: Item[] };
 export type LiveEvent =
   | { type: "snapshot"; sessionId: string; head: string | null; doc: LiveDoc }
   | { type: "ops"; sessionId: string; seq: number; ops: LiveOp[] }

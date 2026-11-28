@@ -12,8 +12,7 @@ export interface Block {
   open?: boolean;
 }
 
-export const escapeHtml = (text: string): string =>
-  text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+export const escapeHtml = (text: string): string => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 
 /** `$…$` and `\(…\)` inline, `$$…$$` and `\[…\]` on their own lines; "$5 and $10" stays text. */
 const math: TokenizerAndRendererExtension[] = [
@@ -69,18 +68,33 @@ function renderToken(flavor: Flavor, token: Token, links: Tokens.Generic["links"
  */
 export function repairOpenBlock(raw: string): string {
   if ((raw.match(/^ {0,3}(```|~~~)/gm)?.length ?? 0) % 2 === 1) return raw;
-  let text = raw;
+  // Math being written: close it so it shows as math, not as dollar signs, until its end arrives.
+  const math = /^ {0,3}(\$\$|\\\[)/.exec(raw);
+  if (math && !(math[1] === "$$" ? /\$\$\s*$/.test(raw.slice(math[0].length)) : /\\\]\s*$/.test(raw)))
+    return `${raw}\n${math[1] === "$$" ? "$$" : "\\]"}`;
+  // A line of only - or = under text makes the text a heading; it may yet be the start of something else.
+  let text = /\S\n {0,3}(-+|=+) *$/.test(raw) ? raw.replace(/\n {0,3}(-+|=+) *$/, "") : raw;
   // An open code span swallows everything after it; close it and stop.
   let inCode = false;
   for (const char of text) if (char === "`") inCode = !inCode;
   if (inCode) return text + "`";
+  // An image appears once its address is whole, rather than as its half-typed source.
+  text = text.replace(/!\[[^\]\n]*(\]\([^)\n]*)?$/, "");
   const plain = text.replace(/`[^`]*`/g, "");
-  if ((plain.match(/\*\*/g) ?? []).length % 2 === 1) text += "**";
+  const closers: string[] = [];
+  if ((plain.match(/~~/g) ?? []).length % 2 === 1) closers.push("~~");
+  if ((plain.match(/\*\*/g) ?? []).length % 2 === 1) closers.push("**");
   const single = plain
     .replace(/\*\*/g, "")
     .replace(/^\s*[*+-]\s/gm, "")
     .match(/\*/g);
-  if ((single?.length ?? 0) % 2 === 1) text += "*";
+  if ((single?.length ?? 0) % 2 === 1) closers.push("*");
+  // Underscores inside a word (snake_case) are not emphasis.
+  const underscores = plain.replace(/(?<=[\p{L}\p{N}])_+(?=[\p{L}\p{N}])/gu, "");
+  if ((underscores.match(/__/g) ?? []).length % 2 === 1) closers.push("__");
+  if ((underscores.replace(/__/g, "").match(/_/g) ?? []).length % 2 === 1) closers.push("_");
+  // Closed innermost first, before any trailing space, so the closer still ends the run.
+  if (closers.length) text = text.replace(/\s*$/, (space) => closers.reverse().join("") + space);
   if (/\[[^\]\n]*$/.test(text)) text = text.replace(/\[([^\]\n]*)$/, "\\[$1");
   else if (/\]\([^)\n]*$/.test(text)) text += ")";
   return text;

@@ -4,20 +4,20 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RuntimeConfiguration } from "../../src/core/runtime/configuration.js";
-import type { AgentDefinition, AgentResources, ItemType } from "../../src/contract/agent-protocol.js";
-import { ITEM_TYPES } from "../../src/core/agents/format.js";
+import { ITEM_TYPES, type AgentDefinition, type AgentResources, type ItemType } from "../../src/contract/agent-protocol.js";
 import { WORKSPACE_POINTS } from "../../src/http/workspace-points.js";
 import { LocalProviderControl } from "./local-provider.js";
 
-export const controlledExtension = fileURLToPath(
-  new URL("./controlled-extension.mjs", import.meta.url),
-);
+export const controlledExtension = fileURLToPath(new URL("./controlled-extension.mjs", import.meta.url));
 
 /** The item a file in an agent folder is, as its `resources` names it: `skills/x/SKILL.md` is skill `x`. */
 function itemOf(path: string): [ItemType, string] | undefined {
   const [type, name] = path.split("/");
   if (!type || !name || !(ITEM_TYPES as readonly string[]).includes(type)) return undefined;
-  return [type as ItemType, type === "skills" || (type === "extensions" && path.split("/").length > 2) ? name : name.replace(/\.[^.]+$/, "")];
+  return [
+    type as ItemType,
+    type === "skills" || (type === "extensions" && path.split("/").length > 2) ? name : name.replace(/\.[^.]+$/, ""),
+  ];
 }
 
 /** Selects `local:<name>` items in an agent's own definition, as the agent page or Agent Builder would. */
@@ -50,7 +50,18 @@ export async function writeAgent(
     await writeFile(join(dir, path), content);
   }
   if (!definition.resources)
-    await selectLocal(home, id, [...new Set(Object.keys(files).map(itemOf).filter((item) => !!item).map((item) => item!.join("\0")))].map((key) => key.split("\0") as [ItemType, string]));
+    await selectLocal(
+      home,
+      id,
+      [
+        ...new Set(
+          Object.keys(files)
+            .map(itemOf)
+            .filter((item) => !!item)
+            .map((item) => item!.join("\0")),
+        ),
+      ].map((key) => key.split("\0") as [ItemType, string]),
+    );
   return dir;
 }
 
@@ -114,8 +125,7 @@ export async function testHome(prefix = "pispark-test-") {
     configuration,
     folder,
     history,
-    agent: (id: string, definition: AgentDefinition, files?: Record<string, string>) =>
-      writeAgent(home, id, definition, files),
+    agent: (id: string, definition: AgentDefinition, files?: Record<string, string>) => writeAgent(home, id, definition, files),
     // Windows releases a folder a moment after the last process in it has gone.
     remove: () => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }),
   };
@@ -123,11 +133,6 @@ export async function testHome(prefix = "pispark-test-") {
 
 /** The Default agent most runtime tests use: read only, the controlled extension and a marker. */
 export async function standardDefault(home: string, marker = "system-default") {
-  await writeAgent(
-    home,
-    "default",
-    { name: "Default", on: ["tool:read"] },
-    { "instructions/system.md": marker },
-  );
+  await writeAgent(home, "default", { name: "Default", on: ["tool:read"] }, { "instructions/system.md": marker });
   await addControlledExtension(home, "default");
 }

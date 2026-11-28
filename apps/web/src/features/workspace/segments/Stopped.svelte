@@ -63,10 +63,17 @@
     <p class="said">{said}</p>
     {#if acting}<div class="actions">
         <Button size="compact" variant="primary" onclick={() => void session.send("Retry")}>Retry</Button>
-        {#if segment.reason === "context-full"}<Button size="compact" loading={compacting} onclick={() => void compact()}>Compact context</Button>{/if}
-        {#if segment.reason === "signed-out"}<a class="ui-button" data-size="compact" href="#/settings/providers">Providers &amp; models</a>{/if}
-        {#if segment.reason === "usage-limit" && chatgpt}<a class="ui-button" data-size="compact" href="https://chatgpt.com/#settings/Usage" target="_blank" rel="noopener noreferrer"
-            >Check usage</a
+        {#if segment.reason === "context-full"}<Button size="compact" loading={compacting} onclick={() => void compact()}
+            >Compact context</Button
+          >{/if}
+        {#if segment.reason === "signed-out"}<a class="ui-button" data-size="compact" href="#/settings/providers">Providers &amp; models</a
+          >{/if}
+        {#if segment.reason === "usage-limit" && chatgpt}<a
+            class="ui-button"
+            data-size="compact"
+            href="https://chatgpt.com/#settings/Usage"
+            target="_blank"
+            rel="noopener noreferrer">Check usage</a
           >{/if}
         <Button size="compact" variant="ghost" onclick={chooseModel}>Choose another model</Button>
       </div>{/if}

@@ -1,10 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { importText, textError } from "./text-import";
 function file(bytes: number[] | string, name = "note.md", type = "") {
-  const data =
-    typeof bytes === "string"
-      ? new TextEncoder().encode(bytes)
-      : new Uint8Array(bytes);
+  const data = typeof bytes === "string" ? new TextEncoder().encode(bytes) : new Uint8Array(bytes);
   return {
     name,
     type,
@@ -13,12 +10,8 @@ function file(bytes: number[] | string, name = "note.md", type = "") {
   } as unknown as File;
 }
 test("strict UTF-8, BOM, Unicode and exact newline preservation", async () => {
-  expect(await importText(file("\ufeffhé\r\nnext\n"), 100)).toBe(
-    "hé\r\nnext\n",
-  );
-  expect(
-    await importText(file("literal instructions.md", "x", "text/plain"), 100),
-  ).toBe("literal instructions.md");
+  expect(await importText(file("\ufeffhé\r\nnext\n"), 100)).toBe("hé\r\nnext\n");
+  expect(await importText(file("literal instructions.md", "x", "text/plain"), 100)).toBe("literal instructions.md");
   expect(textError("éé", 3)).toContain("UTF-8 bytes");
 });
 test("empty, invalid encoding, binary controls, PDF/image/MIME and absent extension are rejected", async () => {

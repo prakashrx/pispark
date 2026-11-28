@@ -61,7 +61,10 @@ test("a schedule is checked, kept in its session's folder, and read again after 
       { sessionId: session.id, cron: "0 9 * * *", prompt: "x", extra: 1 },
     ])
       assert.throws(() => f.runtime.addSchedule(bad as never), code("invalid-input"));
-    assert.throws(() => f.runtime.addSchedule({ sessionId: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b", cron: "0 9 * * *", prompt: "x" }), code("not-found"));
+    assert.throws(
+      () => f.runtime.addSchedule({ sessionId: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b", cron: "0 9 * * *", prompt: "x" }),
+      code("not-found"),
+    );
 
     const added = f.runtime.addSchedule({ sessionId: session.id, cron: "0 9 * * 1-5", prompt: "Summarise yesterday." });
     assert.equal(added.on, true);
@@ -111,7 +114,10 @@ test("at its time a schedule sends its prompt to its session, which says the tur
     const items = f.runtime.items(session.id, {}).items;
     const marker = items.findIndex((item) => item.customType === WOKEN_ENTRY);
     assert.ok(marker >= 0);
-    assert.deepEqual(items[marker]!.details, { source: { kind: "schedule", id: schedule.id, label: "Every day at 9:00 am · Fri 13 Nov" }, due: run.due });
+    assert.deepEqual(items[marker]!.details, {
+      source: { kind: "schedule", id: schedule.id, label: "Every day at 9:00 am · Fri 13 Nov" },
+      due: run.due,
+    });
     assert.equal(items[marker + 1]!.role, "user");
     // The run is recorded with the wakes, beside the schedule in the session's folder.
     const wakes = JSON.parse(await readFile(join(f.home, "sessions", session.id, "wakes.json"), "utf8"));
@@ -277,8 +283,13 @@ test("the agent's schedule tool adds to its own session only after the person sa
     assert.equal(f.one().sessionId, session.id);
     assert.equal(f.one().prompt, "digest");
     assert.equal(f.one().run, undefined);
-    const result = f.runtime.items(session.id, {}).items.findLast((item) => item.role === "toolResult" && item.toolName === "pispark_schedule");
-    assert.match((result?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""), /^Scheduled \(schedule-1\): Every weekday at 9:00 am, in this session\./);
+    const result = f.runtime
+      .items(session.id, {})
+      .items.findLast((item) => item.role === "toolResult" && item.toolName === "pispark_schedule");
+    assert.match(
+      (result?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""),
+      /^Scheduled \(schedule-1\): Every weekday at 9:00 am, in this session\./,
+    );
   } finally {
     await f.cleanup();
   }
@@ -327,9 +338,14 @@ test("the agent's schedule tool asks the person only about a schedule that can b
     await f.runtime.start(session.id, say("schedule", { cron: "0 8 31 2 *", prompt: "standup" })).completion;
     assert.deepEqual(f.runtime.session(session.id).extensions.dialogs, []);
     assert.deepEqual(f.runtime.listSchedules().schedules, []);
-    const result = f.runtime.items(session.id, {}).items.findLast((item) => item.role === "toolResult" && item.toolName === "pispark_schedule");
+    const result = f.runtime
+      .items(session.id, {})
+      .items.findLast((item) => item.role === "toolResult" && item.toolName === "pispark_schedule");
     assert.equal(result?.isError, true);
-    assert.match((result?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""), /can't be kept as given, so the person wasn't asked/);
+    assert.match(
+      (result?.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""),
+      /can't be kept as given, so the person wasn't asked/,
+    );
     // Nothing was answered, so the session keeps no answered question either.
     assert.ok(!JSON.stringify(f.runtime.items(session.id, {}).items).includes('"answered"'));
   } finally {
@@ -346,14 +362,28 @@ test("schedules over HTTP: list, add, change, run now and remove", async () => {
     await once(server, "listening");
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const post = (path: string, body?: unknown) =>
-      fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify(body ?? {}) });
+      fetch(base + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: base },
+        body: JSON.stringify(body ?? {}),
+      });
     const session = await f.runtime.create({ folder: f.folder });
     const added = await post("/api/schedules", { sessionId: session.id, cron: "0 9 * * *", prompt: "hi" });
     assert.equal(added.status, 201);
     const { id } = (await added.json()) as Schedule;
     assert.equal((await post("/api/schedules", { sessionId: session.id, cron: "nope", prompt: "hi" })).status, 400);
-    for (const invalid of [{ cron: 9 }, { at: 9 }, { cron: "0 9 * * *", prompt: 3 }, { cron: "0 9 * * *", on: "no" }, { cron: "0 9 * * *", extra: true }])
-      assert.deepEqual(await (await post("/api/schedules", { sessionId: session.id, prompt: "hi", ...invalid })).json(), { error: "invalid-input" }, JSON.stringify(invalid));
+    for (const invalid of [
+      { cron: 9 },
+      { at: 9 },
+      { cron: "0 9 * * *", prompt: 3 },
+      { cron: "0 9 * * *", on: "no" },
+      { cron: "0 9 * * *", extra: true },
+    ])
+      assert.deepEqual(
+        await (await post("/api/schedules", { sessionId: session.id, prompt: "hi", ...invalid })).json(),
+        { error: "invalid-input" },
+        JSON.stringify(invalid),
+      );
     const list = await (await fetch(base + "/api/schedules")).json();
     assert.equal(list.schedules.length, 1);
     assert.equal((await (await post(`/api/schedules/${id}`, { on: false })).json()).on, false);
@@ -361,7 +391,7 @@ test("schedules over HTTP: list, add, change, run now and remove", async () => {
     assert.equal((await post(`/api/schedules/${id}/run`)).status, 202);
     await eventually(() => f.one().runs.length === 1);
     assert.equal((await post(`/api/schedules/${id}/remove`)).status, 200);
-    assert.equal((await post(`/api/schedules/${id}/remove`)).status, 400);
+    assert.equal((await post(`/api/schedules/${id}/remove`)).status, 404);
     assert.equal(existsSync(join(f.home, "sessions", session.id, "schedules.json")), true);
   } finally {
     await http.shutdown();

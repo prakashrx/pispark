@@ -16,14 +16,17 @@
   ],
   "scripts": {
     "dev": "concurrently --kill-others --names server,web \"npm run dev -w @pispark/server\" \"npm run dev -w @pispark/web\"",
-    "check": "npm run check --workspaces",
+    "check": "prettier --check \"{apps,plugins,scripts}/**/*.{ts,js,mjs,svelte,css}\" && npm run check --workspaces",
     "test": "npm run test --workspaces",
     "build": "npm run build --workspaces",
     "start": "npm run start -w @pispark/server",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "format": "prettier --write \"{apps,plugins,scripts}/**/*.{ts,js,mjs,svelte,css}\""
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
+    "prettier": "^3.6.2",
+    "prettier-plugin-svelte": "^3.4.0",
     "typescript": "~5.9.3"
   }
 }

@@ -81,7 +81,10 @@
   async function confirmDelete(asking: boolean) {
     confirming = asking;
     await tick();
-    form?.closest("dialog")?.querySelector<HTMLElement>(asking ? "[data-cancel]" : "[data-delete]")?.focus();
+    form
+      ?.closest("dialog")
+      ?.querySelector<HTMLElement>(asking ? "[data-cancel]" : "[data-delete]")
+      ?.focus();
   }
   async function remove() {
     if (schedule && (await act(() => schedules.remove(schedule.id)))) onclose();
@@ -103,16 +106,32 @@
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label, index) => ({ value: String(index), label }));
 </script>
 
-<Modal label={schedule ? "Schedule" : "Add a schedule"} title={schedule ? "Schedule" : "Add a schedule"} onclose={() => !saving && onclose()} busy={saving} dismiss={false} asking={confirming}>
+<Modal
+  label={schedule ? "Schedule" : "Add a schedule"}
+  title={schedule ? "Schedule" : "Add a schedule"}
+  onclose={() => !saving && onclose()}
+  busy={saving}
+  dismiss={false}
+  asking={confirming}
+>
   {#snippet primary()}<Button type="submit" form={`${id}-form`} variant="primary" loading={saving}>Save</Button>{/snippet}
   {#snippet footer()}
     {#if schedule && !confirming}<Button variant="destructive" class="delete" data-delete onclick={() => void confirmDelete(true)}
         >Delete<span class="sheet-word"> schedule</span></Button
       ><span class="flex-1"></span>{/if}
   {/snippet}
-  <form bind:this={form} id={`${id}-form`} class="space-y-4" aria-label={schedule ? "Change the schedule" : "Add a schedule"} onsubmit={save} novalidate>
+  <form
+    bind:this={form}
+    id={`${id}-form`}
+    class="space-y-4"
+    aria-label={schedule ? "Change the schedule" : "Add a schedule"}
+    onsubmit={save}
+    novalidate
+  >
     <p class="lead">
-      <Icon name="clock" class="h-4 w-4 shrink-0" /><strong class="shrink-0">{reads || "Choose when"}</strong><span class="muted truncate">· in “{where}”</span>
+      <Icon name="clock" class="h-4 w-4 shrink-0" /><strong class="shrink-0">{reads || "Choose when"}</strong><span class="muted truncate"
+        >· in “{where}”</span
+      >
     </p>
     <div class="fields">
       <div class="field">
@@ -142,7 +161,9 @@
         <div class="field">
           <label class="label" for="{id}-every">Every</label>
           <div class="flex items-center gap-2">
-            <div class="number"><Input id="{id}-every" type="number" min="1" max={repeat === "hours" ? 23 : 59} bind:value={every} density="compact" /></div>
+            <div class="number">
+              <Input id="{id}-every" type="number" min="1" max={repeat === "hours" ? 23 : 59} bind:value={every} density="compact" />
+            </div>
             <span class="text-sm">{repeat === "hours" ? "hours" : "minutes"}</span>
           </div>
         </div>
@@ -150,7 +171,14 @@
         <div class="field">
           <label class="label" for="{id}-cron">Cron</label>
           <div class="min-w-0 flex-1">
-            <Input id="{id}-cron" monospace bind:value={cron} placeholder="0 9 * * 1-5" aria-describedby="{id}-cron-help" density="compact" />
+            <Input
+              id="{id}-cron"
+              monospace
+              bind:value={cron}
+              placeholder="0 9 * * 1-5"
+              aria-describedby="{id}-cron-help"
+              density="compact"
+            />
             <p id="{id}-cron-help" class="note mt-1">Minute, hour, day of month, month, day of week.</p>
           </div>
         </div>
@@ -163,15 +191,15 @@
       {/if}
     </div>
     {#if !child && run === "new"}<p class="note">
-        Each run is its own session under this session, so this conversation stays clean. A line here says when each run finishes, and a run that finds
-        something needing this session can raise it.
+        Each run is its own session under this session, so this conversation stays clean. A line here says when each run finishes, and a run
+        that finds something needing this session can raise it.
       </p>{/if}
     <div class="space-y-1.5">
       <label for="{id}-prompt" class="block text-sm font-medium">Prompt</label>
       <Textarea id="{id}-prompt" rows={3} bind:value={prompt} aria-describedby="{id}-prompt-help" class="w-full" />
       <p id="{id}-prompt-help" class="note">
-        {run === "new" ? "Sent as the first message of each run’s session. " : ""}Runs while you’re away use this session’s agent and tools, with this
-        computer’s permissions.
+        {run === "new" ? "Sent as the first message of each run’s session. " : ""}Runs while you’re away use this session’s agent and tools,
+        with this computer’s permissions.
       </p>
     </div>
     {#if current}
@@ -182,17 +210,20 @@
           <span class="flex-1 min-w-0 text-sm" class:failed={last && runFailed(last)}
             >{#if last}{runFailed(last) ? "! " : ""}{shortDate(new Date(last.at))} · {runText(last)}{:else}Not run yet{/if}</span
           >
-          <Button size="compact" loading={running} unavailable={current.held ? "Restore the session first" : undefined} onclick={() => void runNow()}
-            >Run now</Button
+          <Button
+            size="compact"
+            loading={running}
+            unavailable={current.held ? "Restore the session first" : undefined}
+            onclick={() => void runNow()}>Run now</Button
           >
         </div>
       </div>
       {#if current.runs.length > 1 || current.by === "agent" || current.run === "new"}
         <Disclosure title={`Runs (${current.runs.length})`}>
           <p class="note mt-2">
-            {current.run === "new" ? "Each run in a new session, whose end is a line in this one" : "Each run in this session"}{current.by === "agent"
-              ? " · Added by the agent after you said yes"
-              : ""}
+            {current.run === "new"
+              ? "Each run in a new session, whose end is a line in this one"
+              : "Each run in this session"}{current.by === "agent" ? " · Added by the agent after you said yes" : ""}
           </p>
           <dl class="run-list">
             {#each current.runs as each (each.at + each.due)}

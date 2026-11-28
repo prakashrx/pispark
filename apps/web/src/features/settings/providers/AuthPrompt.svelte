@@ -20,15 +20,10 @@
   $effect(() => {
     if (!busy && form && !focused) {
       focused = true;
-      void tick().then(() =>
-        form?.querySelector<HTMLElement>("input, select")?.focus(),
-      );
+      void tick().then(() => form?.querySelector<HTMLElement>("input, select")?.focus());
     }
   });
-  const valid = $derived(
-    prompt.type !== "select" ||
-      prompt.options.some((option) => option.id === value),
-  );
+  const valid = $derived(prompt.type !== "select" || prompt.options.some((option) => option.id === value));
   async function submit() {
     const response = value;
     value = "";
@@ -60,9 +55,7 @@
       bind:value
       disabled={busy}
     />
-    {#each prompt.options.filter((option) => option.id === value && option.description) as option}<p
-        class="text-sm text-zinc-500"
-      >
+    {#each prompt.options.filter((option) => option.id === value && option.description) as option}<p class="text-sm text-zinc-500">
         {option.description}
       </p>{/each}
   {:else}
@@ -77,11 +70,7 @@
       disabled={busy}
     />
   {/if}
-  <Button
-    variant="primary"
-    type="submit"
-    unavailable={busy || !valid
-      ? "Enter a response to the current prompt"
-      : undefined}>Continue</Button
+  <Button variant="primary" type="submit" unavailable={busy || !valid ? "Enter a response to the current prompt" : undefined}
+    >Continue</Button
   >
 </form>

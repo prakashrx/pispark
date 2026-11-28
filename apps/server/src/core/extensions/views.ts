@@ -188,7 +188,8 @@ export class ExtensionViews {
     if (view && !key) throw new Error(`${point} needs a key`);
     // Any contribution may be titled (a panel's heading); only a view must be, and only a view asks to be shown.
     if (!view && attention !== undefined) throw new Error(`${point} takes no attention: only a view does`);
-    if (!view && title !== undefined && (typeof title !== "string" || !TITLE.test(title.trim()))) throw new Error("a title is 1 to 40 characters");
+    if (!view && title !== undefined && (typeof title !== "string" || !TITLE.test(title.trim())))
+      throw new Error("a title is 1 to 40 characters");
     const id = `${point}\u0000${key}`;
     // No component: remove what this point and key held.
     if (component === undefined || component === null) {
@@ -319,7 +320,16 @@ export class ExtensionViews {
   view(): ExtensionContribution[] {
     return [...this.placed.values()].flatMap(({ point, key, url, props, title, attention }) =>
       url
-        ? [{ point, key, url, ...(props === undefined ? {} : { props }), ...(title === undefined ? {} : { title }), ...(attention ? { attention } : {}) }]
+        ? [
+            {
+              point,
+              key,
+              url,
+              ...(props === undefined ? {} : { props }),
+              ...(title === undefined ? {} : { title }),
+              ...(attention ? { attention } : {}),
+            },
+          ]
         : [],
     );
   }

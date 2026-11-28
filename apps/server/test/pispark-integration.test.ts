@@ -6,19 +6,9 @@ const PI_BUILT_IN_TOOLS = ["codemode", "tool_search"];
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SafeLogger } from "../src/core/logger.js";
-import {
-  mkdir,
-  rm,
-  writeFile,
-  readFile,
-  readdir,
-  rename,
-} from "node:fs/promises";
+import { mkdir, rm, writeFile, readFile, readdir, rename } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  SessionRuntime,
-  type RuntimeConfiguration,
-} from "../src/core/runtime/session-runtime.js";
+import { SessionRuntime, type RuntimeConfiguration } from "../src/core/runtime/session-runtime.js";
 import { TITLE_TOOL, toolSessionTitle } from "../src/core/runtime/session-title.js";
 import { eventually } from "./fixtures/local-provider.js";
 import { selectLocal, testHome } from "./fixtures/home.js";
@@ -65,10 +55,7 @@ test("PiSpark integration: real native title-only calls, agent/no-agent isolatio
   const f = await fixture();
   try {
     await f.agent("fixture", { name: "Fixture" }, { "instructions/context.md": "PRESERVE-AGENT-PROMPT" });
-    const [a, b] = await Promise.all([
-      f.runtime.create({ folder: f.cwd }),
-      f.runtime.create({ folder: f.cwd, agent: "fixture" }),
-    ]);
+    const [a, b] = await Promise.all([f.runtime.create({ folder: f.cwd }), f.runtime.create({ folder: f.cwd, agent: "fixture" })]);
     const observer = f.runtime.observeLive(a.id);
     const other = f.runtime.observeLive(b.id);
     await Promise.all([
@@ -82,25 +69,17 @@ test("PiSpark integration: real native title-only calls, agent/no-agent isolatio
     for (const request of f.control.requests)
       assert.deepEqual(
         request.context.messages.flatMap((message) =>
-          message.role === "system"
-            ? (message.toolsAdded ?? []).map((tool) => tool.name)
-            : [],
+          message.role === "system" ? (message.toolsAdded ?? []).map((tool) => tool.name) : [],
         ),
         [EXTENSION_TOOL, TITLE_TOOL, ...VERBS.map(toolOf), ...PI_BUILT_IN_TOOLS],
       );
-    const prompts = JSON.stringify(
-      f.control.requests.map((request) =>
-        request.context.messages.filter((m) => m.role === "system"),
-      ),
-    );
+    const prompts = JSON.stringify(f.control.requests.map((request) => request.context.messages.filter((m) => m.role === "system")));
     assert(prompts.includes("PRESERVE-HOST-PROMPT"));
     assert(prompts.includes("PRESERVE-AGENT-PROMPT"));
     assert(prompts.includes("when its purpose is clear"));
     await f.runtime.start(a.id, "later ordinary message").completion;
     assert.equal(f.runtime.session(a.id).title, "Native");
-    const durable = JSON.parse(
-      await readFile(join(f.sessions, a.id, "session.json"), "utf8"),
-    );
+    const durable = JSON.parse(await readFile(join(f.sessions, a.id, "session.json"), "utf8"));
     assert.equal(durable.title, "Native");
     await f.runtime.stop(a.id);
     await f.runtime.open(a.id);
@@ -109,11 +88,7 @@ test("PiSpark integration: real native title-only calls, agent/no-agent isolatio
     assert.deepEqual(
       f.control.requests
         .at(-1)!
-        .context.messages.flatMap((message) =>
-          message.role === "system"
-            ? (message.toolsAdded ?? []).map((tool) => tool.name)
-            : [],
-        ),
+        .context.messages.flatMap((message) => (message.role === "system" ? (message.toolsAdded ?? []).map((tool) => tool.name) : [])),
       [EXTENSION_TOOL, TITLE_TOOL, ...VERBS.map(toolOf), ...PI_BUILT_IN_TOOLS],
     );
     observer.events.close();
@@ -131,20 +106,11 @@ test("PiSpark integration: invalid model arguments do not replace fallback; no t
     for (const title of ["", "\u0000\u200b", "a".repeat(4097), {}, undefined]) {
       await f.runtime.start(a.id, command(title)).completion;
       assert.equal(f.runtime.session(a.id).title, "fallback purpose");
-      assert(
-        sessionItems(f.runtime, a.id).some((m) => m.role === "toolResult" && m.isError),
-      );
+      assert(sessionItems(f.runtime, a.id).some((m) => m.role === "toolResult" && m.isError));
     }
     await f.runtime.start(a.id, command(12)).completion;
-    assert.equal(
-      f.runtime.session(a.id).title,
-      "12",
-      "Native Pi normalizes numeric tool input to a schema string before execution",
-    );
-    await f.runtime.start(
-      a.id,
-      `title:${JSON.stringify({ title: "must not persist", sessionId: a.id })}`,
-    ).completion;
+    assert.equal(f.runtime.session(a.id).title, "12", "Native Pi normalizes numeric tool input to a schema string before execution");
+    await f.runtime.start(a.id, `title:${JSON.stringify({ title: "must not persist", sessionId: a.id })}`).completion;
     assert.equal(f.runtime.session(a.id).title, "12");
     assert.equal(Array.from(toolSessionTitle("😀".repeat(90))).length, 80);
   } finally {
@@ -163,15 +129,18 @@ test("PiSpark integration: reserved native tool collision fails before session e
       `export default pi => pi.registerTool({name:'pispark_set_title', label:'Collision',description:'Collision',parameters:{type:'object',properties:{}},execute:async()=>({content:[],details:undefined})});`,
     );
     await selectLocal(f.home, "default", [["extensions", "collision"]]);
-    await assert.rejects(
-      f.runtime.create({ folder: f.cwd }),
-      { code: "extension" },
-    );
+    await assert.rejects(f.runtime.create({ folder: f.cwd }), { code: "extension" });
     assert.equal(f.control.requests.length, 0);
     await rm(extension);
     const definition = join(f.home, "agents", "default", "agent.json");
     const { resources, ...rest } = JSON.parse(await readFile(definition, "utf8"));
-    await writeFile(definition, JSON.stringify({ ...rest, resources: { ...resources, extensions: resources.extensions.filter((r: string) => r !== "local:collision") } }));
+    await writeFile(
+      definition,
+      JSON.stringify({
+        ...rest,
+        resources: { ...resources, extensions: resources.extensions.filter((r: string) => r !== "local:collision") },
+      }),
+    );
     await f.runtime.create({ folder: f.cwd });
   } finally {
     await f.cleanup();
@@ -192,11 +161,7 @@ test("PiSpark integration: persist-first failure leaves current title and observ
     await rename(path, path + ".saved");
     await mkdir(path);
     try {
-      assert.throws(
-        () =>
-          setTitle(host, "not committed"),
-        { code: "storage" },
-      );
+      assert.throws(() => setTitle(host, "not committed"), { code: "storage" });
       assert.equal(f.runtime.session(a.id).title, before.title);
       assert.deepEqual(f.runtime.session(a.id), before);
     } finally {
@@ -210,17 +175,11 @@ test("PiSpark integration: persist-first failure leaves current title and observ
     const run = f.runtime.start(a.id, "wait");
     await eventually(() => f.control.active === 1);
     const stopping = f.runtime.stop(a.id);
-    assert.throws(
-      () => setTitle(host, "stopping"),
-      { code: "closed" },
-    );
+    assert.throws(() => setTitle(host, "stopping"), { code: "closed" });
     await stopping;
     await run.completion;
     await f.runtime.open(a.id);
-    assert.throws(
-      () => setTitle(host, "old owner"),
-      { code: "closed" },
-    );
+    assert.throws(() => setTitle(host, "old owner"), { code: "closed" });
     assert.equal(f.runtime.session(a.id).title, "Idle after cancellation");
   } finally {
     await f.cleanup();
@@ -254,16 +213,10 @@ test("PiSpark integration: a title that cannot be saved is said in the session, 
       await rename(path + ".saved", path);
     }
     f.control.requests.at(-1)!.release();
-    assert.equal(
-      (await run.completion).outcome,
-      "completed",
-      "A failed native tool result does not itself make the host run fail",
-    );
+    assert.equal((await run.completion).outcome, "completed", "A failed native tool result does not itself make the host run fail");
     assert.equal(f.runtime.session(a.id).title, "prior name");
     // Canonical native history normally includes tool arguments, unlike operational logging.
-    assert(
-      sessionText(f.runtime, a.id).includes(sensitive),
-    );
+    assert(sessionText(f.runtime, a.id).includes(sensitive));
   } finally {
     await f.cleanup();
   }
@@ -276,61 +229,36 @@ test("PiSpark integration: legacy unmentioned tool activates on reopen; explicit
     const a = await f.runtime.create({ folder: f.cwd });
     await f.runtime.start(a.id, "legacy fixture").completion;
     await f.runtime.stop(a.id);
-    const path = join(
-      f.sessions,
-      a.id,
-      (await readdir(join(f.sessions, a.id))).find((n) => n.endsWith(".jsonl"))!,
-    );
+    const path = join(f.sessions, a.id, (await readdir(join(f.sessions, a.id))).find((n) => n.endsWith(".jsonl"))!);
     const original = (await readFile(path, "utf8"))
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
     for (const entry of original) {
       if (entry.type === "message" && entry.message.role === "system") {
-        entry.message.toolsAdded = (entry.message.toolsAdded ?? []).filter(
-          (tool: { name: string }) => tool.name !== TITLE_TOOL,
-        );
+        entry.message.toolsAdded = (entry.message.toolsAdded ?? []).filter((tool: { name: string }) => tool.name !== TITLE_TOOL);
         // Model a pre-integration history without host guidance.
         if (entry.message.sections)
           for (const key of Object.keys(entry.message.sections))
-            if (
-              String(entry.message.sections[key]).includes(
-                "PiSpark hosts this session",
-              )
-            )
-              delete entry.message.sections[key];
+            if (String(entry.message.sections[key]).includes("PiSpark hosts this session")) delete entry.message.sections[key];
       }
     }
-    await writeFile(
-      path,
-      original.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
-    );
+    await writeFile(path, original.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
     await f.runtime.open(a.id);
     await f.runtime.start(a.id, command("Upgraded legacy fixture")).completion;
     assert.equal(f.runtime.session(a.id).title, "Upgraded legacy fixture");
     await f.runtime.stop(a.id);
     const removed = structuredClone(original);
-    const system = removed.find(
-      (entry) => entry.type === "message" && entry.message.role === "system",
-    );
+    const system = removed.find((entry) => entry.type === "message" && entry.message.role === "system");
     assert(system);
     system.message.toolsRemoved = [{ name: TITLE_TOOL }];
-    await writeFile(
-      path,
-      removed.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
-    );
+    await writeFile(path, removed.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
     await f.runtime.open(a.id);
     await f.runtime.start(a.id, "normal removed-loadout fixture").completion;
-    const latest = f.control.requests
-      .at(-1)!
-      .context.messages.filter((m) => m.role === "system");
+    const latest = f.control.requests.at(-1)!.context.messages.filter((m) => m.role === "system");
     assert(JSON.stringify(latest).includes("when its purpose is clear"));
     assert.deepEqual(
-      [
-        ...new Set(
-          latest.flatMap((m) => m.toolsAdded?.map((tool) => tool.name) ?? []),
-        ),
-      ].sort(),
+      [...new Set(latest.flatMap((m) => m.toolsAdded?.map((tool) => tool.name) ?? []))].sort(),
       [EXTENSION_TOOL, TITLE_TOOL, ...VERBS.map(toolOf), ...PI_BUILT_IN_TOOLS].sort(),
     );
   } finally {
@@ -353,7 +281,10 @@ test("a person's name for a session stays: the agent's title tool no longer chan
     assert.equal(f.runtime.list().find((s) => s.id === session.id)?.title, "Second name");
     await f.runtime.open(session.id);
     assert.equal(f.runtime.session(session.id).title, "Second name");
-    assert.throws(() => f.runtime.rename(session.id, " \n "), (e) => e instanceof RuntimeError && e.code === "invalid-input");
+    assert.throws(
+      () => f.runtime.rename(session.id, " \n "),
+      (e) => e instanceof RuntimeError && e.code === "invalid-input",
+    );
   } finally {
     await f.cleanup();
   }

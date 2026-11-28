@@ -20,11 +20,7 @@ import type { Item } from "../src/contract/protocol.js";
 
 const toolsOf = (request: LocalRequest) => [
   ...new Set(
-    request.context.messages.flatMap((message) =>
-      message.role === "system"
-        ? (message.toolsAdded ?? []).map((tool) => tool.name)
-        : [],
-    ),
+    request.context.messages.flatMap((message) => (message.role === "system" ? (message.toolsAdded ?? []).map((tool) => tool.name) : [])),
   ),
 ];
 /** The tools the model has at this request: each system message's additions and removals, in order. */
@@ -45,8 +41,7 @@ const now = (condition: () => boolean) => () => {
     return false;
   }
 };
-const systemText = (request: LocalRequest) =>
-  JSON.stringify(request.context.messages.filter((m) => m.role === "system"));
+const systemText = (request: LocalRequest) => JSON.stringify(request.context.messages.filter((m) => m.role === "system"));
 
 async function fixture() {
   const h = await testHome("pispark-agent-sessions-");
@@ -88,8 +83,7 @@ test("an agent's instructions, skills, /commands, extensions and tool switches r
       { name: "Dev", off: ["tool:bash", "tool:write"] },
       {
         "instructions/style.md": "DEV-INSTRUCTION",
-        "skills/review/SKILL.md":
-          "---\nname: review\ndescription: DEV-SKILL review checklist\n---\nSteps",
+        "skills/review/SKILL.md": "---\nname: review\ndescription: DEV-SKILL review checklist\n---\nSteps",
         "prompts/outline.md": "---\ndescription: Outline\n---\nOUTLINE-TEMPLATE about $1",
         "extensions/dev-tool.mjs": `export default pi => pi.registerTool({name:'dev_tool',label:'Dev',description:'Dev tool',parameters:{type:'object',properties:{}},execute:async()=>({content:[{type:'text',text:'ok'}],details:undefined})});`,
       },
@@ -117,7 +111,10 @@ test("Pi's codemode and tool search are on by default; an agent switches them of
     await f.agent("plain", { name: "Plain" });
     await f.agent("lean", { name: "Lean", off: ["tool:codemode", "tool:tool_search"] });
     await f.agent("own", { name: "Own" }, { "extensions/own.mjs": own });
-    for (const [agent, expect] of [["plain", true], ["lean", false]] as const) {
+    for (const [agent, expect] of [
+      ["plain", true],
+      ["lean", false],
+    ] as const) {
       const session = await f.runtime.create({ folder: f.folder, agent });
       await f.runtime.start(session.id, "hello").completion;
       const tools = toolsOf(f.provider.requests.at(-1)!);
@@ -229,14 +226,18 @@ test("an extension command's ctx.reload() is the session's reload; extensions se
   const reasons: string[] = [];
   (globalThis as { reloadReasons?: string[] }).reloadReasons = reasons;
   try {
-    await f.agent("dev", { name: "Dev" }, {
-      "instructions/a.md": "FIRST-VERSION",
-      "extensions/refresh.js": `export default pi => {
+    await f.agent(
+      "dev",
+      { name: "Dev" },
+      {
+        "instructions/a.md": "FIRST-VERSION",
+        "extensions/refresh.js": `export default pi => {
         pi.on("session_start", (event) => globalThis.reloadReasons.push("start:" + event.reason));
         pi.on("session_shutdown", (event) => globalThis.reloadReasons.push("shutdown:" + event.reason));
         pi.registerCommand("refresh", { description: "Reload this session", handler: async (_, ctx) => { await ctx.reload(); } });
       }`,
-    });
+      },
+    );
     const session = await f.runtime.create({ folder: f.folder, agent: "dev" });
     await f.runtime.start(session.id, "hello").completion;
     const file = f.runtime.agents.readFile({ agent: "dev" }, "instructions/a.md");
@@ -277,17 +278,21 @@ test("an extension adds skills and prompts to its session through Pi's resources
     await writeFile(join(found, path), text);
   }
   try {
-    await f.agent("dev", { name: "Dev" }, {
-      "skills/review/SKILL.md": "---\nname: review\ndescription: AGENT-REVIEW wins\n---\n",
-      "prompts/outline.md": "---\ndescription: Outline\n---\nAGENT-OUTLINE about $1",
-      "extensions/found.mjs": `export default pi => {
+    await f.agent(
+      "dev",
+      { name: "Dev" },
+      {
+        "skills/review/SKILL.md": "---\nname: review\ndescription: AGENT-REVIEW wins\n---\n",
+        "prompts/outline.md": "---\ndescription: Outline\n---\nAGENT-OUTLINE about $1",
+        "extensions/found.mjs": `export default pi => {
         pi.registerCommand("refresh", { description: "Reload", handler: async (_, ctx) => { await ctx.reload(); } });
         pi.on("resources_discover", (event) => { globalThis.discovered?.push(event.reason); return {
           skillPaths: [${JSON.stringify(join(found, "skills"))}],
           promptPaths: [${JSON.stringify(join(found, "prompts"))}],
         }; });
       }`,
-    });
+      },
+    );
     const session = await f.runtime.create({ folder: f.folder, agent: "dev" });
     await f.runtime.start(session.id, "/brief pancakes").completion;
     assert.deepEqual(discovered, ["startup"]);
@@ -341,11 +346,7 @@ test("stopping the turn drops the reload its agent asked for", async () => {
 test("an in-session edit gives the session its own layer; the agent itself is unchanged", async () => {
   const f = await fixture();
   try {
-    await f.agent(
-      "dev",
-      { name: "Dev" },
-      { "skills/review/SKILL.md": "---\nname: review\ndescription: REVIEW-SKILL\n---\n" },
-    );
+    await f.agent("dev", { name: "Dev" }, { "skills/review/SKILL.md": "---\nname: review\ndescription: REVIEW-SKILL\n---\n" });
     const session = await f.runtime.create({ folder: f.folder, agent: "dev" });
     f.runtime.agents.save({ session: session.id }, "", { base: ["dev"], off: ["skill:review"] });
     f.runtime.agents.writeFile({ session: session.id }, "instructions/extra.md", null, "SESSION-ONLY");
@@ -384,10 +385,7 @@ test("model choice: Ask's model, else the agent's preferred model, else the defa
     await h.agent("gone", { name: "Gone", settings: { model: "nowhere/none" } });
     assert.equal((await runtime.create({ folder })).model?.id, "deterministic");
     assert.equal((await runtime.create({ folder, agent: "fast" })).model?.id, "second");
-    assert.equal(
-      (await runtime.create({ folder, agent: "fast", model: { provider, id: "deterministic" } })).model?.id,
-      "deterministic",
-    );
+    assert.equal((await runtime.create({ folder, agent: "fast", model: { provider, id: "deterministic" } })).model?.id, "deterministic");
     assert.equal((await runtime.create({ folder, agent: "gone" })).model?.id, "deterministic");
   } finally {
     await runtime.shutdown();
@@ -407,19 +405,27 @@ test("a native model switch stays attached to just that session on reopen", asyn
     await settings.runtime.refresh({ allowNetwork: false });
     await settings.settings.setDefault({ provider, id: "deterministic" });
     const folder = await h.folder("work");
-    await h.agent("fast", { name: "Fast", settings: { model: `${provider}/second` } }, {
-      "extensions/switch.js": `export default pi => pi.registerCommand("switch-model", {
+    await h.agent(
+      "fast",
+      { name: "Fast", settings: { model: `${provider}/second` } },
+      {
+        "extensions/switch.js": `export default pi => pi.registerCommand("switch-model", {
         description: "Switch this session", handler: async (_, ctx) => {
           await pi.setModel(ctx.modelRegistry.find("${provider}", "deterministic"));
         }
       })`,
-    });
+      },
+    );
     const create = () => runtime.create({ agent: "fast", folder });
-    const a = await create(), b = await create();
+    const a = await create(),
+      b = await create();
     const checkDispatch = async (id: string, expected: string) => {
       const before = settings.control.requests.length;
       assert.equal((await runtime.start(id, "Hello").completion).outcome, "completed");
-      assert.deepEqual(settings.control.requests.slice(before).map(r => r.model.id), [expected]);
+      assert.deepEqual(
+        settings.control.requests.slice(before).map((r) => r.model.id),
+        [expected],
+      );
     };
     await checkDispatch(a.id, "second");
     await runtime.start(a.id, "/switch-model").completion;
@@ -439,13 +445,17 @@ test("a native model switch stays attached to just that session on reopen", asyn
 test("editing any file of an extension folder outside PiSpark flags open sessions; a single-file extension is its file", async () => {
   const f = await fixture();
   try {
-    const extension = "export default function (pi) { pi.on(\"session_start\", () => {}); }\n";
-    await f.agent("ext", { name: "Ext" }, {
-      "extensions/panel/index.ts": extension,
-      "extensions/panel/Panel.svelte": "<p>first</p>\n",
-      "extensions/panel/helper.js": "export const a = 1;\n",
-      "extensions/single.ts": extension,
-    });
+    const extension = 'export default function (pi) { pi.on("session_start", () => {}); }\n';
+    await f.agent(
+      "ext",
+      { name: "Ext" },
+      {
+        "extensions/panel/index.ts": extension,
+        "extensions/panel/Panel.svelte": "<p>first</p>\n",
+        "extensions/panel/helper.js": "export const a = 1;\n",
+        "extensions/single.ts": extension,
+      },
+    );
     const session = await f.runtime.create({ folder: f.folder, agent: "ext" });
     assert.equal(f.runtime.session(session.id).agentChanged, undefined);
     // A component edited in an editor, not through PiSpark.
@@ -554,7 +564,10 @@ test("a session's thinking level and model can change; the choice stays on reope
     assert.equal(f.runtime.session(session.id).thinking!.level, chosen, "kept on reopen");
     // A model that isn't offered is refused, and nothing changes.
     const model = f.runtime.session(session.id).model;
-    await assert.rejects(f.runtime.configure(session.id, { model: { provider: model!.provider, id: "no-such-model" } }), (e) => e instanceof RuntimeError && e.code === "model-unavailable");
+    await assert.rejects(
+      f.runtime.configure(session.id, { model: { provider: model!.provider, id: "no-such-model" } }),
+      (e) => e instanceof RuntimeError && e.code === "model-unavailable",
+    );
     assert.deepEqual(f.runtime.session(session.id).model, model);
     // Asked for while a reply runs, it waits, and applies once the reply is done.
     f.provider.automatic = false;
@@ -606,7 +619,10 @@ test("a message edited and sent again branches through Pi's tree; versions switc
     await f.runtime.start(session.id, "first").completion;
     await f.runtime.start(session.id, "second").completion;
     const items = () => f.runtime.items(session.id, {}).items;
-    const userText = () => items().filter((item) => item.role === "user").map((item) => (item.parts[0] as { text: string }).text);
+    const userText = () =>
+      items()
+        .filter((item) => item.role === "user")
+        .map((item) => (item.parts[0] as { text: string }).text);
     const second = items().filter((item) => item.role === "user")[1]!;
     const firstReply = items().filter((item) => item.role === "assistant")[0]!;
 
@@ -624,11 +640,17 @@ test("a message edited and sent again branches through Pi's tree; versions switc
     await f.runtime.stop(session.id);
     await f.runtime.open(session.id);
     assert.deepEqual(userText(), ["first", "second"]);
-    await assert.rejects(f.runtime.edit(session.id, firstReply.id!, "not a message of yours"), (e) => e instanceof RuntimeError && e.code === "not-found");
+    await assert.rejects(
+      f.runtime.edit(session.id, firstReply.id!, "not a message of yours"),
+      (e) => e instanceof RuntimeError && e.code === "not-found",
+    );
 
     const forkId = await f.runtime.fork(session.id, firstReply.id!);
     await f.runtime.open(forkId);
-    assert.deepEqual(f.runtime.items(forkId, {}).items.map((item) => item.role), ["user", "assistant"]);
+    assert.deepEqual(
+      f.runtime.items(forkId, {}).items.map((item) => item.role),
+      ["user", "assistant"],
+    );
   } finally {
     await f.cleanup();
   }
@@ -665,13 +687,17 @@ test("the live stream carries an edited message's versions", async () => {
 test("an extension command's ctx.navigateTree moves in place and ctx.fork makes a session of its own", async () => {
   const f = await fixture();
   try {
-    await f.agent("dev", { name: "Dev" }, {
-      "extensions/tree.js": `export default pi => {
+    await f.agent(
+      "dev",
+      { name: "Dev" },
+      {
+        "extensions/tree.js": `export default pi => {
         const firstReply = (ctx) => ctx.sessionManager.getBranch().find((e) => e.type === "message" && e.message.role === "assistant");
         pi.registerCommand("rewind", { handler: async (_, ctx) => { await ctx.navigateTree(firstReply(ctx).id); } });
         pi.registerCommand("split", { handler: async (_, ctx) => { await ctx.fork(firstReply(ctx).id, { position: "at" }); } });
       }`,
-    });
+      },
+    );
     const session = await f.runtime.create({ folder: f.folder, agent: "dev" });
     await f.runtime.start(session.id, "first").completion;
     await f.runtime.start(session.id, "second").completion;
@@ -679,7 +705,13 @@ test("an extension command's ctx.navigateTree moves in place and ctx.fork makes 
     assert.equal((await f.runtime.start(session.id, "/split").completion).outcome, "completed");
     assert.equal(f.runtime.list().length, before + 1);
     assert.equal((await f.runtime.start(session.id, "/rewind").completion).outcome, "completed");
-    assert.deepEqual(f.runtime.items(session.id, {}).items.filter((item) => item.role === "user").map((item) => (item.parts[0] as { text: string }).text), ["first"]);
+    assert.deepEqual(
+      f.runtime
+        .items(session.id, {})
+        .items.filter((item) => item.role === "user")
+        .map((item) => (item.parts[0] as { text: string }).text),
+      ["first"],
+    );
   } finally {
     await f.cleanup();
   }

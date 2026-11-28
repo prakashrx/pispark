@@ -30,11 +30,7 @@ function receipt(dialog: ExtensionDialog, answer: string | boolean | null): Pick
   if (dialog.kind === "select") return { said: "chose", choice: plain(String(answer), 120) };
   return { said: "answered" };
 }
-type Question = ExtensionDialog extends infer D
-  ? D extends ExtensionDialog
-    ? Omit<D, "id" | "expiresAt">
-    : never
-  : never;
+type Question = ExtensionDialog extends infer D ? (D extends ExtensionDialog ? Omit<D, "id" | "expiresAt"> : never) : never;
 
 const MAX_NOTICES = 50;
 const MAX_TEXT = 64 * 1024;
@@ -70,7 +66,12 @@ function gitBranch(cwd: string): string | null {
       // A worktree or submodule has a ".git" file pointing at its git directory.
       const gitDir = statSync(git).isDirectory()
         ? git
-        : resolve(dir, readFileSync(git, "utf8").replace(/^gitdir:\s*/, "").trim());
+        : resolve(
+            dir,
+            readFileSync(git, "utf8")
+              .replace(/^gitdir:\s*/, "")
+              .trim(),
+          );
       const head = readFileSync(join(gitDir, "HEAD"), "utf8").trim();
       return head.startsWith("ref: refs/heads/") ? head.slice(16) : "detached";
     } catch {
@@ -84,10 +85,7 @@ function gitBranch(cwd: string): string | null {
  * session state the browser shows. Terminal-only calls are quiet no-ops, as in Pi's RPC mode.
  */
 export class ExtensionUI {
-  private readonly dialogs = new Map<
-    string,
-    { dialog: ExtensionDialog; settle: (answer: Answer, direct?: boolean) => void }
-  >();
+  private readonly dialogs = new Map<string, { dialog: ExtensionDialog; settle: (answer: Answer, direct?: boolean) => void }>();
   private readonly statuses = new Map<string, string>();
   private readonly widgets = new Map<string, Widget>();
   private notices: Notice[] = [];
@@ -181,16 +179,11 @@ export class ExtensionUI {
     });
   }
 
-  private setWidget(
-    key: string,
-    content: string[] | WidgetFactory | undefined,
-    options?: ExtensionWidgetOptions,
-  ) {
+  private setWidget(key: string, content: string[] | WidgetFactory | undefined, options?: ExtensionWidgetOptions) {
     this.widgets.get(key)?.component?.dispose?.();
     this.widgets.delete(key);
     const placement = options?.placement === "belowEditor" ? "below" : "above";
-    if (Array.isArray(content))
-      this.widgets.set(key, { placement, lines: styledLines(content) });
+    if (Array.isArray(content)) this.widgets.set(key, { placement, lines: styledLines(content) });
     else if (typeof content === "function" && !this.closed)
       this.widgets.set(key, {
         placement,
@@ -223,12 +216,7 @@ export class ExtensionUI {
         (answer) => options.find((o) => plain(o, 500) === answer),
       ),
     confirm: (title, message, opts) =>
-      this.ask(
-        { kind: "confirm", title: plain(title), message: plain(message) },
-        opts,
-        false,
-        (answer) => answer === true,
-      ),
+      this.ask({ kind: "confirm", title: plain(title), message: plain(message) }, opts, false, (answer) => answer === true),
     input: (title, placeholder, opts) =>
       this.ask(
         { kind: "input", title: plain(title), ...(placeholder ? { placeholder: plain(placeholder, 500) } : {}) },
@@ -275,13 +263,8 @@ export class ExtensionUI {
       this.title = plain(title, 200) || undefined;
       this.changed();
     },
-    setHeader: (factory) =>
-      this.replace("header", factory && (() => factory(webTui(this.changed), webTheme))),
-    setFooter: (factory) =>
-      this.replace(
-        "footer",
-        factory && (() => factory(webTui(this.changed), webTheme, this.footerData)),
-      ),
+    setHeader: (factory) => this.replace("header", factory && (() => factory(webTui(this.changed), webTheme))),
+    setFooter: (factory) => this.replace("footer", factory && (() => factory(webTui(this.changed), webTheme, this.footerData))),
     setEditorText: (text) => {
       // Unique across session instances, so a reopened session never reuses an applied id.
       this.draft = { id: randomUUID(), text: String(text).slice(0, MAX_TEXT), at: Date.now() };
@@ -317,7 +300,11 @@ export class ExtensionUI {
   get question(): string | undefined {
     const first = this.dialogs.values().next().value?.dialog.title;
     if (!first) return undefined;
-    const line = first.split(/\r?\n/).map((each) => each.trim()).find(Boolean) ?? "";
+    const line =
+      first
+        .split(/\r?\n/)
+        .map((each) => each.trim())
+        .find(Boolean) ?? "";
     // "Dangerous command:" introduces the message under it; alone, it reads without the colon.
     const said = line.replace(/\s*:$/, "");
     return said.length > 120 ? `${said.slice(0, 119)}…` : said || undefined;
@@ -343,7 +330,9 @@ export class ExtensionUI {
     pending.settle(answer ?? undefined);
     // The session keeps what was asked and answered where it happened, as terminal scrollback would.
     // The question is its title's first line without the colon that led into it ("Dangerous command:").
-    const question = plain(dialog.title, 120).split(String.fromCharCode(10))[0]!.replace(/\s*:\s*$/, "");
+    const question = plain(dialog.title, 120)
+      .split(String.fromCharCode(10))[0]!
+      .replace(/\s*:\s*$/, "");
     this.notice("", "info", { question, ...receipt(dialog, answer) });
     this.changed();
   }

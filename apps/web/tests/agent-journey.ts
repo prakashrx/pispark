@@ -41,6 +41,10 @@ export async function addInstruction(page: Page, text: string, name = "own") {
 export async function openAgent(page: Page, name: string) {
   const all = page.getByRole("link", { name: "All agents" });
   if (await all.isVisible()) await all.click();
-  await page.getByRole("main").getByRole("link", { name: new RegExp(`^${name}`) }).first().click();
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(`^${name}`) })
+    .first()
+    .click();
   await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
 }

@@ -32,7 +32,12 @@ async function fixture() {
     /** A prompt for the session's agent, and what the last tool it called answered. */
     run: async (id: string, prompt: string) => {
       await runtimes[0]!.start(id, prompt).completion;
-      return text(runtimes[0]!.items(id, {}).items.filter((item) => item.role === "toolResult").at(-1)!);
+      return text(
+        runtimes[0]!
+          .items(id, {})
+          .items.filter((item) => item.role === "toolResult")
+          .at(-1)!,
+      );
     },
     cleanup: async () => {
       await Promise.allSettled(runtimes.map((r) => r.shutdown()));
@@ -59,7 +64,10 @@ test("wait takes a process's result, look reads what is unread, and find searche
     const run = (prompt: string) => f.run(session.id, prompt);
     assert.match(await run(say("start_process", { command: SERVER })), /^Started process-1: .* — running since .*\nready on 5173/);
     const [server] = f.runtime.listProcesses(session.id);
-    const started = f.runtime.items(session.id, {}).items.filter((item) => item.role === "toolResult").at(-1);
+    const started = f.runtime
+      .items(session.id, {})
+      .items.filter((item) => item.role === "toolResult")
+      .at(-1);
     assert.deepEqual(started?.details, { id: server!.id });
     // A wait gives up after its own time; what it waited for stays open.
     assert.equal(await run(say("wait", { ids: ["process-1"], seconds: 1 })), "Not in within 1 s. Still open: process-1.");
@@ -96,7 +104,14 @@ test("wait for any returns with the first result and leaves the rest open; with 
   try {
     const session = await f.runtime.create({ folder: f.folder });
     const quick = `node -e "setTimeout(() => console.log('quick done'), 300)"`;
-    const race = await f.run(session.id, steps(["start_process", { command: quick, title: "quick" }], ["start_process", { command: SERVER, title: "slow" }], ["wait", { for: "any", seconds: 20 }]));
+    const race = await f.run(
+      session.id,
+      steps(
+        ["start_process", { command: quick, title: "quick" }],
+        ["start_process", { command: SERVER, title: "slow" }],
+        ["wait", { for: "any", seconds: 20 }],
+      ),
+    );
     assert.match(race, /^process-1: quick .* — exited \(exit 0\)\nLast output:\nquick done\n\nStill open: process-2\.$/);
     assert.equal(await f.run(session.id, say("stop", { id: "process-2" })), "Stopped.");
     assert.equal(await f.run(session.id, say("wait")), "Nothing this session started is still open.");
@@ -110,7 +125,10 @@ test("a process runs in the background, outlives its idle session, and the perso
   const f = await fixture();
   try {
     const session = await f.runtime.create({ folder: f.folder });
-    const started = await f.run(session.id, steps(["start_process", { command: SERVER, title: "dev server" }], ["wait", { ids: ["process-1"], until: "ready on", seconds: 20 }]));
+    const started = await f.run(
+      session.id,
+      steps(["start_process", { command: SERVER, title: "dev server" }], ["wait", { ids: ["process-1"], until: "ready on", seconds: 20 }]),
+    );
     assert.match(started, /^process-1: dev server/);
     assert.match(started, /The output shows \/ready on\/i\./);
     assert.match(started, /ready on 5173/);
@@ -171,11 +189,17 @@ test("a process raises a line of its output that matches raise_on; send changes 
     await eventually(() => f.runtime.items(session.id, {}).items.some((item) => item.customType === WOKEN_ENTRY), 15_000);
     const items = f.runtime.items(session.id, {}).items;
     const woken = items.findIndex((item) => item.customType === WOKEN_ENTRY);
-    assert.match(text(items[woken + 1]!), /^The process "worker" \(process-1\) printed a line matching error:\nerror: disk full\n\nLast output:\n/);
+    assert.match(
+      text(items[woken + 1]!),
+      /^The process "worker" \(process-1\) printed a line matching error:\nerror: disk full\n\nLast output:\n/,
+    );
     // It still runs: a raise is not an end.
     assert.equal(f.runtime.listProcesses(session.id)[0]!.state, "running");
 
-    assert.equal(await f.run(session.id, say("send", { id: "process-1", raise_on: "fatal" })), "It raises when a line of its output matches /fatal/, at most once a minute.");
+    assert.equal(
+      await f.run(session.id, say("send", { id: "process-1", raise_on: "fatal" })),
+      "It raises when a line of its output matches /fatal/, at most once a minute.",
+    );
     assert.equal(f.runtime.listProcesses(session.id)[0]!.raiseOn, "fatal");
     assert.equal(await f.run(session.id, say("send", { id: "process-1", raise_on: "" })), "It no longer raises on its output.");
     assert.equal(f.runtime.listProcesses(session.id)[0]!.raiseOn, undefined);
@@ -241,19 +265,27 @@ test("the agent's stop answers once the process has ended", async () => {
 });
 
 const GIT = String.raw`C:\Program Files\Git`;
-test("Windows: Stop finds Git's ps.exe from either Git Bash, and none for another bash", { skip: process.platform !== "win32" || !existsSync(join(GIT, "usr", "bin", "ps.exe")) }, () => {
-  const ps = join(GIT, "usr", "bin", "ps.exe");
-  assert.equal(gitPs(join(GIT, "bin", "bash.exe")), ps);
-  assert.equal(gitPs(join(GIT, "usr", "bin", "bash.exe")), ps);
-  assert.equal(gitPs(String.raw`C:\Windows\System32\bash.exe`), undefined);
-});
+test(
+  "Windows: Stop finds Git's ps.exe from either Git Bash, and none for another bash",
+  { skip: process.platform !== "win32" || !existsSync(join(GIT, "usr", "bin", "ps.exe")) },
+  () => {
+    const ps = join(GIT, "usr", "bin", "ps.exe");
+    assert.equal(gitPs(join(GIT, "bin", "bash.exe")), ps);
+    assert.equal(gitPs(join(GIT, "usr", "bin", "bash.exe")), ps);
+    assert.equal(gitPs(String.raw`C:\Windows\System32\bash.exe`), undefined);
+  },
+);
 
 test("an extension says a verb on the bus; a line it causes survives reload and restart without invoking a model", async () => {
   const f = await fixture();
   try {
     const name = "quiet";
-    await writeAgent(f.home, name, { name: "Quiet" }, {
-      "extensions/quiet.mjs": `export default (pi) => {
+    await writeAgent(
+      f.home,
+      name,
+      { name: "Quiet" },
+      {
+        "extensions/quiet.mjs": `export default (pi) => {
         let started = false;
         pi.on("session_start", (event) => {
           if (started || event.reason !== "new") return;
@@ -264,7 +296,8 @@ test("an extension says a verb on the bus; a line it causes survives reload and 
           }), 50);
         });
       }`,
-    });
+      },
+    );
     const session = await f.runtime.create({ folder: f.folder, agent: name });
     await eventually(() => f.runtime.listProcesses(session.id)[0]?.state === "running", 10_000);
     f.runtime.stopProcess(session.id, f.runtime.listProcesses(session.id)[0]!.id);
@@ -286,7 +319,10 @@ test("three process ends that waited for a working session reach it together: on
   const f = await fixture();
   try {
     const session = await f.runtime.create({ folder: f.folder });
-    const quick = (title: string): ["start_process", object] => ["start_process", { command: `node -e "console.log('${title} ok')"`, title }];
+    const quick = (title: string): ["start_process", object] => [
+      "start_process",
+      { command: `node -e "console.log('${title} ok')"`, title },
+    ];
     const hold: ["start_process", object] = ["start_process", { command: `node -e "setTimeout(() => {}, 2500)"`, title: "hold" }];
     // The session stays in its turn, waiting for the slow one, while the three quick ones end.
     await f.run(session.id, steps(quick("lint"), quick("types"), quick("unit"), hold, ["wait", { ids: ["process-4"] }]));
@@ -297,12 +333,49 @@ test("three process ends that waited for a working session reach it together: on
     // One delivery that names each of the three, and one run for it.
     assert.equal(woken().length, 1);
     const { together } = woken()[0]!.details as { together: { source: { label: string }; at: number }[] };
-    assert.deepEqual(together.map((part) => part.source.label), ["lint · exited 0", "types · exited 0", "unit · exited 0"]);
+    assert.deepEqual(
+      together.map((part) => part.source.label),
+      ["lint · exited 0", "types · exited 0", "unit · exited 0"],
+    );
     const items = f.runtime.items(session.id, {}).items;
     const at = items.findIndex((item) => item.customType === WOKEN_ENTRY);
     const message = text(items[at + 1]!);
-    assert.deepEqual(together.map((part) => message.slice(part.at).split("\n")[0]), ['The process "lint" (process-1) exited 0.', 'The process "types" (process-2) exited 0.', 'The process "unit" (process-3) exited 0.']);
+    assert.deepEqual(
+      together.map((part) => message.slice(part.at).split("\n")[0]),
+      ['The process "lint" (process-1) exited 0.', 'The process "types" (process-2) exited 0.', 'The process "unit" (process-3) exited 0.'],
+    );
     assert.equal(items.slice(at).filter((item) => item.role === "assistant").length, 1);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a process printing megabytes doesn't hold up the server, and its log is cut to the newest output with offsets that still add up", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    // About 6 MB in 64 KB writes as fast as it can, then one last line.
+    const LOUD = `node -e "const b='x'.repeat(65535)+'\\n'; for(let i=0;i<96;i++) process.stdout.write(b); console.log('done')"`;
+    let worst = 0;
+    let last = performance.now();
+    const ticker = setInterval(() => {
+      const now = performance.now();
+      worst = Math.max(worst, now - last - 5);
+      last = now;
+    }, 5);
+    await f.run(session.id, say("start_process", { command: LOUD }));
+    const [started] = f.runtime.listProcesses(session.id);
+    await eventually(() => f.runtime.listProcesses(session.id)[0]!.state !== "running", 30_000);
+    clearInterval(ticker);
+    const [ended] = f.runtime.listProcesses(session.id);
+    assert.equal(ended!.state, "exited");
+    assert.equal(ended!.written, 96 * 65536 + "done\n".length);
+    // Only the newest output is kept, and reading from the start says so.
+    const all = f.runtime.processOutput(session.id, started!.id, 0);
+    assert.equal(all.cut, true);
+    const tail = f.runtime.processOutput(session.id, started!.id, ended!.written - 5);
+    assert.deepEqual([tail.text, tail.next], ["done\n", ended!.written]);
+    assert(worst < 100, `the event loop was held up for ${worst.toFixed(0)} ms`);
   } finally {
     await f.cleanup();
   }

@@ -1,9 +1,4 @@
-import type {
-  Item,
-  ItemsPage,
-  LiveDoc,
-  LiveEvent,
-} from "../../../../server/src/contract/protocol";
+import type { Item, ItemsPage, LiveDoc, LiveEvent } from "../../../../server/src/contract/protocol";
 import { applyOp } from "../../../../server/src/contract/stream-ops";
 import type { Json } from "../../../../server/src/contract/stream-ops";
 

@@ -1,4 +1,13 @@
-import { NOTICE_ENTRY, type Answered, type ExtensionView, type Item, type ItemPart, type ReplyFailure, type StyledLine, type ToolProgress } from "../../../../server/src/contract/protocol";
+import {
+  NOTICE_ENTRY,
+  type Answered,
+  type ExtensionView,
+  type Item,
+  type ItemPart,
+  type ReplyFailure,
+  type StyledLine,
+  type ToolProgress,
+} from "../../../../server/src/contract/protocol";
 import type { Json } from "../../../../server/src/contract/stream-ops";
 import { STATUS_ENTRY, WOKEN_ENTRY, type WakeSource, type WokenCard } from "../../../../server/src/contract/wake-protocol";
 import { TITLE_TOOL } from "../../../../server/src/contract/session-title";
@@ -139,7 +148,8 @@ const WOKEN_BY: Record<WakeSource["kind"], string> = { schedule: "Scheduled", se
 /** How a turn something other than the person sent is labelled, from its `WOKEN_ENTRY` details. */
 export function wokenLabel(details: unknown): string {
   const { source } = (details ?? {}) as { source?: { kind?: unknown; label?: unknown } };
-  const kind = typeof source?.kind === "string" && Object.hasOwn(WOKEN_BY, source.kind) ? WOKEN_BY[source.kind as WakeSource["kind"]] : "Woken";
+  const kind =
+    typeof source?.kind === "string" && Object.hasOwn(WOKEN_BY, source.kind) ? WOKEN_BY[source.kind as WakeSource["kind"]] : "Woken";
   const label = typeof source?.label === "string" ? source.label : "";
   if (kind === "From") return label ? `From ${label}` : "From another session";
   return [kind, label].filter(Boolean).join(" · ");
@@ -147,7 +157,11 @@ export function wokenLabel(details: unknown): string {
 /** The session, process or reload a turn came from, when it was not the person or a schedule. */
 export function wokenFrom(details: unknown): From | undefined {
   const { source, card } = (details ?? {}) as { source?: { kind?: unknown; id?: unknown; label?: unknown }; card?: Partial<WokenCard> };
-  if (!(source?.kind === "session" || source?.kind === "process" || source?.kind === "reload") || typeof source.id !== "string" || typeof source.label !== "string")
+  if (
+    !(source?.kind === "session" || source?.kind === "process" || source?.kind === "reload") ||
+    typeof source.id !== "string" ||
+    typeof source.label !== "string"
+  )
     return undefined;
   const from: From = { id: source.id, label: source.label, kind: source.kind, title: source.label, start: 0 };
   return card && typeof card.title === "string" && typeof card.how === "string" && Number.isSafeInteger(card.start) && card.start! >= 0
@@ -186,11 +200,13 @@ function asksIn(items: Item[]): { rows: Set<string>; answers: Map<string, string
   const ended = new Map<string, string>();
   let woken: unknown;
   for (const item of items) {
-    const made = item.role === "toolResult" && STARTS.has(item.toolName ?? "") ? (item.details as { id?: unknown } | undefined)?.id : undefined;
+    const made =
+      item.role === "toolResult" && STARTS.has(item.toolName ?? "") ? (item.details as { id?: unknown } | undefined)?.id : undefined;
     if (typeof made === "string") rows.add(made);
     if (item.role === "toolResult" && item.toolName === "pispark_wait") {
       const taken = (item.details as { answers?: unknown } | undefined)?.answers;
-      for (const each of Array.isArray(taken) ? (taken as { id?: unknown; how?: unknown }[]) : []) if (typeof each?.id === "string" && typeof each.how === "string") ended.set(each.id, each.how);
+      for (const each of Array.isArray(taken) ? (taken as { id?: unknown; how?: unknown }[]) : [])
+        if (typeof each?.id === "string" && typeof each.how === "string") ended.set(each.id, each.how);
     }
     if (item.role === "entry" && item.customType === WOKEN_ENTRY) woken = item.details;
     if (item.role !== "user") continue;
@@ -239,14 +255,18 @@ export function buildTurns(
   const lastItem = items.at(-1);
   // The session's last reply, when nothing was sent after it.
   const lastAssistant = items.findLastIndex((item) => item.role === "assistant");
-  const latestReply = lastAssistant >= 0 && !items.slice(lastAssistant).some((item) => item.role === "user") ? items[lastAssistant] : undefined;
+  const latestReply =
+    lastAssistant >= 0 && !items.slice(lastAssistant).some((item) => item.role === "user") ? items[lastAssistant] : undefined;
   let notice = 0;
   // A summary followed by your message (or by nothing, once the work is done) happened between your
   // messages; one followed by more of the agent's work happened in the middle of it.
   const between = new Set<Item>();
   items.forEach((item, index) => {
     const next = items[index + 1];
-    if (item.role === "summary" && (next ? next.role === "user" || (next.role === "entry" && next.customType === WOKEN_ENTRY) : !options.running))
+    if (
+      item.role === "summary" &&
+      (next ? next.role === "user" || (next.role === "entry" && next.customType === WOKEN_ENTRY) : !options.running)
+    )
       between.add(item);
   });
   /** A wake's marker, waiting for the message it sent. */
@@ -262,7 +282,8 @@ export function buildTurns(
     const how = asks.ended.get(segment.sessionId);
     return turn.segments.push({ ...segment, ...(answer !== undefined ? { answer } : {}), ...(how ? { how } : {}) });
   };
-  const folded = <T extends From>(from: T): T => (from.kind === "session" && from.how !== "raised" && asks.rows.has(from.id) ? { ...from, folded: true as const } : from);
+  const folded = <T extends From>(from: T): T =>
+    from.kind === "session" && from.how !== "raised" && asks.rows.has(from.id) ? { ...from, folded: true as const } : from;
   // A notice lands before the first item at or after its position. Called before a new turn starts,
   // so a notice ahead of your message ends the answer before it.
   const flush = (position: number | undefined) => {
@@ -312,7 +333,14 @@ export function buildTurns(
         const key = `${item.key}.${index}`;
         const streaming = live && index === item.parts.length - 1;
         if (part.type === "text" && part.text.trim()) {
-          emit(turn, { kind: "text", key, text: part.text, size: part.size, streaming, detail: part.size !== undefined && item.id ? { id: item.id, part: index } : undefined });
+          emit(turn, {
+            kind: "text",
+            key,
+            text: part.text,
+            size: part.size,
+            streaming,
+            detail: part.size !== undefined && item.id ? { id: item.id, part: index } : undefined,
+          });
         } else if (part.type === "thinking" && part.text.trim()) {
           emit(turn, { kind: "thinking", key, text: part.text, streaming, label: options.thinkingLabel });
         } else if (part.type === "toolCall") {
@@ -322,7 +350,15 @@ export function buildTurns(
             name: part.name,
             args: part.args,
             result,
-            status: result ? (result.isError ? (wasBlocked(result) ? "blocked" : "error") : "done") : options.running ? "running" : "unfinished",
+            status: result
+              ? result.isError
+                ? wasBlocked(result)
+                  ? "blocked"
+                  : "error"
+                : "done"
+              : options.running
+                ? "running"
+                : "unfinished",
             ...(part.clipped ? { clipped: true as const } : {}),
             ...(!result && options.progress?.[part.id] ? { progress: options.progress[part.id] } : {}),
           };
@@ -342,7 +378,13 @@ export function buildTurns(
           let start = turn.segments.length;
           while (start > 0 && rows(turn.segments[start - 1])) start--;
           const before = turn.segments[start - 1];
-          if (rows(last) && artifacts.length && artifacts.every(rows) && before?.kind === "activity" && before.calls.every((c) => c.name === call.name)) {
+          if (
+            rows(last) &&
+            artifacts.length &&
+            artifacts.every(rows) &&
+            before?.kind === "activity" &&
+            before.calls.every((c) => c.name === call.name)
+          ) {
             before.calls.push(call);
             for (const artifact of artifacts) emit(turn, artifact);
             return;
@@ -379,7 +421,14 @@ export function buildTurns(
     } else if (item.role === "entry" && item.customType === NOTICE_ENTRY) {
       // A notice the session kept in its history, where it happened.
       const saved = (item.details ?? {}) as { kind?: Notice["kind"]; lines?: StyledLine[]; answered?: unknown };
-      emit(turn, noticeSegment(item.key, { kind: saved.kind ?? "info", lines: Array.isArray(saved.lines) ? saved.lines : [], answered: saved.answered }));
+      emit(
+        turn,
+        noticeSegment(item.key, {
+          kind: saved.kind ?? "info",
+          lines: Array.isArray(saved.lines) ? saved.lines : [],
+          answered: saved.answered,
+        }),
+      );
     } else if (item.role === "custom" || item.role === "entry") {
       emit(turn, { kind: "custom", key: item.key, item });
     } else if (item.role === "summary") {

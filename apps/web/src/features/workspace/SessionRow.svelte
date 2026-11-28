@@ -39,8 +39,16 @@
   const client = useSessions();
   const archivable = $derived(canArchive(session));
   // What it started that is still going: the sessions and processes, which "Started here" lists.
-  const going = $derived(startedBy(session, sourcesOf(client), Date.now()).filter((work) => work.open && (work.kind === "session" || work.kind === "process")));
-  const shown = $derived(status ?? parentState(session, client.sessions.filter((each) => each.parent === session.id && each.ask)));
+  const going = $derived(
+    startedBy(session, sourcesOf(client), Date.now()).filter((work) => work.open && (work.kind === "session" || work.kind === "process")),
+  );
+  const shown = $derived(
+    status ??
+      parentState(
+        session,
+        client.sessions.filter((each) => each.parent === session.id && each.ask),
+      ),
+  );
   // An app's sessions are listed under the app, so its mark would only repeat it.
   const agent = $derived(session.agent && session.agent.id !== DEFAULT_AGENT && !session.agent.home ? session.agent.name : undefined);
   let row = $state<HTMLElement>();
@@ -89,30 +97,30 @@
       }}
     />
   {:else}<a
-    href={href({ name: "session", id: session.id })}
-    class="flex min-w-0 flex-1 items-center gap-2"
-    data-session-link={session.id}
-    aria-current={session.id === client.selected ? "page" : undefined}
-    onpointerdown={pressStart}
-    onpointerup={pressEnd}
-    onpointercancel={pressEnd}
-    onpointermove={pressEnd}
-    oncontextmenu={(event) => {
-      event.preventDefault();
-      clearTimeout(press);
-      actions = true;
-    }}
-    onclick={(event) => {
-      // The long press opened the actions; the touch that ends it doesn't also open the session.
-      if (pressed) {
+      href={href({ name: "session", id: session.id })}
+      class="flex min-w-0 flex-1 items-center gap-2"
+      data-session-link={session.id}
+      aria-current={session.id === client.selected ? "page" : undefined}
+      onpointerdown={pressStart}
+      onpointerup={pressEnd}
+      onpointercancel={pressEnd}
+      onpointermove={pressEnd}
+      oncontextmenu={(event) => {
         event.preventDefault();
-        pressed = false;
-      }
-    }}
-  >
-    {#if agent}<span class="inline-flex" title={agent}><IdentityMark name={agent} /><span class="sr-only">{agent}:</span></span>{/if}
-    <span class="min-w-0 flex-1 truncate" class:text-muted-foreground={muted} class:unread={session.unread}>{name}</span>
-  </a>{/if}
+        clearTimeout(press);
+        actions = true;
+      }}
+      onclick={(event) => {
+        // The long press opened the actions; the touch that ends it doesn't also open the session.
+        if (pressed) {
+          event.preventDefault();
+          pressed = false;
+        }
+      }}
+    >
+      {#if agent}<span class="inline-flex" title={agent}><IdentityMark name={agent} /><span class="sr-only">{agent}:</span></span>{/if}
+      <span class="min-w-0 flex-1 truncate" class:text-muted-foreground={muted} class:unread={session.unread}>{name}</span>
+    </a>{/if}
   {#if going.length}<span class="going" title={`Still going: ${summary(going)}`}
       ><span aria-hidden="true">{going.length}</span><span class="sr-only">Still going: {summary(going)}</span></span
     >{/if}

@@ -3,33 +3,13 @@ import { realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
-import {
-  createEventBus,
-  loadProjectContextFiles,
-  loadSkills,
-  parseFrontmatter,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
-import type {
-  EventBus,
-  InputEvent,
-  PromptTemplate,
-  ResourceLoader,
-} from "@earendil-works/pi-coding-agent";
-import type {
-  Api,
-  CredentialStore,
-  Model,
-  Provider,
-} from "@earendil-works/pi-ai";
+import { createEventBus, loadProjectContextFiles, loadSkills, parseFrontmatter, SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { EventBus, InputEvent, PromptTemplate, ResourceLoader } from "@earendil-works/pi-coding-agent";
+import type { Api, CredentialStore, Model, Provider } from "@earendil-works/pi-ai";
 import { compactionOverrides } from "./compaction.js";
 import { loadExplicitExtensions } from "./pi-boundary.js";
 import { RuntimeError, unsupported } from "./errors.js";
-import {
-  guardModelDispatch,
-  nativeModelRuntime,
-  requireHealthyModels,
-} from "./native-model-runtime.js";
+import { guardModelDispatch, nativeModelRuntime, requireHealthyModels } from "./native-model-runtime.js";
 import { ProviderError } from "./provider-errors.js";
 import type { ProviderSettings } from "./provider-settings.js";
 import type { Setup } from "../agents/resolve.js";
@@ -79,13 +59,7 @@ export function builtInExtension(): string {
 
 /** A working folder chosen in Ask: any existing folder on this host. */
 export async function resolveFolder(path: unknown): Promise<string> {
-  if (
-    typeof path !== "string" ||
-    !path ||
-    path.length > 4096 ||
-    !isAbsolute(path)
-  )
-    throw new RuntimeError("invalid-input");
+  if (typeof path !== "string" || !path || path.length > 4096 || !isAbsolute(path)) throw new RuntimeError("invalid-input");
   try {
     const canonical = await realpath(path);
     if (!(await stat(canonical)).isDirectory()) throw new Error();
@@ -122,7 +96,9 @@ function discoveredPrompts(paths: string[]): PromptTemplate[] {
         ? readdirSync(path, { withFileTypes: true })
             .filter((entry) => entry.name.endsWith(".md") && statSync(join(path, entry.name)).isFile())
             .map((entry) => join(path, entry.name))
-        : path.endsWith(".md") ? [path] : [];
+        : path.endsWith(".md")
+          ? [path]
+          : [];
     } catch {
       return [];
     }
@@ -134,16 +110,20 @@ function discoveredPrompts(paths: string[]): PromptTemplate[] {
       const description =
         typeof frontmatter.description === "string" && frontmatter.description
           ? frontmatter.description
-          : firstLine.length > 60 ? `${firstLine.slice(0, 60)}...` : firstLine;
+          : firstLine.length > 60
+            ? `${firstLine.slice(0, 60)}...`
+            : firstLine;
       const argumentHint = frontmatter["argument-hint"];
-      return [{
-        name: basename(filePath).replace(/\.md$/, ""),
-        description,
-        ...(typeof argumentHint === "string" ? { argumentHint } : {}),
-        content: body,
-        filePath,
-        sourceInfo: { path: filePath, source: "extension", scope: "temporary", origin: "top-level" },
-      } as PromptTemplate];
+      return [
+        {
+          name: basename(filePath).replace(/\.md$/, ""),
+          description,
+          ...(typeof argumentHint === "string" ? { argumentHint } : {}),
+          content: body,
+          filePath,
+          sourceInfo: { path: filePath, source: "extension", scope: "temporary", origin: "top-level" },
+        } as PromptTemplate,
+      ];
     } catch {
       return [];
     }
@@ -179,39 +159,23 @@ export async function createSessionServices(options: {
   if (managed) {
     // Each session composes its own native model runtime; it never shares the mutable catalog.
     modelRuntime = await nativeModelRuntime(managed.runtimeOptions);
-    for (const factory of managed.nativeProviders)
-      modelRuntime.registerNativeProvider(factory());
+    for (const factory of managed.nativeProviders) modelRuntime.registerNativeProvider(factory());
     const result = await modelRuntime.refresh({ allowNetwork: false });
     requireHealthyModels(modelRuntime);
-    if (result.aborted || result.errors.size)
-      throw new ProviderError("provider-configuration");
-    selectedModel = modelRuntime.getModel(
-      managed.choice.provider,
-      managed.choice.id,
-    );
+    if (result.aborted || result.errors.size) throw new ProviderError("provider-configuration");
+    selectedModel = modelRuntime.getModel(managed.choice.provider, managed.choice.id);
     // A changed catalog must be refreshed explicitly, not silently change the chosen model.
-    if (!selectedModel || !isDeepStrictEqual(selectedModel, managed.model))
-      throw new ProviderError("provider-configuration");
-    if (
-      !(await modelRuntime.getAvailable(managed.choice.provider)).some(
-        (m) => m.id === managed.choice.id,
-      )
-    )
+    if (!selectedModel || !isDeepStrictEqual(selectedModel, managed.model)) throw new ProviderError("provider-configuration");
+    if (!(await modelRuntime.getAvailable(managed.choice.provider)).some((m) => m.id === managed.choice.id))
       throw new ProviderError("provider-unavailable");
     requireHealthyModels(modelRuntime);
     selectedModel = structuredClone(selectedModel);
     provider = modelRuntime.getProvider(managed.choice.provider);
   } else if (fixed) {
     provider = fixed.provider;
-    selectedModel = provider
-      .getModels()
-      .find((m) => m.id === fixed.id && m.provider === provider?.id);
+    selectedModel = provider.getModels().find((m) => m.id === fixed.id && m.provider === provider?.id);
     const endpoint = selectedModel && new URL(selectedModel.baseUrl);
-    if (
-      !endpoint ||
-      !["http:", "https:"].includes(endpoint.protocol) ||
-      !["127.0.0.1", "[::1]"].includes(endpoint.hostname)
-    )
+    if (!endpoint || !["http:", "https:"].includes(endpoint.protocol) || !["127.0.0.1", "[::1]"].includes(endpoint.hostname))
       throw new RuntimeError("configuration");
     const key = "pispark-local-keyless";
     // Refuse every other credential read so Pi never falls back to ambient keys.
@@ -240,8 +204,7 @@ export async function createSessionServices(options: {
       streamSimple: provider.streamSimple.bind(provider),
     });
   }
-  if (!modelRuntime || !provider || !selectedModel)
-    throw new RuntimeError("configuration");
+  if (!modelRuntime || !provider || !selectedModel) throw new RuntimeError("configuration");
   requireHealthyModels(modelRuntime);
   guardModelDispatch(modelRuntime, admission.beforeProviderDispatch);
   // In memory, never terminal Pi's settings; project trust stays off. Pi's automatic retry of
@@ -270,11 +233,7 @@ export async function createSessionServices(options: {
   const unbindRequests = host.requests?.bind(eventBus);
   let loadedExtensions;
   try {
-    loadedExtensions = await loadExplicitExtensions(
-      [builtIn, ...setup.extensionPaths],
-      cwd,
-      eventBus,
-    );
+    loadedExtensions = await loadExplicitExtensions([builtIn, ...setup.extensionPaths], cwd, eventBus);
     // PiSpark's own tools are reserved: an agent extension may not shadow them.
     const reserved = [...(loadedExtensions.extensions[0]?.tools.keys() ?? [])];
     if (
@@ -300,9 +259,7 @@ export async function createSessionServices(options: {
         "input",
         [
           async (event: unknown) =>
-            (event as InputEvent).source === "rpc" && !admission.valid()
-              ? { action: "handled" }
-              : { action: "continue" },
+            (event as InputEvent).source === "rpc" && !admission.valid() ? { action: "handled" } : { action: "continue" },
         ],
       ],
       // Returns nothing, so the system prompt other handlers chained stays as it is.
@@ -335,10 +292,7 @@ export async function createSessionServices(options: {
     if (paths.promptPaths?.length) {
       promptPaths = merge(promptPaths, paths.promptPaths);
       const names = new Set(ownPrompts.map((prompt) => prompt.name));
-      prompts = [
-        ...ownPrompts,
-        ...discoveredPrompts(promptPaths).filter((prompt) => !names.has(prompt.name) && names.add(prompt.name)),
-      ];
+      prompts = [...ownPrompts, ...discoveredPrompts(promptPaths).filter((prompt) => !names.has(prompt.name) && names.add(prompt.name))];
     }
   };
   // A project agent's session reads its folder's context files (AGENTS.md) the way Pi does. The
@@ -363,12 +317,8 @@ export async function createSessionServices(options: {
   // applied on top of the loadout a reopened transcript recorded. Not an allowlist, so a tool an
   // extension registers once the session runs is offered like any other.
   const off = new Set(setup.toolsOff);
-  const extensionTools = loadedExtensions.extensions.flatMap((extension) => [
-    ...extension.tools.keys(),
-  ]);
-  const toolSwitches = [...new Set([...setup.toolsOn, ...extensionTools])]
-    .filter((name) => !off.has(name))
-    .map((name) => `+${name}`);
+  const extensionTools = loadedExtensions.extensions.flatMap((extension) => [...extension.tools.keys()]);
+  const toolSwitches = [...new Set([...setup.toolsOn, ...extensionTools])].filter((name) => !off.has(name)).map((name) => `+${name}`);
   const excludedTools = [...off];
   return {
     modelRuntime,

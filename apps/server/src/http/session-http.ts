@@ -1,8 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { Type, type Static } from "typebox";
+import { UUID } from "../contract/ids.js";
 import { validEvents, type NotificationState } from "../contract/notification-protocol.js";
-import type { Catalog } from "../contract/protocol.js";
+import type { CallRequest, Catalog } from "../contract/protocol.js";
 import type { ScheduleInput } from "../contract/schedule-protocol.js";
 import type { Json } from "../contract/stream-ops.js";
 import { CallError } from "../core/extensions/views.js";
@@ -13,8 +15,9 @@ import { type SessionRuntime, RuntimeError } from "../core/runtime/session-runti
 import { AgentHttp } from "./agent-http.js";
 import { Commands, validCommand } from "./commands.js";
 import { HostHttp } from "./host-http.js";
-import { UUID, body, failure, sendJson } from "./io.js";
+import { body, failure, logFailure, sendJson, statusOf } from "./io.js";
 import { LiveStreams } from "./live-streams.js";
+import { exact, shaped, type Same } from "./shape.js";
 import { Notifications } from "./notifications.js";
 import type { ProviderHttp } from "./provider-http.js";
 import { validEndpoint } from "./push.js";
@@ -25,17 +28,27 @@ import { WorkspaceLive } from "./workspace-live.js";
 /** A history page may carry one large item. */
 const ITEMS_FRAME = 1024 * 1024;
 
-/** An extension component's call: which placement, which of its functions, and optional JSON data. */
-function validCall(value: unknown): { point: string; key: string; name: string; data?: Json } {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new RuntimeError("invalid-input");
-  const c = value as Record<string, unknown>;
-  const keys = ["point", "key", "name", ...("data" in c ? ["data"] : [])];
-  const short = (value: unknown, empty = false) => typeof value === "string" && (empty ? /^[\w.:-]{0,64}$/ : /^[\w.:-]{1,80}$/).test(value);
-  if (Object.keys(c).length !== keys.length || !keys.every((key) => key in c) || !short(c.point) || !short(c.key, true) || !short(c.name))
-    throw new RuntimeError("invalid-input");
-  // SAFETY: exact keys and every field validated above; the body limit bounds `data`.
-  return c as { point: string; key: string; name: string; data?: Json };
-}
+const word = (pattern: string) => Type.String({ pattern });
+/** An extension component's call: which placement, which of its functions, and optional JSON data (the body limit bounds it). */
+const CallShape = exact({
+  point: word("^[\\w.:-]{1,80}$"),
+  key: word("^[\\w.:-]{0,64}$"),
+  name: word("^[\\w.:-]{1,80}$"),
+  data: Type.Optional(Type.Unsafe<Json>(Type.Unknown())),
+});
+true satisfies Same<Static<typeof CallShape>, CallRequest>;
+const validCall = shaped(CallShape);
+
+/** What a device says about its notifications; its push endpoint is checked after (`validEndpoint`). */
+const endpoint = Type.String();
+const validNotify = {
+  state: shaped(exact({ endpoint: Type.Optional(endpoint) })),
+  subscribe: shaped(exact({ endpoint, events: Type.Array(Type.String()) })),
+  endpoint: shaped(exact({ endpoint })),
+  presence: shaped(exact({ page: word("^[\\w-]{1,64}$"), visible: Type.Boolean() })),
+};
+/** A routine switched on or off. */
+const validSwitch = shaped(exact({ on: Type.Boolean() }));
 
 /**
  * The HTTP API: who may ask (admission), and which route answers. Commands, live streams and the
@@ -64,13 +77,22 @@ export class SessionHttp {
     remote?: RemoteAccess,
   ) {
     // Every server answers /api/host; one the launcher did not start is simply not managed.
-    this.host = host ?? new HostHttp(new HostLink(() => runtime.runningWork(), () => {}), runtime.dataFolder, () => runtime.runningWork());
+    this.host =
+      host ??
+      new HostHttp(
+        new HostLink(
+          () => runtime.runningWork(),
+          () => {},
+        ),
+        runtime.dataFolder,
+        () => runtime.runningWork(),
+      );
     this.agents = new AgentHttp(runtime.agents, (target) => runtime.discoverTools(target));
     this.remote = remote && new RemoteHttp(remote, (device) => this.endRemote(device));
-    this.commands = new Commands(runtime);
+    this.commands = new Commands(runtime, this.logger);
     this.files = new SessionFiles(runtime);
     this.workspace = new WorkspaceLive({
-      sessions: () => [this.runtime.list(), this.runtime.archived().length, this.runtime.unreadableSessions],
+      sessions: () => [this.runtime.list(), this.runtime.archivedCount(), this.runtime.unreadableSessions],
       schedules: () => this.runtime.listSchedules(),
       routines: () => this.runtime.listRoutines(),
       processes: () => this.runtime.runningProcesses(),
@@ -140,9 +162,9 @@ export class SessionHttp {
     try {
       await this.route(request, response, who);
     } catch (error) {
-      this.logger.event("http.failure", { outcome: "failed", code: failure(error) }, "error");
-      if (response.headersSent) response.destroy();
-      else sendJson(response, 400, { error: failure(error) });
+      logFailure(this.logger, request, error);
+      if (response.headersSent || response.destroyed) response.destroy();
+      else sendJson(response, statusOf(error), { error: failure(error) });
     } finally {
       this.requests--;
     }
@@ -160,7 +182,8 @@ export class SessionHttp {
       return sendJson(response, 401, { error: "unpaired" });
     if (remotePath && this.remote && plain) return this.remote.handle(request, response, path, who);
     if (path === "/api/agents" || path.startsWith("/api/agents/")) return this.agents.handle(request, response);
-    if (path.startsWith("/api/notifications/") && plain && method === "POST") return this.notify(path, request, response, device ?? "local");
+    if (path.startsWith("/api/notifications/") && plain && method === "POST")
+      return this.notify(path, request, response, device ?? "local");
     if (path === "/api/live" && plain && method === "GET") return this.live.workspaceChanges(response, device);
     if (path === "/api/host" && plain) return this.host.handle(request, response);
     if (path === "/api/host/notes" && plain && method === "GET") return this.host.notes(response);
@@ -169,7 +192,8 @@ export class SessionHttp {
       return sendJson(response, 200, method === "GET" ? this.runtime.settings() : this.runtime.updateSettings(await body(request)));
     if (await this.background(request, response, path, url)) return;
 
-    if (method === "POST" && path === "/api/commands" && plain) return sendJson(response, 202, this.commands.submit(validCommand(await body(request))));
+    if (method === "POST" && path === "/api/commands" && plain)
+      return sendJson(response, 202, this.commands.submit(validCommand(await body(request))));
     if (method === "GET" && /^\/api\/receipts\/[\w-]+$/.test(path) && plain) {
       const receipt = this.commands.receipt(path.split("/").at(-1)!);
       return sendJson(response, receipt ? 200 : 404, receipt ?? { error: "unknown-receipt" });
@@ -178,9 +202,13 @@ export class SessionHttp {
       return sendJson(response, 200, { home: homedir(), recentFolders: this.runtime.recentFolders() } satisfies Catalog);
     if (method === "GET" && path === "/api/sessions" && (plain || url.search === "?archived")) {
       // The sessions in use, or (`?archived`) the ones put away; the newest 256 either way.
-      const archived = this.runtime.archived();
-      const sessions = (plain ? this.runtime.list() : archived).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-      return sendJson(response, 200, { sessions: sessions.slice(-256), truncated: sessions.length > 256, unreadable: this.runtime.unreadableSessions, archived: archived.length });
+      const sessions = (plain ? this.runtime.list() : this.runtime.archived()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      return sendJson(response, 200, {
+        sessions: sessions.slice(-256),
+        truncated: sessions.length > 256,
+        unreadable: this.runtime.unreadableSessions,
+        archived: this.runtime.archivedCount(),
+      });
     }
     const view = /^\/api\/views\/([a-f0-9]{32})\.js$/.exec(path);
     if (method === "GET" && view && plain) return this.files.component(view[1]!, response);
@@ -208,7 +236,7 @@ export class SessionHttp {
           // A refused upload is not read further; the connection closes with the answer.
           response.setHeader("Connection", "close");
           const code = failure(error);
-          return sendJson(response, code === "not-found" ? 404 : code === "limit" ? 413 : 400, { error: code });
+          return sendJson(response, code === "limit" ? 413 : statusOf(error), { error: code });
         }
       }
     }
@@ -260,6 +288,7 @@ export class SessionHttp {
         return true;
       }
       if (action === "output" && method === "GET") {
+        if ([...url.searchParams.keys()].some((key) => key !== "since")) throw new RuntimeError("invalid-input");
         sendJson(response, 200, this.runtime.processOutput(sessionId!, id!, Number(url.searchParams.get("since") ?? "0")), 1024 * 1024);
         return true;
       }
@@ -280,7 +309,7 @@ export class SessionHttp {
       if (action === "run") {
         await this.runtime.runRoutine(agent!, id!);
         sendJson(response, 202, {});
-      } else sendJson(response, 200, this.runtime.setRoutine(agent!, id!, ((await body(request)) as { on?: unknown } | undefined)?.on));
+      } else sendJson(response, 200, this.runtime.setRoutine(agent!, id!, validSwitch(await body(request)).on));
       return true;
     }
     return false;
@@ -290,15 +319,14 @@ export class SessionHttp {
    * An extension component's `host.call(name, data)`: a plain request and response. The result, or
    * the extension's own error message; nothing is retained once it answers.
    */
-  private async call(id: string, call: { point: string; key: string; name: string; data?: Json }, response: ServerResponse) {
+  private async call(id: string, call: CallRequest, response: ServerResponse) {
     try {
       const result = await this.runtime.call(id, call.point, call.key, call.name, call.data);
       sendJson(response, 200, result === undefined ? {} : { result });
     } catch (error) {
-      if (response.headersSent || response.destroyed) return;
       // The extension's own error is an answer like a result: the component shows it.
-      if (error instanceof CallError) sendJson(response, 200, { error: failure(error), detail: error.detail });
-      else sendJson(response, error instanceof RuntimeError && error.code === "not-found" ? 404 : 400, { error: failure(error) });
+      if (!(error instanceof CallError)) throw error;
+      if (!response.headersSent && !response.destroyed) sendJson(response, 200, { error: failure(error), detail: error.detail });
     }
   }
 
@@ -317,33 +345,36 @@ export class SessionHttp {
 
   /** `/api/notifications/*`: this device's notifications (design set 9). All POST, with the device's push endpoint. */
   private async notify(path: string, request: IncomingMessage, response: ServerResponse, device: string) {
-    const input = (await body(request, 8192)) as Record<string, unknown>;
-    if (!input || typeof input !== "object" || Array.isArray(input)) throw new RuntimeError("invalid-input");
-    const endpoint = input.endpoint === undefined ? undefined : validEndpoint(input.endpoint) ? input.endpoint : null;
-    if (endpoint === null) throw new RuntimeError("invalid-input");
+    const input = await body(request, 8192);
+    const known = <T extends string | undefined>(endpoint: T): T => {
+      if (endpoint !== undefined && !validEndpoint(endpoint)) throw new RuntimeError("invalid-input");
+      return endpoint;
+    };
     switch (path) {
-      case "/api/notifications/state":
-        return sendJson(response, 200, { publicKey: this.notifications.keys.publicKey, ...this.notifications.state(device, endpoint) } satisfies NotificationState);
-      case "/api/notifications/subscribe":
-        if (!endpoint || !validEvents(input.events)) throw new RuntimeError("invalid-input");
-        this.notifications.subscribe(device, endpoint, input.events);
+      case "/api/notifications/state": {
+        const state = this.notifications.state(device, known(validNotify.state(input).endpoint));
+        return sendJson(response, 200, { publicKey: this.notifications.keys.publicKey, ...state } satisfies NotificationState);
+      }
+      case "/api/notifications/subscribe": {
+        const { endpoint, events } = validNotify.subscribe(input);
+        if (!validEvents(events)) throw new RuntimeError("invalid-input");
+        this.notifications.subscribe(device, known(endpoint), events);
         this.watchForNotifications();
         return sendJson(response, 200, {});
+      }
       case "/api/notifications/unsubscribe":
-        if (!endpoint) throw new RuntimeError("invalid-input");
-        this.notifications.unsubscribe(device, endpoint);
+        this.notifications.unsubscribe(device, known(validNotify.endpoint(input).endpoint));
         this.watchForNotifications();
         return sendJson(response, 200, {});
       case "/api/notifications/test":
-        if (!endpoint) throw new RuntimeError("invalid-input");
-        return sendJson(response, 200, { sent: await this.notifications.test(device, endpoint) });
+        return sendJson(response, 200, { sent: await this.notifications.test(device, known(validNotify.endpoint(input).endpoint)) });
       case "/api/notifications/pending":
-        if (!endpoint) throw new RuntimeError("invalid-input");
-        return sendJson(response, 200, { notifications: this.notifications.take(device, endpoint) });
-      case "/api/notifications/presence":
-        if (typeof input.page !== "string" || !/^[\w-]{1,64}$/.test(input.page) || typeof input.visible !== "boolean") throw new RuntimeError("invalid-input");
-        this.notifications.present(device, input.page, input.visible);
+        return sendJson(response, 200, { notifications: this.notifications.take(device, known(validNotify.endpoint(input).endpoint)) });
+      case "/api/notifications/presence": {
+        const { page, visible } = validNotify.presence(input);
+        this.notifications.present(device, page, visible);
         return sendJson(response, 200, {});
+      }
     }
     sendJson(response, 404, { error: "not-found" });
   }

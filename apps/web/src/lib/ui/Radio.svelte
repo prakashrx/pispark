@@ -15,10 +15,7 @@
   } = $props();
 </script>
 
-<label
-  for={id}
-  class="ui-radio flex items-start gap-3 p-3 text-sm cursor-pointer"
->
+<label for={id} class="ui-radio flex items-start gap-3 p-3 text-sm cursor-pointer">
   <input
     {...attributes}
     {id}
@@ -27,10 +24,9 @@
     aria-describedby={help ? `${id}-help` : attributes["aria-describedby"]}
   />
   <span class="min-w-0"
-    ><span id={`${id}-label`} class="block font-medium break-words"
-      >{label}</span
-    >{#if help}<span id={`${id}-help`} class="block mt-1 text-neutral-500"
-        >{help}</span
+    ><span id={`${id}-label`} class="block font-medium break-words">{label}</span>{#if help}<span
+        id={`${id}-help`}
+        class="block mt-1 text-neutral-500">{help}</span
       >{/if}{#if children}{@render children()}{/if}</span
   >
 </label>

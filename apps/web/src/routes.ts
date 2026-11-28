@@ -27,8 +27,7 @@ export type Route =
   /** Without a section: the list of sections on compact, General elsewhere. */
   | { name: "settings"; section?: SettingsSection };
 
-const isSection = (value: string | undefined): value is SettingsSection =>
-  !!value && Object.hasOwn(settingsSections, value);
+const isSection = (value: string | undefined): value is SettingsSection => !!value && Object.hasOwn(settingsSections, value);
 /** Addresses from before a section was renamed still land on it. */
 const renamed: Record<string, SettingsSection> = { general: "appearance" };
 

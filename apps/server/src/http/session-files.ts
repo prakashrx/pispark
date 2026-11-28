@@ -54,7 +54,12 @@ export class SessionFiles {
    */
   async file(id: string, query: URLSearchParams, response: ServerResponse) {
     const { point, key, path } = Object.fromEntries(query);
-    if ([...query.keys()].some((name) => !["point", "key", "path"].includes(name)) || point === undefined || key === undefined || path === undefined)
+    if (
+      [...query.keys()].some((name) => !["point", "key", "path"].includes(name)) ||
+      point === undefined ||
+      key === undefined ||
+      path === undefined
+    )
       throw new RuntimeError("invalid-input");
     const found = await this.found(() => this.runtime.file(id, point, key, path), ["not-found"]);
     if (!found) return sendJson(response, 404, { error: "not-found" });
@@ -65,7 +70,8 @@ export class SessionFiles {
   /** An image part's bytes, or a chunk of a clipped text part (`?offset=`). */
   part(id: string, itemId: string, part: number, query: URLSearchParams, response: ServerResponse) {
     const offset = query.get("offset");
-    if ([...query.keys()].some((key) => key !== "offset") || (offset !== null && !/^\d{1,9}$/.test(offset))) throw new RuntimeError("invalid-input");
+    if ([...query.keys()].some((key) => key !== "offset") || (offset !== null && !/^\d{1,9}$/.test(offset)))
+      throw new RuntimeError("invalid-input");
     if (offset !== null) return sendJson(response, 200, this.runtime.text(id, itemId, part, Number(offset)));
     const { mimeType, data } = this.runtime.image(id, itemId, part);
     if (data.length > MAX_IMAGE) throw new RuntimeError("limit");

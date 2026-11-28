@@ -54,6 +54,10 @@ test("rename, seen and configure are commands; configure and answer are checked 
   // Nothing to change, or a field it does not know, is refused before anything runs.
   assert.equal((await command({ type: "configure", sessionId: id })).status, 400);
   assert.equal((await command({ type: "configure", sessionId: id, thinking: "low", extra: 1 })).status, 400);
+  // So is a level there is no such thing as, and a key that belongs to another command.
+  assert.equal((await command({ type: "configure", sessionId: id, thinking: "hardest" })).status, 400);
+  assert.equal((await command({ type: "seen", sessionId: id, text: "hi" })).status, 400);
+  assert.equal((await command({ type: "start", sessionId: id, text: "hi", attachments: ["a.txt", "a.txt"] })).status, 400);
 
   // An answer names its session and question by id and carries text, yes/no or nothing.
   const dialogId = randomUUID();
@@ -75,7 +79,9 @@ test("processes over HTTP: every running one, a session's, its output after a po
   const f = await httpFixture(t);
   f.provider.automatic = true;
   const id = await f.create("a");
-  const started = await f.settle(await f.post({ type: "start", sessionId: id, text: say("start_process", { command: SERVER, title: "dev server" }) }));
+  const started = await f.settle(
+    await f.post({ type: "start", sessionId: id, text: say("start_process", { command: SERVER, title: "dev server" }) }),
+  );
   assert.equal(started.outcome, "completed");
 
   const running = await (await fetch(`${f.base}/api/processes`)).json();
@@ -83,24 +89,38 @@ test("processes over HTTP: every running one, a session's, its output after a po
   assert.equal(process.title, "dev server");
   assert.equal(process.sessionId, id);
   const listed = await (await fetch(`${f.base}/api/sessions/${id}/processes`)).json();
-  assert.deepEqual(listed.processes.map((p: { id: string }) => p.id), [process.id]);
-  await until(async () => !!(await (await fetch(`${f.base}/api/sessions/${id}/processes/${process.id}/output?since=0`)).json()).text?.includes("tick"));
+  assert.deepEqual(
+    listed.processes.map((p: { id: string }) => p.id),
+    [process.id],
+  );
+  await until(
+    async () =>
+      !!(await (await fetch(`${f.base}/api/sessions/${id}/processes/${process.id}/output?since=0`)).json()).text?.includes("tick"),
+  );
 
-  assert.equal((await fetch(`${f.base}/api/sessions/${id}/processes/${process.id}/stop`, { method: "POST", headers: { Origin: f.base } })).status, 202);
+  assert.equal(
+    (await fetch(`${f.base}/api/sessions/${id}/processes/${process.id}/stop`, { method: "POST", headers: { Origin: f.base } })).status,
+    202,
+  );
   await until(async () => (await (await fetch(`${f.base}/api/sessions/${id}/processes`)).json()).processes[0].state === "stopped", 10_000);
   // Another session's process, or a session that is not one, is not found.
-  assert.equal((await fetch(`${f.base}/api/sessions/${randomUUID()}/processes/${process.id}/output`)).status, 400);
+  assert.equal((await fetch(`${f.base}/api/sessions/${randomUUID()}/processes/${process.id}/output`)).status, 404);
   assert.equal((await fetch(`${f.base}/api/sessions/not-a-session/processes`)).status, 404);
 });
 
 test("routines over HTTP: listed off, switched on, refused a switch that is not yes or no, and run now", async (t) => {
   const f = await httpFixture(t);
   f.provider.automatic = true;
-  await writeAgent(f.home, "scout", { name: "Home Scout", home: "listings", routines: [{ id: "morning", name: "Morning check", cron: "0 7 * * *", prompt: "check the new listings" }] });
+  await writeAgent(f.home, "scout", {
+    name: "Home Scout",
+    home: "listings",
+    routines: [{ id: "morning", name: "Morning check", cron: "0 7 * * *", prompt: "check the new listings" }],
+  });
   await until(async () => (await (await fetch(`${f.base}/api/routines`)).json()).routines.length === 1);
   const [routine] = (await (await fetch(`${f.base}/api/routines`)).json()).routines;
   assert.equal(routine.on, false);
   assert.equal((await send(f.base, "/api/routines/scout/morning", { on: "yes" })).status, 400);
+  assert.equal((await send(f.base, "/api/routines/scout/morning", { on: true, extra: 1 })).status, 400);
   const on = await (await send(f.base, "/api/routines/scout/morning", { on: true })).json();
   assert.equal(on.on, true);
   const run = await send(f.base, "/api/routines/scout/morning/run", {});
@@ -131,6 +151,11 @@ test("notification test and pending need the device's push endpoint", async (t) 
   const endpoint = "https://fcm.googleapis.com/fcm/send/device";
   assert.equal((await send(f.base, "/api/notifications/test", {})).status, 400);
   assert.equal((await send(f.base, "/api/notifications/pending", {})).status, 400);
+  // Only what a request takes: a key it does not know, or an endpoint that is no push service, is refused.
+  assert.equal((await send(f.base, "/api/notifications/pending", { endpoint, extra: 1 })).status, 400);
+  assert.equal((await send(f.base, "/api/notifications/pending", { endpoint: "https://example.com/push" })).status, 400);
+  assert.equal((await send(f.base, "/api/notifications/presence", { page: "p1", visible: "yes" })).status, 400);
+  assert.equal((await send(f.base, "/api/notifications/presence", { page: "p1", visible: true })).status, 200);
   assert.deepEqual(await (await send(f.base, "/api/notifications/pending", { endpoint })).json(), { notifications: [] });
   assert.equal((await send(f.base, "/api/notifications/nothing", { endpoint })).status, 404);
 });

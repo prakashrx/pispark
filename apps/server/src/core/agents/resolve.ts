@@ -12,15 +12,7 @@ import type {
   ResolvedTool,
   RoutineDefinition,
 } from "../../contract/agent-protocol.js";
-import {
-  BUILTIN_TOOLS,
-  DEFAULT_AGENT,
-  digest,
-  fail,
-  frontmatter,
-  parseSwitch,
-  AgentError,
-} from "./format.js";
+import { BUILTIN_TOOLS, DEFAULT_AGENT, digest, fail, frontmatter, parseSwitch, AgentError } from "./format.js";
 import type { LayerItem, AgentStore } from "./store.js";
 
 const MAX_LAYERS = 16;
@@ -73,19 +65,11 @@ export interface Setup {
  * Each layer adds its items (a same-name item replaces the earlier one), then applies its
  * `on` and `off` switches. Later layers win.
  */
-export function resolveLayers(
-  store: AgentStore,
-  target: AgentTarget,
-  override?: AgentDefinition,
-): Layer[] {
+export function resolveLayers(store: AgentStore, target: AgentTarget, override?: AgentDefinition): Layer[] {
   const load = (layerTarget: AgentTarget): Layer => {
-    const viewing =
-      JSON.stringify(layerTarget) === JSON.stringify(target) && override;
-    if ("agent" in layerTarget && !store.exists(layerTarget))
-      fail("missing-parent", 400, layerTarget.agent);
-    const { definition, revision } = viewing
-      ? { definition: override, revision: "" }
-      : store.read(layerTarget);
+    const viewing = JSON.stringify(layerTarget) === JSON.stringify(target) && override;
+    if ("agent" in layerTarget && !store.exists(layerTarget)) fail("missing-parent", 400, layerTarget.agent);
+    const { definition, revision } = viewing ? { definition: override, revision: "" } : store.read(layerTarget);
     const id = "agent" in layerTarget ? layerTarget.agent : "session";
     return {
       ref: {
@@ -115,8 +99,7 @@ export function resolveLayers(
   const top = load(target);
   const isDefault = "agent" in target && target.agent === DEFAULT_AGENT;
   const first = isDefault ? top : load({ agent: DEFAULT_AGENT });
-  if (!isDefault)
-    visit(top, ["agent" in target ? target.agent : "session"]);
+  if (!isDefault) visit(top, ["agent" in target ? target.agent : "session"]);
   return [first, ...ordered];
 }
 
@@ -161,9 +144,7 @@ function fold(store: AgentStore, layers: Layer[]) {
           name: item.name,
           on: true,
           origin: layer.ref,
-          replaced: earlier
-            ? [...earlier.resolved.replaced, earlier.resolved.origin]
-            : [],
+          replaced: earlier ? [...earlier.resolved.replaced, earlier.resolved.origin] : [],
           ...(item.description ? { description: item.description } : {}),
           ...(item.path ? { path: item.path } : {}),
           ...(item.reference ? { reference: item.reference } : {}),
@@ -197,8 +178,7 @@ function fold(store: AgentStore, layers: Layer[]) {
       }
     settings = { ...settings, ...layer.definition.settings };
   }
-  for (const name of BUILTIN_TOOLS)
-    if (!tools.has(name)) tools.set(name, { name, on: false, builtIn: true });
+  for (const name of BUILTIN_TOOLS) if (!tools.has(name)) tools.set(name, { name, on: false, builtIn: true });
   return { entries, tools, settings };
 }
 
@@ -251,15 +231,10 @@ function unattended(layers: Layer[]): Pick<Setup, "routines" | "holds"> {
 /** `unattended` for an agent or a session's layer, without reading its files. */
 export const unattendedOf = (store: AgentStore, target: AgentTarget) => unattended(resolveLayers(store, target));
 
-export function resolveSetup(
-  store: AgentStore,
-  target: AgentTarget,
-): Setup {
+export function resolveSetup(store: AgentStore, target: AgentTarget): Setup {
   // A session with no layer of its own simply uses its agent.
   const effective =
-    "session" in target && !store.exists(target)
-      ? { agent: store.read(target).definition.base?.[0] ?? DEFAULT_AGENT }
-      : target;
+    "session" in target && !store.exists(target) ? { agent: store.read(target).definition.base?.[0] ?? DEFAULT_AGENT } : target;
   const layers = resolveLayers(store, effective);
   const { entries, tools, settings } = fold(store, layers);
   const { folder, home } = bound(layers);
@@ -283,17 +258,13 @@ export function resolveSetup(
   });
   const skillDirs = [...of("skills").map((e) => e.item.location!), ...of("extensions").flatMap((e) => e.item.companions ?? [])];
   const extensionPaths = of("extensions").map((e) => e.item.location!);
-  const mcpServers = Object.fromEntries(
-    of("mcp").map((e) => [e.item.name, e.item.config!]),
-  );
+  const mcpServers = Object.fromEntries(of("mcp").map((e) => [e.item.name, e.item.config!]));
   // Built-in tools in Pi's order, then extension tools by name.
   const order = (name: string) => {
     const index = (BUILTIN_TOOLS as readonly string[]).indexOf(name);
     return index < 0 ? BUILTIN_TOOLS.length : index;
   };
-  const toolList = [...tools.values()].sort(
-    (a, b) => order(a.name) - order(b.name) || a.name.localeCompare(b.name),
-  );
+  const toolList = [...tools.values()].sort((a, b) => order(a.name) - order(b.name) || a.name.localeCompare(b.name));
   const toolsOn = toolList.filter((t) => t.on && t.builtIn).map((t) => t.name);
   const toolsOff = toolList.filter((t) => !t.on).map((t) => t.name);
   const fingerprint = digest(
@@ -338,9 +309,7 @@ export function resolveSetup(
  */
 function withDiscovered(switched: ResolvedTool[], discovered: DiscoveredTool[]): ResolvedTool[] {
   const byName = new Map(switched.map((tool) => [tool.name, tool]));
-  const tools: ResolvedTool[] = switched
-    .filter((tool) => tool.builtIn)
-    .map((tool) => ({ ...tool, source: { kind: "core" } }));
+  const tools: ResolvedTool[] = switched.filter((tool) => tool.builtIn).map((tool) => ({ ...tool, source: { kind: "core" } }));
   for (const found of discovered) {
     if (tools.some((tool) => tool.name === found.name)) continue;
     const { name: _name, ...about } = found;
@@ -404,11 +373,7 @@ export function viewAgent(
 }
 
 /** Throws if saving `definition` to `target` would leave it unresolvable through a cycle. */
-export function checkCycles(
-  store: AgentStore,
-  target: AgentTarget,
-  definition: AgentDefinition,
-): void {
+export function checkCycles(store: AgentStore, target: AgentTarget, definition: AgentDefinition): void {
   try {
     resolveLayers(store, target, definition);
   } catch (error) {

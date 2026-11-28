@@ -11,17 +11,55 @@
   import { sessionName } from "../features/workspace/session-presentation";
   import NewSession from "../features/workspace/NewSession.svelte";
   import SessionScreen from "../features/workspace/SessionScreen.svelte";
-  import ArchivedScreen from "../features/workspace/ArchivedScreen.svelte";
-  import AgentsScreen from "../features/agent/AgentsScreen.svelte";
   import BackgroundScreen from "../features/background/BackgroundScreen.svelte";
-  import SettingsScreen from "../features/settings/SettingsScreen.svelte";
   import Screen from "./Screen.svelte";
+  import Button from "../lib/ui/Button.svelte";
   import Sidebar from "./Sidebar.svelte";
   import NudgeHost from "./NudgeHost.svelte";
   import { deviceNotifications, followPresence } from "../features/notifications/notifications.svelte";
   import ToastHost from "./ToastHost.svelte";
   import { layout } from "./layout.svelte";
   import { router } from "./router.svelte";
+
+  /**
+   * A screen most visits never open, loaded the first time it's shown (or once the page is idle), so
+   * the first load carries less. Focus on its placeholder moves to it when it arrives.
+   */
+  function later<C>(load: () => Promise<{ default: C }>) {
+    const state = $state<{ screen?: C; failed?: boolean }>({});
+    let loading: Promise<void> | undefined;
+    const start = () =>
+      (loading ??= load().then(
+        async (module) => {
+          const focused = document.activeElement?.tagName === "MAIN";
+          state.screen = module.default;
+          state.failed = false;
+          if (focused) await tick().then(focusMain);
+        },
+        () => {
+          // Offline, or a newer build replaced the file: say so, and try again when asked.
+          state.failed = true;
+          loading = undefined;
+        },
+      ));
+    return {
+      get screen() {
+        void start();
+        return state.screen;
+      },
+      get failed() {
+        return state.failed;
+      },
+      start,
+    };
+  }
+  const Archived = later(() => import("../features/workspace/ArchivedScreen.svelte"));
+  const Agents = later(() => import("../features/agent/AgentsScreen.svelte"));
+  const Settings = later(() => import("../features/settings/SettingsScreen.svelte"));
+  onMount(() => {
+    const idle = window.requestIdleCallback ?? ((then: () => void) => setTimeout(then, 2000));
+    idle(() => [Archived, Agents, Settings].forEach((screen) => void screen.start()));
+  });
 
   const sessions = useSessions();
   const route = $derived(router.route);
@@ -58,9 +96,7 @@
     return followPresence();
   });
 
-  const title = $derived(
-    route.name === "session" && sessions.current?.info ? sessionName(sessions.current.info) : routeTitle(route),
-  );
+  const title = $derived(route.name === "session" && sessions.current?.info ? sessionName(sessions.current.info) : routeTitle(route));
 
   function shortcut(event: KeyboardEvent) {
     if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== "b") return;
@@ -74,6 +110,15 @@
     document.querySelector<HTMLElement>("[data-sidebar-toggle]")?.focus();
   }
 </script>
+
+{#snippet loading(screen: { failed?: boolean; start: () => unknown })}
+  <Screen title={routeTitle(route)}>
+    {#if screen.failed}<p role="alert" class="text-sm">
+        This screen couldn’t be loaded. <Button size="compact" onclick={() => void screen.start()}>Try again</Button>
+      </p>
+    {:else}<p role="status" class="text-sm text-muted-foreground">Loading…</p>{/if}
+  </Screen>
+{/snippet}
 
 <svelte:window onkeydown={shortcut} />
 <svelte:head><title>PiSpark — {title}</title></svelte:head>
@@ -95,14 +140,12 @@
         <Screen title="Session"><p role="status" class="text-sm text-muted-foreground">Opening…</p></Screen>
       {/if}
     {:else if route.name === "archived"}
-      <ArchivedScreen />
+      {#if Archived.screen}<Archived.screen />{:else}{@render loading(Archived)}{/if}
     {:else if route.name === "agents"}
-      <AgentsScreen id={route.id} />
+      {#if Agents.screen}<Agents.screen id={route.id} />{:else}{@render loading(Agents)}{/if}
     {:else if route.name === "background"}
       <BackgroundScreen />
-    {:else}
-      <SettingsScreen section={route.section} />
-    {/if}
+    {:else if Settings.screen}<Settings.screen section={route.section} />{:else}{@render loading(Settings)}{/if}
   </div>
 
   {#if layout.size === "medium"}

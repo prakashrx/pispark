@@ -1,4 +1,4 @@
-import { workspaceEvents } from "./live-stream";
+import { retryDelay, workspaceEvents } from "./live-stream";
 import { getContext, setContext } from "svelte";
 import type { Catalog, HostSettings, SessionDoc, SessionInfo } from "../../../../server/src/contract/protocol";
 import type { ModelChoice } from "../../../../server/src/contract/provider-protocol";
@@ -159,13 +159,14 @@ export class SessionClient {
     const source = new AbortController();
     this.following = source;
     void (async () => {
+      let failures = 0;
       while (!source.signal.aborted && !this.disposed) {
         let received = false;
         try {
-          const response = await fetch("/api/live", { signal: AbortSignal.any([source.signal, AbortSignal.timeout(6 * 60_000)]) });
-          for await (const event of workspaceEvents(response)) {
+          for await (const event of workspaceEvents(source.signal)) {
             if (source.signal.aborted) return;
             received = true;
+            failures = 0;
             if (event.type === "ready") await this.poll();
             else await this.changed(event.areas);
           }
@@ -176,7 +177,7 @@ export class SessionClient {
         // The server ends the stream after a while on purpose: follow on at once.
         if (received) continue;
         await this.poll();
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, retryDelay(++failures)));
       }
     })();
   }
@@ -211,9 +212,7 @@ export class SessionClient {
       const session = this.opened.get(row.id);
       if (session) session.row = row;
     }
-    this.listNotice = result.truncated
-      ? "Showing your latest 256 sessions. Older sessions are still saved."
-      : "";
+    this.listNotice = result.truncated ? "Showing your latest 256 sessions. Older sessions are still saved." : "";
     if (result.unreadable) {
       this.listNotice = [this.listNotice, `${result.unreadable} session records could not be read.`].filter(Boolean).join(" ");
     }
@@ -278,7 +277,20 @@ export class SessionClient {
       waiting: session.waiting,
       queued: session.queued,
     };
-    if (row && JSON.stringify(next) !== JSON.stringify({ title: row.title, hasHistory: row.hasHistory, status: row.status, interrupted: row.interrupted, agent: row.agent, agentChanged: row.agentChanged, waiting: row.waiting, queued: row.queued }))
+    if (
+      row &&
+      JSON.stringify(next) !==
+        JSON.stringify({
+          title: row.title,
+          hasHistory: row.hasHistory,
+          status: row.status,
+          interrupted: row.interrupted,
+          agent: row.agent,
+          agentChanged: row.agentChanged,
+          waiting: row.waiting,
+          queued: row.queued,
+        })
+    )
       this.sessions = this.sessions.map((s) => (s.id === id ? { ...s, ...next } : s));
   }
   /** Saves a settings change; rejects when the server refused it. */
@@ -307,6 +319,8 @@ export class SessionClient {
     }
   }
   reconnect() {
+    // Back online, or the server is back: follow the workspace again now, not after a retry's wait.
+    if (this.following) this.follow();
     if (this.refreshTimer) void this.poll();
     if (this.current) void this.current.reconnect();
     else if (!this.refreshTimer) void this.mount();
@@ -326,12 +340,7 @@ export class SessionClient {
   /** Files added to the new session's draft. They wait in the browser: the session starts on Send. */
   readonly askAttachments = new Attachments();
   /** Starts a new session with a first message, in `folder` or, without one, in its project agent's. */
-  async ask(
-    text: string,
-    folder: string | undefined,
-    model?: ModelChoice,
-    agent?: string,
-  ): Promise<boolean> {
+  async ask(text: string, folder: string | undefined, model?: ModelChoice, agent?: string): Promise<boolean> {
     if (this.busy || !text.trim()) return false;
     const placed = this.askAttachments.placed(text);
     if (placed.length && this.askAttachments.blocked === "failed") {

@@ -60,7 +60,9 @@ test("renders truthful unconfigured state and never submits a draft without conf
   // With no session open there is nothing to reply to: one message box on screen.
   expect(screen.queryByRole("textbox", { name: /Reply to session/ })).toBeNull();
   // Nothing is sent (a page saying it is in view, or asking about notifications, sends no draft).
-  expect(vi.mocked(fetch).mock.calls.every((call) => call[1]?.method !== "POST" || String(call[0]).startsWith("/api/notifications/"))).toBe(true);
+  expect(vi.mocked(fetch).mock.calls.every((call) => call[1]?.method !== "POST" || String(call[0]).startsWith("/api/notifications/"))).toBe(
+    true,
+  );
 });
 
 test("hides and shows the sidebar; the shortcut ignores editable inputs", async () => {
@@ -79,7 +81,7 @@ test("hides and shows the sidebar; the shortcut ignores editable inputs", async 
 test("settings show only real sections, each with its own address", async () => {
   render(App);
   await navigate("settings");
-  expect(screen.getByRole("heading", { name: "Theme" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Theme" })).toBeTruthy();
   const sections = screen.getByRole("navigation", { name: "Settings sections" });
   expect([...sections.querySelectorAll("a")].map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
     ["Appearance", "#/settings/appearance"],
@@ -102,7 +104,7 @@ test("settings show only real sections, each with its own address", async () => 
 test("Appearance applies real browser-local themes without fictional preferences, saves or environment", async () => {
   window.location.hash = "/settings";
   render(App);
-  const themes = screen.getByRole("radiogroup", { name: "Theme" });
+  const themes = await screen.findByRole("radiogroup", { name: "Theme" });
   expect([...themes.querySelectorAll("input")].map((input) => input.value)).toEqual([
     "system",
     "daylight",

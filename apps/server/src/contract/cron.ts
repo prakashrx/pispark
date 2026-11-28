@@ -125,7 +125,8 @@ export function describeSchedule(when: { cron?: string; at?: string }, now = new
     if (minutes && all(cron.hours, 0, 23)) return Number(minutes) === 1 ? "Every minute" : `Every ${minutes} minutes`;
     if (minuteField === "*" && all(cron.hours, 0, 23)) return "Every minute";
     const hours = step(hourField!);
-    if (minute !== undefined && hours) return Number(hours) === 1 ? `Every hour at :${String(minute).padStart(2, "0")}` : `Every ${hours} hours`;
+    if (minute !== undefined && hours)
+      return Number(hours) === 1 ? `Every hour at :${String(minute).padStart(2, "0")}` : `Every ${hours} hours`;
     if (minute !== undefined && hourField === "*") return `Every hour at :${String(minute).padStart(2, "0")}`;
   }
   if (minute !== undefined && hour !== undefined && everyDay) {

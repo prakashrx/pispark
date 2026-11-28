@@ -18,7 +18,7 @@
   import ScheduleDialog from "../schedules/ScheduleDialog.svelte";
   import WorkRow from "../started/WorkRow.svelte";
   import { everywhere, sourcesOf, type Work } from "../started/work";
-  import { useNow } from "../workspace/clock.svelte";
+  import { useNow } from "../../lib/clock.svelte";
   import { useSessions } from "../workspace/session-client.svelte";
 
   type Filter = "all" | "running" | "scheduled" | "failed";
@@ -51,7 +51,12 @@
   const groups = $derived(
     [
       { label: "Running", rows: filter === "all" || filter === "running" ? works.filter(running) : [] },
-      { label: "Scheduled", rows: works.filter((work) => !running(work) && (filter === "all" || filter === "scheduled" || (filter === "failed" && work.failed))) },
+      {
+        label: "Scheduled",
+        rows: works.filter(
+          (work) => !running(work) && (filter === "all" || filter === "scheduled" || (filter === "failed" && work.failed)),
+        ),
+      },
     ].filter((group) => group.rows.length),
   );
   /** The schedule open in its form, and the routine whose prompt and runs show under its row. */
@@ -78,12 +83,17 @@
   {#snippet actions()}
     <span class="pause">
       <span class="text-sm" aria-hidden="true">Pause all</span>
-      <Toggle label="Pause all unattended runs" checked={schedules.paused} onchange={(event) => void pause((event.currentTarget as HTMLInputElement).checked)} />
+      <Toggle
+        label="Pause all unattended runs"
+        checked={schedules.paused}
+        onchange={(event) => void pause((event.currentTarget as HTMLInputElement).checked)}
+      />
     </span>
   {/snippet}
   <div class="page">
     {#if schedules.paused}<p class="paused" role="status">
-        <Icon name="clock" class="mt-0.5 h-4 w-4 shrink-0" />Paused: schedules and routines don’t run, and sessions kept running are unloaded until you resume. Processes keep running.
+        <Icon name="clock" class="mt-0.5 h-4 w-4 shrink-0" />Paused: schedules and routines don’t run, and sessions kept running are
+        unloaded until you resume. Processes keep running.
       </p>{/if}
     {#if error}<p role="alert" class="text-sm text-[var(--danger-foreground)]">{error}</p>{/if}
 
@@ -119,14 +129,22 @@
           <ul>
             {#each group.rows as work (work.key)}
               <li>
-                <WorkRow {work} named expanded={unfolded === work.key} onschedule={(schedule) => (editing = schedule)} onroutine={() => (unfolded = unfolded === work.key ? undefined : work.key)} />
+                <WorkRow
+                  {work}
+                  named
+                  expanded={unfolded === work.key}
+                  onschedule={(schedule) => (editing = schedule)}
+                  onroutine={() => (unfolded = unfolded === work.key ? undefined : work.key)}
+                />
                 {#if work.routine && unfolded === work.key}
                   {@const routine = work.routine}
                   <div class="more">
                     <p class="prompt">{routine.prompt}</p>
                     {#if routine.runs.length}<p class="runs">
                         Recent runs:
-                        {#each routine.runs.slice(0, 3) as run, index (run.session)}{index ? " · " : " "}{#if client.sessions.some((s) => s.id === run.session)}<a
+                        {#each routine.runs.slice(0, 3) as run, index (run.session)}{index
+                            ? " · "
+                            : " "}{#if client.sessions.some((s) => s.id === run.session)}<a
                               class="link"
                               href={href({ name: "session", id: run.session })}>{shortDate(new Date(run.due))}</a
                             >{:else}{shortDate(new Date(run.due))}{run.archived ? " (archived)" : ""}{/if}{/each}
@@ -156,7 +174,13 @@
         <span class="block text-sm">Sessions working at once</span>
         <span class="block text-xs text-muted-foreground">More wait their turn and start when one finishes.</span>
       </span>
-      {#if client.settings}<Stepper label="Sessions working at once" value={client.settings.maxRunning} min={1} max={32} onchange={(value) => void act(() => client.saveSettings({ maxRunning: value }))} />{/if}
+      {#if client.settings}<Stepper
+          label="Sessions working at once"
+          value={client.settings.maxRunning}
+          min={1}
+          max={32}
+          onchange={(value) => void act(() => client.saveSettings({ maxRunning: value }))}
+        />{/if}
     </div>
   </div>
 </Screen>

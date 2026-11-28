@@ -8,7 +8,12 @@
   import { fonts, textSizes } from "../../lib/theme/themes";
 
   const fontOptions = fonts.map((font) => ({ value: font.id, label: font.name, style: `font-family:${font.stack}` }));
-  const size = $derived(Math.max(0, textSizes.findIndex((s) => s.id === appearance.current.textSize)));
+  const size = $derived(
+    Math.max(
+      0,
+      textSizes.findIndex((s) => s.id === appearance.current.textSize),
+    ),
+  );
 </script>
 
 <Card title="Theme" wide>
@@ -34,10 +39,20 @@
 
 <Card title="Fonts" wide>
   <CardRow label="Interface">
-    <Segmented label="Interface font" options={fontOptions} value={appearance.current.interfaceFont} onchange={(interfaceFont) => appearance.set({ interfaceFont })} />
+    <Segmented
+      label="Interface font"
+      options={fontOptions}
+      value={appearance.current.interfaceFont}
+      onchange={(interfaceFont) => appearance.set({ interfaceFont })}
+    />
   </CardRow>
   <CardRow label="Messages">
-    <Segmented label="Message font" options={fontOptions} value={appearance.current.messageFont} onchange={(messageFont) => appearance.set({ messageFont })} />
+    <Segmented
+      label="Message font"
+      options={fontOptions}
+      value={appearance.current.messageFont}
+      onchange={(messageFont) => appearance.set({ messageFont })}
+    />
   </CardRow>
 </Card>
 

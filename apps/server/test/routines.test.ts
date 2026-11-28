@@ -73,7 +73,11 @@ test("a routine is off until switched on; each run is a new session of its agent
     assert.equal(realpathSync.native(run!.folder), realpathSync.native(join(f.home, "apps", "scout")));
     await eventually(() => f.runtime.items(run!.id, {}).items.some((item) => item.role === "assistant"));
     const woken = f.runtime.items(run!.id, {}).items.find((item) => item.customType === WOKEN_ENTRY)!;
-    assert.deepEqual((woken.details as { source: unknown }).source, { kind: "schedule", id: "scout/morning", label: "Morning check · Every day at 7:00 am" });
+    assert.deepEqual((woken.details as { source: unknown }).source, {
+      kind: "schedule",
+      id: "scout/morning",
+      label: "Morning check · Every day at 7:00 am",
+    });
     assert.equal(f.runtime.listRoutines().routines[0]!.runs[0]!.session, run!.id);
 
     // Paused: nothing starts.
