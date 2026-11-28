@@ -163,6 +163,7 @@ export class SessionHttp {
     if (path.startsWith("/api/notifications/") && plain && method === "POST") return this.notify(path, request, response, device ?? "local");
     if (path === "/api/live" && plain && method === "GET") return this.live.workspaceChanges(response, device);
     if (path === "/api/host" && plain) return this.host.handle(request, response);
+    if (path === "/api/host/notes" && plain && method === "GET") return this.host.notes(response);
     if (path.startsWith("/api/providers") && this.providers) return this.providers.handle(request, response);
     if (path === "/api/settings" && plain && (method === "GET" || method === "POST"))
       return sendJson(response, 200, method === "GET" ? this.runtime.settings() : this.runtime.updateSettings(await body(request)));

@@ -47,6 +47,13 @@ export interface HostStatus {
   running: RunningWork;
 }
 
+/** `GET /api/host/notes`: what is new in the version that runs, as Markdown (docs/releasing.md). */
+export interface ReleaseNotes {
+  /** The version the notes are for: a build of main shares its version's. */
+  version: string;
+  notes: string;
+}
+
 export interface RunningWork {
   /** Sessions with a reply in progress (or waiting for an answer or a run slot). */
   replies: { session: string; title: string }[];

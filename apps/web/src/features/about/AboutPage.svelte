@@ -5,6 +5,7 @@
   import Toggle from "../../lib/ui/Toggle.svelte";
   import Button from "../../lib/ui/Button.svelte";
   import Icon from "../../lib/ui/Icon.svelte";
+  import Markdown from "../../lib/markdown/Markdown.svelte";
   import { useSessions } from "../workspace/session-client.svelte";
   import { formatBytes } from "./host-client.svelte";
   import type { HostAction, ReleaseChannel } from "../../../../server/src/contract/host-protocol";
@@ -21,8 +22,11 @@
   let error = $state("");
   let acting = $state(false);
   let now = $state(Date.now());
+  /** What is new in this version, unfolded under its Version row. */
+  let showNotes = $state(false);
   $effect(() => {
     void host.refresh().catch(() => {});
+    void host.readNotes();
     const timer = setInterval(() => (now = Date.now()), 30_000);
     return () => clearInterval(timer);
   });
@@ -161,8 +165,15 @@
   {#if status}
     <Card title="This PiSpark">
       <CardRow label="Version"
-        >{status.version}{#if launcher}<span class="text-muted-foreground">{" · "}{launcher.channel === "stable" ? "Stable" : "Latest"} channel</span>{/if}</CardRow
+        ><span class="flex-1"
+          >{status.version}{#if launcher}<span class="text-muted-foreground">{" · "}{launcher.channel === "stable" ? "Stable" : "Latest"} channel</span>{/if}</span
+        >{#if host.notes}<Button size="compact" variant="ghost" aria-expanded={showNotes} aria-controls="release-notes" onclick={() => (showNotes = !showNotes)}
+            >What’s new</Button
+          >{/if}</CardRow
       >
+      {#if host.notes && showNotes}
+        <div id="release-notes" class="notes" role="region" aria-label={`What’s new in ${host.notes.version}`}><Markdown text={host.notes.notes} /></div>
+      {/if}
       {#if !status.managed}<CardRow
           ><p class="text-xs text-muted-foreground">Started from a copy of its source (npm start or dev). Updates come from however it was started.</p></CardRow
         >{/if}
@@ -201,6 +212,13 @@
   }
   .notice.block {
     display: block;
+  }
+  .notes {
+    padding: 0.75rem 1rem;
+  }
+  /* Notes are read in a settings card, not as a reply: one size down, headings with it. */
+  .notes :global(.prose) {
+    font-size: var(--text-sm);
   }
   .running {
     margin: 0.5rem 0 0;

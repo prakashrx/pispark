@@ -80,3 +80,26 @@ fresh("back on a newer version, the page reloads itself when nothing is typed, a
   await expect(banner).toHaveCount(0);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+fresh("About says what is new in the version that runs: folded by default, opened with the keyboard, readable on a phone", async ({ page }) => {
+  await page.goto("/#/settings/about");
+  const toggle = page.getByRole("button", { name: "What’s new" });
+  const notes = page.getByRole("region", { name: /^What’s new in \d+\.\d+\.\d+$/ });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(notes).toHaveCount(0);
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  // The notes written with the changes, drawn as Markdown: a heading per change, for the version this build is of.
+  await expect(notes.getByRole("heading", { level: 1 })).toHaveText(/^PiSpark \d+\.\d+\.\d+$/);
+  await expect(notes.getByRole("heading", { level: 2 }).first()).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(notes).toHaveCount(0);
+
+  // On a phone: the same control, and the notes fit the screen.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/#/settings/about");
+  await toggle.click();
+  await expect(notes.getByRole("heading", { level: 1 })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+});
