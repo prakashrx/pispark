@@ -24,9 +24,9 @@
     "format": "prettier --write \"{apps,plugins,scripts}/**/*.{ts,js,mjs,svelte,css}\""
   },
   "devDependencies": {
-    "concurrently": "^9.2.1",
-    "prettier": "^3.6.2",
-    "prettier-plugin-svelte": "^3.4.0",
-    "typescript": "~5.9.3"
+    "concurrently": "^10.0.7",
+    "prettier": "^3.10.1",
+    "prettier-plugin-svelte": "^4.2.0",
+    "typescript": "~7.0.2"
   }
 }
