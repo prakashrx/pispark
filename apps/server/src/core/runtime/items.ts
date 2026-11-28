@@ -358,7 +358,7 @@ export class ItemProjector {
   private shown(entry: SessionEntry): boolean {
     switch (entry.type) {
       case "message":
-        return entry.message.role !== "system" && ["user", "assistant", "toolResult", "custom"].includes(entry.message.role);
+        return ["user", "assistant", "toolResult", "custom"].includes(entry.message.role);
       case "custom_message":
         return entry.display !== false;
       case "compaction":

@@ -7,7 +7,7 @@ import { Tailscale, type TailscaleCli } from "./tailscale.js";
  * The HTTPS port Tailscale serves a PiSpark on: 443 for the usual port 3000 (a plain address), the
  * PiSpark's own port for any other install, so installs side by side never share an address.
  */
-export const httpsPortFor = (port: number) => (port === 3000 ? 443 : port);
+const httpsPortFor = (port: number) => (port === 3000 ? 443 : port);
 export const addressFor = (dnsName: string, port: number) => {
   const https = httpsPortFor(port);
   return `https://${dnsName}${https === 443 ? "" : `:${https}`}`;

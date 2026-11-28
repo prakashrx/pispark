@@ -14,9 +14,9 @@ const quoted = (headings: readonly string[]) => headings.map((h) => `"## ${h}"`)
 /** About four characters to a token: enough to see the weight, not a tokenizer. */
 export const tokens = (text: string) => Math.ceil(text.length / 4);
 /** Past this, the agent is asked to tidy what it keeps. Not a limit: nothing is refused. */
-export const HEAVY_TOKENS = 6_000;
+const HEAVY_TOKENS = 6_000;
 /** Past this, only the sections that matter now are given whole; the rest is read from the file. */
-export const LARGE_TASKS = 30_000;
+const LARGE_TASKS = 30_000;
 
 export interface BriefOptions {
   /** The conversation was just compacted. */
@@ -47,7 +47,7 @@ function instructions(homes: Homes, place: string): string[] {
 }
 
 /** The tasks as given at the start of a run. A very large file gives the current sections whole and counts the rest. */
-export function tasksShown(tasks: string): string {
+function tasksShown(tasks: string): string {
   if (tasks.length <= LARGE_TASKS) return tasks.trim();
   const counted = (heading: string) => {
     const n = entries(tasks).filter((e) => e.section === heading).length;

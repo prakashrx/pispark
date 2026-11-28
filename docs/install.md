@@ -63,8 +63,11 @@ PiSpark reads an optional `<data folder>/.env` when the server starts. Variables
 versions/<version>/   one folder per version: node/, app/, release.json
 current               the running version (a junction on Windows, a symlink on Linux)
 state.json            channel, port, automatic updates, data folder
-update/               failed versions; the version being tried during a launcher switch (Linux)
+update/               failed versions; the version being tried during a launcher switch, and
+                      rolled-back when pispark-start put the previous one back (Linux)
+downloads/            release archives while they download and are checked
 logs/                 launcher.log, server.log (the newest 5 MB, then one older file)
+bin/                  Windows only: pispark.cmd, the pispark command (on Linux it is ~/.local/bin/pispark)
 pispark-start         Linux only: what systemd runs (see below)
 ```
 

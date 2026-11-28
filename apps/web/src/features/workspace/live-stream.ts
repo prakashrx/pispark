@@ -8,7 +8,7 @@ const WORKSPACE_HEADS = ["event: ready\ndata: ", "event: changed\ndata: "];
  * gone (a sleeping laptop, a dropped Wi-Fi, a server that stopped without closing): it is given up and
  * opened again, rather than shown as Live while nothing can arrive.
  */
-export const SILENCE_MS = 35_000;
+const SILENCE_MS = 35_000;
 
 /** A session's live stream: its snapshot, then its changes. */
 export function liveEvents(id: string, signal: AbortSignal, silenceMs = SILENCE_MS): AsyncGenerator<LiveEvent> {

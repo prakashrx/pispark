@@ -4,7 +4,7 @@ import type { HostSettings } from "../../contract/protocol.js";
 import { RuntimeError } from "./errors.js";
 
 /** PiSpark's own settings, in `<home>/settings.json`. Missing or unreadable values use the defaults. */
-export const DEFAULT_SETTINGS: HostSettings = { maxRunning: 8, unattendedPaused: false };
+const DEFAULT_SETTINGS: HostSettings = { maxRunning: 8, unattendedPaused: false };
 export const MAX_RUNNING = 32;
 
 const validRunning = (value: unknown): value is number =>

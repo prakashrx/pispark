@@ -77,12 +77,12 @@ type Entry = { type: string; customType?: string; data?: unknown; message?: { ro
 const woken = (entry: Entry | undefined) => entry?.type === "custom" && entry.customType === WOKEN;
 
 /** Whether the person started this run: their own message, not a wake (a schedule, a child's report, a process). */
-export function startedByPerson(messageType: string, branch: readonly Entry[]): boolean {
+function startedByPerson(messageType: string, branch: readonly Entry[]): boolean {
   return messageType === "user" && !branch.slice(-2).some(woken);
 }
 
 /** Whether another session started this one: its first message came from a session. */
-export function startedBySession(branch: readonly Entry[]): boolean {
+function startedBySession(branch: readonly Entry[]): boolean {
   const first = branch.findIndex((entry) => entry.type === "message" && entry.message?.role === "user");
   // Before its first message is kept, the wake that brings it is the newest entry.
   const marker = first < 0 ? branch.at(-1) : branch[first - 1];

@@ -1,8 +1,8 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { closeSync, copyFileSync, mkdirSync, openSync, statSync, truncateSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import type { LauncherMessage, ServerMessage } from "../../server/src/contract/host-protocol.ts";
-import { windows, type Release } from "./install.ts";
+import { system32, windows, type Release } from "./install.ts";
 
 export type ServerState = "starting" | "running" | "stopping" | "stopped" | "crashed";
 
@@ -169,7 +169,7 @@ export class Supervisor {
 export function killTree(pid: number | undefined) {
   if (!pid) return;
   if (windows) {
-    spawnSync(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "taskkill.exe"), ["/PID", String(pid), "/T", "/F"], {
+    spawnSync(system32("taskkill.exe"), ["/PID", String(pid), "/T", "/F"], {
       windowsHide: true,
       stdio: "ignore",
     });

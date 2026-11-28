@@ -28,7 +28,7 @@ export async function agentRequest<T>(operation: string, input?: unknown): Promi
   }
 }
 
-export const sameTarget = (a?: AgentTarget, b?: AgentTarget) => !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+const sameTarget = (a?: AgentTarget, b?: AgentTarget) => !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
 const layerId = (target: AgentTarget) => ("agent" in target ? target.agent : "session");
 
 /**

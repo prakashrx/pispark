@@ -53,7 +53,7 @@ export function dataFolder(cwd: string): string {
 }
 
 /** Where a file outside the agent sits, in the person's words. */
-export function whereIs(path: string, cwd: string): string {
+function whereIs(path: string, cwd: string): string {
   const home = real(dataFolder(cwd));
   const agents = join(home, "agents");
   if (inside(path, join(home, "resources"))) {

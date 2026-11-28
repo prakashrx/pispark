@@ -65,7 +65,7 @@ export interface Setup {
  * Each layer adds its items (a same-name item replaces the earlier one), then applies its
  * `on` and `off` switches. Later layers win.
  */
-export function resolveLayers(store: AgentStore, target: AgentTarget, override?: AgentDefinition): Layer[] {
+function resolveLayers(store: AgentStore, target: AgentTarget, override?: AgentDefinition): Layer[] {
   const load = (layerTarget: AgentTarget): Layer => {
     const viewing = JSON.stringify(layerTarget) === JSON.stringify(target) && override;
     if ("agent" in layerTarget && !store.exists(layerTarget)) fail("missing-parent", 400, layerTarget.agent);

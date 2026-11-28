@@ -12,7 +12,7 @@ export interface Appearance {
 }
 
 const key = "pispark.appearance";
-export const defaultAppearance: Appearance = {
+const defaultAppearance: Appearance = {
   theme: "system",
   interfaceFont: "sans",
   messageFont: "sans",

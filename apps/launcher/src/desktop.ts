@@ -2,14 +2,13 @@ import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { identity, windows, type Install } from "./install.ts";
+import { identity, system32, windows, type Install } from "./install.ts";
 
 /**
  * What PiSpark registers on the machine: starting at login, the Start menu entry, the `pispark`
  * command; and opening its window. Windows: a per-user Run entry (no admin). Linux: a systemd user
  * service that runs `pispark-start`, which also rolls back a launcher that failed to start.
  */
-const system32 = (file: string) => join(process.env.SystemRoot ?? "C:\\Windows", "System32", file);
 const RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 const names = (install: Install) => identity(install.choices().name);
 const startMenu = (install: Install) =>
@@ -27,9 +26,8 @@ const binDir = () => join(homedir(), ".local", "bin");
 
 /** The command that runs the current version's launcher (`current` never changes, so neither does this). */
 function launcherCommand(install: Install, command: string) {
-  const exe = join(install.current, "node", windows ? "pispark.exe" : "bin/node");
-  const script = join(install.current, "app", "apps", "launcher", "dist", "pispark.mjs");
-  return { exe, args: [script, command] };
+  const current = install.currentRelease();
+  return { exe: current.windowless, args: [current.launcher, command] };
 }
 
 export function enableAutostart(install: Install) {
@@ -130,7 +128,7 @@ export function installCommand(install: Install): string {
     const dir = join(install.root, "bin");
     mkdirSync(dir, { recursive: true });
     // The console Node, so the command prints; the windowless one is for login and the tray.
-    const node = join(install.current, "node", "node.exe");
+    const node = install.currentRelease().node;
     writeFileSync(join(dir, `${names(install).command}.cmd`), `@echo off\r\n"${node}" "${args[0]}" %*\r\n`);
     return dir;
   }
@@ -150,7 +148,7 @@ export function removeCommand(install: Install) {
 export function addStartMenu(install: Install) {
   if (!windows) return;
   const { exe, args } = launcherCommand(install, "start");
-  const icon = join(install.current, "app", "apps", "launcher", "dist", "pispark.ico");
+  const icon = install.currentRelease().icon;
   const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
   const script = [
     `$s = (New-Object -ComObject WScript.Shell).CreateShortcut(${q(startMenu(install))})`,
@@ -160,12 +158,7 @@ export function addStartMenu(install: Install) {
     `$s.Description = ${q(names(install).label)}`,
     `$s.Save()`,
   ].join("; ");
-  run(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), [
-    "-NoProfile",
-    "-NonInteractive",
-    "-Command",
-    script,
-  ]);
+  run(system32("WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", script]);
 }
 
 export function removeStartMenu(install: Install) {
