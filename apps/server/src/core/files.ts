@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { rename } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 /** Whether `path` is `root` or inside it. A name that only starts with two dots (`..notes`) is inside. */
@@ -31,6 +32,19 @@ function replace(temporary: string, path: string, { rename = renameSync, platfor
     }
   }
   rename(temporary, path);
+}
+
+/** `replace` without blocking: the same tries and waits, for a write that runs off the main thread. */
+export async function replaceLater(temporary: string, path: string): Promise<void> {
+  for (const wait of process.platform === "win32" ? WAITS : []) {
+    try {
+      return await rename(temporary, path);
+    } catch (error) {
+      if (!["EPERM", "EBUSY", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+  await rename(temporary, path);
 }
 
 /**

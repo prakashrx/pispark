@@ -321,11 +321,16 @@ export class SessionRuntime {
    * its parent is in use: it was never a row of its own, and is reached from its parent.
    */
   archived(): SessionSummary[] {
+    return this.archivedMetadata().map((metadata) => this.summary(metadata));
+  }
+  /** How many sessions `archived` lists, without describing each one. */
+  archivedCount(): number {
+    return this.archivedMetadata().length;
+  }
+  private archivedMetadata(): SessionMetadata[] {
     const all = this.storage.list();
     const inUse = new Set(all.filter((metadata) => !metadata.archived).map((metadata) => metadata.id));
-    return all
-      .filter((metadata) => metadata.archived && !(this.children.away(metadata) && inUse.has(metadata.parent!)))
-      .map((metadata) => this.summary(metadata));
+    return all.filter((metadata) => metadata.archived && !(this.children.away(metadata) && inUse.has(metadata.parent!)));
   }
   get unreadableSessions(): number {
     return this.storage.unreadable;
@@ -356,11 +361,13 @@ export class SessionRuntime {
       layered,
       ...(known?.home ? { home: known.home } : {}),
     };
+    const lastActivity = this.storage.lastActivity(metadata);
+    const processes = this.processes?.runningIn(metadata.id);
     return {
       id: metadata.id,
       folder: metadata.cwd,
       createdAt: metadata.createdAt,
-      lastActivity: this.storage.lastActivity(metadata),
+      lastActivity,
       hasHistory: session ? session.hasHistory : this.storage.hasHistory(metadata.id),
       ...(metadata.title ? { title: metadata.title } : {}),
       status: session?.status ?? "unloaded",
@@ -369,7 +376,7 @@ export class SessionRuntime {
       ...(session?.setupChanged ? { agentChanged: true } : {}),
       ...(session?.asking ? { waiting: true } : {}),
       ...(session?.question ? { question: session.question } : {}),
-      ...(metadata.seenAt && this.storage.lastActivity(metadata) > metadata.seenAt ? { unread: true } : {}),
+      ...(metadata.seenAt && lastActivity > metadata.seenAt ? { unread: true } : {}),
       ...(session?.workingSince ? { workingSince: new Date(session.workingSince).toISOString() } : {}),
       ...(session?.waitingForSlot || (!session && metadata.queued !== undefined) ? { queued: true } : {}),
       ...(metadata.forkOf ? { parent: metadata.forkOf, forkOf: metadata.forkOf }
@@ -377,7 +384,7 @@ export class SessionRuntime {
         : metadata.raise ? { raised: metadata.raise } : {}),
       ...(metadata.schedule ? { schedule: { ...metadata.schedule } } : {}),
       ...(metadata.held ? { held: { ...metadata.held } } : {}),
-      ...(this.processes?.runningIn(metadata.id) ? { processes: this.processes.runningIn(metadata.id) } : {}),
+      ...(processes ? { processes } : {}),
       ...(session?.readOnly ? { readOnly: session.readOnly } : {}),
     };
   }
@@ -900,9 +907,15 @@ export class SessionRuntime {
   }
   /** What a restart would interrupt now: replies in progress and background processes. */
   runningWork(): RunningWork {
-    const replies = this.list()
-      .filter((s) => ["running", "queued", "stopping"].includes(s.status) || s.waiting || s.queued)
-      .map((s) => ({ session: s.id, title: s.title ?? "New session" }));
+    // What `list` would say is busy, read from the sessions themselves rather than a summary of each.
+    const replies = this.storage.list().flatMap((metadata) => {
+      if (metadata.archived) return [];
+      const session = this.live.get(metadata.id);
+      const busy = session
+        ? ["running", "queued", "stopping"].includes(session.status) || session.asking || session.waitingForSlot
+        : metadata.queued !== undefined;
+      return busy ? [{ session: metadata.id, title: metadata.title ?? "New session" }] : [];
+    });
     const processes = this.runningProcesses().processes.map((p) => ({ session: p.sessionId, title: p.session.title ?? "New session", name: p.title || p.command }));
     return { replies, processes };
   }

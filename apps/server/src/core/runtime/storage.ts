@@ -86,6 +86,13 @@ export class SessionStorage {
   private rescanAt = 0;
   /** When each session last did something (ms), from its transcript or its running session; cleared on rescan. */
   private readonly activity = new Map<string, number>();
+  /**
+   * Each session's transcript once it has one. Pi names it once and never renames it, so a path found
+   * stays right until the session is removed; a session without one yet is looked for again.
+   */
+  private readonly transcripts = new Map<string, string>();
+  /** Transcripts found whole, by path, with the size and time they had then: unchanged, they aren't read again. */
+  private readonly validated = new Map<string, string>();
   unreadable = 0;
   constructor(root: string) {
     this.root = resolve(root);
@@ -212,6 +219,7 @@ export class SessionStorage {
     }
     this.catalog.delete(id);
     this.activity.delete(id);
+    this.transcripts.delete(id);
   }
   /** Remove a session folder that never got a session.json (a failed first start). */
   discardUnpublished(id: string): void {
@@ -231,10 +239,14 @@ export class SessionStorage {
   }
   /** Pi names the transcript `<time>_<id>.jsonl`; it's the only such file in the folder. */
   transcript(id: string): string | undefined {
+    const known = this.transcripts.get(id);
+    if (known) return known;
     const dir = this.directory(id);
     if (!existsSync(dir)) return undefined;
     const file = readdirSync(dir).find((name) => name.endsWith(`_${id}.jsonl`));
-    return file ? join(dir, file) : undefined;
+    if (!file) return undefined;
+    this.transcripts.set(id, join(dir, file));
+    return join(dir, file);
   }
   /**
    * When the session last did something: Pi writes every entry to the transcript as it happens, so its
@@ -266,8 +278,11 @@ export class SessionStorage {
     const path = this.transcript(metadata.id);
     if (!path) return undefined;
     try {
-      if (lstatSync(path).isSymbolicLink() || statSync(path).size > 64 * 1024 * 1024)
+      const stats = statSync(path);
+      if (lstatSync(path).isSymbolicLink() || stats.size > 64 * 1024 * 1024)
         throw new Error();
+      const seen = `${stats.size}:${stats.mtimeMs}`;
+      if (this.validated.get(path) === seen) return path;
       const lines = readFileSync(path, "utf8").trim().split("\n");
       const entries = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
       const header = entries[0];
@@ -277,6 +292,7 @@ export class SessionStorage {
         header.version !== 3
       )
         throw new Error();
+      this.validated.set(path, seen);
       return path;
     } catch {
       throw new RuntimeError("storage");

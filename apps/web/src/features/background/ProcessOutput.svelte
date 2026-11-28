@@ -3,7 +3,7 @@
   import Button from "../../lib/ui/Button.svelte";
   import type { ProcessInfo } from "../../../../server/src/contract/process-protocol";
   import { useSessions } from "../workspace/session-client.svelte";
-  import { processName, processState } from "./process-presentation";
+  import { nextRead, processName, processState, shownAfter, type ShownOutput } from "./process-presentation";
   /**
    * One process a session started (design set 4/3): its name, its state, its output (read about once
    * a second while it runs, following the end) and Stop. The one asked for, or the newest.
@@ -13,8 +13,7 @@
   let process = $state<ProcessInfo>();
   let loaded = $state(false);
   let error = $state("");
-  let output = $state<{ text: string; next: number; cut?: boolean }>();
-  const KEEP = 200_000;
+  let output = $state<ShownOutput>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
   let now = $state(Date.now());
@@ -26,9 +25,8 @@
       process = all.find((p) => p.id === focus) ?? all.findLast((p) => p.state === "running") ?? all.at(-1);
       loaded = true;
       if (process && (!output || output.next < process.written)) {
-        const read = await client.processes.output(sessionId, process.id, output?.next ?? 0);
-        const text = (output?.text ?? "") + read.text;
-        output = { text: text.length > KEEP ? text.slice(-KEEP) : text, next: read.next, cut: read.cut || text.length > KEEP || output?.cut };
+        const { since, fresh } = nextRead(process.written, output);
+        output = shownAfter(output, await client.processes.output(sessionId, process.id, since), fresh);
       }
       error = "";
     } catch (failure) {
@@ -47,12 +45,13 @@
   // Output follows its end while you are at the end.
   function follow(node: HTMLElement, _text: string) {
     let atEnd = true;
-    node.addEventListener("scroll", () => (atEnd = node.scrollTop + node.clientHeight >= node.scrollHeight - 8));
+    const scrolled = () => (atEnd = node.scrollTop + node.clientHeight >= node.scrollHeight - 8);
+    node.addEventListener("scroll", scrolled, { passive: true });
     const stick = () => {
       if (atEnd) node.scrollTop = node.scrollHeight;
     };
     stick();
-    return { update: stick };
+    return { update: stick, destroy: () => node.removeEventListener("scroll", scrolled) };
   }
 </script>
 

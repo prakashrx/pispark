@@ -78,7 +78,7 @@ export class SessionHttp {
     this.commands = new Commands(runtime, this.logger);
     this.files = new SessionFiles(runtime);
     this.workspace = new WorkspaceLive({
-      sessions: () => [this.runtime.list(), this.runtime.archived().length, this.runtime.unreadableSessions],
+      sessions: () => [this.runtime.list(), this.runtime.archivedCount(), this.runtime.unreadableSessions],
       schedules: () => this.runtime.listSchedules(),
       routines: () => this.runtime.listRoutines(),
       processes: () => this.runtime.runningProcesses(),
@@ -186,9 +186,8 @@ export class SessionHttp {
       return sendJson(response, 200, { home: homedir(), recentFolders: this.runtime.recentFolders() } satisfies Catalog);
     if (method === "GET" && path === "/api/sessions" && (plain || url.search === "?archived")) {
       // The sessions in use, or (`?archived`) the ones put away; the newest 256 either way.
-      const archived = this.runtime.archived();
-      const sessions = (plain ? this.runtime.list() : archived).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-      return sendJson(response, 200, { sessions: sessions.slice(-256), truncated: sessions.length > 256, unreadable: this.runtime.unreadableSessions, archived: archived.length });
+      const sessions = (plain ? this.runtime.list() : this.runtime.archived()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      return sendJson(response, 200, { sessions: sessions.slice(-256), truncated: sessions.length > 256, unreadable: this.runtime.unreadableSessions, archived: this.runtime.archivedCount() });
     }
     const view = /^\/api\/views\/([a-f0-9]{32})\.js$/.exec(path);
     if (method === "GET" && view && plain) return this.files.component(view[1]!, response);

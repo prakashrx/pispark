@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, closeSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync, readSync, closeSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFile, open, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getShellConfig } from "@earendil-works/pi-coding-agent";
 import { UUID } from "../../contract/ids.js";
 import type { ProcessInfo, ProcessOutput } from "../../contract/process-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
-import { writeAtomic } from "../files.js";
+import { replaceLater, writeAtomic } from "../files.js";
 import { RuntimeError } from "./errors.js";
 import { pattern } from "./verbs.js";
 
@@ -51,8 +52,69 @@ interface Stored extends ProcessInfo {
   /** Its end has been taken: its session was told, read it, waited for it, or stopped it. It is not told again. */
   taken?: true;
 }
+/**
+ * A running process's log on disk. Output is appended in order without holding up the server, and
+ * `written` counts only what is on disk, so a reader never asks for bytes that aren't there yet.
+ * Past `MAX_LOG` it is cut to its newest `KEEP` bytes, in the same queue.
+ */
+class Log {
+  private queue: Buffer[] = [];
+  private flushing?: Promise<void>;
+  constructor(
+    private readonly path: string,
+    private readonly record: Stored,
+    /** Bytes just put on disk: for `raiseOn` and anyone waiting on output. */
+    private readonly wrote: (data: Buffer) => void,
+  ) {}
+  add(chunk: Buffer): void {
+    this.queue.push(chunk);
+    this.flushing ??= this.flush().finally(() => (this.flushing = undefined));
+  }
+  /** Resolves once everything added so far is on disk. */
+  idle(): Promise<void> {
+    return this.flushing ?? Promise.resolve();
+  }
+  private async flush(): Promise<void> {
+    while (this.queue.length) {
+      // Whatever came while the last write ran goes as one write.
+      const data = Buffer.concat(this.queue.splice(0));
+      try {
+        await appendFile(this.path, data);
+      } catch {
+        continue; // A full disk loses output, not the process.
+      }
+      this.record.written += data.length;
+      if (this.record.written - this.record.offset > MAX_LOG) await this.cut();
+      this.wrote(data);
+    }
+  }
+  /** Keeps the newest `KEEP` bytes. A reader sees the whole old log until the cut one replaces it. */
+  private async cut(): Promise<void> {
+    const temporary = `${this.path}.cut`;
+    try {
+      const size = this.record.written - this.record.offset;
+      const keep = Buffer.alloc(Math.min(KEEP, size));
+      const file = await open(this.path, "r");
+      try {
+        await file.read(keep, 0, keep.length, size - keep.length);
+      } finally {
+        await file.close();
+      }
+      await writeFile(temporary, keep, { mode: 0o600 });
+      await replaceLater(temporary, this.path);
+      this.record.offset = this.record.written - keep.length;
+    } catch {
+      // Kept whole for now; cut on the next write.
+      await rm(temporary, { force: true }).catch(() => {});
+    }
+  }
+}
+
 interface Live {
   child: ChildProcess;
+  log: Log;
+  /** `raiseOn` compiled, once for each pattern it is given. */
+  raise?: { source: string; regex?: RegExp };
   /** The line being written, for `raiseOn`. */
   partial: string;
   waiters: Set<() => void>;
@@ -179,13 +241,15 @@ export class Processes {
       cursors: {},
     };
     this.stored.set(sessionId, [...this.pruned(sessionId), record]);
-    const live: Live = { child, partial: "", waiters: new Set(), raisedAt: 0, group };
+    const log = new Log(join(dir, `${id}.log`), record, (data) => this.output(record, live, data));
+    const live: Live = { child, log, partial: "", waiters: new Set(), raisedAt: 0, group };
     this.live.set(id, live);
-    const output = (chunk: Buffer) => this.output(record, live, chunk);
+    const output = (chunk: Buffer) => log.add(chunk);
     child.stdout?.on("data", output);
     child.stderr?.on("data", output);
-    child.on("error", () => this.ended(record, live, null));
-    child.on("close", (code) => this.ended(record, live, code));
+    // It has ended once its last output is on disk, so whoever is told reads all of it.
+    child.on("error", () => void log.idle().then(() => this.ended(record, live, null)));
+    child.on("close", (code) => void log.idle().then(() => this.ended(record, live, code)));
     if (input.stopAfterSeconds)
       live.timer = setTimeout(() => this.stop(id, "timeout"), Math.min(input.stopAfterSeconds, 7 * 86_400) * 1000).unref();
     this.save(sessionId);
@@ -224,32 +288,14 @@ export class Processes {
     this.stored.delete(sessionId);
   }
 
+  /** Output just put on its log: a line `raiseOn` matches is told, and whoever waits on output looks again. */
   private output(record: Stored, live: Live, chunk: Buffer): void {
-    const dir = join(this.host.directory(record.sessionId), "processes");
-    const log = join(dir, `${record.id}.log`);
-    try {
-      appendFileSync(log, chunk);
-      record.written += chunk.length;
-      if (record.written - record.offset > MAX_LOG) {
-        const size = statSync(log).size;
-        const keep = Buffer.alloc(Math.min(KEEP, size));
-        const fd = openSync(log, "r");
-        try {
-          readSync(fd, keep, 0, keep.length, size - keep.length);
-        } finally {
-          closeSync(fd);
-        }
-        writeFileSync(log, keep);
-        record.offset = record.written - keep.length;
-      }
-    } catch {
-      /* A full disk loses output, not the process. */
-    }
     // `raiseOn` looks at whole lines.
     const lines = (live.partial + clean(chunk.toString("utf8"))).split("\n");
     live.partial = lines.pop() ?? "";
     if (live.partial.length > 8192) live.partial = live.partial.slice(-8192);
-    const raiseOn = record.raiseOn && Date.now() - live.raisedAt >= RAISE_EVERY_MS ? pattern(record.raiseOn) : undefined;
+    if (record.raiseOn && live.raise?.source !== record.raiseOn) live.raise = { source: record.raiseOn, regex: pattern(record.raiseOn) };
+    const raiseOn = record.raiseOn && Date.now() - live.raisedAt >= RAISE_EVERY_MS ? live.raise?.regex : undefined;
     const line = raiseOn && lines.find((each) => raiseOn.test(each));
     if (line) {
       live.raisedAt = Date.now();

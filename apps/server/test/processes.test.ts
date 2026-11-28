@@ -307,3 +307,34 @@ test("three process ends that waited for a working session reach it together: on
     await f.cleanup();
   }
 });
+
+test("a process printing megabytes doesn't hold up the server, and its log is cut to the newest output with offsets that still add up", async () => {
+  const f = await fixture();
+  try {
+    const session = await f.runtime.create({ folder: f.folder });
+    // About 6 MB in 64 KB writes as fast as it can, then one last line.
+    const LOUD = `node -e "const b='x'.repeat(65535)+'\\n'; for(let i=0;i<96;i++) process.stdout.write(b); console.log('done')"`;
+    let worst = 0;
+    let last = performance.now();
+    const ticker = setInterval(() => {
+      const now = performance.now();
+      worst = Math.max(worst, now - last - 5);
+      last = now;
+    }, 5);
+    await f.run(session.id, say("start_process", { command: LOUD }));
+    const [started] = f.runtime.listProcesses(session.id);
+    await eventually(() => f.runtime.listProcesses(session.id)[0]!.state !== "running", 30_000);
+    clearInterval(ticker);
+    const [ended] = f.runtime.listProcesses(session.id);
+    assert.equal(ended!.state, "exited");
+    assert.equal(ended!.written, 96 * 65536 + "done\n".length);
+    // Only the newest output is kept, and reading from the start says so.
+    const all = f.runtime.processOutput(session.id, started!.id, 0);
+    assert.equal(all.cut, true);
+    const tail = f.runtime.processOutput(session.id, started!.id, ended!.written - 5);
+    assert.deepEqual([tail.text, tail.next], ["done\n", ended!.written]);
+    assert(worst < 100, `the event loop was held up for ${worst.toFixed(0)} ms`);
+  } finally {
+    await f.cleanup();
+  }
+});
