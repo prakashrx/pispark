@@ -95,14 +95,20 @@ test("extensions show components with Pi's bus: points, props, calls back, entri
 
     // Removing: an event with no component.
     await runtime.call(session.id, "session.header", "", "removeCounter");
-    assert.equal(views().some((v) => v.key === "counter"), false);
+    assert.equal(
+      views().some((v) => v.key === "counter"),
+      false,
+    );
 
     // Refused and broken components are notices, not failures of the session.
     await runtime.call(session.id, "session.header", "", "placeOutside");
     await eventually(() => notices().some((n) => /not inside an extension this session loads/.test(n)));
     await runtime.call(session.id, "session.header", "", "placeBroken");
     await eventually(() => notices().some((n) => /Broken\.svelte could not be compiled/.test(n)));
-    assert.equal(views().some((v) => v.key === "broken"), false);
+    assert.equal(
+      views().some((v) => v.key === "broken"),
+      false,
+    );
     // A point is an item of the history or one this host's client draws; anything else is refused.
     await runtime.call(session.id, "session.header", "", "placeNowhere");
     await eventually(() => notices().some((n) => /unknown point side\.panel/.test(n)));
@@ -167,8 +173,7 @@ test("host.call over HTTP is a plain request and response: many calls never bloc
     assert.match(asset.headers.get("content-security-policy")!, /sandbox/);
     assert.match(await asset.text(), /<svg/);
     assert.equal((await fetch(`${base}/api/views/assets/${"0".repeat(32)}.svg`)).status, 404);
-    const file = (query: Record<string, string>) =>
-      fetch(`${base}/api/sessions/${session.id}/files?${new URLSearchParams(query)}`);
+    const file = (query: Record<string, string>) => fetch(`${base}/api/sessions/${session.id}/files?${new URLSearchParams(query)}`);
     const items = await file({ point: "session.view", key: "page", path: "items.json" });
     assert.equal(items.status, 200);
     assert.equal(items.headers.get("cache-control"), "no-store");
@@ -180,7 +185,10 @@ test("host.call over HTTP is a plain request and response: many calls never bloc
     assert.equal((await file({ point: "session.input.above", key: "counter", path: "items.json" })).status, 404);
     assert.equal((await file({ point: "session.view", key: "page", path: "items.json", extra: "1" })).status, 400);
     await runtime.call(session.id, "session.header", "", "removePage");
-    assert.equal(runtime.session(session.id).extensions.views.some((v) => v.point === "session.view"), false);
+    assert.equal(
+      runtime.session(session.id).extensions.views.some((v) => v.point === "session.view"),
+      false,
+    );
     assert.equal((await file({ point: "session.view", key: "page", path: "items.json" })).status, 404);
 
     // Sending a message still works.
@@ -208,7 +216,13 @@ test("a host that names no points offers only the items of the history", async (
     const runtime = new SessionRuntime({ ...h.configuration, points: undefined });
     const session = await runtime.create({ folder: await h.folder("work") });
     await eventually(() => runtime.session(session.id).extensions.views.length === 2);
-    assert.deepEqual(runtime.session(session.id).extensions.views.map((v) => v.point).sort(), ["item.custom:note", "item.tool:shout"]);
+    assert.deepEqual(
+      runtime
+        .session(session.id)
+        .extensions.views.map((v) => v.point)
+        .sort(),
+      ["item.custom:note", "item.tool:shout"],
+    );
     assert.ok(noticeText(runtime, session.id).some((n) => /unknown point session\.input\.above/.test(n)));
     await runtime.shutdown();
   } finally {
@@ -279,7 +293,10 @@ test("session.view takes offers: a key and a title each, six at most, requests t
     await offer({ key: "b", component: null });
     await offer({ key: "g", title: "Seventh" });
     await eventually(() => offers().length === 6 && offers().at(-1)!.key === "g");
-    assert.deepEqual(offers().map((v) => v.title), ["First again", "c", "d", "e", "Sixth", "Seventh"]);
+    assert.deepEqual(
+      offers().map((v) => v.title),
+      ["First again", "c", "d", "e", "Sixth", "Seventh"],
+    );
     assert.equal(refused("at most 6 views"), 1);
     // A view offered again after it was removed starts counting anew.
     await offer({ key: "c", component: null });
@@ -327,7 +344,10 @@ test("an extension keeps its state in Pi's session: the counter survives a resta
     await eventually(() => counter(second, session.id) === 10, 5000);
     assert.equal(await second.call(session.id, "session.input.above", "counter", "add", 1), 11);
     // The saved state is not a session item: nothing draws "counter" entries.
-    assert.equal(second.items(session.id, {}).items.some((item) => item.customType === "counter"), false);
+    assert.equal(
+      second.items(session.id, {}).items.some((item) => item.customType === "counter"),
+      false,
+    );
   } finally {
     await Promise.allSettled(runtimes.map((r) => r.shutdown()));
     await h.remove();

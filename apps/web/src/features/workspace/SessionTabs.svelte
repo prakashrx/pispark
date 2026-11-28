@@ -9,4 +9,9 @@
   ]);
 </script>
 
-{#if views.length > 1}<Segmented label="Show" options={views} value={session.shownView ?? ""} onchange={(key) => session.showView(key || undefined)} />{/if}
+{#if views.length > 1}<Segmented
+    label="Show"
+    options={views}
+    value={session.shownView ?? ""}
+    onchange={(key) => session.showView(key || undefined)}
+  />{/if}

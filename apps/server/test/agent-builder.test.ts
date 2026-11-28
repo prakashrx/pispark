@@ -63,15 +63,16 @@ test("Agent Builder ships with its skills and extension, and without shell or se
   const { store } = await fixture(t, PLUGINS);
   assert.ok(listAgents(store).some((agent) => agent.id === "agent-builder" && agent.bundled && agent.valid));
   const setup = resolveSetup(store, { agent: "agent-builder" });
-  assert.deepEqual(setup.instructions.map((i) => i.name), ["agent-builder"]);
+  assert.deepEqual(
+    setup.instructions.map((i) => i.name),
+    ["agent-builder"],
+  );
   assert.equal(setup.extensionPaths.length, 1);
   const skills = await readdir(join(AGENT_BUILDER, "skills"));
   assert.deepEqual(setup.skillDirs.map((dir) => dir.split(/[\\/]/).at(-1)).sort(), skills.sort());
   // No shell, and none of the verbs about what a session starts.
-  for (const tool of ["bash", "pispark_extension", ...VERBS.map(toolOf)])
-    assert.ok(setup.toolsOff.includes(tool), tool);
-  for (const tool of ["read", "edit", "write", "grep", "find", "ls"])
-    assert.ok(setup.toolsOn.includes(tool), tool);
+  for (const tool of ["bash", "pispark_extension", ...VERBS.map(toolOf)]) assert.ok(setup.toolsOff.includes(tool), tool);
+  for (const tool of ["read", "edit", "write", "grep", "find", "ls"]) assert.ok(setup.toolsOn.includes(tool), tool);
   for (const name of skills) {
     const { data } = frontmatter(await readFile(join(AGENT_BUILDER, "skills", name, "SKILL.md"), "utf8"));
     assert.equal(data.name, name);
@@ -91,7 +92,8 @@ test("Agent Builder asks before writing outside the agent and never changes app 
   const asked: string[] = [];
   let answer = false;
   const ctx = { cwd: agent, ui: { confirm: async (_title: string, message: string) => (asked.push(message), answer) } };
-  const call = (path: string, toolName = "write") => handlers.get("tool_call")!({ toolName, input: { path } }, ctx) as Promise<{ block?: boolean; reason?: string } | undefined>;
+  const call = (path: string, toolName = "write") =>
+    handlers.get("tool_call")!({ toolName, input: { path } }, ctx) as Promise<{ block?: boolean; reason?: string } | undefined>;
 
   assert.equal(await call("skills/new/SKILL.md"), undefined);
   assert.equal(await call(join(agent, "agent.json"), "edit"), undefined);

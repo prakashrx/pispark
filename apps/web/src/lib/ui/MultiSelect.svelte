@@ -41,21 +41,10 @@
   const typed = $derived(query.trim());
   const suggestions = $derived(
     options.filter(
-      (option) =>
-        !value.includes(option.value) &&
-        (option.label + " " + option.value)
-          .toLowerCase()
-          .includes(typed.toLowerCase()),
+      (option) => !value.includes(option.value) && (option.label + " " + option.value).toLowerCase().includes(typed.toLowerCase()),
     ),
   );
-  const custom = $derived(
-    allowCustom &&
-      typed &&
-      !value.includes(typed) &&
-      !options.some((option) => option.value === typed)
-      ? typed
-      : "",
-  );
+  const custom = $derived(allowCustom && typed && !value.includes(typed) && !options.some((option) => option.value === typed) ? typed : "");
   const items = $derived([
     ...suggestions.map((option) => ({ ...option, custom: false })),
     ...(custom ? [{ value: custom, label: `Add “${custom}”`, custom: true }] : []),
@@ -63,12 +52,9 @@
   const expanded = $derived(open && !locked && (items.length > 0 || !!typed));
   const optionId = (index: number) => `${id}-option-${index}`;
   const describedby = $derived(
-    [customError ? `${id}-custom-error` : "", help || error ? `${id}-help` : ""]
-      .filter(Boolean)
-      .join(" ") || undefined,
+    [customError ? `${id}-custom-error` : "", help || error ? `${id}-help` : ""].filter(Boolean).join(" ") || undefined,
   );
-  const labelOf = (item: string) =>
-    options.find((option) => option.value === item)?.label ?? item;
+  const labelOf = (item: string) => options.find((option) => option.value === item)?.label ?? item;
 
   function add(item: { value: string; custom: boolean; disabled?: boolean }) {
     if (locked || item.disabled) return;
@@ -96,10 +82,7 @@
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       if (!open) open = true;
-      else if (items.length)
-        active =
-          (active + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
-          items.length;
+      else if (items.length) active = (active + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
     } else if (event.key === "Enter") {
       // Never submit an enclosing form from a token field.
       event.preventDefault();
@@ -126,9 +109,7 @@
     if (!root.contains(event.relatedTarget as Node)) open = false;
   }}
 >
-  <label id={`${id}-label`} for={`${id}-input`} class="block text-sm font-medium text-foreground"
-    >{label}</label
-  >
+  <label id={`${id}-label`} for={`${id}-input`} class="block text-sm font-medium text-foreground">{label}</label>
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div
     class="token-field"
@@ -176,10 +157,7 @@
         aria-describedby={describedby}
         aria-busy={loading || undefined}
         disabled={disabled || loading}
-        placeholder={loading
-          ? "Loading…"
-          : (placeholder ??
-            (allowCustom ? "Search or type a name…" : "Search…"))}
+        placeholder={loading ? "Loading…" : (placeholder ?? (allowCustom ? "Search or type a name…" : "Search…"))}
         bind:value={query}
         onfocus={() => (open = true)}
         oninput={() => {
@@ -208,16 +186,10 @@
         >
           {item.label}
         </div>
-      {:else}<p role="status" class="px-2.5 py-2 text-sm text-muted-foreground">
-          No matches
-        </p>{/each}
+      {:else}<p role="status" class="px-2.5 py-2 text-sm text-muted-foreground">No matches</p>{/each}
     </div>
   {/if}
-  {#if customError}<p
-      id={`${id}-custom-error`}
-      role="alert"
-      class="text-xs text-[var(--danger-foreground)]"
-    >
+  {#if customError}<p id={`${id}-custom-error`} role="alert" class="text-xs text-[var(--danger-foreground)]">
       {customError}
     </p>{/if}
   {#if help || error}<p

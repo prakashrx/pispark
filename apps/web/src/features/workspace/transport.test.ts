@@ -24,7 +24,11 @@ describe("requestJson", () => {
     expect(failed).toBeInstanceOf(RequestFailed);
     expect(failed).toMatchObject({ status: 409, code: "in-use", detail: "shop", message: "in-use" });
     answer(500, {});
-    expect(await requestJson("/api/x").catch((error: unknown) => error)).toMatchObject({ status: 500, code: undefined, message: "Request failed" });
+    expect(await requestJson("/api/x").catch((error: unknown) => error)).toMatchObject({
+      status: 500,
+      code: undefined,
+      message: "Request failed",
+    });
   });
 
   it("refuses an answer past its limit", async () => {
@@ -35,7 +39,10 @@ describe("requestJson", () => {
   it("stops when the caller's signal aborts", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn((_path: string, init: RequestInit) => new Promise((_, reject) => init.signal!.addEventListener("abort", () => reject(init.signal!.reason)))),
+      vi.fn(
+        (_path: string, init: RequestInit) =>
+          new Promise((_, reject) => init.signal!.addEventListener("abort", () => reject(init.signal!.reason))),
+      ),
     );
     const caller = new AbortController();
     const request = requestJson("/api/x", { signal: caller.signal });

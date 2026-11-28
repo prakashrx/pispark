@@ -59,7 +59,9 @@ export function whereIs(path: string, cwd: string): string {
   if (inside(path, join(home, "resources"))) {
     const [kind, name] = relative(join(home, "resources"), path).split(sep);
     const one = { skills: "skill", instructions: "instruction", prompts: "prompt", extensions: "extension" }[kind ?? ""];
-    return one && name ? `the shared ${one} "${name.replace(/\.(md|ts|js|mjs)$/, "")}". Every agent that uses it changes too.` : "the Shared library. Every agent that uses it changes too.";
+    return one && name
+      ? `the shared ${one} "${name.replace(/\.(md|ts|js|mjs)$/, "")}". Every agent that uses it changes too.`
+      : "the Shared library. Every agent that uses it changes too.";
   }
   if (inside(path, agents)) {
     const [agent] = relative(agents, path).split(sep);
@@ -108,7 +110,11 @@ export default function agentBuilder(pi: ExtensionAPI) {
         ? `The agent you're building is in your working folder, ${ctx.cwd}. Its definition is agent.json there. Change files in this folder; the person is asked before you change anything outside it.`
         : `Your working folder, ${ctx.cwd}, isn't an agent's folder (it has no agent.json). Each agent is a folder in ${join(dataFolder(ctx.cwd), "agents")}, and the Shared library is ${join(dataFolder(ctx.cwd), "resources")}. Ask the person which agent to work on before changing anything; they're asked before each change outside your working folder.`,
       `PiSpark's documentation: ${join(APP, "docs")} (agents.md for the agent format and layering, extensions.md for extensions in PiSpark).`,
-      ...(existsSync(piDocs) ? [`Pi's documentation: ${piDocs} (skills.md, prompt-templates.md, extensions.md; search extensions.md rather than reading it whole).`] : []),
+      ...(existsSync(piDocs)
+        ? [
+            `Pi's documentation: ${piDocs} (skills.md, prompt-templates.md, extensions.md; search extensions.md rather than reading it whole).`,
+          ]
+        : []),
     ];
     return { systemPrompt: `${event.systemPrompt}\n\n${lines.join("\n")}` };
   });

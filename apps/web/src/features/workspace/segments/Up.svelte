@@ -29,7 +29,9 @@
   </div>
 {:else}
   <p class="up" data-purpose="sent-up">
-    <Icon name="arrowUp" class="h-3.5 w-3.5 shrink-0" /><span>{segment.what === "note" ? `Note for ${to}` : `Asked ${to}`} · {segment.text}</span>
+    <Icon name="arrowUp" class="h-3.5 w-3.5 shrink-0" /><span
+      >{segment.what === "note" ? `Note for ${to}` : `Asked ${to}`} · {segment.text}</span
+    >
   </p>
 {/if}
 

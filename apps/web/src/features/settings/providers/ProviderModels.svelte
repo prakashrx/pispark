@@ -20,11 +20,7 @@
   } = $props();
   let query = $state("");
   const visible = $derived(
-    provider.models.filter((model) =>
-      (model.name + " " + model.id)
-        .toLowerCase()
-        .includes(query.trim().toLowerCase()),
-    ),
+    provider.models.filter((model) => (model.name + " " + model.id).toLowerCase().includes(query.trim().toLowerCase())),
   );
 </script>
 
@@ -36,11 +32,7 @@
         Pick a default for new sessions. Availability isn’t proof of account access.
       </p>
     </div>
-    <Button
-      size="compact"
-      unavailable={busy ? "Provider operation pending" : undefined}
-      onclick={onrefresh}>Refresh catalog</Button
-    >
+    <Button size="compact" unavailable={busy ? "Provider operation pending" : undefined} onclick={onrefresh}>Refresh catalog</Button>
   </div>
   {#if provider.models.length > 6}<Input
       label="Search models"
@@ -59,14 +51,10 @@
         checked={defaultModel === model.id}
         onchange={() => ondefault(model.id)}
       >
-        <span class="block text-xs text-subtle break-all mt-0.5 font-mono"
-          >{model.id}</span
-        >
+        <span class="block text-xs text-subtle break-all mt-0.5 font-mono">{model.id}</span>
         <span class="flex flex-wrap gap-1.5 mt-1.5">
           {#if defaultModel === model.id}<span class="chip" data-tone="accent">Default</span>{/if}
-          <span class="chip" data-tone={model.available ? "success" : undefined}
-            >{model.available ? "Available" : "Unavailable"}</span
-          >
+          <span class="chip" data-tone={model.available ? "success" : undefined}>{model.available ? "Available" : "Unavailable"}</span>
           <span class="chip">{Math.round(model.contextWindow / 1000)}k context</span>
           {#if model.reasoning}<span class="chip">Reasoning</span>{/if}
           {#if model.input.includes("image")}<span class="chip">Image input</span>{/if}

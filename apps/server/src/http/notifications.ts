@@ -120,7 +120,16 @@ export class Notifications {
     const sessions = this.list();
     const previous = this.seen;
     this.seen = new Map(
-      sessions.map((s) => [s.id, { waiting: !!s.waiting, raised: !!s.raised, status: s.status, ...(s.workingSince ? { workingSince: s.workingSince } : {}), schedule: !!s.schedule }]),
+      sessions.map((s) => [
+        s.id,
+        {
+          waiting: !!s.waiting,
+          raised: !!s.raised,
+          status: s.status,
+          ...(s.workingSince ? { workingSince: s.workingSince } : {}),
+          schedule: !!s.schedule,
+        },
+      ]),
     );
     if (!previous) return;
     const byId = new Map(sessions.map((s) => [s.id, s]));
@@ -137,9 +146,19 @@ export class Notifications {
       else if (!before.raised && session.raised) void this.tell("needs-you", session.id, name, `Needs you: ${session.raised}`);
       else if (child) continue;
       else if (ran && session.status === "error")
-        void this.tell(session.schedule ? "schedule-failed" : "failed", session.id, name, session.schedule ? "A scheduled run failed" : "The run failed");
+        void this.tell(
+          session.schedule ? "schedule-failed" : "failed",
+          session.id,
+          name,
+          session.schedule ? "A scheduled run failed" : "The run failed",
+        );
       else if (ran && session.status === "idle" && before.workingSince && this.now() - Date.parse(before.workingSince) >= LONG_RUN_MS)
-        void this.tell("finished", session.id, name, `Finished after ${Math.round((this.now() - Date.parse(before.workingSince)) / 60_000)} min`);
+        void this.tell(
+          "finished",
+          session.id,
+          name,
+          `Finished after ${Math.round((this.now() - Date.parse(before.workingSince)) / 60_000)} min`,
+        );
     }
   }
 

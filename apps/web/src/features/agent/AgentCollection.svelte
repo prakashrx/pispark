@@ -27,7 +27,8 @@
     { value: "", label: "Only Default" },
     ...client.items.filter((p) => !p.builtIn && p.valid).map((p) => ({ value: p.id, label: p.name })),
   ]);
-  const kind = (item: AgentSummary) => (item.builtIn ? "Base" : item.bundled ? "Bundled" : item.home ? "App" : item.folder ? "Project" : "");
+  const kind = (item: AgentSummary) =>
+    item.builtIn ? "Base" : item.bundled ? "Bundled" : item.home ? "App" : item.folder ? "Project" : "";
   const count = (item: AgentSummary) => {
     const n = sessions.sessions.filter((s) => s.agent.id === item.id).length;
     return n === 1 ? "1 session" : `${n} sessions`;
@@ -55,7 +56,11 @@
           <span class="title"
             ><span class="name">{item.name}</span>{#if kind(item)}<span class="tag">{kind(item)}</span>{/if}</span
           >
-          <span class="what">{item.builtIn ? "The base of every agent." : (item.description ?? (item.base.length ? `Builds on ${item.base.join(", ")}` : "Builds on Default"))}</span>
+          <span class="what"
+            >{item.builtIn
+              ? "The base of every agent."
+              : (item.description ?? (item.base.length ? `Builds on ${item.base.join(", ")}` : "Builds on Default"))}</span
+          >
           <span class="count">{count(item)}</span>
           {#if !item.valid}<span class="status">Needs attention</span>{/if}
         </span>
@@ -93,7 +98,12 @@
       {#if client.editorError}<p role="alert" class="text-sm text-[var(--danger-foreground)]">{client.editorError}</p>{/if}
     </form>
     {#snippet primary()}
-      <Button variant="primary" type="submit" form="new-agent" unavailable={!name.trim() ? "Add a name" : client.busy ? "Creating…" : undefined}>Create</Button>
+      <Button
+        variant="primary"
+        type="submit"
+        form="new-agent"
+        unavailable={!name.trim() ? "Add a name" : client.busy ? "Creating…" : undefined}>Create</Button
+      >
     {/snippet}
   </Modal>
 {/if}

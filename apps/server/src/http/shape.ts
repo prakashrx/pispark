@@ -17,7 +17,10 @@ export const Uuid = Type.String({ pattern: UUID.source });
 export const Text = (maxLength?: number) => Type.String({ pattern: "\\S", ...(maxLength === undefined ? {} : { maxLength }) });
 
 /** Reads a value as its schema says, or refuses it: `invalid-input`, unless an API has its own word for that. */
-export function shaped<S extends TSchema>(schema: S, refusal: () => Error = () => new RuntimeError("invalid-input")): (value: unknown) => Static<S> {
+export function shaped<S extends TSchema>(
+  schema: S,
+  refusal: () => Error = () => new RuntimeError("invalid-input"),
+): (value: unknown) => Static<S> {
   const compiled = Compile(schema);
   return (value) => {
     if (!compiled.Check(value)) throw refusal();

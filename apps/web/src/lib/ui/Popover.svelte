@@ -84,7 +84,14 @@
   >
     {#if trigger}{@render trigger()}{:else}{label}{/if}
   </Button>
-  {#if open}<AnchoredPanel {id} data-popover {role} title={role === "menu" ? (title ?? label) : undefined} aria-label={label} onclose={() => close(false)}>
+  {#if open}<AnchoredPanel
+      {id}
+      data-popover
+      {role}
+      title={role === "menu" ? (title ?? label) : undefined}
+      aria-label={label}
+      onclose={() => close(false)}
+    >
       {@render children(() => close())}
     </AnchoredPanel>{/if}
 </div>

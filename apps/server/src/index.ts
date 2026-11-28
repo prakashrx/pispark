@@ -15,9 +15,7 @@ import { RemoteAccess } from "./core/remote/remote-access.js";
 const configuration = hostConfiguration();
 const host = process.env.HOST ?? "127.0.0.1";
 if (!["127.0.0.1", "::1"].includes(host))
-  throw new Error(
-    "HOST must be literal loopback; remote unauthenticated hosting is not supported.",
-  );
+  throw new Error("HOST must be literal loopback; remote unauthenticated hosting is not supported.");
 const portInput = process.env.PORT ?? "3000";
 if (!/^\d+$/.test(portInput) || Number(portInput) > 65535) {
   console.error("PORT must be an integer between 0 and 65535.");
@@ -28,22 +26,18 @@ const webRoot = fileURLToPath(new URL("../../web/dist/", import.meta.url));
 const paths = prepareHome(configuration.home);
 const releaseHome = lockHome(paths);
 process.on("exit", releaseHome);
-const developmentOrigin =
-  process.env.PISPARK_DEV_ORIGIN ??
-  (process.argv.includes("--dev") ? "http://127.0.0.1:5173" : undefined);
+const developmentOrigin = process.env.PISPARK_DEV_ORIGIN ?? (process.argv.includes("--dev") ? "http://127.0.0.1:5173" : undefined);
 // A development run also logs what a failure said; an installed build never does.
 const logger = new SafeLogger({ directory: paths.logs, details: developmentOrigin !== undefined });
-if (
-  developmentOrigin &&
-  !/^http:\/\/(127\.0\.0\.1|localhost):\d{1,5}$/.test(developmentOrigin)
-)
-  throw new Error(
-    "PISPARK_DEV_ORIGIN must be an explicit loopback HTTP origin.",
-  );
+if (developmentOrigin && !/^http:\/\/(127\.0\.0\.1|localhost):\d{1,5}$/.test(developmentOrigin))
+  throw new Error("PISPARK_DEV_ORIGIN must be an explicit loopback HTTP origin.");
 const providers = await ProviderSettings.create(configuration);
 const runtime = new SessionRuntime(configuration, providers, logger);
 // The launcher (when it started this server) asks for a graceful shutdown over its channel.
-const link = new HostLink(() => runtime.runningWork(), () => shutdown());
+const link = new HostLink(
+  () => runtime.runningWork(),
+  () => shutdown(),
+);
 const sessions = new SessionHttp(
   runtime,
   developmentOrigin,
@@ -59,24 +53,17 @@ server.maxConnections = 64;
 server.requestTimeout = 300_000;
 server.headersTimeout = 10_000;
 server.on("error", () => {
-  logger.event(
-    "http.failure",
-    { outcome: "failed", code: "configuration" },
-    "error",
-  );
+  logger.event("http.failure", { outcome: "failed", code: "configuration" }, "error");
   process.exitCode = 1;
 });
 server.listen(Number(portInput), host, () => {
   const address = server.address();
-  const port =
-    address && typeof address !== "string" ? address.port : portInput;
+  const port = address && typeof address !== "string" ? address.port : portInput;
   console.log(`PiSpark listening at http://${host}:${port}`);
   console.log(`Data folder: ${paths.root}`);
   logger.event("host.start", { outcome: "completed" });
   if (!existsSync(new URL("../../web/dist/index.html", import.meta.url))) {
-    console.log(
-      "Frontend not built. Use the Vite dev URL, or run npm run build from the repository root.",
-    );
+    console.log("Frontend not built. Use the Vite dev URL, or run npm run build from the repository root.");
   }
 });
 
@@ -88,11 +75,7 @@ function shutdown(): void {
   void sessions
     .shutdown()
     .catch(() => {
-      logger.event(
-        "session.failure",
-        { outcome: "failed", code: "shutdown" },
-        "error",
-      );
+      logger.event("session.failure", { outcome: "failed", code: "shutdown" }, "error");
       process.exitCode = 1;
     })
     .finally(() => {
@@ -104,11 +87,7 @@ function shutdown(): void {
   server.close((error) => {
     clearTimeout(timeout);
     if (error) {
-      logger.event(
-        "http.failure",
-        { outcome: "failed", code: "shutdown" },
-        "error",
-      );
+      logger.event("http.failure", { outcome: "failed", code: "shutdown" }, "error");
       process.exitCode = 1;
     }
   });

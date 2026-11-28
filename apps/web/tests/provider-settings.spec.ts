@@ -11,9 +11,7 @@ test.beforeEach(async ({ request }) => {
 test.afterEach(async ({ request, page }) => {
   if (await page.getByRole("dialog").count()) await page.keyboard.press("Escape");
   const { sessions } = await (await request.get("/api/sessions")).json();
-  for (const s of sessions.filter(
-    (s: { status: string }) => s.status !== "unloaded",
-  )) {
+  for (const s of sessions.filter((s: { status: string }) => s.status !== "unloaded")) {
     let receipt = await (
       await request.post("/api/commands", {
         data: { type: "stop", sessionId: s.id, commandId: crypto.randomUUID() },
@@ -21,9 +19,7 @@ test.afterEach(async ({ request, page }) => {
     ).json();
     while (receipt.state === "accepted") {
       await new Promise((r) => setTimeout(r, 30));
-      receipt = await (
-        await request.get(`/api/receipts/${receipt.commandId}`)
-      ).json();
+      receipt = await (await request.get(`/api/receipts/${receipt.commandId}`)).json();
     }
   }
 });
@@ -46,10 +42,8 @@ async function expand(page: Page, name = provider) {
   await dialog.getByRole("textbox", { name: "Search providers" }).fill(name);
   await dialog.getByRole("button", { name: new RegExp(`^${name}`) }).click();
 }
-const signIn = (page: Page, name = provider) =>
-  page.getByRole("region", { name: `Sign in to ${name}`, exact: true });
-const modelsOf = (page: Page, name = provider) =>
-  page.getByRole("region", { name: `Models for ${name}`, exact: true });
+const signIn = (page: Page, name = provider) => page.getByRole("region", { name: `Sign in to ${name}`, exact: true });
+const modelsOf = (page: Page, name = provider) => page.getByRole("region", { name: `Models for ${name}`, exact: true });
 async function openLocal(page: import("@playwright/test").Page, by: "address" | "sidebar" = "address") {
   if (by === "address") await page.goto("/#/settings/providers");
   else {
@@ -85,18 +79,25 @@ hostedTest("the default model picker accepts physical pointer clicks at narrow a
     await expect(option).toBeVisible();
     // On a phone the picker is a sheet that slides up: measure where it comes to rest.
     await option.evaluate((element) =>
-      Promise.all(element.closest("[data-selector-popup]")!.getAnimations().map((animation) => animation.finished)),
+      Promise.all(
+        element
+          .closest("[data-selector-popup]")!
+          .getAnimations()
+          .map((animation) => animation.finished),
+      ),
     );
     const point = await option.evaluate((element) => {
       const box = element.getBoundingClientRect();
-      const x = box.left + box.width / 2, y = box.top + box.height / 2;
+      const x = box.left + box.width / 2,
+        y = box.top + box.height / 2;
       return { x, y, hit: element.contains(document.elementFromPoint(x, y)) };
     });
     expect(point.hit).toBe(true);
     const saved = page.waitForResponse((r) => r.url().endsWith("/api/providers/default") && r.request().method() === "POST");
     await page.mouse.click(point.x, point.y);
     expect((await saved).ok()).toBe(true);
-    await expect.poll(async () => (await (await request.get("/api/providers")).json()).defaultModel?.id)
+    await expect
+      .poll(async () => (await (await request.get("/api/providers")).json()).defaultModel?.id)
       .toBe(width === 390 ? "deterministic" : "second");
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
   }
@@ -109,8 +110,7 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
 }, info) => {
   const external: string[] = [];
   context.on("request", (r) => {
-    if (!new URL(r.url()).hostname.match(/^(127\.0\.0\.1|localhost)$/))
-      external.push(r.url());
+    if (!new URL(r.url()).hostname.match(/^(127\.0\.0\.1|localhost)$/)) external.push(r.url());
   });
   // A new session's draft waits while its model is set up in Settings.
   await page.goto("/#/new");
@@ -142,62 +142,42 @@ test("ProvidersPage: real native key persistence, shared Ask model, durable defa
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await newSession(page);
   await expect(ask).toHaveText("Keep shared Ask draft");
-  await expect(
-    page.getByRole("button", { name: /Model: Default:/ }),
-  ).toContainText("Deterministic");
+  await expect(page.getByRole("button", { name: /Model: Default:/ })).toContainText("Deterministic");
   await ask.fill("first catalog session");
   await ask.press("Enter");
-  await expect(
-    page.getByText("local:first catalog session", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("local:first catalog session", { exact: true })).toBeVisible();
   const a = await shownSession(page);
   await page.goto("/#/settings/providers");
   await expand(page);
   await modelsOf(page)
     .getByRole("radio", { name: /second/i })
     .check();
-  await expect(
-    page.getByRole("status").filter({ hasText: "Default saved" }),
-  ).toBeVisible();
-  expect(
-    (await (await request.get(`/api/sessions/${a}`)).json()).model.id,
-  ).toBe("deterministic");
+  await expect(page.getByRole("status").filter({ hasText: "Default saved" })).toBeVisible();
+  expect((await (await request.get(`/api/sessions/${a}`)).json()).model.id).toBe("deterministic");
   await page.reload();
-  await expect(
-    page.getByText("Second local model · Local auth fixture", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Second local model · Local auth fixture", { exact: true })).toBeVisible();
   await expand(page);
-  await page
-    .getByRole("button", { name: `Disconnect ${provider}`, exact: true })
-    .click();
+  await page.getByRole("button", { name: `Disconnect ${provider}`, exact: true }).click();
   await page
     .getByRole("button", {
       name: `Confirm disconnect ${provider}`,
       exact: true,
     })
     .click();
-  await expect(
-    page.getByText(/Second local model is unavailable; the saved choice is kept/),
-  ).toBeVisible();
-  expect(
-    (await (await request.get(`/api/sessions/${a}`)).json()).model.id,
-  ).toBe("deterministic");
+  await expect(page.getByText(/Second local model is unavailable; the saved choice is kept/)).toBeVisible();
+  expect((await (await request.get(`/api/sessions/${a}`)).json()).model.id).toBe("deterministic");
   // Browser storage holds nothing of the session: the address says which one is open.
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
   expect(external).toEqual([]);
 });
 
-test("ProviderConnection: native OAuth variants, safe links, Tab summary regression, Escape/cancel and return focus", async ({
-  page,
-}) => {
+test("ProviderConnection: native OAuth variants, safe links, Tab summary regression, Escape/cancel and return focus", async ({ page }) => {
   await openLocal(page);
   const trigger = add(page);
   await expand(page);
   const dialog = signIn(page);
   await dialog.getByRole("button", { name: /Local test OAuth/ }).click();
-  await expect(
-    dialog.getByLabel("Local project", { exact: true }),
-  ).toBeFocused();
+  await expect(dialog.getByLabel("Local project", { exact: true })).toBeFocused();
   await expect(dialog.getByText("LOCAL-CODE", { exact: true })).toBeVisible();
   for (const link of await dialog.getByRole("link").all()) {
     await expect(link).toHaveAttribute("rel", "noopener noreferrer");
@@ -206,21 +186,13 @@ test("ProviderConnection: native OAuth variants, safe links, Tab summary regress
   // Native text prompts may intentionally accept blank (e.g. Copilot github.com).
   await expect(dialog.getByRole("button", { name: "Continue" })).toBeEnabled();
   await dialog.getByRole("button", { name: "Continue" }).click();
-  await dialog
-    .getByLabel("Local region", { exact: true })
-    .selectOption("local");
+  await dialog.getByLabel("Local region", { exact: true }).selectOption("local");
   await dialog.getByRole("button", { name: "Continue" }).click();
-  await expect(
-    dialog.getByLabel("Local manual code", { exact: true }),
-  ).toBeFocused();
+  await expect(dialog.getByLabel("Local manual code", { exact: true })).toBeFocused();
   let reached = false;
   for (let i = 0; i < 12; i++) {
     await page.keyboard.press("Tab");
-    if (
-      await dialog
-        .locator("summary")
-        .evaluate((el) => el === document.activeElement)
-    ) {
+    if (await dialog.locator("summary").evaluate((el) => el === document.activeElement)) {
       reached = true;
       break;
     }
@@ -229,11 +201,7 @@ test("ProviderConnection: native OAuth variants, safe links, Tab summary regress
   await page.keyboard.press("Enter");
   await expect(dialog.locator("details")).toHaveAttribute("open", "");
   await page.keyboard.press("Tab");
-  expect(
-    await page.evaluate(
-      () => document.activeElement?.closest(".provider-panel") !== null,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.activeElement?.closest(".provider-panel") !== null)).toBe(true);
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
@@ -241,28 +209,18 @@ test("ProviderConnection: native OAuth variants, safe links, Tab summary regress
 });
 
 for (const width of [1920, 3840, 390])
-  test(`ProvidersPage: approved shared shell and actual assets at ${width}px`, async ({
-    page,
-    context,
-  }, info) => {
+  test(`ProvidersPage: approved shared shell and actual assets at ${width}px`, async ({ page, context }, info) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
     const external: string[] = [];
     context.on("request", (r) => {
-      if (!new URL(r.url()).hostname.match(/^(127\.0\.0\.1|localhost)$/))
-        external.push(r.url());
+      if (!new URL(r.url()).hostname.match(/^(127\.0\.0\.1|localhost)$/)) external.push(r.url());
     });
     await page.goto("/#/settings/providers");
     await expect(yours(page)).toBeVisible();
     // One message box, and only where a session starts or is replied to: none in Settings.
     await expect(page.getByRole("form", { name: "New session" })).toHaveCount(0);
-    await expect(
-      page.getByText(/Design preview|simulator|simulated|Verified ·/),
-    ).toHaveCount(0);
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
+    await expect(page.getByText(/Design preview|simulator|simulated|Verified ·/)).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({
       path: info.outputPath(`providers-${width}.png`),
       fullPage: width === 390,
@@ -272,9 +230,7 @@ for (const width of [1920, 3840, 390])
     await signIn(page, "Anthropic")
       .getByRole("button", { name: /API key/ })
       .click();
-    await expect(signIn(page, "Anthropic").getByRole("alert")).toContainText(
-      "security-patched Node",
-    );
+    await expect(signIn(page, "Anthropic").getByRole("alert")).toContainText("security-patched Node");
     await page.screenshot({
       path: info.outputPath(`gate-dialog-${width}.png`),
     });
@@ -287,18 +243,12 @@ for (const width of [1920, 3840, 390])
     expect(external).toEqual([]);
   });
 
-test("ProvidersPage: unavailable catalog retry and delayed dialog start cannot leak owner capability after dismissal", async ({
-  page,
-}) => {
+test("ProvidersPage: unavailable catalog retry and delayed dialog start cannot leak owner capability after dismissal", async ({ page }) => {
   let fail = true;
   // The catalog read and the page's own read with `?check`: both fail until retried.
-  await page.route(/\/api\/providers(\?check)?$/, (route) =>
-    fail ? route.abort() : route.continue(),
-  );
+  await page.route(/\/api\/providers(\?check)?$/, (route) => (fail ? route.abort() : route.continue()));
   await page.goto("/#/settings/providers");
-  await expect(page.getByRole("alert")).toContainText(
-    "Provider settings unavailable",
-  );
+  await expect(page.getByRole("alert")).toContainText("Provider settings unavailable");
   fail = false;
   await page.getByRole("button", { name: "Reload status" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -315,9 +265,7 @@ test("ProvidersPage: unavailable catalog retry and delayed dialog start cannot l
   await signIn(page)
     .getByRole("button", { name: /Local test key/ })
     .click();
-  const cancelled = page.waitForResponse((response) =>
-    response.url().endsWith("/api/providers/auth/cancel"),
-  );
+  const cancelled = page.waitForResponse((response) => response.url().endsWith("/api/providers/auth/cancel"));
   await page.keyboard.press("Escape");
   release();
   expect((await cancelled).status()).toBe(200);
@@ -325,9 +273,7 @@ test("ProvidersPage: unavailable catalog retry and delayed dialog start cannot l
   await login(page); // Native provider lock must have been released by cancellation of the late response.
 });
 
-test("AuthPrompt: blank secret/text/manual responses preserve native validation with keyboard on mobile", async ({
-  page,
-}, info) => {
+test("AuthPrompt: blank secret/text/manual responses preserve native validation with keyboard on mobile", async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openLocal(page);
   await expand(page);
@@ -342,18 +288,12 @@ test("AuthPrompt: blank secret/text/manual responses preserve native validation 
   await expand(page);
   dialog = signIn(page);
   await dialog.getByRole("button", { name: /Local test OAuth/ }).click();
-  await expect(
-    dialog.getByLabel("Local project", { exact: true }),
-  ).toBeFocused();
+  await expect(dialog.getByLabel("Local project", { exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(dialog.getByRole("button", { name: "Continue" })).toBeDisabled();
-  await dialog
-    .getByLabel("Local region", { exact: true })
-    .selectOption("local");
+  await dialog.getByLabel("Local region", { exact: true }).selectOption("local");
   await dialog.getByRole("button", { name: "Continue" }).click();
-  await expect(
-    dialog.getByLabel("Local manual code", { exact: true }),
-  ).toBeFocused();
+  await expect(dialog.getByLabel("Local manual code", { exact: true })).toBeFocused();
   await page.screenshot({ path: info.outputPath("blank-manual-390.png") });
   await page.keyboard.press("Enter");
   await expect(dialog.getByRole("status")).toContainText("Sign-in saved");
@@ -391,8 +331,7 @@ test("shared model radios preserve native keyboard grouping, disabled options, d
   await expect(radios.nth(1)).toBeDisabled();
   let writes = 0;
   page.on("request", (req) => {
-    if (req.url().endsWith("/api/providers/default") && req.method() === "POST")
-      writes++;
+    if (req.url().endsWith("/api/providers/default") && req.method() === "POST") writes++;
   });
   await radios.nth(0).focus();
   expect(writes).toBe(0);
@@ -406,33 +345,37 @@ test("shared model radios preserve native keyboard grouping, disabled options, d
   await expect.poll(() => writes).toBe(2);
   await expect(radios.nth(1)).not.toBeChecked();
   await expect(radios.nth(0)).toBeEnabled();
-  await page.route("**/api/providers/default", (route) =>
-    route.fulfill({ status: 500, json: { error: "storage" } }),
-  );
+  await page.route("**/api/providers/default", (route) => route.fulfill({ status: 500, json: { error: "storage" } }));
   await radios.nth(0).check();
   await expect(dialog.getByRole("alert")).toBeVisible();
-  expect(
-    (await (await request.get("/api/providers")).json()).defaultModel.id,
-  ).toBe("second");
+  expect((await (await request.get("/api/providers")).json()).defaultModel.id).toBe("second");
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
 });
 
 // Its own server: the shared one keeps its sign-in for the files that follow.
-hostedTest("opening Providers checks saved sign-ins: one that no longer works says so, and its dialog asks to sign in again", async ({ page }) => {
-  // The server's check is covered by its own test; here its answer is that the saved sign-in failed.
-  // The provider has a saved sign-in; the check (only when asked) finds it no longer works.
-  await page.route((url) => url.pathname === "/api/providers", async (route) => {
-    const response = await route.fetch();
-    const catalog = await response.json();
-    const checked = new URL(route.request().url()).search === "?check";
-    for (const each of catalog.providers)
-      if (each.id === id) Object.assign(each, { configured: true, stored: true, ...(checked ? { health: "expired" } : {}) });
-    await route.fulfill({ response, json: catalog });
-  });
-  await page.goto("/#/settings/providers");
-  const row = summary(page);
-  await expect(row).toContainText("! Sign-in expired");
-  await row.click();
-  await expect(page.getByRole("dialog", { name: provider }).getByRole("status").filter({ hasText: "The saved sign-in no longer works." })).toBeVisible();
-});
+hostedTest(
+  "opening Providers checks saved sign-ins: one that no longer works says so, and its dialog asks to sign in again",
+  async ({ page }) => {
+    // The server's check is covered by its own test; here its answer is that the saved sign-in failed.
+    // The provider has a saved sign-in; the check (only when asked) finds it no longer works.
+    await page.route(
+      (url) => url.pathname === "/api/providers",
+      async (route) => {
+        const response = await route.fetch();
+        const catalog = await response.json();
+        const checked = new URL(route.request().url()).search === "?check";
+        for (const each of catalog.providers)
+          if (each.id === id) Object.assign(each, { configured: true, stored: true, ...(checked ? { health: "expired" } : {}) });
+        await route.fulfill({ response, json: catalog });
+      },
+    );
+    await page.goto("/#/settings/providers");
+    const row = summary(page);
+    await expect(row).toContainText("! Sign-in expired");
+    await row.click();
+    await expect(
+      page.getByRole("dialog", { name: provider }).getByRole("status").filter({ hasText: "The saved sign-in no longer works." }),
+    ).toBeVisible();
+  },
+);

@@ -22,7 +22,12 @@
   });
   const size = (item: Row) => Math.max(1, words(page.draft(item)));
   const total = $derived(used.reduce((n, item) => n + size(item), 0));
-  const whole = $derived(used.map((item) => page.draft(item).trim()).filter(Boolean).join("\n\n"));
+  const whole = $derived(
+    used
+      .map((item) => page.draft(item).trim())
+      .filter(Boolean)
+      .join("\n\n"),
+  );
   const everything = $derived(page.open.instructions === "all");
   const open = $derived(page.opened("instructions", narrow));
   const share = (n: number) => `${Math.round((n / Math.max(total, 1)) * 100)}%`;
@@ -37,9 +42,19 @@
         ]);
 </script>
 
-<TabIntro {page} kind="instructions" oncreate={() => page.create("instructions")}>What {name} reads at the start of every session, top to bottom. Later parts win when they disagree.</TabIntro>
+<TabIntro {page} kind="instructions" oncreate={() => page.create("instructions")}
+  >What {name} reads at the start of every session, top to bottom. Later parts win when they disagree.</TabIntro
+>
 
-<Split items={all} selected={open} showing={everything || !!open} {narrow} label="Instructions" onselect={(item) => page.show("instructions", item)} off={(item) => !isFresh(item) && !item.on}>
+<Split
+  items={all}
+  selected={open}
+  showing={everything || !!open}
+  {narrow}
+  label="Instructions"
+  onselect={(item) => page.show("instructions", item)}
+  off={(item) => !isFresh(item) && !item.on}
+>
   {#snippet top()}
     {#if used.length}
       <li class="everything">
@@ -70,7 +85,9 @@
         {#each used as item, i (keyOf(item))}
           <li>
             <span class="swatch" style:--o={own(item) ? 1 : 0.45} aria-hidden="true"></span>
-            <button type="button" class="part" onclick={() => page.show("instructions", item)}>{i + 1}. {item.name || "New instruction"}</button>
+            <button type="button" class="part" onclick={() => page.show("instructions", item)}
+              >{i + 1}. {item.name || "New instruction"}</button
+            >
             <span class="share">{size(item)} words · {share(size(item))}</span>
           </li>
         {/each}
@@ -79,8 +96,20 @@
     {:else if open}
       {@const item = open}
       {@const n = used.indexOf(item)}
-      <DetailHead {page} {item} about={n >= 0 ? `Part ${n + 1} of ${used.length} · ${size(item)} words, read every session` : "Turned off: the agent doesn't read it."} entries={entries(item)} />
-      <ItemText {page} {item} label={item.name || "New instruction"} placeholder="Write how the agent should behave in every session: tone, rules, what to check." />
+      <DetailHead
+        {page}
+        {item}
+        about={n >= 0
+          ? `Part ${n + 1} of ${used.length} · ${size(item)} words, read every session`
+          : "Turned off: the agent doesn't read it."}
+        entries={entries(item)}
+      />
+      <ItemText
+        {page}
+        {item}
+        label={item.name || "New instruction"}
+        placeholder="Write how the agent should behave in every session: tone, rules, what to check."
+      />
       <SaveBar {page} {item} />
     {/if}
   {/snippet}

@@ -43,7 +43,10 @@ test("a save refused while Windows holds the file is tried again; elsewhere, and
   assert.equal(read(), "new");
   assert.deepEqual(readdirSync(folder), ["session.json"]);
 
-  for (const [code, platform] of [["ENOSPC", "win32"], ["EPERM", "linux"]] as const) {
+  for (const [code, platform] of [
+    ["ENOSPC", "win32"],
+    ["EPERM", "linux"],
+  ] as const) {
     const once = held(1, code);
     assert.throws(() => writeAtomic(file, "never", { rename: once.rename, platform }), { code });
     assert.equal(once.tries, 1, code);

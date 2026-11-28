@@ -76,7 +76,9 @@ export function whenOf(choice: WhenChoice, now = new Date()): ScheduleWhen | { e
       if (!Number.isInteger(every) || every < 1 || every > 59) return { error: "Enter a number of minutes from 1 to 59." };
       return { cron: `*/${every} * * * *` };
     case "cron":
-      return parseCron(choice.cron) ? { cron: choice.cron.trim().replace(/\s+/g, " ") } : { error: "That isn’t a cron this server understands." };
+      return parseCron(choice.cron)
+        ? { cron: choice.cron.trim().replace(/\s+/g, " ") }
+        : { error: "That isn’t a cron this server understands." };
   }
 }
 
@@ -105,7 +107,8 @@ export function runText(run: WakeRecord, now = new Date()): string {
       return "Stopped before it finished";
     case "started":
       if (run.manual) return "Started a new session, by hand";
-      if (run.reason === "off") return `Started late in a new session: PiSpark wasn’t running at ${clockTime(due.getHours(), due.getMinutes())}`;
+      if (run.reason === "off")
+        return `Started late in a new session: PiSpark wasn’t running at ${clockTime(due.getHours(), due.getMinutes())}`;
       return "Started a new session";
     case "handled":
       return "Taken by an extension";

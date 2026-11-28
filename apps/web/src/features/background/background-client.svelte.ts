@@ -4,7 +4,11 @@ import { CommandFailed, type Transport } from "../workspace/transport";
 
 async function post(transport: Transport, path: string, body?: unknown): Promise<unknown> {
   try {
-    return await transport.json(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
+    return await transport.json(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
   } catch (error) {
     throw new CommandFailed((error as Error).message);
   }
@@ -61,4 +65,3 @@ export class ProcessClient {
     }
   }
 }
-

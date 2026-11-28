@@ -36,32 +36,19 @@
       The saved sign-in no longer works. Sign in again to use {provider.name}'s models.
     </p>{/if}
   {#if interactive}
-    {#key attempt}<ProviderConnection
-        {provider}
-        onreset={() => attempt++}
-        onchange={onrefreshstatus}
-      />{/key}
+    {#key attempt}<ProviderConnection {provider} onreset={() => attempt++} onchange={onrefreshstatus} />{/key}
   {:else}
     <p class="inline-note" data-tone="info">
-      {provider.configured
-        ? "This provider is configured on the backend host."
-        : "Set up this provider on the backend host."} Pi supplies no interactive sign-in for it.
+      {provider.configured ? "This provider is configured on the backend host." : "Set up this provider on the backend host."} Pi supplies no
+      interactive sign-in for it.
     </p>
   {/if}
-  <ProviderModels
-    {provider}
-    {defaultModel}
-    {busy}
-    {error}
-    onrefresh={onrefreshmodels}
-    {ondefault}
-  />
+  <ProviderModels {provider} {defaultModel} {busy} {error} onrefresh={onrefreshmodels} {ondefault} />
   {#if provider.stored}
     <div class="danger-zone">
       {#if confirming}
         <p class="text-sm" role="alert">
-          Remove the saved {provider.name} sign-in? This doesn’t revoke
-          provider access or change host configuration. Existing sessions keep
+          Remove the saved {provider.name} sign-in? This doesn’t revoke provider access or change host configuration. Existing sessions keep
           their model; future requests may need credentials again.
         </p>
         <div class="flex gap-2 shrink-0">
@@ -83,11 +70,8 @@
             Remove the credential PiSpark stored for {provider.name}.
           </p>
         </div>
-        <Button
-          size="compact"
-          variant="destructive"
-          aria-label={`Disconnect ${provider.name}`}
-          onclick={() => (confirming = true)}>Disconnect</Button
+        <Button size="compact" variant="destructive" aria-label={`Disconnect ${provider.name}`} onclick={() => (confirming = true)}
+          >Disconnect</Button
         >
       {/if}
     </div>

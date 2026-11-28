@@ -29,7 +29,12 @@
     onroutine?: (routine: Routine) => void;
   } = $props();
   const client = useSessions();
-  const ICON: Record<Exclude<WorkKind, "session">, "terminal" | "clock" | "pin"> = { process: "terminal", schedule: "clock", routine: "clock", kept: "pin" };
+  const ICON: Record<Exclude<WorkKind, "session">, "terminal" | "clock" | "pin"> = {
+    process: "terminal",
+    schedule: "clock",
+    routine: "clock",
+    kept: "pin",
+  };
   const detail = $derived(named ? `${work.of} · ${work.detail}` : work.detail);
 
   /** Where a row leads: a child's conversation, a process's output, a schedule's form, a routine's runs, or (kept running) its conversation. */
@@ -59,9 +64,18 @@
 </script>
 
 <div class="work" data-purpose="work-row" data-kind={work.kind}>
-  <button type="button" class="open" aria-haspopup={work.schedule ? "dialog" : undefined} aria-expanded={work.routine ? !!expanded : undefined} onclick={open}>
+  <button
+    type="button"
+    class="open"
+    aria-haspopup={work.schedule ? "dialog" : undefined}
+    aria-expanded={work.routine ? !!expanded : undefined}
+    onclick={open}
+  >
     <span class="lead">
-      {#if work.kind === "session"}{#if work.state}<AskMark state={work.state} />{/if}{:else}<Icon name={ICON[work.kind]} class="h-4 w-4" />{/if}
+      {#if work.kind === "session"}{#if work.state}<AskMark state={work.state} />{/if}{:else}<Icon
+          name={ICON[work.kind]}
+          class="h-4 w-4"
+        />{/if}
     </span>
     <span class="text">
       <span class="title" class:mono={work.kind === "process"}>{work.title}</span>
@@ -76,7 +90,9 @@
       onchange={(event) => switched((event.currentTarget as HTMLInputElement).checked)}
     />
   {:else if work.open}
-    <button type="button" class="stop" aria-label={`Stop ${work.title}`} title="Stop" onclick={stop}><Icon name="stop" class="h-4 w-4" /></button>
+    <button type="button" class="stop" aria-label={`Stop ${work.title}`} title="Stop" onclick={stop}
+      ><Icon name="stop" class="h-4 w-4" /></button
+    >
   {/if}
 </div>
 

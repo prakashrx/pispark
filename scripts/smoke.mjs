@@ -27,13 +27,9 @@ const deadline = setTimeout(() => {
 try {
   const base = await new Promise((resolve, reject) => {
     child.on("error", reject);
-    child.on("exit", (code) =>
-      reject(new Error(`Server exited (${code}): ${output}`)),
-    );
+    child.on("exit", (code) => reject(new Error(`Server exited (${code}): ${output}`)));
     child.stdout.on("data", () => {
-      const match = output.match(
-        /PiSpark listening at (http:\/\/127\.0\.0\.1:\d+)/,
-      );
+      const match = output.match(/PiSpark listening at (http:\/\/127\.0\.0\.1:\d+)/);
       if (match) resolve(match[1]);
     });
   });
@@ -46,10 +42,16 @@ try {
   const catalog = await providers.json();
   assert(catalog.providers.length > 0);
   assert.equal(catalog.defaultModel, null);
-  assert(catalog.providers.every(provider => !provider.stored));
+  assert(catalog.providers.every((provider) => !provider.stored));
   // First start creates the data folder with a Default agent that has Pi's built-in tools; Agent Builder ships with the app.
   const agents = await (await fetch(`${base}/api/agents`)).json();
-  assert.deepEqual(agents.agents.map((p) => [p.id, p.bundled ?? false]), [["default", false], ["agent-builder", true]]);
+  assert.deepEqual(
+    agents.agents.map((p) => [p.id, p.bundled ?? false]),
+    [
+      ["default", false],
+      ["agent-builder", true],
+    ],
+  );
   const saved = JSON.parse(await readFile(join(root, "agents", "default", "agent.json"), "utf8"));
   assert(saved.on.includes("tool:bash"));
   const page = await fetch(`${base}/`);
@@ -57,9 +59,7 @@ try {
   assert.match(page.headers.get("content-type") ?? "", /text\/html/);
   const html = await page.text();
   assert.match(html, /PiSpark/);
-  const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(
-    (match) => match[1],
-  );
+  const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((match) => match[1]);
   assert(
     assets.some((asset) => asset.endsWith(".js")),
     "Built JavaScript must be linked",

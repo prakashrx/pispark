@@ -115,14 +115,9 @@ export class SafeLogger {
     this.clock = options.clock ?? Date.now;
   }
 
-  event(
-    event: LogEvent,
-    fields: Fields = {},
-    level: "info" | "error" | "debug" = "info",
-  ): void {
+  event(event: LogEvent, fields: Fields = {}, level: "info" | "error" | "debug" = "info"): void {
     // Runtime projection also rejects unexpected keys supplied by untyped callers.
-    if (!events.includes(event) || !["info", "error", "debug"].includes(level))
-      return;
+    if (!events.includes(event) || !["info", "error", "debug"].includes(level)) return;
     if (this.closing || this.clock() < this.retryAfter) {
       this.drop();
       return;
@@ -134,24 +129,13 @@ export class SafeLogger {
     };
     const context = { ...ids.getStore(), ...fields };
     for (const key of ["requestId", "operationId", "sessionId"] as const)
-      if (typeof context[key] === "string" && UUID.test(context[key]))
-        record[key] = context[key];
+      if (typeof context[key] === "string" && UUID.test(context[key])) record[key] = context[key];
     // Agent IDs are short slugs ("dev") chosen at creation.
-    if (
-      typeof context.agentId === "string" &&
-      /^[a-z0-9][a-z0-9-]{0,47}$/.test(context.agentId)
-    )
-      record.agentId = context.agentId;
+    if (typeof context.agentId === "string" && /^[a-z0-9][a-z0-9-]{0,47}$/.test(context.agentId)) record.agentId = context.agentId;
     if (Number.isFinite(fields.durationMs) && fields.durationMs! >= 0)
       record.durationMs = Math.min(Math.round(fields.durationMs!), 86_400_000);
-    if (
-      ["completed", "failed", "cancelled", "rejected"].includes(
-        fields.outcome ?? "",
-      )
-    )
-      record.outcome = fields.outcome;
-    if (codes.includes(fields.code as (typeof codes)[number]))
-      record.code = fields.code;
+    if (["completed", "failed", "cancelled", "rejected"].includes(fields.outcome ?? "")) record.outcome = fields.outcome;
+    if (codes.includes(fields.code as (typeof codes)[number])) record.code = fields.code;
     if (METHODS.includes(fields.method ?? "")) record.method = fields.method;
     if (typeof fields.route === "string" && /^(?:\/(?::id|[a-z][a-z-]{0,31})){1,12}$/.test(fields.route)) record.route = fields.route;
     if (Number.isInteger(fields.status) && fields.status! >= 400 && fields.status! <= 599) record.status = fields.status;
@@ -163,24 +147,14 @@ export class SafeLogger {
       if (this.options.details) record.detail = String(stack ?? message).slice(0, 800);
     }
     const counts: Record<string, number> = {};
-    for (const key of [
-      "instructions",
-      "skills",
-      "definitions",
-      "dropped",
-    ] as const) {
+    for (const key of ["instructions", "skills", "definitions", "dropped"] as const) {
       const value = fields.counts?.[key];
-      if (typeof value === "number" && Number.isFinite(value) && value >= 0)
-        counts[key] = Math.min(Math.floor(value), 1_000_000_000);
+      if (typeof value === "number" && Number.isFinite(value) && value >= 0) counts[key] = Math.min(Math.floor(value), 1_000_000_000);
     }
     if (this.dropped) counts.dropped = this.dropped;
     if (Object.keys(counts).length) record.counts = counts;
     const line = JSON.stringify(record) + "\n";
-    if (
-      Buffer.byteLength(line) > 2048 ||
-      this.queue.length >= 256 ||
-      this.bytes + Buffer.byteLength(line) > 256 * 1024
-    ) {
+    if (Buffer.byteLength(line) > 2048 || this.queue.length >= 256 || this.bytes + Buffer.byteLength(line) > 256 * 1024) {
       this.drop();
       return;
     }
@@ -227,17 +201,12 @@ export class SafeLogger {
         throw e;
       },
     );
-    if (
-      size + Buffer.byteLength(line) >
-      (this.options.maxFileBytes ?? 5 * 1024 * 1024)
-    ) {
+    if (size + Buffer.byteLength(line) > (this.options.maxFileBytes ?? 5 * 1024 * 1024)) {
       await rm(path + ".3", { force: true });
       for (let i = 2; i >= 0; i--) {
-        await rename(i ? path + `.${i}` : path, path + `.${i + 1}`).catch(
-          (e) => {
-            if (e.code !== "ENOENT") throw e;
-          },
-        );
+        await rename(i ? path + `.${i}` : path, path + `.${i + 1}`).catch((e) => {
+          if (e.code !== "ENOENT") throw e;
+        });
       }
     }
     const handle = await open(path, "a", 0o600);
@@ -259,9 +228,7 @@ export class SafeLogger {
     };
     process.stderr.once("error", done);
     try {
-      process.stderr.write(message, (error) =>
-        error ? setImmediate(done) : done(),
-      );
+      process.stderr.write(message, (error) => (error ? setImmediate(done) : done()));
     } catch {
       done();
     }
@@ -276,10 +243,7 @@ export class SafeLogger {
         await (this.options.sink ? this.options.sink(line) : this.file(line));
       }
     } catch {
-      this.dropped = Math.min(
-        this.dropped + this.queue.length + 1,
-        1_000_000_000,
-      );
+      this.dropped = Math.min(this.dropped + this.queue.length + 1, 1_000_000_000);
       this.queue = [];
       this.bytes = 0;
       this.retryAfter = this.clock() + 60_000;
@@ -311,13 +275,11 @@ export class SafeLogger {
   async close(timeoutMs = 2000): Promise<void> {
     this.closing = true;
     const until = Date.now() + timeoutMs;
-    while ((this.writing || this.queue.length) && Date.now() < until)
-      await new Promise((resolve) => setTimeout(resolve, 5));
+    while ((this.writing || this.queue.length) && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 5));
     this.dropped = Math.min(this.dropped + this.queue.length, 1_000_000_000);
     this.queue = [];
     this.bytes = 0;
-    if (this.dropped)
-      this.warn(`PiSpark logger shutdown: dropped ${this.dropped} records.\n`);
+    if (this.dropped) this.warn(`PiSpark logger shutdown: dropped ${this.dropped} records.\n`);
   }
 }
 export const silentLogger = new SafeLogger({ sink: async () => {} });

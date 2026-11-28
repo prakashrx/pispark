@@ -93,10 +93,7 @@ export class ProviderHttp {
   }
   async shutdown() {
     this.settings.stopAdmission();
-    const results = await Promise.allSettled([
-      this.auth.shutdown(),
-      this.settings.close(),
-    ]);
+    const results = await Promise.allSettled([this.auth.shutdown(), this.settings.close()]);
     const failure = results.find((r) => r.status === "rejected");
     if (failure?.status === "rejected") throw failure.reason;
   }

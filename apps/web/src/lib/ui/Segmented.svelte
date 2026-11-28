@@ -59,7 +59,9 @@
     font-weight: 500;
     color: var(--muted-foreground);
     white-space: nowrap;
-    transition: background 0.12s, color 0.12s;
+    transition:
+      background 0.12s,
+      color 0.12s;
   }
   .segment:hover span {
     color: var(--foreground);
@@ -67,7 +69,9 @@
   .segment input:checked + span {
     background: var(--control-selected);
     color: var(--foreground);
-    box-shadow: var(--shadow-sm), 0 0 0 1px var(--border);
+    box-shadow:
+      var(--shadow-sm),
+      0 0 0 1px var(--border);
   }
   .segment input:focus-visible + span {
     outline: 2px solid var(--ring);

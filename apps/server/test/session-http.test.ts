@@ -50,9 +50,7 @@ test("SessionHttp: actual concurrent SDK execution, correlated acceptance/settle
   assert(initial.type === "snapshot");
   assert.equal(initial.doc.session.status, "running");
   assert(initial.doc.tail.some((item) => item.role === "assistant"));
-  const queued = await f.settle(
-    await f.post({ type: "follow-up", sessionId: a, text: "queued" }),
-  );
+  const queued = await f.settle(await f.post({ type: "follow-up", sessionId: a, text: "queued" }));
   assert.equal(queued.outcome, "queued");
   await f.settle(await f.post({ type: "cancel", sessionId: a }));
   assert.equal((await f.settle(runA)).outcome, "cancelled");
@@ -129,9 +127,7 @@ test("SessionHttp: strict Host/Origin/JSON/identity, explicit failures, receipts
       ).status,
       400,
     );
-  const bad = await f.settle(
-    await f.post({ type: "create", folder: join(f.root, "missing") }),
-  );
+  const bad = await f.settle(await f.post({ type: "create", folder: join(f.root, "missing") }));
   assert.equal(bad.error, "folder");
   const catalog = await (await fetch(`${f.base}/api/catalog`)).json();
   assert.equal(typeof catalog.home, "string");
@@ -145,26 +141,14 @@ test("SessionHttp: strict Host/Origin/JSON/identity, explicit failures, receipts
   const second = await f.settle(await f.post(command));
   assert.equal(second.sessionId, first.sessionId);
   assert.equal(f.runtime.list().length, 1);
-  assert.equal(
-    (await fetch(`${f.base}/api/receipts/${randomUUID()}`)).status,
-    404,
-  );
+  assert.equal((await fetch(`${f.base}/api/receipts/${randomUUID()}`)).status, 404);
   const id = first.sessionId!;
   f.provider.automatic = true;
-  const failed = await f.settle(
-    await f.post({ type: "start", sessionId: id, text: "provider-error" }),
-  );
+  const failed = await f.settle(await f.post({ type: "start", sessionId: id, text: "provider-error" }));
   assert.equal(failed.outcome, "failed");
   assert.equal(failed.error, "execution");
   // The next message goes: the session starts again from its transcript after a failed reply.
-  assert.equal(
-    (
-      await f.settle(
-        await f.post({ type: "start", sessionId: id, text: "again" }),
-      )
-    ).outcome,
-    "completed",
-  );
+  assert.equal((await f.settle(await f.post({ type: "start", sessionId: id, text: "again" }))).outcome, "completed");
 });
 
 test("history is read from Pi's session: byte-bounded pages, cursors both ways, clipped text read in chunks", async (t) => {
@@ -240,7 +224,10 @@ test("a bad metadata record is counted, a rejected new session is never publishe
   await writeFile(join(damaged, "session.json"), "{");
   const list = await (await fetch(f.base + "/api/sessions")).json();
   assert.equal(list.unreadable, 1);
-  assert.deepEqual(list.sessions.map((s: { id: string }) => s.id), [id]);
+  assert.deepEqual(
+    list.sessions.map((s: { id: string }) => s.id),
+    [id],
+  );
   assert.equal(f.provider.requests.length, 0);
   // A start on an unloaded session loads it first, then sends.
   await f.runtime.stop(id);
@@ -287,13 +274,9 @@ test("SessionHttp: long stream/coalescing and blocked writable cleanup", async (
     socket: { localAddress: "127.0.0.1", localPort: 1234 },
   } as unknown as IncomingMessage;
   // SAFETY: fixture implements the writable/event surface used by SessionHttp.
-  const handling = f.http.handle(
-    requestFixture,
-    response as unknown as ServerResponse,
-  );
+  const handling = f.http.handle(requestFixture, response as unknown as ServerResponse);
   await eventually(() => response.writes === 1);
-  for (let i = 0; i < 50; i++)
-    await f.runtime.start(id, `burst${i}`).completion;
+  for (let i = 0; i < 50; i++) await f.runtime.start(id, `burst${i}`).completion;
   assert.equal(response.writes, 1);
   assert(response.bytes < 256 * 1024);
   await handling;
@@ -324,8 +307,7 @@ test("SessionHttp: real token burst is coalesced, bounded and terminal settlemen
   const start = performance.now();
   const heap = process.memoryUsage().heapUsed;
   for (let batch = 0; batch < 20; batch++) {
-    for (let n = 0; n < 500; n++)
-      f.provider.requests[0]!.pushText("delta".repeat(10));
+    for (let n = 0; n < 500; n++) f.provider.requests[0]!.pushText("delta".repeat(10));
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   // The live text is clipped at the part limit; what streams past it is not resent.
@@ -334,15 +316,8 @@ test("SessionHttp: real token burst is coalesced, bounded and terminal settlemen
     return text?.type === "text" && (text.size ?? 0) > 0;
   });
   const elapsed = performance.now() - start;
-  assert(
-    stream.events.length < 40,
-    "10000 native events must not become 10000 serialized frames",
-  );
-  assert(
-    stream.events.every(
-      (event) => Buffer.byteLength(JSON.stringify(event)) < 256 * 1024,
-    ),
-  );
+  assert(stream.events.length < 40, "10000 native events must not become 10000 serialized frames");
+  assert(stream.events.every((event) => Buffer.byteLength(JSON.stringify(event)) < 256 * 1024));
   f.provider.requests[0]!.release();
   assert.equal((await f.settle(receipt)).outcome, "completed");
   await eventually(() => stream.state.doc?.session.status === "idle" && stream.state.committed.length >= 2);
@@ -354,9 +329,7 @@ test("SessionHttp: real token burst is coalesced, bounded and terminal settlemen
       milliseconds: Math.round(elapsed),
       heapDeltaBytes: process.memoryUsage().heapUsed - heap,
       frames: stream.events.length,
-      maxFrameBytes: Math.max(
-        ...stream.events.map((e) => Buffer.byteLength(JSON.stringify(e))),
-      ),
+      maxFrameBytes: Math.max(...stream.events.map((e) => Buffer.byteLength(JSON.stringify(e)))),
     }),
   );
   await stream.close();
@@ -365,53 +338,27 @@ test("SessionHttp: real token burst is coalesced, bounded and terminal settlemen
 test("SessionHttp: observer admission releases on disconnect, receipt expiry is explicitly unknown", async (t) => {
   const f = await fixture(t);
   const id = await f.create("a");
-  const streams = await Promise.all(
-    Array.from({ length: 16 }, () => observe(f.base, id)),
-  );
-  assert.equal(
-    (await fetch(`${f.base}/api/sessions/${id}/live`)).status,
-    429,
-  );
+  const streams = await Promise.all(Array.from({ length: 16 }, () => observe(f.base, id)));
+  assert.equal((await fetch(`${f.base}/api/sessions/${id}/live`)).status, 429);
   await streams[0]!.close();
   await new Promise((resolve) => setTimeout(resolve, 20));
   const replacement = await observe(f.base, id);
   await replacement.close();
   await Promise.all(streams.slice(1).map((stream) => stream.close()));
-  const receipt = await f.settle(
-    await f.post({ type: "cancel", sessionId: id }),
-  );
+  const receipt = await f.settle(await f.post({ type: "cancel", sessionId: id }));
   const now = Date.now;
   Date.now = () => now() + 601_000;
   try {
-    assert.equal(
-      (await fetch(`${f.base}/api/receipts/${receipt.commandId}`)).status,
-      404,
-    );
+    assert.equal((await fetch(`${f.base}/api/receipts/${receipt.commandId}`)).status, 404);
   } finally {
     Date.now = now;
   }
 });
 
 test("bundledTransportPatched: numeric patched branches and unknown/prerelease fail closed", () => {
-  for (const version of [
-    "6.28.0",
-    "6.29.0",
-    "7.30.0",
-    "8.12.1",
-    "8.9.99",
-    "5.99.0",
-    "8.12.2-rc.1",
-    undefined,
-  ])
+  for (const version of ["6.28.0", "6.29.0", "7.30.0", "8.12.1", "8.9.99", "5.99.0", "8.12.2-rc.1", undefined])
     assert.equal(bundledTransportPatched(version), false, version);
-  for (const version of [
-    "6.29.1",
-    "6.30.0",
-    "7.30.1",
-    "8.12.2",
-    "8.13.0",
-    "9.0.0",
-  ])
+  for (const version of ["6.29.1", "6.30.0", "7.30.1", "8.12.2", "8.13.0", "9.0.0"])
     assert.equal(bundledTransportPatched(version), true, version);
 });
 
@@ -440,18 +387,14 @@ for (const boundary of ["retained", "pending"] as const) {
       });
     }
     const ids: string[] = [];
-    for (let i = 0; i < (boundary === "pending" ? 16 : 1); i++)
-      ids.push(await f.create("a"));
+    for (let i = 0; i < (boundary === "pending" ? 16 : 1); i++) ids.push(await f.create("a"));
     if (boundary === "retained") {
-      for (let i = 0; i < 254; i++)
-        await f.settle(await f.post({ type: "open", sessionId: ids[0] }));
+      for (let i = 0; i < 254; i++) await f.settle(await f.post({ type: "open", sessionId: ids[0] }));
     }
-    for (const id of ids)
-      await f.post({ type: "start", sessionId: id, text: "hold" });
+    for (const id of ids) await f.post({ type: "start", sessionId: id, text: "hold" });
     await eventually(() => f.provider.active === ids.length);
     if (boundary === "pending") {
-      for (const id of ids)
-        await f.post({ type: "steer", sessionId: id, text: "pending" });
+      for (const id of ids) await f.post({ type: "steer", sessionId: id, text: "pending" });
     }
     const overflow = await fetch(`${f.base}/api/commands`, {
       method: "POST",
@@ -494,8 +437,7 @@ test("SessionHttp: repeated pending lifecycle controls share a retained canonica
   assert.equal(calls, 1);
   release();
   assert.equal((await f.settle(first)).outcome, "completed");
-  for (let i = 0; i < 31; i++)
-    await f.settle(await f.post({ type: "stop", sessionId: randomUUID() }));
+  for (let i = 0; i < 31; i++) await f.settle(await f.post({ type: "stop", sessionId: randomUUID() }));
   const response = await fetch(`${f.base}/api/commands`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -509,10 +451,7 @@ test("SessionHttp: repeated pending lifecycle controls share a retained canonica
   assert.equal(((await response.json()) as { error: string }).error, "limit");
   // Lifecycle flooding cannot consume ordinary admission or evict accepted receipts.
   await f.create("b");
-  assert.equal(
-    (await fetch(`${f.base}/api/receipts/${first.commandId}`)).status,
-    200,
-  );
+  assert.equal((await fetch(`${f.base}/api/receipts/${first.commandId}`)).status, 200);
 });
 
 test("SessionHttp: a create command for a project agent carries no folder", async (t) => {
@@ -535,9 +474,15 @@ test("SessionHttp: archive, restore and delete are commands; the list says how m
   const list = async (query = "") =>
     (await (await fetch(`${f.base}/api/sessions${query}`)).json()) as { sessions: { id: string }[]; archived: number };
   assert.equal((await f.settle(await f.post({ type: "archive", sessionId: a }))).outcome, "completed");
-  assert.deepEqual((await list()).sessions.map((s) => s.id), [b]);
+  assert.deepEqual(
+    (await list()).sessions.map((s) => s.id),
+    [b],
+  );
   assert.equal((await list()).archived, 1);
-  assert.deepEqual((await list("?archived")).sessions.map((s) => s.id), [a]);
+  assert.deepEqual(
+    (await list("?archived")).sessions.map((s) => s.id),
+    [a],
+  );
   // Only an archived session is deleted.
   assert.equal((await f.settle(await f.post({ type: "delete", sessionId: b }))).error, "busy");
   assert.equal((await f.settle(await f.post({ type: "restore", sessionId: a }))).outcome, "completed");
@@ -545,7 +490,10 @@ test("SessionHttp: archive, restore and delete are commands; the list says how m
   await f.settle(await f.post({ type: "archive", sessionId: a }));
   assert.equal((await f.settle(await f.post({ type: "delete", sessionId: a }))).outcome, "completed");
   assert.deepEqual((await list("?archived")).sessions, []);
-  assert.deepEqual((await list()).sessions.map((s) => s.id), [b]);
+  assert.deepEqual(
+    (await list()).sessions.map((s) => s.id),
+    [b],
+  );
   // No other query is accepted.
   assert.equal((await fetch(`${f.base}/api/sessions?all`)).status, 404);
 });
@@ -618,7 +566,11 @@ test("the workspace stream says which areas changed, soon after a session change
 test("notification routes: the key, subscribe with a push service only, state, presence; unread clears when seen", async (t) => {
   const f = await fixture(t);
   const post = (path: string, body: unknown) =>
-    fetch(`${f.base}/api/notifications/${path}`, { method: "POST", headers: { "Content-Type": "application/json", Origin: f.base }, body: JSON.stringify(body) });
+    fetch(`${f.base}/api/notifications/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: f.base },
+      body: JSON.stringify(body),
+    });
   const endpoint = "https://fcm.googleapis.com/fcm/send/device";
   const state = await (await post("state", {})).json();
   assert.match(state.publicKey, /^[\w-]{87}$/);
@@ -626,7 +578,11 @@ test("notification routes: the key, subscribe with a push service only, state, p
   assert.equal((await post("subscribe", { endpoint: "https://127.0.0.1/x", events: ["failed"] })).status, 400);
   assert.equal((await post("subscribe", { endpoint, events: ["nope"] })).status, 400);
   assert.equal((await post("subscribe", { endpoint, events: ["failed", "needs-you"] })).status, 200);
-  assert.deepEqual(await (await post("state", { endpoint })).json(), { publicKey: state.publicKey, subscribed: true, events: ["failed", "needs-you"] });
+  assert.deepEqual(await (await post("state", { endpoint })).json(), {
+    publicKey: state.publicKey,
+    subscribed: true,
+    events: ["failed", "needs-you"],
+  });
   assert.equal((await post("presence", { page: "p1", visible: true })).status, 200);
   assert.equal((await post("presence", { page: "../x", visible: true })).status, 400);
   assert.equal((await post("unsubscribe", { endpoint })).status, 200);

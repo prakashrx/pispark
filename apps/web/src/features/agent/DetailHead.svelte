@@ -64,9 +64,27 @@
       <div class="name-row">
         {#if naming}
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <form class="naming" onsubmit={(event) => { event.preventDefault(); void done(true); }} onkeydown={(event) => event.key === "Escape" && void done(false)}>
-            <input bind:this={field} aria-label={`Name the ${one}`} aria-describedby={hint} bind:value={name} aria-invalid={(!!name && !valid) || undefined} onblur={() => void done(true)} autocomplete="off" spellcheck="false" />
-            <span id={hint} class="hint">{name && !valid ? "Letters, numbers, dots, dashes; no spaces" : "Enter to keep, Esc to cancel"}</span>
+          <form
+            class="naming"
+            onsubmit={(event) => {
+              event.preventDefault();
+              void done(true);
+            }}
+            onkeydown={(event) => event.key === "Escape" && void done(false)}
+          >
+            <input
+              bind:this={field}
+              aria-label={`Name the ${one}`}
+              aria-describedby={hint}
+              bind:value={name}
+              aria-invalid={(!!name && !valid) || undefined}
+              onblur={() => void done(true)}
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <span id={hint} class="hint"
+              >{name && !valid ? "Letters, numbers, dots, dashes; no spaces" : "Enter to keep, Esc to cancel"}</span
+            >
           </form>
         {:else if title}
           <h2 tabindex="-1">{@render title()}</h2>
@@ -76,7 +94,15 @@
           <h2 tabindex="-1">{heading}</h2>
         {/if}
         {#if fresh && !naming}
-          <button bind:this={pencil} type="button" class="ui-button" data-size="icon" aria-label={fresh.name ? "Rename" : "Name it"} title={fresh.name ? "Rename" : "Name it"} onclick={() => void startNaming()}><Icon name="pencil" class="h-3.5 w-3.5" /></button>
+          <button
+            bind:this={pencil}
+            type="button"
+            class="ui-button"
+            data-size="icon"
+            aria-label={fresh.name ? "Rename" : "Name it"}
+            title={fresh.name ? "Rename" : "Name it"}
+            onclick={() => void startNaming()}><Icon name="pencil" class="h-3.5 w-3.5" /></button
+          >
         {/if}
       </div>
       {#if about}<p class="about">{about}</p>{/if}

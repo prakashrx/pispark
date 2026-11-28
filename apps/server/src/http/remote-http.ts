@@ -1,11 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { body, sendJson } from "./io.js";
-import {
-  validPairRequest,
-  validRemoteAction,
-  type RemoteDevice,
-  type RemoteSelf,
-} from "../contract/remote-protocol.js";
+import { validPairRequest, validRemoteAction, type RemoteDevice, type RemoteSelf } from "../contract/remote-protocol.js";
 import type { RemoteAccess } from "../core/remote/remote-access.js";
 import { RuntimeError } from "../core/runtime/errors.js";
 

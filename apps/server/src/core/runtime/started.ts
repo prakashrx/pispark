@@ -113,7 +113,9 @@ export class Started {
     return kind ? { kind, id: found!.id } : undefined;
   }
   private all(owner: string) {
-    return this.kinds.flatMap((kind) => kind.of(owner).map((each) => ({ ...each, kind, handle: this.handles.of(owner, kind.name, each.id) })));
+    return this.kinds.flatMap((kind) =>
+      kind.of(owner).map((each) => ({ ...each, kind, handle: this.handles.of(owner, kind.name, each.id) })),
+    );
   }
   private readonly unknown: Answer = { ok: false, text: "This session started nothing with that id (pispark_look lists what it started)." };
 
@@ -122,7 +124,10 @@ export class Started {
       const all = this.all(owner);
       const here = all.filter((each) => !each.away);
       if (here.length) return { ok: true, text: here.map((each) => `${each.handle}: ${each.line}`).join("\n") };
-      return { ok: true, text: all.length ? "Everything this session started is done and put away." : "This session has not started anything." };
+      return {
+        ok: true,
+        text: all.length ? "Everything this session started is done and put away." : "This session has not started anything.",
+      };
     }
     const found = this.find(owner, id);
     return found ? found.kind.look(owner, found.id, find) : this.unknown;
@@ -147,10 +152,13 @@ export class Started {
    */
   private async wait(owner: string, verb: Fields<"wait">, signal?: AbortSignal): Promise<Answer> {
     const all = this.all(owner);
-    const targets = verb.ids ? verb.ids.map((handle) => all.find((each) => each.handle === handle) ?? handle) : all.filter((each) => each.open && each.kind.wait);
+    const targets = verb.ids
+      ? verb.ids.map((handle) => all.find((each) => each.handle === handle) ?? handle)
+      : all.filter((each) => each.open && each.kind.wait);
     if (targets.some((each) => typeof each === "string")) return this.unknown;
     const waited = (targets as (typeof all)[number][]).filter((each) => each.kind.wait);
-    if (!waited.length) return { ok: true, text: verb.ids ? "None of those can be waited for." : "Nothing this session started is still open." };
+    if (!waited.length)
+      return { ok: true, text: verb.ids ? "None of those can be waited for." : "Nothing this session started is still open." };
     const raise = (wake: Wake) => wake.word === "raise";
     // A raise that was already waiting is what the session needs first.
     const raised = this.inbox.take(owner, raise);
@@ -185,15 +193,23 @@ export class Started {
     const closing = [early, open.length ? `Still open: ${open.join(", ")}.` : ""].filter(Boolean).join(" ");
     const taken = waited.flatMap((target) => (answers.has(target.handle) ? [[target.handle, answers.get(target.handle)!] as const] : []));
     // For clients: the sessions that answered here and how each ended, so the row of each ask can say so.
-    const ended = waited.flatMap((target) => (target.kind.name === "session" && answers.get(target.handle)?.how ? [{ id: target.id, how: answers.get(target.handle)!.how! }] : []));
+    const ended = waited.flatMap((target) =>
+      target.kind.name === "session" && answers.get(target.handle)?.how ? [{ id: target.id, how: answers.get(target.handle)!.how! }] : [],
+    );
     return {
       ok: true,
-      text: [...taken.map(([handle, answer]) => `${handle}: ${answer.words}`), ...raised.map((wake) => wake.text), closing].filter(Boolean).join("\n\n"),
+      text: [...taken.map(([handle, answer]) => `${handle}: ${answer.words}`), ...raised.map((wake) => wake.text), closing]
+        .filter(Boolean)
+        .join("\n\n"),
       ...(ended.length ? { details: { answers: ended } } : {}),
       // The same, for an extension: each answer by its handle, what was raised, and what is still open.
       data: {
         answers: Object.fromEntries(taken.map(([handle, { words: _words, ...answer }]) => [handle, answer])),
-        raised: raised.map((wake) => ({ id: this.handles.of(owner, wake.source.kind, wake.source.id), text: wake.report?.text ?? wake.text, ...(wake.report?.data !== undefined ? { data: wake.report.data } : {}) })),
+        raised: raised.map((wake) => ({
+          id: this.handles.of(owner, wake.source.kind, wake.source.id),
+          text: wake.report?.text ?? wake.text,
+          ...(wake.report?.data !== undefined ? { data: wake.report.data } : {}),
+        })),
         open,
       },
     };
@@ -214,7 +230,8 @@ const RAISED = "The wait ended early: something this session started raised (abo
 
 /** Schedules as a kind: looked at and stopped (removed) like anything else a session started. Each run of one is waited for, not the schedule. */
 export function scheduleKind(schedules: { of(sessionId: string): Schedule[]; remove(id: string): void }): Kind {
-  const line = (s: Schedule) => `${describeSchedule(s)}, ${s.run === "new" ? "each run in a new session" : "in this session"} (${s.on ? "on" : "off"}): ${s.prompt}`;
+  const line = (s: Schedule) =>
+    `${describeSchedule(s)}, ${s.run === "new" ? "each run in a new session" : "in this session"} (${s.on ? "on" : "off"}): ${s.prompt}`;
   const mine = (owner: string, id: string) => schedules.of(owner).find((s) => s.id === id);
   const gone: Answer = { ok: false, text: "This session has no schedule with that id." };
   return {
@@ -224,7 +241,12 @@ export function scheduleKind(schedules: { of(sessionId: string): Schedule[]; rem
       const s = mine(owner, id);
       if (!s) return gone;
       const runs = s.runs.map((run) => `${run.at}: ${run.outcome}${run.reason ? ` (${run.reason})` : ""}`);
-      return { ok: true, text: [line(s), s.next ? `Next: ${s.next}` : "", runs.length ? `Last runs:\n${runs.join("\n")}` : "It has not run yet."].filter(Boolean).join("\n") };
+      return {
+        ok: true,
+        text: [line(s), s.next ? `Next: ${s.next}` : "", runs.length ? `Last runs:\n${runs.join("\n")}` : "It has not run yet."]
+          .filter(Boolean)
+          .join("\n"),
+      };
     },
     async stop(owner, id) {
       if (!mine(owner, id)) return gone;

@@ -1,9 +1,6 @@
 <script lang="ts">
   import { themes, systemThemes, type Theme } from "./themes";
-  let {
-    value,
-    onchange,
-  }: { value: string; onchange: (id: string) => void } = $props();
+  let { value, onchange }: { value: string; onchange: (id: string) => void } = $props();
   const name = $props.id();
   const light = themes.find((t) => t.id === systemThemes.light)!;
   const dark = themes.find((t) => t.id === systemThemes.dark)!;
@@ -77,7 +74,10 @@
     border: 1px solid transparent;
     border-radius: var(--radius-md);
     cursor: pointer;
-    transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+    transition:
+      border-color 0.12s,
+      box-shadow 0.12s,
+      transform 0.12s;
   }
   .theme-card:hover {
     background: var(--accent);

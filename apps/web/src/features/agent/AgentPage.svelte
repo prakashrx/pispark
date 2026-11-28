@@ -74,12 +74,21 @@
 
   // What it runs with: saved as soon as it's chosen.
   const models = $derived([
-    { value: "", label: view?.settings.model && !definition?.settings?.model ? `Model: inherited · ${view.settings.model}` : "Model: no preference" },
+    {
+      value: "",
+      label: view?.settings.model && !definition?.settings?.model ? `Model: inherited · ${view.settings.model}` : "Model: no preference",
+    },
     // An agent names its model as `provider/id`.
     ...sessions.providers.available.map((model) => ({ value: `${model.provider}/${model.id}`, label: model.label })),
   ]);
   const thinkingLevels: { value: ThinkingLevel | ""; label: string }[] = $derived([
-    { value: "", label: view?.settings.thinking && !definition?.settings?.thinking ? `Thinking: inherited · ${view.settings.thinking}` : "Thinking: inherited" },
+    {
+      value: "",
+      label:
+        view?.settings.thinking && !definition?.settings?.thinking
+          ? `Thinking: inherited · ${view.settings.thinking}`
+          : "Thinking: inherited",
+    },
     { value: "off", label: "Thinking off" },
     { value: "minimal", label: "Minimal thinking" },
     { value: "low", label: "Low thinking" },
@@ -120,30 +129,74 @@
     <div class="who">
       {#if editingName}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <form class="name-form" aria-label="Name and description" onsubmit={(event) => { event.preventDefault(); void doneName(true); }} onkeydown={(event) => event.key === "Escape" && void doneName(false)}>
+        <form
+          class="name-form"
+          aria-label="Name and description"
+          onsubmit={(event) => {
+            event.preventDefault();
+            void doneName(true);
+          }}
+          onkeydown={(event) => event.key === "Escape" && void doneName(false)}
+        >
           <input bind:this={nameField} class="name-input" aria-label="Name" bind:value={nameText} maxlength="120" />
-          <input class="desc-input" aria-label="What it does" bind:value={descText} maxlength="1024" placeholder="What it does, in a sentence" />
+          <input
+            class="desc-input"
+            aria-label="What it does"
+            bind:value={descText}
+            maxlength="1024"
+            placeholder="What it does, in a sentence"
+          />
           <div class="name-actions">
-            <button type="button" class="ui-button" data-variant="ghost" data-size="compact" onclick={() => void doneName(false)}>Cancel</button>
-            <button type="submit" class="ui-button" data-variant="primary" data-size="compact" disabled={!nameText.trim() || client.busy}>Save</button>
+            <button type="button" class="ui-button" data-variant="ghost" data-size="compact" onclick={() => void doneName(false)}
+              >Cancel</button
+            >
+            <button type="submit" class="ui-button" data-variant="primary" data-size="compact" disabled={!nameText.trim() || client.busy}
+              >Save</button
+            >
           </div>
         </form>
       {:else}
         <div class="name-row">
           <h1 class="name">{name}</h1>
-          {#if definition && !readOnly}<button bind:this={pencil} type="button" class="ui-button" data-size="icon" aria-label="Edit name and description" title="Edit name and description" onclick={() => void editName()}><Icon name="pencil" class="h-4 w-4" /></button>{/if}
+          {#if definition && !readOnly}<button
+              bind:this={pencil}
+              type="button"
+              class="ui-button"
+              data-size="icon"
+              aria-label="Edit name and description"
+              title="Edit name and description"
+              onclick={() => void editName()}><Icon name="pencil" class="h-4 w-4" /></button
+            >{/if}
         </div>
         {#if definition?.description}<p class="desc">{definition.description}</p>{/if}
-        {#if id === "default"}<p class="desc">Every agent starts from Default. What you add here reaches every session unless an agent turns it off.</p>{/if}
-        {#if readOnly}<p class="desc">Comes with PiSpark and updates with it, so it can't be changed here. To make your own, create an agent that builds on it.</p>{/if}
+        {#if id === "default"}<p class="desc">
+            Every agent starts from Default. What you add here reaches every session unless an agent turns it off.
+          </p>{/if}
+        {#if readOnly}<p class="desc">
+            Comes with PiSpark and updates with it, so it can't be changed here. To make your own, create an agent that builds on it.
+          </p>{/if}
       {/if}
       {#if view}
         <div class="runs" role="group" aria-label="Runs with">
           {#if kind}<span class="kind">{kind}</span>{/if}
-          <Selector label="Preferred model" searchable options={models} bind:value={() => definition?.settings?.model ?? "", (value) => setSetting("model", value)} disabled={readOnly} />
-          <Selector label="Thinking" options={thinkingLevels} bind:value={() => definition?.settings?.thinking ?? "", (value) => setSetting("thinking", value)} disabled={readOnly} />
+          <Selector
+            label="Preferred model"
+            searchable
+            options={models}
+            bind:value={() => definition?.settings?.model ?? "", (value) => setSetting("model", value)}
+            disabled={readOnly}
+          />
+          <Selector
+            label="Thinking"
+            options={thinkingLevels}
+            bind:value={() => definition?.settings?.thinking ?? "", (value) => setSetting("thinking", value)}
+            disabled={readOnly}
+          />
           {#if id !== "default" && !readOnly}
-            <FolderChoice none={view.folder && !definition?.folder ? `Inherited · ${view.folder}` : "Folder chosen per session"} bind:value={() => definition?.folder ?? "", setFolder} />
+            <FolderChoice
+              none={view.folder && !definition?.folder ? `Inherited · ${view.folder}` : "Folder chosen per session"}
+              bind:value={() => definition?.folder ?? "", setFolder}
+            />
           {/if}
         </div>
       {/if}
@@ -154,7 +207,9 @@
   </header>
 
   {#if client.editorError}<p role="alert" class="inline-note" data-tone="danger">{client.editorError}</p>{/if}
-  {#if view?.error}<p role="alert" class="inline-note" data-tone="danger">{agentError(view.error, view.detail)} Fix “Builds on” in Settings.</p>{/if}
+  {#if view?.error}<p role="alert" class="inline-note" data-tone="danger">
+      {agentError(view.error, view.detail)} Fix “Builds on” in Settings.
+    </p>{/if}
   {#if !view && !client.editorError}<p role="status" class="loading">Loading…</p>{/if}
 
   {#if view}
@@ -163,19 +218,18 @@
         {@const t = current as Tab}
         <!-- Only the tab on show is drawn: each loads what it shows. -->
         {#if t === tab}<div class="tab-body" data-settings={t === "settings" || undefined}>
-          {#if t === "instructions"}<InstructionsTab {page} {narrow} {name} />
-          {:else if t === "skills"}<SkillsTab {page} {narrow} />
-          {:else if t === "prompts"}<PromptsTab {page} {narrow} />
-          {:else if t === "extensions"}<ExtensionsTab {page} />
-          {:else}
-            <SettingsTab {page} {id} />
-          {/if}
-        </div>{/if}
+            {#if t === "instructions"}<InstructionsTab {page} {narrow} {name} />
+            {:else if t === "skills"}<SkillsTab {page} {narrow} />
+            {:else if t === "prompts"}<PromptsTab {page} {narrow} />
+            {:else if t === "extensions"}<ExtensionsTab {page} />
+            {:else}
+              <SettingsTab {page} {id} />
+            {/if}
+          </div>{/if}
       {/snippet}
     </Tabs>
   {/if}
 </div>
-
 
 <style>
   .page {

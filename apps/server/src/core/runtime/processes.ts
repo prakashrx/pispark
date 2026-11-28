@@ -164,7 +164,8 @@ export class Processes {
         for (const p of list) {
           // What older versions kept: how it reported, and its watches.
           for (const old of ["report", "watches"]) delete (p as unknown as Record<string, unknown>)[old];
-          if (p.state === "running") Object.assign(p, { state: "stopped", ended: "pispark-stopped", endedAt: new Date().toISOString(), untold: true });
+          if (p.state === "running")
+            Object.assign(p, { state: "stopped", ended: "pispark-stopped", endedAt: new Date().toISOString(), untold: true });
         }
         this.stored.set(id, list);
         this.save(id);
@@ -203,7 +204,10 @@ export class Processes {
 
   // ---- Starting and stopping ------------------------------------------------------------------
 
-  start(sessionId: string, input: { command: string; folder: string; title?: string; raiseOn?: string; stopAfterSeconds?: number; collect?: boolean }): ProcessInfo {
+  start(
+    sessionId: string,
+    input: { command: string; folder: string; title?: string; raiseOn?: string; stopAfterSeconds?: number; collect?: boolean },
+  ): ProcessInfo {
     if (this.closed) throw new RuntimeError("closed");
     if (typeof input.command !== "string" || !input.command.trim() || input.command.length > 8192) throw new RuntimeError("invalid-input");
     if (!existsSync(input.folder) || !statSync(input.folder).isDirectory()) throw new RuntimeError("folder");
@@ -299,7 +303,12 @@ export class Processes {
     const line = raiseOn && lines.find((each) => raiseOn.test(each));
     if (line) {
       live.raisedAt = Date.now();
-      this.host.tell(record.sessionId, { process: view(record), how: `printed a line matching ${record.raiseOn}`, tail: this.tail(record), raised: line.slice(0, 500) });
+      this.host.tell(record.sessionId, {
+        process: view(record),
+        how: `printed a line matching ${record.raiseOn}`,
+        tail: this.tail(record),
+        raised: line.slice(0, 500),
+      });
     }
     for (const wake of live.waiters) wake();
   }
@@ -321,8 +330,22 @@ export class Processes {
     // Stopped by the agent, or by PiSpark stopping (told after the restart): nothing to tell now.
     if (stoppedBy === "agent" || stoppedBy === "pispark" || this.closed) return;
     const how =
-      stoppedBy === "person" ? "was stopped" : stoppedBy === "timeout" ? "was stopped at its time limit" : code === 0 ? "exited 0" : code === null ? "could not start" : `exited ${code}`;
-    this.host.tell(record.sessionId, { process: view(record), how, ok: stoppedBy === undefined && code === 0, tail: this.tail(record), ...(stoppedBy === "person" ? { by: stoppedBy } : {}) });
+      stoppedBy === "person"
+        ? "was stopped"
+        : stoppedBy === "timeout"
+          ? "was stopped at its time limit"
+          : code === 0
+            ? "exited 0"
+            : code === null
+              ? "could not start"
+              : `exited ${code}`;
+    this.host.tell(record.sessionId, {
+      process: view(record),
+      how,
+      ok: stoppedBy === undefined && code === 0,
+      tail: this.tail(record),
+      ...(stoppedBy === "person" ? { by: stoppedBy } : {}),
+    });
   }
 
   // ---- Reading ----------------------------------------------------------------------------------
@@ -394,7 +417,9 @@ export class Processes {
       out.cut ? "Older output was discarded; line numbers are relative to the retained log." : "",
       excerpt.length ? excerpt.join("\n") : "No match in the retained log.",
       matches > 5 ? "Showing the first 5 matching lines; more matches exist." : "",
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
   }
   /** The last `bytes` of output. */
   tail(process: Stored, bytes = 4096): string {
@@ -424,7 +449,13 @@ export class Processes {
    * Waits until output after `since` matches `pattern` (or any output, without one), the process
    * ends, the time (if any) is up or `signal` aborts.
    */
-  async wait(process: Stored, pattern: RegExp | undefined, since: number, timeoutMs: number | undefined, signal?: AbortSignal): Promise<"matched" | "ended" | "timeout"> {
+  async wait(
+    process: Stored,
+    pattern: RegExp | undefined,
+    since: number,
+    timeoutMs: number | undefined,
+    signal?: AbortSignal,
+  ): Promise<"matched" | "ended" | "timeout"> {
     // Only what came since the last look is read, with a little before it so a match split
     // across two chunks is still seen.
     let from = since;
@@ -443,8 +474,18 @@ export class Processes {
   }
 
   private waitUntilEnd(process: Stored, timeoutMs: number | undefined, signal?: AbortSignal): Promise<"ended" | "timeout">;
-  private waitUntilEnd(process: Stored, timeoutMs: number | undefined, signal: AbortSignal | undefined, matched: () => boolean): Promise<"matched" | "ended" | "timeout">;
-  private async waitUntilEnd(process: Stored, timeoutMs: number | undefined, signal?: AbortSignal, matched?: () => boolean): Promise<"matched" | "ended" | "timeout"> {
+  private waitUntilEnd(
+    process: Stored,
+    timeoutMs: number | undefined,
+    signal: AbortSignal | undefined,
+    matched: () => boolean,
+  ): Promise<"matched" | "ended" | "timeout">;
+  private async waitUntilEnd(
+    process: Stored,
+    timeoutMs: number | undefined,
+    signal?: AbortSignal,
+    matched?: () => boolean,
+  ): Promise<"matched" | "ended" | "timeout"> {
     const live = this.live.get(process.id);
     if (!live) return "ended";
     if (signal?.aborted) return "timeout";
@@ -474,7 +515,10 @@ export class Processes {
     const directory = this.host.directory(sessionId);
     if (!existsSync(directory)) return;
     try {
-      writeAtomic(join(directory, "processes.json"), JSON.stringify({ version: 1, processes: this.stored.get(sessionId) ?? [] }, null, 2) + "\n");
+      writeAtomic(
+        join(directory, "processes.json"),
+        JSON.stringify({ version: 1, processes: this.stored.get(sessionId) ?? [] }, null, 2) + "\n",
+      );
     } catch {
       this.logger.event("wake.failure", { sessionId, outcome: "failed", code: "storage" });
     }
@@ -581,13 +625,19 @@ async function descendants(root: number, groupFile?: string): Promise<number[]> 
 async function killTree(child: ChildProcess, groupFile?: string): Promise<void> {
   const pid = child.pid;
   if (!pid) return;
-  const closed = child.exitCode !== null || child.signalCode !== null ? Promise.resolve() : new Promise<void>((done) => child.once("close", () => done()));
+  const closed =
+    child.exitCode !== null || child.signalCode !== null
+      ? Promise.resolve()
+      : new Promise<void>((done) => child.once("close", () => done()));
   if (process.platform === "win32") {
     // Git Bash's launcher can exit and leave its children (bash, npm, node) without a parent, out of
     // reach of `taskkill /T`. So the whole tree is found first, then every process in it is ended.
     const pids = [pid, ...(await descendants(pid, groupFile))];
     await new Promise<void>((done) => {
-      const taskkill = spawn(system32("taskkill.exe"), ["/F", "/T", ...pids.flatMap((each) => ["/PID", String(each)])], { windowsHide: true, stdio: "ignore" });
+      const taskkill = spawn(system32("taskkill.exe"), ["/F", "/T", ...pids.flatMap((each) => ["/PID", String(each)])], {
+        windowsHide: true,
+        stdio: "ignore",
+      });
       taskkill.on("error", () => (child.kill(), done()));
       taskkill.on("close", () => done());
     });

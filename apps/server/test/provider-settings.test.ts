@@ -8,10 +8,7 @@ import { join } from "node:path";
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
 import { ProviderAuth, safeAuthUrl } from "../src/core/runtime/provider-auth.js";
 import { ProviderSettings } from "../src/core/runtime/provider-settings.js";
-import {
-  nativeModelRuntime,
-  requireSupportedTransport,
-} from "../src/core/runtime/native-model-runtime.js";
+import { nativeModelRuntime, requireSupportedTransport } from "../src/core/runtime/native-model-runtime.js";
 import { ModelDefaults } from "../src/core/runtime/provider-storage.js";
 import { localProviderSettings } from "./fixtures/provider-settings.js";
 import { eventually } from "./fixtures/local-provider.js";
@@ -32,11 +29,7 @@ async function fixture(t: { after: (fn: () => unknown) => void }) {
   return { ...f, auth, owned };
 }
 const id = "pispark-local-test";
-async function current(
-  auth: ProviderAuth,
-  c: { id: string; token: string },
-  type: string,
-) {
+async function current(auth: ProviderAuth, c: { id: string; token: string }, type: string) {
   await eventually(() => auth.observe(c.id, c.token).prompt?.type === type);
   return auth.observe(c.id, c.token).prompt!;
 }
@@ -46,38 +39,20 @@ test("ProviderAuth: native API-key login persists native secret; owner-only curr
   const c = f.auth.start(id, "api_key");
   const prompt = await current(f.auth, c, "secret");
   assert.throws(() => f.auth.observe(c.id, "x".repeat(43)), /auth-invalid/);
-  assert.throws(
-    () => f.auth.respond(c.id, c.token, "stale", "test-key"),
-    /auth-invalid/,
-  );
-  assert.throws(
-    () => f.auth.respond(c.id, "x".repeat(43), prompt.id, "test-key"),
-    /auth-invalid/,
-  );
-  assert.throws(
-    () => f.auth.respond(c.id, c.token, prompt.id, "a".repeat(8193)),
-    /auth-invalid/,
-  );
+  assert.throws(() => f.auth.respond(c.id, c.token, "stale", "test-key"), /auth-invalid/);
+  assert.throws(() => f.auth.respond(c.id, "x".repeat(43), prompt.id, "test-key"), /auth-invalid/);
+  assert.throws(() => f.auth.respond(c.id, c.token, prompt.id, "a".repeat(8193)), /auth-invalid/);
   await assert.rejects(f.settings.logout(id), /provider-busy/);
   await assert.rejects(f.settings.refresh(id), /provider-busy/);
   f.auth.respond(c.id, c.token, prompt.id, "test-native-key");
-  assert.throws(
-    () => f.auth.respond(c.id, c.token, prompt.id, "duplicate"),
-    /auth-invalid/,
-  );
+  assert.throws(() => f.auth.respond(c.id, c.token, prompt.id, "duplicate"), /auth-invalid/);
   await eventually(() => f.auth.observe(c.id, c.token).state === "saved");
   assert.equal((await readStoredCredential(id, f.authPath))?.type, "api_key");
   assert.match(await readFile(f.authPath, "utf8"), /test-native-key/);
-  assert.doesNotMatch(
-    JSON.stringify(f.auth.observe(c.id, c.token)),
-    /test-native-key|test-key|SECRET/,
-  );
+  assert.doesNotMatch(JSON.stringify(f.auth.observe(c.id, c.token)), /test-native-key|test-key|SECRET/);
   const catalog = await f.settings.catalog();
   assert.equal(catalog.providers.find((p) => p.id === id)?.stored, true);
-  assert.doesNotMatch(
-    JSON.stringify(catalog),
-    /PRIVATE_SOURCE|baseUrl|headers|test-native-key/,
-  );
+  assert.doesNotMatch(JSON.stringify(catalog), /PRIVATE_SOURCE|baseUrl|headers|test-native-key/);
   await f.settings.logout(id);
   assert.equal(await readStoredCredential(id, f.authPath), undefined);
 });
@@ -92,18 +67,12 @@ test("ProviderAuth: actual native OAuth text/select/manual prompts and info/URL/
   );
   f.auth.respond(c.id, c.token, prompt.id, "local-project");
   prompt = await current(f.auth, c, "select");
-  assert.throws(
-    () => f.auth.respond(c.id, c.token, prompt.id, "Local"),
-    /auth-invalid/,
-  );
+  assert.throws(() => f.auth.respond(c.id, c.token, prompt.id, "Local"), /auth-invalid/);
   f.auth.respond(c.id, c.token, prompt.id, "local");
   prompt = await current(f.auth, c, "manual_code");
   f.control.callbackWon = true;
   f.control.callback.abort();
-  assert.throws(
-    () => f.auth.respond(c.id, c.token, prompt.id, "late-code"),
-    /auth-invalid/,
-  );
+  assert.throws(() => f.auth.respond(c.id, c.token, prompt.id, "late-code"), /auth-invalid/);
   await eventually(() => f.auth.observe(c.id, c.token).state === "saved");
   assert.deepEqual(f.control.prompts, ["text", "select", "manual_code"]);
   assert.equal((await readStoredCredential(id, f.authPath))?.type, "oauth");
@@ -133,10 +102,7 @@ test("ProviderAuth: per-prompt pre-abort, whole-flow cancellation and error caus
   };
   c = f.auth.start(id, "api_key");
   await eventually(() => f.auth.observe(c.id, c.token).state === "failed");
-  assert.doesNotMatch(
-    JSON.stringify(f.auth.observe(c.id, c.token)),
-    /PRIVATE_ERROR|secret/,
-  );
+  assert.doesNotMatch(JSON.stringify(f.auth.observe(c.id, c.token)), /PRIVATE_ERROR|secret/);
 });
 
 test("ProviderAuth: finite no-client lease, whole deadline, capacity and terminal retention free slots", async (t) => {
@@ -174,9 +140,7 @@ test("ProviderAuth: native synchronization partial failures accurately distingui
   const p = await current(f.auth, c, "secret");
   f.control.syncFails = true;
   f.auth.respond(c.id, c.token, p.id, "test-saved-key");
-  await eventually(
-    () => f.auth.observe(c.id, c.token).state === "saved-sync-failed",
-  );
+  await eventually(() => f.auth.observe(c.id, c.token).state === "saved-sync-failed");
   assert.equal(
     (await f.runtime.listCredentials()).some((c) => c.providerId === id),
     true,
@@ -184,10 +148,7 @@ test("ProviderAuth: native synchronization partial failures accurately distingui
   await assert.rejects(f.settings.catalog(), /provider-configuration/);
   await assert.rejects(f.settings.logout(id), /removed-sync-failed/);
   assert.equal(await readStoredCredential(id, f.authPath), undefined);
-  assert.doesNotMatch(
-    JSON.stringify(f.auth.observe(c.id, c.token)),
-    /test-saved-key|PRIVATE_SYNC_ERROR/,
-  );
+  assert.doesNotMatch(JSON.stringify(f.auth.observe(c.id, c.token)), /test-saved-key|PRIVATE_SYNC_ERROR/);
 });
 
 test("nativeModelRuntime: file-backed login survives runtime restart; concurrent OAuth refresh uses native lock", async (t) => {
@@ -250,8 +211,7 @@ test("nativeModelRuntime: native concurrent logins persist both providers and pr
 });
 
 test("nativeModelRuntime: unsupported transport fails before native auth resolution", () => {
-  for (const version of ["6.28.0", "8.12.1", "unknown"])
-    assert.throws(() => requireSupportedTransport(version), /network-blocked/);
+  for (const version of ["6.28.0", "8.12.1", "unknown"]) assert.throws(() => requireSupportedTransport(version), /network-blocked/);
   requireSupportedTransport("6.29.1");
 });
 
@@ -277,22 +237,19 @@ test("ProviderSettings: public native construction and exclusive ownership on su
 test("ModelDefaults and SessionRuntime: restart selection, native history, independent active sessions and unavailable default retained", async (t) => {
   const f = await fixture(t);
   f.control.automatic = true;
-  await writeFile(
-    f.authPath,
-    JSON.stringify({ [id]: { type: "api_key", key: "test-key" } }),
-  );
+  await writeFile(f.authPath, JSON.stringify({ [id]: { type: "api_key", key: "test-key" } }));
   await f.runtime.refresh({ allowNetwork: false });
   await f.settings.setDefault({ provider: id, id: "deterministic" });
   const config = { home: join(f.root, "pispark") };
   const sessions = new SessionRuntime(config, f.settings);
   f.owned.push(() => sessions.shutdown());
   const a = await sessions.create({
-      folder: f.root,
+    folder: f.root,
   });
   await sessions.start(a.id, "first").completion;
   await f.settings.setDefault({ provider: id, id: "second" });
   const b = await sessions.create({
-      folder: f.root,
+    folder: f.root,
   });
   assert.equal(sessions.session(a.id).model?.id, "deterministic");
   assert.equal(b.model?.id, "second");
@@ -302,15 +259,10 @@ test("ModelDefaults and SessionRuntime: restart selection, native history, indep
   await recovered.load();
   assert.equal(recovered.value?.id, "second");
   await f.settings.logout(id);
-  await assert.rejects(
-    sessions.create({ folder: f.root }),
-  );
+  await assert.rejects(sessions.create({ folder: f.root }));
   assert.equal((await f.settings.catalog()).defaultModel?.id, "second");
   assert.equal(sessions.session(b.id).model?.id, "second");
-  await assert.rejects(
-    f.settings.setDefault({ provider: id, id: "missing" }),
-    /provider-unavailable/,
-  );
+  await assert.rejects(f.settings.setDefault({ provider: id, id: "missing" }), /provider-unavailable/);
   assert.equal(recovered.value?.id, "second");
 });
 
@@ -323,10 +275,7 @@ test("ModelDefaults: atomic save failures preserve previous choice; invalid rest
   await assert.rejects(f.defaults.save(null), /provider-storage/);
   assert.deepEqual(f.defaults.value, value);
   await rm(join(f.root, "settings.json"), { recursive: true });
-  await writeFile(
-    join(f.root, "settings.json"),
-    '{"version":1,"defaultModel":{"provider":"bad"}}',
-  );
+  await writeFile(join(f.root, "settings.json"), '{"version":1,"defaultModel":{"provider":"bad"}}');
   await assert.rejects(new ModelDefaults(f.root).load(), /provider-storage/);
 });
 
@@ -339,20 +288,14 @@ test("ProviderAuth: URL policy rejects executable, insecure and credential-beari
     "https://user:pass@example.invalid",
   ])
     assert.throws(() => safeAuthUrl(value));
-  assert.equal(
-    safeAuthUrl("https://example.invalid/auth?state=local"),
-    "https://example.invalid/auth?state=local",
-  );
+  assert.equal(safeAuthUrl("https://example.invalid/auth?state=local"), "https://example.invalid/auth?state=local");
 });
 
 for (const type of ["text", "secret", "manual_code"] as const)
   test(`ProviderAuth: empty ${type} responses reach native provider unchanged`, async (t) => {
     const f = await fixture(t);
     f.control.customLogin = async (interaction) => {
-      assert.equal(
-        await interaction.prompt({ type, message: "Blank is valid" }),
-        "",
-      );
+      assert.equal(await interaction.prompt({ type, message: "Blank is valid" }), "");
     };
     const c = f.auth.start(id, "api_key");
     const p = await current(f.auth, c, type);
@@ -461,45 +404,27 @@ test("ProviderSettings: malformed/unreadable configured models and native compos
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, "models.json");
   const config = { home: root, providerSettings: { modelsPath: path } };
-  for (const text of [
-    "{PRIVATE_BROKEN",
-    JSON.stringify({ providers: { openai: { oauth: "radius" } } }),
-  ]) {
+  for (const text of ["{PRIVATE_BROKEN", JSON.stringify({ providers: { openai: { oauth: "radius" } } })]) {
     await writeFile(path, text);
-    await assert.rejects(
-      ProviderSettings.create(config),
-      /^Error: provider-configuration$/,
-    );
+    await assert.rejects(ProviderSettings.create(config), /^Error: provider-configuration$/);
   }
   await rm(path);
   await mkdir(path);
-  await assert.rejects(
-    ProviderSettings.create(config),
-    /^Error: provider-configuration$/,
-  );
+  await assert.rejects(ProviderSettings.create(config), /^Error: provider-configuration$/);
 });
 
 test("ProviderSettings: refresh config/cache failures disable catalog and new sessions until successful recovery", async (t) => {
   const f = await fixture(t);
-  await writeFile(
-    f.authPath,
-    JSON.stringify({ [id]: { type: "api_key", key: "test-key" } }),
-  );
+  await writeFile(f.authPath, JSON.stringify({ [id]: { type: "api_key", key: "test-key" } }));
   await f.runtime.refresh({ allowNetwork: false });
   const original = f.runtime.refresh.bind(f.runtime);
   f.runtime.refresh = async () => ({
     aborted: false,
     errors: new Map([[id, Error("PRIVATE_CACHE_ERROR")]]),
   });
-  await assert.rejects(
-    f.settings.refresh(id),
-    /^Error: provider-configuration$/,
-  );
+  await assert.rejects(f.settings.refresh(id), /^Error: provider-configuration$/);
   await assert.rejects(f.settings.catalog(), /^Error: provider-configuration$/);
-  await assert.rejects(
-    f.settings.select({ provider: id, id: "deterministic" }),
-    /^Error: provider-configuration$/,
-  );
+  await assert.rejects(f.settings.select({ provider: id, id: "deterministic" }), /^Error: provider-configuration$/);
   const config = { home: join(f.root, "pispark") };
   const sessions = new SessionRuntime(config, f.settings);
   f.owned.push(() => sessions.shutdown());
@@ -511,10 +436,7 @@ test("ProviderSettings: refresh config/cache failures disable catalog and new se
   );
   f.runtime.refresh = original;
   await f.settings.refresh(id);
-  assert.equal(
-    (await f.settings.select({ provider: id, id: "deterministic" })).model.id,
-    "deterministic",
-  );
+  assert.equal((await f.settings.select({ provider: id, id: "deterministic" })).model.id, "deterministic");
 });
 
 test("ProviderSettings: failed native cache restoration blocks startup without leaking cache contents", async (t) => {
@@ -524,10 +446,7 @@ test("ProviderSettings: failed native cache restoration blocks startup without l
   await writeFile(models, '{"providers":{}}');
   const directory = join(root, "providers");
   await mkdir(directory);
-  await writeFile(
-    join(directory, "models-store.json"),
-    "{PRIVATE_CACHE_BROKEN",
-  );
+  await writeFile(join(directory, "models-store.json"), "{PRIVATE_CACHE_BROKEN");
   await assert.rejects(
     ProviderSettings.create({
       home: root,
@@ -556,19 +475,10 @@ test("ProviderSettings: malformed configuration on refresh cannot admit built-in
     await settings.close();
     await rm(root, { recursive: true, force: true });
   });
-  assert.equal(
-    settings.runtime.getModels("openai")[0]?.baseUrl,
-    "http://127.0.0.1:1/operator-override",
-  );
+  assert.equal(settings.runtime.getModels("openai")[0]?.baseUrl, "http://127.0.0.1:1/operator-override");
   await writeFile(modelsPath, "{PRIVATE_OVERRIDE_BROKEN");
-  await assert.rejects(
-    settings.refresh("openai"),
-    /^Error: provider-configuration$/,
-  );
-  await assert.rejects(
-    settings.select({ provider: "openai", id: "any-model" }),
-    /^Error: provider-configuration$/,
-  );
+  await assert.rejects(settings.refresh("openai"), /^Error: provider-configuration$/);
+  await assert.rejects(settings.select({ provider: "openai", id: "any-model" }), /^Error: provider-configuration$/);
   await assert.rejects(settings.catalog(), /^Error: provider-configuration$/);
   await writeFile(
     modelsPath,
@@ -586,8 +496,7 @@ test("ProviderSettings: malformed configuration on refresh cannot admit built-in
 test("nativeModelRuntime: native host env and stored env reference resolve in explicitly scoped child; source metadata is transparent", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pispark-native-env-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const fixtureUrl = new URL("./fixtures/provider-settings.ts", import.meta.url)
-    .href;
+  const fixtureUrl = new URL("./fixtures/provider-settings.ts", import.meta.url).href;
   const child = spawnSync(
     process.execPath,
     [
@@ -642,14 +551,9 @@ test("ProviderAuth: cancel after native credential commit preserves saved-sync-f
   await eventually(() => f.control.checking);
   assert.equal(readStoredCredential(id, f.authPath)?.type, "api_key");
   f.auth.cancel(c.id, c.token);
-  await eventually(
-    () => f.auth.observe(c.id, c.token).state === "saved-sync-failed",
-  );
+  await eventually(() => f.auth.observe(c.id, c.token).state === "saved-sync-failed");
   assert.equal(readStoredCredential(id, f.authPath)?.type, "api_key");
-  assert.doesNotMatch(
-    JSON.stringify(f.auth.observe(c.id, c.token)),
-    /test-committed|PRIVATE|cause/,
-  );
+  assert.doesNotMatch(JSON.stringify(f.auth.observe(c.id, c.token)), /test-committed|PRIVATE|cause/);
   finish();
 });
 

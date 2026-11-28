@@ -62,7 +62,9 @@ test("a session's history is found once it has one, a transcript changed on disk
   assert.equal(row(id).hasHistory, true);
 
   // A transcript damaged after it was found whole is refused when the session opens again.
-  const metadata = (sessions as unknown as { storage: { read(id: string): never; transcript(id: string): string; validateHistory(m: never): string } }).storage;
+  const metadata = (
+    sessions as unknown as { storage: { read(id: string): never; transcript(id: string): string; validateHistory(m: never): string } }
+  ).storage;
   assert.equal(metadata.validateHistory(metadata.read(id)), metadata.transcript(id));
   await writeFile(metadata.transcript(id), "not a transcript\n", { flag: "a" });
   assert.throws(() => metadata.validateHistory(metadata.read(id)), { code: "storage" });

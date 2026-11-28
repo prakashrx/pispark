@@ -47,16 +47,12 @@ export class ExtensionRendering {
       customType?: string;
       isError?: boolean;
     };
-    const rendered =
-      item.role === "toolResult" ? this.tool(message, item) : item.role === "custom" ? this.custom(message) : undefined;
+    const rendered = item.role === "toolResult" ? this.tool(message, item) : item.role === "custom" ? this.custom(message) : undefined;
     this.cache.set(message, rendered);
     return rendered;
   }
 
-  private tool(
-    message: object,
-    item: { toolName?: string; toolCallId?: string; isError?: boolean },
-  ): Rendered | undefined {
+  private tool(message: object, item: { toolName?: string; toolCallId?: string; isError?: boolean }): Rendered | undefined {
     const runner = this.session.extensionRunner;
     const name = item.toolName ?? "";
     // Only extension renderers: PiSpark draws Pi's built-in tools itself.
@@ -83,13 +79,9 @@ export class ExtensionRendering {
       durationMs: undefined,
       outputPad: 0,
     };
-    const call = renderers.renderCall
-      ? renderComponent(() => renderers.renderCall!(args as never, webTheme, context))
-      : undefined;
+    const call = renderers.renderCall ? renderComponent(() => renderers.renderCall!(args as never, webTheme, context)) : undefined;
     const body = renderers.renderResult
-      ? renderComponent(() =>
-          renderers.renderResult!(message as never, { expanded: false, isPartial: false }, webTheme, context),
-        )
+      ? renderComponent(() => renderers.renderResult!(message as never, { expanded: false, isPartial: false }, webTheme, context))
       : undefined;
     return call || body ? { ...(call ? { call } : {}), ...(body ? { body } : {}) } : undefined;
   }
@@ -109,9 +101,7 @@ export class ExtensionRendering {
     const customType = (message as { customType?: string }).customType ?? "";
     const renderer = this.session.extensionRunner.getMessageRenderer(customType);
     if (!renderer) return undefined;
-    const body = renderComponent(() =>
-      renderer(message as never, { ...hints, expanded: false, outputPad: 0 }, webTheme),
-    );
+    const body = renderComponent(() => renderer(message as never, { ...hints, expanded: false, outputPad: 0 }, webTheme));
     return body ? { body } : undefined;
   }
 

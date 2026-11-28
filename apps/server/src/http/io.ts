@@ -51,9 +51,18 @@ export function statusOf(error: unknown): number {
  * Records a request that failed: what was asked, how it was answered, and what kind of error it was.
  * A refused request (below 500) is not an error of the server's.
  */
-export function logFailure(logger: SafeLogger, request: IncomingMessage, cause: unknown, fields: { status?: number; code?: string; durationMs?: number } = {}): void {
+export function logFailure(
+  logger: SafeLogger,
+  request: IncomingMessage,
+  cause: unknown,
+  fields: { status?: number; code?: string; durationMs?: number } = {},
+): void {
   const { status = statusOf(cause), code = failure(cause), durationMs } = fields;
-  logger.event("http.failure", { outcome: "failed", code, status, durationMs, method: request.method, route: routeShape(request.url), cause }, status < 500 ? "info" : "error");
+  logger.event(
+    "http.failure",
+    { outcome: "failed", code, status, durationMs, method: request.method, route: routeShape(request.url), cause },
+    status < 500 ? "info" : "error",
+  );
 }
 
 /** The fixed words of this API's paths. Anything else in a path is an id or a name, and is never logged. */

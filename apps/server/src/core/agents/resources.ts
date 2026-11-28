@@ -68,13 +68,17 @@ export function resource(root: string, type: ItemType, name: string): LayerItem 
     const path = base + ".json";
     if (!stat(path)?.isFile()) return;
     let config: unknown;
-    try { config = JSON.parse(readText(path)); }
-    catch { return; }
+    try {
+      config = JSON.parse(readText(path));
+    } catch {
+      return;
+    }
     if (!config || typeof config !== "object" || Array.isArray(config)) return;
     return { type, name, config: config as Record<string, unknown> };
   }
   const preferred = name + ".md";
-  const file = stat(join(folder, preferred))?.isFile() ? preferred
+  const file = stat(join(folder, preferred))?.isFile()
+    ? preferred
     : entries(folder).find((entry) => entry.isFile() && /\.md$/i.test(entry.name) && entry.name.slice(0, -3) === name)?.name;
   if (!file) return;
   const location = join(folder, file);
@@ -101,7 +105,13 @@ export function skillFiles(base: string): string[] {
 
 function promptDescription(text: string): string | undefined {
   const { data, body } = frontmatter(text);
-  return (data.description || body.split(/\r?\n/).find((line) => line.trim())?.trim())?.slice(0, 200);
+  return (
+    data.description ||
+    body
+      .split(/\r?\n/)
+      .find((line) => line.trim())
+      ?.trim()
+  )?.slice(0, 200);
 }
 
 /** Files here are candidates. Only an explicit reference selects them. */
@@ -110,9 +120,12 @@ export function inventory(root: string, type: ItemType): LayerItem[] {
   const names = new Set<string>();
   for (const entry of entries(join(root, type))) {
     const suffix = type === "extensions" ? /\.(ts|mjs|js)$/ : type === "mcp" ? /\.json$/ : /\.md$/i;
-    const name = entry.isDirectory() && (type === "extensions" || type === "skills")
-      ? entry.name
-      : entry.isFile() && type !== "skills" && suffix.test(entry.name) ? entry.name.replace(suffix, "") : undefined;
+    const name =
+      entry.isDirectory() && (type === "extensions" || type === "skills")
+        ? entry.name
+        : entry.isFile() && type !== "skills" && suffix.test(entry.name)
+          ? entry.name.replace(suffix, "")
+          : undefined;
     if (validItemName(name)) names.add(name);
   }
   return [...names].flatMap((name) => {

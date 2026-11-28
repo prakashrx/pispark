@@ -1,18 +1,11 @@
 import type { RuntimeErrorCode, SessionInfo } from "../../../../server/src/contract/protocol";
 import { validSessionTitle } from "../../../../server/src/contract/session-title";
 
-export type CommandUncertaintyKind =
-  | "acceptance-unknown"
-  | "settlement-unknown";
-export function commandUncertainty(
-  kind: CommandUncertaintyKind | undefined,
-  hasSession: boolean,
-): string {
+export type CommandUncertaintyKind = "acceptance-unknown" | "settlement-unknown";
+export function commandUncertainty(kind: CommandUncertaintyKind | undefined, hasSession: boolean): string {
   const target = hasSession ? "this session" : "your sessions";
-  if (kind === "acceptance-unknown")
-    return `We couldn’t confirm whether that action went through. Check ${target} before trying again.`;
-  if (kind === "settlement-unknown")
-    return `That action may still be running. Check ${target} before trying again.`;
+  if (kind === "acceptance-unknown") return `We couldn’t confirm whether that action went through. Check ${target} before trying again.`;
+  if (kind === "settlement-unknown") return `That action may still be running. Check ${target} before trying again.`;
   return "";
 }
 
@@ -171,7 +164,9 @@ export function tokensShort(tokens: number): string {
 }
 /** "38% of 400k", or the window alone while it isn't measured (right after a summary). */
 export function contextText(context: { percent: number | null; window: number }): string {
-  return context.percent === null ? `${tokensShort(context.window)} window` : `${Math.round(context.percent)}% of ${tokensShort(context.window)}`;
+  return context.percent === null
+    ? `${tokensShort(context.window)} window`
+    : `${Math.round(context.percent)}% of ${tokensShort(context.window)}`;
 }
 export function modelName(
   providers: { id: string; models: { id: string; name: string }[] }[],

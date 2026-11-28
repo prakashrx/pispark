@@ -16,12 +16,7 @@
   } = $props();
 </script>
 
-<details
-  bind:open
-  class={variant === "plain"
-    ? "text-sm"
-    : "rounded-xl border border-[var(--border)] px-4 py-3 text-sm"}
->
+<details bind:open class={variant === "plain" ? "text-sm" : "rounded-xl border border-[var(--border)] px-4 py-3 text-sm"}>
   <summary
     class={variant === "plain"
       ? "cursor-pointer text-[0.8125rem] font-medium text-[var(--interactive-text)]"

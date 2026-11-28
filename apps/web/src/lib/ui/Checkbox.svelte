@@ -18,9 +18,7 @@
   const id = $props.id();
 </script>
 
-<label
-  class="flex items-start gap-2 text-sm text-neutral-700 has-[:disabled]:opacity-50"
->
+<label class="flex items-start gap-2 text-sm text-neutral-700 has-[:disabled]:opacity-50">
   <input
     {...attributes}
     type="checkbox"
@@ -32,14 +30,11 @@
     }}
     class="ui-checkbox"
     aria-invalid={!!error || undefined}
-    aria-describedby={help || error
-      ? `${id}-help`
-      : attributes["aria-describedby"]}
+    aria-describedby={help || error ? `${id}-help` : attributes["aria-describedby"]}
     bind:checked
   />
   <span
-    ><span id={`${id}-label`} class="block">{label}</span
-    >{#if help || error}<span
+    ><span id={`${id}-label`} class="block">{label}</span>{#if help || error}<span
         id={`${id}-help`}
         class="mt-1 block text-neutral-500"
         class:text-[var(--danger-foreground)]={!!error}

@@ -23,7 +23,9 @@ hostedTest("Details changes the session's model between replies, shows its conte
   await expect(page.locator(".status-line")).toContainText(/%/);
 
   // Another model, from the next reply on.
-  await details(page).getByRole("button", { name: /^Model/ }).click();
+  await details(page)
+    .getByRole("button", { name: /^Model/ })
+    .click();
   await page.getByRole("option", { name: /^Second local model/ }).click();
   await expect(page.locator(".status-line")).toContainText("Second local model");
   const reply = page.getByRole("textbox", { name: "Reply to session" });
@@ -41,7 +43,9 @@ hostedTest("a model chosen or a reload asked for while a reply runs waits for th
   await ask(page, "hold on");
   await expect(page.getByRole("button", { name: "Stop response" })).toBeVisible();
 
-  await details(page).getByRole("button", { name: /^Model/ }).click();
+  await details(page)
+    .getByRole("button", { name: /^Model/ })
+    .click();
   await page.getByRole("option", { name: /^Second local model/ }).click();
   await expect(details(page).getByRole("status").filter({ hasText: "Applies when this reply finishes." })).toBeVisible();
   await expect(page.locator(".status-line")).not.toContainText("Second local model");

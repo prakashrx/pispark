@@ -25,11 +25,7 @@
     Markdown,
   });
   const propsOf = (props: unknown): Record<string, unknown> =>
-    props && typeof props === "object" && !Array.isArray(props)
-      ? (props as Record<string, unknown>)
-      : props === undefined
-        ? {}
-        : { props };
+    props && typeof props === "object" && !Array.isArray(props) ? (props as Record<string, unknown>) : props === undefined ? {} : { props };
 </script>
 
 {#each contributions as contribution (contribution.key)}

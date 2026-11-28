@@ -28,11 +28,16 @@ export interface BriefOptions {
 /** Where a lasting instruction from the person goes: the files PiSpark already loads. */
 function instructions(homes: Homes, place: string): string[] {
   const shown = (file: string) => `\`${within(place, file) ?? file}\``;
-  const files = (list: string[]) => list.map((file) => `${shown(file)}${existsSync(file) ? "" : " (not there yet: create it)"}`).join(" or ");
+  const files = (list: string[]) =>
+    list.map((file) => `${shown(file)}${existsSync(file) ? "" : " (not there yet: create it)"}`).join(" or ");
   const lines: string[] = [];
   if (homes.project) lines.push(`   - a rule for this project, for any agent: ${shown(homes.project)}`);
-  if (homes.own.length) lines.push(`   - how you should work or talk with them${homes.project ? "" : ", or a rule for this place"}: your own instructions, ${files(homes.own)}`);
-  if (homes.everyone.length) lines.push(`   - something every agent should do: ask first, then Default's instructions, ${files(homes.everyone)}`);
+  if (homes.own.length)
+    lines.push(
+      `   - how you should work or talk with them${homes.project ? "" : ", or a rule for this place"}: your own instructions, ${files(homes.own)}`,
+    );
+  if (homes.everyone.length)
+    lines.push(`   - something every agent should do: ask first, then Default's instructions, ${files(homes.everyone)}`);
   if (!lines.length) return [`1. A lasting instruction from the person: \`${FOLDER}/${NOTES}\`, under "Things to know", marked as theirs.`];
   return [
     "1. A lasting instruction from the person goes where they would have put it themselves:",
@@ -77,19 +82,30 @@ export async function brief(mind: Mind, homes: Homes, options: BriefOptions = {}
       : `Asking: if the person started this run, they are here: ask in your reply. Otherwise write the question under "Waiting on you" (the question in bold, what you recommend, what you'll do meanwhile) and carry on with what you safely can; it reaches them when your run ends, and their answer comes back to you. Don't ask what the notes, the tasks or your instructions already answer.`,
     "",
     `<notes file="${FOLDER}/${NOTES}">`,
-    notes?.trim() || `(Not written yet. Look around this place first, then write it with these sections: ${quoted(NOTES_HEADINGS)}. Ask the person only what you can't find out.)`,
+    notes?.trim() ||
+      `(Not written yet. Look around this place first, then write it with these sections: ${quoted(NOTES_HEADINGS)}. Ask the person only what you can't find out.)`,
     "</notes>",
   ];
   if (pages.length)
-    out.push(`<pages folder="${FOLDER}/notes/">`, "Read a page when its topic comes up.", ...pages.map((p) => `- ${p.name}.md: ${p.title}. ${p.summary}`), "</pages>");
+    out.push(
+      `<pages folder="${FOLDER}/notes/">`,
+      "Read a page when its topic comes up.",
+      ...pages.map((p) => `- ${p.name}.md: ${p.title}. ${p.summary}`),
+      "</pages>",
+    );
   out.push(
     `<tasks file="${FOLDER}/${TASKS}">`,
-    (tasks?.trim() && tasksShown(tasks)) || `(Not written yet. When there is something to track, create it with these sections: ${quoted(TASK_HEADINGS)}.)`,
+    (tasks?.trim() && tasksShown(tasks)) ||
+      `(Not written yet. When there is something to track, create it with these sections: ${quoted(TASK_HEADINGS)}.)`,
     "</tasks>",
   );
   if (problems.length) out.push("", `Fix in ${FOLDER}/ before anything else:`, ...problems.map((p) => `- ${p}`));
-  if (compacted) out.push("", "The conversation was just compacted. Re-read the tasks above and check your next step against them before going on.");
+  if (compacted)
+    out.push("", "The conversation was just compacted. Re-read the tasks above and check your next step against them before going on.");
   if (tokens(out.join("\n")) > HEAVY_TOKENS)
-    out.push("", "What you keep here is getting heavy to read at the start of every run. When you get a chance, tidy it (the `mind-tidy` skill): shorten long entries, drop what no longer matters, and move detail from the notes into pages.");
+    out.push(
+      "",
+      "What you keep here is getting heavy to read at the start of every run. When you get a chance, tidy it (the `mind-tidy` skill): shorten long entries, drop what no longer matters, and move detail from the notes into pages.",
+    );
   return out.join("\n");
 }

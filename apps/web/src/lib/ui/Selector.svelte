@@ -64,27 +64,11 @@
   let typed = "";
   let typedAt = 0;
   const description = $derived(
-    [
-      describedby,
-      help ? `${id}-help` : undefined,
-      error ? `${id}-error` : undefined,
-    ]
-      .filter(Boolean)
-      .join(" ") || undefined,
+    [describedby, help ? `${id}-help` : undefined, error ? `${id}-error` : undefined].filter(Boolean).join(" ") || undefined,
   );
-  const optionId = (option: Option | undefined) =>
-    option ? `${id}-option-${options.indexOf(option)}` : undefined;
-  const filtered = $derived(
-    options.filter((option) =>
-      (option.label + " " + option.value)
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-    ),
-  );
-  const selected = $derived(
-    options.find((option) => option.value === value)?.label ??
-      (value ? `Unavailable: ${value}` : placeholder),
-  );
+  const optionId = (option: Option | undefined) => (option ? `${id}-option-${options.indexOf(option)}` : undefined);
+  const filtered = $derived(options.filter((option) => (option.label + " " + option.value).toLowerCase().includes(query.toLowerCase())));
+  const selected = $derived(options.find((option) => option.value === value)?.label ?? (value ? `Unavailable: ${value}` : placeholder));
   function close(returnFocus = false) {
     open = false;
     if (returnFocus) root?.querySelector("button")?.focus();
@@ -115,45 +99,23 @@
     if (event.key === "Tab" && !footer) close();
     if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
       event.preventDefault();
-      const enabled = filtered
-        .map((option, index) => (option.disabled ? -1 : index))
-        .filter((index) => index >= 0);
+      const enabled = filtered.map((option, index) => (option.disabled ? -1 : index)).filter((index) => index >= 0);
       const position = enabled.indexOf(active);
       active =
         (event.key === "Home"
           ? enabled[0]
           : event.key === "End"
             ? enabled.at(-1)
-            : enabled[
-                Math.max(
-                  0,
-                  Math.min(
-                    enabled.length - 1,
-                    position + (event.key === "ArrowDown" ? 1 : -1),
-                  ),
-                )
-              ]) ?? 0;
+            : enabled[Math.max(0, Math.min(enabled.length - 1, position + (event.key === "ArrowDown" ? 1 : -1)))]) ?? 0;
     }
-    if (
-      !searchable &&
-      event.key.length === 1 &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey
-    ) {
+    if (!searchable && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
       typed = Date.now() - typedAt > 700 ? event.key : typed + event.key;
       typedAt = Date.now();
-      const index = filtered.findIndex(
-        (option) =>
-          !option.disabled &&
-          option.label.toLowerCase().startsWith(typed.toLowerCase()),
-      );
+      const index = filtered.findIndex((option) => !option.disabled && option.label.toLowerCase().startsWith(typed.toLowerCase()));
       if (index >= 0) active = index;
     }
     root
-      ?.querySelector<HTMLElement>(
-        `[id="${filtered[active] ? optionId(filtered[active]) : ""}"]`,
-      )
+      ?.querySelector<HTMLElement>(`[id="${filtered[active] ? optionId(filtered[active]) : ""}"]`)
       ?.scrollIntoView?.({ block: "nearest" });
     const option = filtered[active];
     if (event.key === "Enter" && option) {
@@ -187,14 +149,9 @@
     data-display={display}
     bind:value
   >
-    {#if value && !options.some((option) => option.value === value)}<option
-        {value}>Unavailable: {value}</option
-      >{/if}
+    {#if value && !options.some((option) => option.value === value)}<option {value}>Unavailable: {value}</option>{/if}
     {#if !value}<option value="">{placeholder}</option>{/if}
-    {#each options as option}<option
-        value={option.value}
-        disabled={option.disabled}>{option.label}</option
-      >{/each}
+    {#each options as option}<option value={option.value} disabled={option.disabled}>{option.label}</option>{/each}
   </select>
 {:else}
   <div
@@ -227,9 +184,10 @@
         }
       }}
     >
-      {#if children}{@render children(selected)}{:else}<span class="truncate"
-          >{loading ? "Loading…" : selected}</span
-        ><Icon name="chevronDown" class="w-3.5 h-3.5 opacity-60 shrink-0" />{/if}
+      {#if children}{@render children(selected)}{:else}<span class="truncate">{loading ? "Loading…" : selected}</span><Icon
+          name="chevronDown"
+          class="w-3.5 h-3.5 opacity-60 shrink-0"
+        />{/if}
     </Button>
     {#if open}
       <AnchoredPanel data-selector-popup class="min-w-56 text-sm" title={label} onclose={() => close()}>
@@ -243,9 +201,7 @@
             aria-expanded="true"
             aria-controls={`${id}-list`}
             aria-autocomplete="list"
-            aria-activedescendant={filtered.length
-              ? optionId(filtered[active])
-              : undefined}
+            aria-activedescendant={filtered.length ? optionId(filtered[active]) : undefined}
             oninput={() => {
               active = 0;
             }}
@@ -257,9 +213,7 @@
           role="listbox"
           aria-label={label}
           tabindex={searchable && options.length ? -1 : 0}
-          aria-activedescendant={filtered.length
-            ? optionId(filtered[active])
-            : undefined}
+          aria-activedescendant={filtered.length ? optionId(filtered[active]) : undefined}
           onkeydown={keydown}
           class="max-h-56 overflow-auto outline-none"
         >
@@ -276,13 +230,7 @@
               onclick={() => choose(option)}>{option.label}</button
             >
           {:else}<p class="px-2.5 py-2 text-muted-foreground" role="status">
-              {loading
-                ? "Loading…"
-                : error
-                  ? "Options unavailable"
-                  : options.length
-                    ? "No matches"
-                    : emptyText}
+              {loading ? "Loading…" : error ? "Options unavailable" : options.length ? "No matches" : emptyText}
             </p>{/each}
         </div>
         {#if footer}<div class="border-t border-[var(--border)] mt-1.5 p-2.5">

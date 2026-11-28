@@ -135,10 +135,21 @@ button[aria-disabled="true"] {
     background: var(--muted);
     color: var(--foreground);
   }
-  .inline-note[data-tone="info"] { background: var(--interactive-muted); }
-  .inline-note[data-tone="success"] { background: var(--success-muted); color: var(--success-foreground); }
-  .inline-note[data-tone="warning"] { background: var(--warning-muted); color: var(--warning-foreground); }
-  .inline-note[data-tone="danger"] { background: var(--danger-muted); color: var(--danger-foreground); }
+  .inline-note[data-tone="info"] {
+    background: var(--interactive-muted);
+  }
+  .inline-note[data-tone="success"] {
+    background: var(--success-muted);
+    color: var(--success-foreground);
+  }
+  .inline-note[data-tone="warning"] {
+    background: var(--warning-muted);
+    color: var(--warning-foreground);
+  }
+  .inline-note[data-tone="danger"] {
+    background: var(--danger-muted);
+    color: var(--danger-foreground);
+  }
   /* A bordered group of settings rows. Each direct child is one row and gets a
      divider above it, so put a row's own layout on a child, not on the card. */
   .settings-card {
@@ -170,8 +181,10 @@ button[aria-disabled="true"] {
     color: var(--muted-foreground);
     background: var(--muted);
     border-radius: var(--radius-sm);
-    transition: background 0.1s, color 0.1s;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    transition:
+      background 0.1s,
+      color 0.1s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   }
   .source-action:hover {
     background: var(--border);
@@ -186,9 +199,15 @@ button[aria-disabled="true"] {
   color: var(--foreground);
   overflow-wrap: anywhere;
 }
-.prose > :first-child { margin-top: 0; }
-.prose > :last-child { margin-bottom: 0; }
-.prose p { margin: 0 0 0.75em; }
+.prose > :first-child {
+  margin-top: 0;
+}
+.prose > :last-child {
+  margin-bottom: 0;
+}
+.prose p {
+  margin: 0 0 0.75em;
+}
 .prose pre {
   background: var(--code-surface);
   border: 1px solid var(--border);
@@ -207,25 +226,61 @@ button[aria-disabled="true"] {
   padding: 0.15em 0.4em;
   color: var(--foreground);
 }
-.prose pre code { background: none; padding: 0; font-size: 1em; color: inherit; }
-.prose pre, .prose code { font-variant-ligatures: none; }
-.prose ul, .prose ol { padding-left: 1.5em; margin: 0 0 0.75em; }
-.prose ul { list-style: disc; }
-.prose ol { list-style: decimal; }
-.prose li { margin: 0.2em 0; padding-left: 0.2em; }
-.prose li::marker { color: var(--subtle-foreground); }
-.prose h1, .prose h2, .prose h3, .prose h4 {
+.prose pre code {
+  background: none;
+  padding: 0;
+  font-size: 1em;
+  color: inherit;
+}
+.prose pre,
+.prose code {
+  font-variant-ligatures: none;
+}
+.prose ul,
+.prose ol {
+  padding-left: 1.5em;
+  margin: 0 0 0.75em;
+}
+.prose ul {
+  list-style: disc;
+}
+.prose ol {
+  list-style: decimal;
+}
+.prose li {
+  margin: 0.2em 0;
+  padding-left: 0.2em;
+}
+.prose li::marker {
+  color: var(--subtle-foreground);
+}
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
   font-weight: 650;
   line-height: 1.3;
   letter-spacing: -0.011em;
   color: var(--foreground);
   margin: 1.25em 0 0.5em;
 }
-.prose h1 { font-size: 1.5em; }
-.prose h2 { font-size: 1.3em; }
-.prose h3 { font-size: 1.125em; }
-.prose h4 { font-size: 1em; }
-.prose hr { border: 0; border-top: 1px solid var(--border); margin: 1.25em 0; }
+.prose h1 {
+  font-size: 1.5em;
+}
+.prose h2 {
+  font-size: 1.3em;
+}
+.prose h3 {
+  font-size: 1.125em;
+}
+.prose h4 {
+  font-size: 1em;
+}
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1.25em 0;
+}
 .prose blockquote {
   border-left: 3px solid var(--interactive);
   background: var(--interactive-muted);
@@ -234,25 +289,84 @@ button[aria-disabled="true"] {
   margin: 1em 0;
   color: var(--foreground);
 }
-.prose blockquote > :last-child { margin-bottom: 0; }
-.prose strong { font-weight: 650; color: var(--foreground); }
-.prose a { color: var(--interactive-text); text-decoration: underline; text-underline-offset: 2px; }
-.prose a:hover { opacity: 0.85; }
-.prose table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.9375em; }
-.prose th { text-align: left; padding: 0.55em 0.8em; border-bottom: 1px solid var(--input); font-weight: 600; background: var(--code-surface); }
-.prose td { padding: 0.55em 0.8em; border-bottom: 1px solid var(--border); }
-.prose th[align="center"], .prose td[align="center"] { text-align: center; }
-.prose th[align="right"], .prose td[align="right"] { text-align: right; }
+.prose blockquote > :last-child {
+  margin-bottom: 0;
+}
+.prose strong {
+  font-weight: 650;
+  color: var(--foreground);
+}
+.prose a {
+  color: var(--interactive-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose a:hover {
+  opacity: 0.85;
+}
+.prose table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.9375em;
+}
+.prose th {
+  text-align: left;
+  padding: 0.55em 0.8em;
+  border-bottom: 1px solid var(--input);
+  font-weight: 600;
+  background: var(--code-surface);
+}
+.prose td {
+  padding: 0.55em 0.8em;
+  border-bottom: 1px solid var(--border);
+}
+.prose th[align="center"],
+.prose td[align="center"] {
+  text-align: center;
+}
+.prose th[align="right"],
+.prose td[align="right"] {
+  text-align: right;
+}
 
 /* Blocks drawn by lib/markdown: prose keeps a reading width, a table scrolls sideways inside it. */
-.prose > :first-child > :first-child { margin-top: 0; }
-.prose > :last-child > :last-child { margin-bottom: 0; }
-.prose .reading-block { max-width: var(--reading-width); display: flow-root; }
-.prose .table-scroll { overflow-x: auto; overflow-wrap: normal; }
-.prose .table-scroll:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
-.prose img { display: block; max-width: 100%; max-height: 28rem; width: auto; height: auto; object-fit: contain; border-radius: var(--radius-md); }
-.prose li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.25em; }
-.prose li > input[type="checkbox"] { margin: 0 0.45em 0.15em 0; vertical-align: middle; accent-color: var(--interactive); }
+.prose > :first-child > :first-child {
+  margin-top: 0;
+}
+.prose > :last-child > :last-child {
+  margin-bottom: 0;
+}
+.prose .reading-block {
+  max-width: var(--reading-width);
+  display: flow-root;
+}
+.prose .table-scroll {
+  overflow-x: auto;
+  overflow-wrap: normal;
+}
+.prose .table-scroll:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.prose img {
+  display: block;
+  max-width: 100%;
+  max-height: 28rem;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+}
+.prose li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -1.25em;
+}
+.prose li > input[type="checkbox"] {
+  margin: 0 0.45em 0.15em 0;
+  vertical-align: middle;
+  accent-color: var(--interactive);
+}
 .prose kbd {
   font-family: var(--font-mono);
   font-size: 0.8125em;
@@ -262,18 +376,55 @@ button[aria-disabled="true"] {
   border-radius: var(--radius-sm);
   background: var(--code-surface);
 }
-.prose mark { background: var(--warning-muted); color: inherit; border-radius: 2px; padding: 0 0.1em; }
-.prose details { margin: 0.75em 0; padding: 0.5em 0.875em; border: 1px solid var(--border); border-radius: var(--radius-md); }
-.prose summary { cursor: pointer; font-weight: 600; }
-.prose details[open] > summary { margin-bottom: 0.5em; }
-.prose section[data-footnotes] { margin-top: 1.25em; padding-top: 0.5em; border-top: 1px solid var(--border); font-size: 0.875em; color: var(--muted-foreground); }
-.prose sup a[data-footnote-ref] { text-decoration: none; padding: 0 0.1em; }
-.prose a[data-footnote-backref] { text-decoration: none; }
-.prose [data-math="block"], .prose .markdown-fence { overflow-x: auto; margin: 0.75em 0; }
-.prose .markdown-fence svg { display: block; margin: 0 auto; max-width: none; height: auto; }
+.prose mark {
+  background: var(--warning-muted);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 0.1em;
+}
+.prose details {
+  margin: 0.75em 0;
+  padding: 0.5em 0.875em;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.prose summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.prose details[open] > summary {
+  margin-bottom: 0.5em;
+}
+.prose section[data-footnotes] {
+  margin-top: 1.25em;
+  padding-top: 0.5em;
+  border-top: 1px solid var(--border);
+  font-size: 0.875em;
+  color: var(--muted-foreground);
+}
+.prose sup a[data-footnote-ref] {
+  text-decoration: none;
+  padding: 0 0.1em;
+}
+.prose a[data-footnote-backref] {
+  text-decoration: none;
+}
+.prose [data-math="block"],
+.prose .markdown-fence {
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+.prose .markdown-fence svg {
+  display: block;
+  margin: 0 auto;
+  max-width: none;
+  height: auto;
+}
 
 /* Code: its language above it, a Copy button that shows on hover (always on touch screens). */
-.prose pre { position: relative; }
+.prose pre {
+  position: relative;
+}
 .prose pre[data-lang]::before {
   content: attr(data-lang);
   display: block;
@@ -295,19 +446,58 @@ button[aria-disabled="true"] {
   font-size: var(--text-xs);
   opacity: 0;
 }
-.prose pre:hover .code-copy, .prose .code-copy:focus-visible { opacity: 1; }
+.prose pre:hover .code-copy,
+.prose .code-copy:focus-visible {
+  opacity: 1;
+}
 @media (hover: none) {
-  .prose .code-copy { opacity: 1; }
+  .prose .code-copy {
+    opacity: 1;
+  }
 }
 /* Highlighted code in the theme's own colours. */
-.prose .hljs-keyword, .prose .hljs-selector-tag, .prose .hljs-built_in, .prose .hljs-doctag { color: var(--interactive-text); }
-.prose .hljs-string, .prose .hljs-regexp, .prose .hljs-addition, .prose .hljs-attribute { color: var(--success-foreground); }
-.prose .hljs-number, .prose .hljs-literal, .prose .hljs-symbol, .prose .hljs-variable.constant_ { color: var(--warning-foreground); }
-.prose .hljs-title, .prose .hljs-section, .prose .hljs-name, .prose .hljs-deletion { color: var(--danger-foreground); }
-.prose .hljs-comment, .prose .hljs-quote, .prose .hljs-meta { color: var(--subtle-foreground); font-style: italic; }
-.prose .hljs-type, .prose .hljs-attr, .prose .hljs-property, .prose .hljs-params { color: var(--foreground); }
-.prose .hljs-emphasis { font-style: italic; }
-.prose .hljs-strong { font-weight: 650; }
+.prose .hljs-keyword,
+.prose .hljs-selector-tag,
+.prose .hljs-built_in,
+.prose .hljs-doctag {
+  color: var(--interactive-text);
+}
+.prose .hljs-string,
+.prose .hljs-regexp,
+.prose .hljs-addition,
+.prose .hljs-attribute {
+  color: var(--success-foreground);
+}
+.prose .hljs-number,
+.prose .hljs-literal,
+.prose .hljs-symbol,
+.prose .hljs-variable.constant_ {
+  color: var(--warning-foreground);
+}
+.prose .hljs-title,
+.prose .hljs-section,
+.prose .hljs-name,
+.prose .hljs-deletion {
+  color: var(--danger-foreground);
+}
+.prose .hljs-comment,
+.prose .hljs-quote,
+.prose .hljs-meta {
+  color: var(--subtle-foreground);
+  font-style: italic;
+}
+.prose .hljs-type,
+.prose .hljs-attr,
+.prose .hljs-property,
+.prose .hljs-params {
+  color: var(--foreground);
+}
+.prose .hljs-emphasis {
+  font-style: italic;
+}
+.prose .hljs-strong {
+  font-weight: 650;
+}
 
 /*
  * Markdown keeps a reading width; a session's conversation is one wider column instead: its
@@ -319,5 +509,7 @@ button[aria-disabled="true"] {
   --conversation-gutter: 1rem;
 }
 @media (min-width: 640px) {
-  :root { --conversation-gutter: 1.5rem; }
+  :root {
+    --conversation-gutter: 1.5rem;
+  }
 }

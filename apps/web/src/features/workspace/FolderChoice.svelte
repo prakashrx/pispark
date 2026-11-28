@@ -38,9 +38,7 @@
 {/snippet}
 
 {#if locked}
-  <Button class="folder-locked" unavailable={locked} aria-label={`Working folder: ${value}. ${locked}`}
-    >{@render chip(value)}</Button
-  >
+  <Button class="folder-locked" unavailable={locked} aria-label={`Working folder: ${value}. ${locked}`}>{@render chip(value)}</Button>
 {:else}
   <Selector label="Working folder" {options} bind:value searchable {display} children={display === "compact" ? chip : undefined}>
     {#snippet footer(close)}

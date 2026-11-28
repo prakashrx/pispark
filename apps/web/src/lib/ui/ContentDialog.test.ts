@@ -1,10 +1,4 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/svelte";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import ContentDialog from "./ContentDialog.svelte";
 import ControlsFixture from "./ControlsFixture.svelte";
@@ -60,19 +54,9 @@ async function drop(files: File[]) {
 
 test("Section defaults retain direct children/class; split is opt-in 1:4 and stacks narrowly", () => {
   const { container } = render(ControlsFixture, { contentCases: true });
-  expect(
-    container
-      .querySelector("section.existing-class")
-      ?.getAttribute("data-layout"),
-  ).toBe("stacked");
-  expect(
-    container.querySelector("section.existing-class > p")?.textContent,
-  ).toBe("Existing content");
-  expect(
-    container.querySelector(
-      "section.fixture-section > .section-content button",
-    ),
-  ).toBeTruthy();
+  expect(container.querySelector("section.existing-class")?.getAttribute("data-layout")).toBe("stacked");
+  expect(container.querySelector("section.existing-class > p")?.textContent).toBe("Existing content");
+  expect(container.querySelector("section.fixture-section > .section-content button")).toBeTruthy();
   expect(sectionSource).toContain("minmax(0, 1fr) minmax(0, 4fr)");
   expect(sectionSource).toContain("max-width: 640px");
 });
@@ -93,9 +77,7 @@ test("read uses literal non-form text, edit is private, cancel restores scroll a
   });
   expect(onapply).not.toHaveBeenCalled();
   await fireEvent.click(button("Cancel"));
-  await waitFor(() =>
-    expect(document.activeElement).toBe(screen.getByRole("document")),
-  );
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("document")));
   expect(viewport.scrollTop).toBe(123);
   expect(screen.getByRole("document").textContent).toContain("Original");
   await fireEvent.click(button("Edit"));
@@ -157,101 +139,70 @@ test("import/drop is local, confirms nonempty replacement, typing revokes consen
   await fireEvent.click(button("Edit"));
   await drop([fakeFile()]);
   await screen.findByRole("button", { name: "Replace text" });
-  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toContain(
-    "Original",
-  );
+  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toContain("Original");
   await fireEvent.input(screen.getByRole("textbox"), {
     target: { value: "New live edit" },
   });
   expect(screen.queryByRole("button", { name: "Replace text" })).toBeNull();
   await drop([fakeFile("chosen")]);
-  await fireEvent.click(
-    await screen.findByRole("button", { name: "Keep current text" }),
-  );
-  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
-    "New live edit",
-  );
+  await fireEvent.click(await screen.findByRole("button", { name: "Keep current text" }));
+  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("New live edit");
   await drop([fakeFile("chosen")]);
-  await fireEvent.click(
-    await screen.findByRole("button", { name: "Replace text" }),
-  );
-  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
-    "chosen",
-  );
+  await fireEvent.click(await screen.findByRole("button", { name: "Replace text" }));
+  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("chosen");
   await drop([fakeFile(), fakeFile()]);
   expect(screen.getByRole("alert").textContent).toContain("one text file");
   await drop([{ ...fakeFile(), type: "image/png" } as File]);
-  await waitFor(() =>
-    expect(screen.getByRole("alert").textContent).toContain(
-      "not a PDF or image",
-    ),
-  );
-  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
-    "chosen",
-  );
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("not a PDF or image"));
+  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("chosen");
   expect(onapply).not.toHaveBeenCalled();
 });
-test.each([
-  "typing",
-  "cancel",
-  "close",
-  "owner",
-  "value",
-  "pause",
-  "readonly",
-  "dispose",
-  "new-import",
-])("late import is revoked by %s", async (reason) => {
-  const view = setup({ mode: "edit" });
-  if (reason === "pause")
-    await fireEvent.input(screen.getByRole("textbox"), {
-      target: { value: "Private retained" },
-    });
-  let finish!: (value: ArrayBuffer) => void;
-  const slow = {
-    ...fakeFile(),
-    arrayBuffer: () =>
-      new Promise<ArrayBuffer>((resolve) => {
-        finish = resolve;
-      }),
-  } as File;
-  await drop([slow]);
-  if (reason === "typing")
-    await fireEvent.input(screen.getByRole("textbox"), {
-      target: { value: "Newer" },
-    });
-  if (reason === "cancel") await fireEvent.click(button("Cancel"));
-  if (reason === "close") await fireEvent.click(screen.getByRole("button", { name: /^Close [A-Z]/ }));
-  if (reason === "value") await view.rerender({ value: "New context" });
-  if (reason === "owner")
-    await view.rerender({ ownerKey: "b", value: "Other owner" });
-  if (reason === "pause") await view.rerender({ active: false });
-  if (reason === "readonly") await view.rerender({ permission: "none" });
-  if (reason === "dispose") view.unmount();
-  if (reason === "new-import") await drop([fakeFile("new import")]);
-  finish(new TextEncoder().encode("STALE").buffer);
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(screen.queryByText("STALE")).toBeNull();
-  if (reason !== "new-import")
-    expect(screen.queryByRole("button", { name: "Replace text" })).toBeNull();
-  const current = screen.queryByRole("textbox") as HTMLTextAreaElement | null;
-  if (current) expect(current.value).not.toBe("STALE");
-  if (reason === "pause") {
-    await view.rerender({ active: true });
-    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
-      "Private retained",
-    );
-  }
-  if (reason === "new-import") {
-    await fireEvent.click(
-      await screen.findByRole("button", { name: "Replace text" }),
-    );
-    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
-      "new import",
-    );
-  }
-  expect(view.onapply).not.toHaveBeenCalled();
-});
+test.each(["typing", "cancel", "close", "owner", "value", "pause", "readonly", "dispose", "new-import"])(
+  "late import is revoked by %s",
+  async (reason) => {
+    const view = setup({ mode: "edit" });
+    if (reason === "pause")
+      await fireEvent.input(screen.getByRole("textbox"), {
+        target: { value: "Private retained" },
+      });
+    let finish!: (value: ArrayBuffer) => void;
+    const slow = {
+      ...fakeFile(),
+      arrayBuffer: () =>
+        new Promise<ArrayBuffer>((resolve) => {
+          finish = resolve;
+        }),
+    } as File;
+    await drop([slow]);
+    if (reason === "typing")
+      await fireEvent.input(screen.getByRole("textbox"), {
+        target: { value: "Newer" },
+      });
+    if (reason === "cancel") await fireEvent.click(button("Cancel"));
+    if (reason === "close") await fireEvent.click(screen.getByRole("button", { name: /^Close [A-Z]/ }));
+    if (reason === "value") await view.rerender({ value: "New context" });
+    if (reason === "owner") await view.rerender({ ownerKey: "b", value: "Other owner" });
+    if (reason === "pause") await view.rerender({ active: false });
+    if (reason === "readonly") await view.rerender({ permission: "none" });
+    if (reason === "dispose") view.unmount();
+    if (reason === "new-import") await drop([fakeFile("new import")]);
+    finish(new TextEncoder().encode("STALE").buffer);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByText("STALE")).toBeNull();
+    if (reason !== "new-import") expect(screen.queryByRole("button", { name: "Replace text" })).toBeNull();
+    const current = screen.queryByRole("textbox") as HTMLTextAreaElement | null;
+    if (current) expect(current.value).not.toBe("STALE");
+    if (reason === "pause") {
+      await view.rerender({ active: true });
+      expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("Private retained");
+    }
+    if (reason === "new-import") {
+      await fireEvent.click(await screen.findByRole("button", { name: "Replace text" }));
+      expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("new import");
+    }
+    expect(view.onapply).not.toHaveBeenCalled();
+  },
+);
 test("picker cancel and empty selection do not mutate; UTF-8 byte bound controls Apply", async () => {
   const view = setup({ mode: "add", value: "", maxBytes: 3 });
   const picker = view.container.querySelector('input[type="file"]')!;
@@ -269,9 +220,7 @@ test("picker cancel and empty selection do not mutate; UTF-8 byte bound controls
 });
 
 test("optional serializable UI snapshot resumes private text after disposal without carrying import consent", async () => {
-  let snapshot: import("svelte").ComponentProps<
-    typeof ContentDialog
-  >["retained"];
+  let snapshot: import("svelte").ComponentProps<typeof ContentDialog>["retained"];
   const first = setup({
     mode: "edit",
     onstate: (state: NonNullable<typeof snapshot>) => (snapshot = state),
@@ -283,9 +232,7 @@ test("optional serializable UI snapshot resumes private text after disposal with
   await screen.findByRole("button", { name: "Replace text" });
   first.unmount();
   const second = setup({ mode: "edit", retained: snapshot });
-  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
-    "Retained private",
-  );
+  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("Retained private");
   expect(screen.queryByRole("button", { name: "Replace text" })).toBeNull();
   await fireEvent.click(button("Cancel"));
   expect(screen.getByRole("document").textContent).toContain("Original");

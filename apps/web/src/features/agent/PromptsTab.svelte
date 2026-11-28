@@ -38,15 +38,28 @@
     return body(item)
       .replace(/\$\{(\d):-([^}]*)\}/g, (_, n: string, fallback: string) => (value(Number(n)) ? `**${value(Number(n))}**` : fallback))
       .replace(/\$(?:@|ARGUMENTS)/g, () => values.filter(Boolean).join(" ") || "‹arguments›")
-      .replace(/\$(\d)/g, (_, n: string) => (value(Number(n)) ? `**${value(Number(n))}**` : `‹${argsOf(item).find((a) => a.n === Number(n))?.name ?? `argument ${n}`}›`));
+      .replace(/\$(\d)/g, (_, n: string) =>
+        value(Number(n)) ? `**${value(Number(n))}**` : `‹${argsOf(item).find((a) => a.n === Number(n))?.name ?? `argument ${n}`}›`,
+      );
   }
 </script>
 
-{#snippet slash(item: Row)}<span class="cmd">/{item.name || "new-prompt"}</span>{#each argsOf(item) as a (a.n)}<span class="arg">‹{a.name}›</span>{/each}{/snippet}
+{#snippet slash(item: Row)}<span class="cmd">/{item.name || "new-prompt"}</span>{#each argsOf(item) as a (a.n)}<span class="arg"
+      >‹{a.name}›</span
+    >{/each}{/snippet}
 
-<TabIntro {page} kind="prompts" oncreate={() => page.create("prompts")}>Type <kbd>/</kbd> in the message box to run one. What you type after the name fills in <code>$1</code>, <code>$2</code>…</TabIntro>
+<TabIntro {page} kind="prompts" oncreate={() => page.create("prompts")}
+  >Type <kbd>/</kbd> in the message box to run one. What you type after the name fills in <code>$1</code>, <code>$2</code>…</TabIntro
+>
 
-<Split items={prompts} selected={open} {narrow} label="Prompts" off={(item) => !isFresh(item) && !item.on} onselect={(item) => page.show("prompts", item)}>
+<Split
+  items={prompts}
+  selected={open}
+  {narrow}
+  label="Prompts"
+  off={(item) => !isFresh(item) && !item.on}
+  onselect={(item) => page.show("prompts", item)}
+>
   {#snippet row(item)}
     <span class="split-name slash">{@render slash(item)}</span>
     <span class="split-desc">{isFresh(item) ? "Not saved yet" : (item.description ?? "")}</span>
@@ -56,15 +69,27 @@
     {#if open}
       {@const item = open}
       <DetailHead {page} {item} entries={page.entries(item)}>
-        {#snippet title()}{#if isFresh(item) && !item.name}<span class="placeholder">New prompt</span>{:else}{@render slash(item)}{/if}{/snippet}
+        {#snippet title()}{#if isFresh(item) && !item.name}<span class="placeholder">New prompt</span>{:else}{@render slash(
+              item,
+            )}{/if}{/snippet}
       </DetailHead>
-      {#if isFresh(item) && !item.name}<p class="note">Name it with the pencil above; the name is what you type after <code>/</code>.</p>{/if}
+      {#if isFresh(item) && !item.name}<p class="note">
+          Name it with the pencil above; the name is what you type after <code>/</code>.
+        </p>{/if}
       <DescriptionPane {page} {item} title="What it's for" empty="Not set yet. The slash picker shows this beside /name." />
       <div class="panes" data-stack={stacked || narrow || undefined}>
         <Pane title="Template">
-          <ItemText {page} {item} label={`/${item.name || "new-prompt"} template`} frontmatter="hidden" placeholder="What /name sends. Use $1, $2 for what's typed after it." />
+          <ItemText
+            {page}
+            {item}
+            label={`/${item.name || "new-prompt"} template`}
+            frontmatter="hidden"
+            placeholder="What /name sends. Use $1, $2 for what's typed after it."
+          />
           {#if argsOf(item).length}
-            <p class="note">{#each argsOf(item) as a, i (a.n)}{i ? " · " : ""}<code>${a.n}</code> is {a.name}{/each}</p>
+            <p class="note">
+              {#each argsOf(item) as a, i (a.n)}{i ? " · " : ""}<code>${a.n}</code> is {a.name}{/each}
+            </p>
           {/if}
         </Pane>
 

@@ -75,7 +75,9 @@ fresh("each session in the sidebar is archived from its row; Archived restores i
   const cancel = confirm.getByRole("button", { name: "Cancel" });
   // Live updates can show the restored session before the browser receives the command response.
   let acknowledge!: () => void;
-  const restoring = new Promise<void>((resolve) => { acknowledge = resolve; });
+  const restoring = new Promise<void>((resolve) => {
+    acknowledge = resolve;
+  });
   await page.route("**/api/commands", async (route) => {
     if (route.request().postDataJSON().type !== "restore") return route.continue();
     const response = await route.fetch();

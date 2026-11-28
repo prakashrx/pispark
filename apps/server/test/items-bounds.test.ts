@@ -111,8 +111,13 @@ test("a message keeps one key while Pi replaces its object as it streams, and af
 });
 
 test("an edited message's versions skip bookkeeping between it and the conversation, such as Pi's system record", () => {
-  const message = (id: string, parentId: string | null, role: string, text: string) =>
-    ({ id, parentId, type: "message", timestamp: id, message: { role, content: role === "user" || role === "system" ? text : [{ type: "text", text }] } });
+  const message = (id: string, parentId: string | null, role: string, text: string) => ({
+    id,
+    parentId,
+    type: "message",
+    timestamp: id,
+    message: { role, content: role === "user" || role === "system" ? text : [{ type: "text", text }] },
+  });
   const entries = [
     message("s1", null, "system", "prompt"),
     message("u1", "s1", "user", "Name a fruit"),
@@ -137,5 +142,8 @@ test("an edited message's versions skip bookkeeping between it and the conversat
     state: {},
   };
   const users = new ItemProjector(source as unknown as ItemSource).page({}).items.filter((item) => item.role === "user");
-  assert.deepEqual(users.map((item) => item.versions), [undefined, { at: 2, of: 2, previous: "u2" }]);
+  assert.deepEqual(
+    users.map((item) => item.versions),
+    [undefined, { at: 2, of: 2, previous: "u2" }],
+  );
 });

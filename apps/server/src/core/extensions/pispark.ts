@@ -26,10 +26,7 @@ export default function pispark(pi: ExtensionAPI): void {
     label: "Set session title",
     description:
       "Give this session a short, meaningful title when its purpose is clear. Update it only when the topic meaningfully changes.",
-    parameters: Type.Object(
-      { title: Type.String({ maxLength: 4096 }) },
-      { additionalProperties: false },
-    ),
+    parameters: Type.Object({ title: Type.String({ maxLength: 4096 }) }, { additionalProperties: false }),
     async execute(_id, parameters, signal) {
       if (signal?.aborted) throw new Error("Cancelled");
       const title = typeof parameters.title === "string" && parameters.title.length <= 4096 ? sessionTitle(parameters.title) : "";
@@ -56,7 +53,8 @@ export default function pispark(pi: ExtensionAPI): void {
         return { content: [{ type: "text", text: answer.text }], details: answer.details };
       },
     });
-  const id = (what: string) => Type.String({ maxLength: 64, description: `${what}, by its id, such as session-1 or process-2 (pispark_look lists them).` });
+  const id = (what: string) =>
+    Type.String({ maxLength: 64, description: `${what}, by its id, such as session-1 or process-2 (pispark_look lists them).` });
   const pattern = (description: string) => Type.String({ maxLength: 200, description });
 
   tool(
@@ -64,7 +62,10 @@ export default function pispark(pi: ExtensionAPI): void {
     "Start a session",
     "Hand work to another PiSpark session, which runs on its own while this one carries on. It sees only the brief. It answers once, when it is done, and its answer arrives here as a message. It is then put away, unless you keep it. Set it up as a person sets up a new session: a folder, an agent and a model.",
     {
-      brief: Type.String({ maxLength: 65536, description: "Its first message, complete on its own: the outcome, the limits, and what done means." }),
+      brief: Type.String({
+        maxLength: 65536,
+        description: "Its first message, complete on its own: the outcome, the limits, and what done means.",
+      }),
       title: Type.Optional(Type.String({ maxLength: 200, description: "A short title for it; named from the brief when left out." })),
       agent: Type.Optional(
         Type.Union([Type.String({ maxLength: 64 }), Type.Object({}, { additionalProperties: true })], {
@@ -72,9 +73,19 @@ export default function pispark(pi: ExtensionAPI): void {
             "An agent id, or an agent definition made for this session, in the shape of an agent.json (base, on, off, resources, settings): it names agents, skills, extensions and prompts that exist, and holds no code. The Default agent when left out.",
         }),
       ),
-      folder: Type.Optional(Type.String({ maxLength: 4096, description: "Where it works, absolute or relative to this session's folder; this session's folder when left out." })),
+      folder: Type.Optional(
+        Type.String({
+          maxLength: 4096,
+          description: "Where it works, absolute or relative to this session's folder; this session's folder when left out.",
+        }),
+      ),
       model: Type.Optional(Type.String({ maxLength: 400, description: "As provider/id; its agent's own model when left out." })),
-      keep: Type.Optional(Type.Boolean({ description: "true keeps it after its answer, so pispark_send can tell it more later with all it knows; pispark_stop then puts it away. Left out, it is put away once it is done." })),
+      keep: Type.Optional(
+        Type.Boolean({
+          description:
+            "true keeps it after its answer, so pispark_send can tell it more later with all it knows; pispark_stop then puts it away. Left out, it is put away once it is done.",
+        }),
+      ),
     },
   );
   tool(
@@ -85,8 +96,18 @@ export default function pispark(pi: ExtensionAPI): void {
       command: Type.String({ maxLength: 8192, description: "The shell command." }),
       title: Type.Optional(Type.String({ maxLength: 120, description: "A short name." })),
       folder: Type.Optional(Type.String({ maxLength: 4096, description: "Where to run it; this session's folder when left out." })),
-      stop_after_seconds: Type.Optional(Type.Number({ minimum: 1, maximum: 604800, description: "Stop it after this long. Without it, it runs until it ends or is stopped." })),
-      raise_on: Type.Optional(pattern("A regular expression, e.g. 'error|failed': this session is woken when a line of its output matches, at most once a minute.")),
+      stop_after_seconds: Type.Optional(
+        Type.Number({
+          minimum: 1,
+          maximum: 604800,
+          description: "Stop it after this long. Without it, it runs until it ends or is stopped.",
+        }),
+      ),
+      raise_on: Type.Optional(
+        pattern(
+          "A regular expression, e.g. 'error|failed': this session is woken when a line of its output matches, at most once a minute.",
+        ),
+      ),
     },
   );
   tool(
@@ -95,11 +116,18 @@ export default function pispark(pi: ExtensionAPI): void {
     "Schedule a prompt to be sent later, as if the person typed it: once (in_minutes or at) or repeating (cron). PiSpark asks the person before adding it.",
     {
       prompt: Type.String({ maxLength: 8192, description: "What to send at that time, written as the person's request." }),
-      cron: Type.Optional(Type.String({ maxLength: 100, description: "Repeating: minute hour day-of-month month day-of-week, in the server's local time, e.g. '0 9 * * 1-5'." })),
+      cron: Type.Optional(
+        Type.String({
+          maxLength: 100,
+          description: "Repeating: minute hour day-of-month month day-of-week, in the server's local time, e.g. '0 9 * * 1-5'.",
+        }),
+      ),
       in_minutes: Type.Optional(Type.Integer({ minimum: 1, maximum: 525600, description: "Once, this many minutes from now." })),
       at: Type.Optional(Type.String({ maxLength: 40, description: "Once, at this local date and time, e.g. '2026-11-14T09:00'." })),
       run: Type.Optional(
-        Type.Union([Type.Literal("here"), Type.Literal("new")], { description: "'here' sends each run to this session (default); 'new' starts each run as a new session under this one." }),
+        Type.Union([Type.Literal("here"), Type.Literal("new")], {
+          description: "'here' sends each run to this session (default); 'new' starts each run as a new session under this one.",
+        }),
       ),
     },
   );
@@ -112,7 +140,9 @@ export default function pispark(pi: ExtensionAPI): void {
       text: Type.Optional(Type.String({ maxLength: 65536, description: "For a session: the message." })),
       raise_on: Type.Optional(pattern("For a process: a new regular expression to raise on, or '' to stop raising.")),
       when: Type.Optional(
-        Type.Union([Type.Literal("now"), Type.Literal("after")], { description: "For a working session: 'now' (default) at its next pause; 'after' once it has finished what it is doing." }),
+        Type.Union([Type.Literal("now"), Type.Literal("after")], {
+          description: "For a working session: 'now' (default) at its next pause; 'after' once it has finished what it is doing.",
+        }),
       ),
     },
   );
@@ -121,10 +151,22 @@ export default function pispark(pi: ExtensionAPI): void {
     "Wait",
     "Wait for sessions and processes this session started, and get their answers together, rather than ending your turn or checking on them. It ends early if one of them raises something or a message arrives for you. Answers returned here are not sent again, and what is still open when the wait ends stays open.",
     {
-      ids: Type.Optional(Type.Array(Type.String({ maxLength: 64 }), { minItems: 1, maxItems: 50, description: "What to wait for, such as ['session-1', 'process-2']; everything still open when left out." })),
-      for: Type.Optional(Type.Union([Type.Literal("all"), Type.Literal("any")], { description: "'all' (default) waits for every one; 'any' returns when the first is in." })),
+      ids: Type.Optional(
+        Type.Array(Type.String({ maxLength: 64 }), {
+          minItems: 1,
+          maxItems: 50,
+          description: "What to wait for, such as ['session-1', 'process-2']; everything still open when left out.",
+        }),
+      ),
+      for: Type.Optional(
+        Type.Union([Type.Literal("all"), Type.Literal("any")], {
+          description: "'all' (default) waits for every one; 'any' returns when the first is in.",
+        }),
+      ),
       until: Type.Optional(pattern("A regular expression: return when a process's output shows it, e.g. 'ready|listening'.")),
-      seconds: Type.Optional(Type.Number({ minimum: 1, maximum: 604800, description: "Give up after this long. Without it the wait has no limit." })),
+      seconds: Type.Optional(
+        Type.Number({ minimum: 1, maximum: 604800, description: "Give up after this long. Without it the wait has no limit." }),
+      ),
     },
   );
   tool(
@@ -133,21 +175,37 @@ export default function pispark(pi: ExtensionAPI): void {
     "See what this session started, without disturbing it. Without id: every session, process and schedule, with its id and state. With id: a session's state, last note and what it last said; a process's unread output; a schedule's runs.",
     {
       id: Type.Optional(id("One thing to look at")),
-      find: Type.Optional(Type.String({ maxLength: 200, pattern: "^[^\\r\\n]+$", description: "For a process: literal text to search for in its output, case-insensitive." })),
+      find: Type.Optional(
+        Type.String({
+          maxLength: 200,
+          pattern: "^[^\\r\\n]+$",
+          description: "For a process: literal text to search for in its output, case-insensitive.",
+        }),
+      ),
     },
   );
-  tool("stop", "Stop", "Stop something this session started: a session and what it started, a process, or a schedule (which is removed). A session you kept that is at rest is put away.", {
-    id: id("What to stop"),
-  });
+  tool(
+    "stop",
+    "Stop",
+    "Stop something this session started: a session and what it started, a process, or a schedule (which is removed). A session you kept that is at rest is put away.",
+    {
+      id: id("What to stop"),
+    },
+  );
   tool(
     "raise",
     "Raise",
     "Say you need a decision from whoever asked for this work. It does not end your turn, and the answer arrives as a message. Use it only when the answer changes what you do next.",
     { text: Type.String({ maxLength: 65536, description: "What you need, complete on its own, with what you recommend." }) },
   );
-  tool("note", "Note", "Leave a line for whoever asked for this work, such as progress worth knowing. It never interrupts anyone, and nothing comes back.", {
-    text: Type.String({ maxLength: 65536, description: "The line." }),
-  });
+  tool(
+    "note",
+    "Note",
+    "Leave a line for whoever asked for this work, such as progress worth knowing. It never interrupts anyone, and nothing comes back.",
+    {
+      text: Type.String({ maxLength: 65536, description: "The line." }),
+    },
+  );
   tool(
     "self",
     "This session",
@@ -177,7 +235,9 @@ export default function pispark(pi: ExtensionAPI): void {
         : "",
       has("start_session")
         ? `For work that can run on its own (research, a long job, one of several parallel parts), hand it to another session with pispark_start_session and carry on. Each session answers once, when it is done, and is then put away; start it with keep: true if you will tell it more after its answer. To use the answers in this turn, call pispark_wait (all of them, or the first with for 'any'); otherwise end your turn and each answer arrives here as a message. What this session starts gets a short id such as session-1 or process-2: pispark_look shows them, pispark_send tells one something, pispark_stop stops one.${
-            agent ? ` A session you start uses the Default agent and that agent's model unless you say otherwise; this session's agent is "${agent}"${model ? ` and its model is "${model}"` : ""}, to pass when it should work as you do.` : ""
+            agent
+              ? ` A session you start uses the Default agent and that agent's model unless you say otherwise; this session's agent is "${agent}"${model ? ` and its model is "${model}"` : ""}, to pass when it should work as you do.`
+              : ""
           }`
         : "",
       has("start_process")
@@ -190,9 +250,7 @@ export default function pispark(pi: ExtensionAPI): void {
           ? "pispark_note and pispark_raise speak to the person: a note leaves them a line, a raise says this session needs them. Use them to pass on what a session you started raised and you cannot decide, not for ordinary replies."
           : "",
     ].filter(Boolean);
-    event.systemPromptOptions.appendSystemPrompt = [event.systemPromptOptions.appendSystemPrompt, ...guidance]
-      .filter(Boolean)
-      .join("\n\n");
+    event.systemPromptOptions.appendSystemPrompt = [event.systemPromptOptions.appendSystemPrompt, ...guidance].filter(Boolean).join("\n\n");
   });
 }
 

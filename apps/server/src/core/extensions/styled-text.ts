@@ -73,12 +73,9 @@ const BACKGROUND: Record<ThemeBg, Role> = {
 };
 
 // A color no theme would pick: #01f0NN, where NN is the role's index.
-const placeholder = (role: Role) =>
-  role ? `#01f0${ROLES.indexOf(role).toString(16).padStart(2, "0")}` : "";
+const placeholder = (role: Role) => (role ? `#01f0${ROLES.indexOf(role).toString(16).padStart(2, "0")}` : "");
 const colors = <K extends string>(roles: Record<K, Role>) =>
-  Object.fromEntries(
-    Object.entries<Role>(roles).map(([token, role]) => [token, placeholder(role)]),
-  ) as Record<K, string>;
+  Object.fromEntries(Object.entries<Role>(roles).map(([token, role]) => [token, placeholder(role)])) as Record<K, string>;
 
 /** Pi's Theme styles bold/italic through chalk, which is silent without a terminal. */
 class WebTheme extends Theme {
@@ -98,12 +95,7 @@ class WebTheme extends Theme {
     return `\x1b[9m${text}\x1b[29m`;
   }
 }
-export const webTheme: Theme = new WebTheme(
-  colors(FOREGROUND),
-  colors(BACKGROUND),
-  "truecolor",
-  { name: "pispark" },
-);
+export const webTheme: Theme = new WebTheme(colors(FOREGROUND), colors(BACKGROUND), "truecolor", { name: "pispark" });
 
 /** Width terminal components are rendered at; the browser wraps narrower views. */
 export const RENDER_WIDTH = 80;
@@ -129,8 +121,22 @@ const BASIC: Role[] = ["", "danger", "success", "warning", "accent", "accent", "
 function xterm(index: number): string {
   if (index < 16) {
     const basic = [
-      "000000", "cd3131", "0dbc79", "e5e510", "2472c8", "bc3fbc", "11a8cd", "e5e5e5",
-      "666666", "f14c4c", "23d18b", "f5f543", "3b8eea", "d670d6", "29b8db", "ffffff",
+      "000000",
+      "cd3131",
+      "0dbc79",
+      "e5e510",
+      "2472c8",
+      "bc3fbc",
+      "11a8cd",
+      "e5e5e5",
+      "666666",
+      "f14c4c",
+      "23d18b",
+      "f5f543",
+      "3b8eea",
+      "d670d6",
+      "29b8db",
+      "ffffff",
     ];
     return `#${basic[index]}`;
   }
@@ -169,8 +175,7 @@ function applySgr(style: Style, params: string): Style {
     else if (code === 21 || code === 22) {
       delete next.bold;
       delete next.dim;
-    }
-    else if (code === 23) delete next.italic;
+    } else if (code === 23) delete next.italic;
     else if (code === 24) delete next.underline;
     else if (code === 27) delete next.inverse;
     else if (code === 29) delete next.strike;
@@ -198,8 +203,7 @@ function span(text: string, style: Style): StyledSpan {
   const { inverse, ...rest } = style;
   return inverse ? { text, ...rest, bg: "selected" } : { text, ...rest };
 }
-const sameStyle = (a: StyledSpan, b: StyledSpan) =>
-  JSON.stringify({ ...a, text: "" }) === JSON.stringify({ ...b, text: "" });
+const sameStyle = (a: StyledSpan, b: StyledSpan) => JSON.stringify({ ...a, text: "" }) === JSON.stringify({ ...b, text: "" });
 
 /** Terminal text (one string with newlines, or rendered lines) as styled lines. */
 export function styledLines(input: string | readonly string[]): StyledLine[] {
@@ -251,9 +255,7 @@ export function tidy(lines: StyledLine[]): StyledLine[] {
   });
   while (trimmed.length && !plainText(trimmed[0]!)) trimmed.shift();
   while (trimmed.length && !plainText(trimmed.at(-1)!)) trimmed.pop();
-  const indents = trimmed
-    .filter((line) => plainText(line))
-    .map((line) => plainText(line).length - plainText(line).trimStart().length);
+  const indents = trimmed.filter((line) => plainText(line)).map((line) => plainText(line).length - plainText(line).trimStart().length);
   const indent = indents.length ? Math.min(...indents) : 0;
   if (!indent) return trimmed;
   return trimmed.map((line) => {
@@ -271,9 +273,7 @@ export function tidy(lines: StyledLine[]): StyledLine[] {
 }
 
 /** An extension's terminal component as tidy styled lines; a failing render shows nothing. */
-export function renderComponent(
-  create: () => Component | undefined,
-): StyledLine[] | undefined {
+export function renderComponent(create: () => Component | undefined): StyledLine[] | undefined {
   try {
     const component = create();
     if (!component) return undefined;

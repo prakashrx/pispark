@@ -21,12 +21,14 @@ test("Return adds a line, one tap sends, and Details preserves the reading posit
   await expect(page.locator('[data-purpose="user-turn"]')).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
   const main = page.locator("main");
-  await expect.poll(() => main.evaluate(el => el.scrollTop)).toBeGreaterThan(600);
-  await main.evaluate(el => { el.scrollTop = 240; });
+  await expect.poll(() => main.evaluate((el) => el.scrollTop)).toBeGreaterThan(600);
+  await main.evaluate((el) => {
+    el.scrollTop = 240;
+  });
   await expect(page.getByRole("button", { name: /latest/i })).toBeVisible();
   await page.getByRole("button", { name: "Details", exact: true }).tap();
   await page.goBack();
-  await expect.poll(() => main.evaluate(el => el.scrollTop)).toBe(240);
+  await expect.poll(() => main.evaluate((el) => el.scrollTop)).toBe(240);
 });
 
 test("a draft upload has a tappable removal control and stays out of Artifacts", async ({ page }) => {
@@ -35,7 +37,9 @@ test("a draft upload has a tappable removal control and stays out of Artifacts",
   await page.getByRole("button", { name: "Start session" }).tap();
   const composer = page.getByRole("form", { name: "Reply to session" });
   await composer.locator('input[type="file"]').setInputFiles({
-    name: "draft.txt", mimeType: "text/plain", buffer: Buffer.from("attachment"),
+    name: "draft.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("attachment"),
   });
   const chip = composer.locator(".rich-token");
   await expect(chip).toHaveAttribute("data-state", "ready");
@@ -56,10 +60,7 @@ test("a focused Ask or Reply opens Attach on the first touch and preserves the d
   const check = async (box: typeof ask, draft: string) => {
     await box.fill(draft);
     await expect(box).toBeFocused();
-    const [chooser] = await Promise.all([
-      page.waitForEvent("filechooser"),
-      page.getByRole("button", { name: "Attach files" }).tap(),
-    ]);
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByRole("button", { name: "Attach files" }).tap()]);
     await chooser.setFiles([]);
     await expect(box).toHaveText(draft);
   };

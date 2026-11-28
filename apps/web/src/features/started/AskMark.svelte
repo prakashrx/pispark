@@ -6,7 +6,14 @@
   import StatusMark from "../../lib/ui/StatusMark.svelte";
 
   let { state }: { state: Ask["state"] } = $props();
-  const WORDS: Record<Ask["state"], string> = { working: "Working", waiting: "Waiting", asked: "Has a question", answered: "Answered", stopped: "Stopped", failed: "Failed" };
+  const WORDS: Record<Ask["state"], string> = {
+    working: "Working",
+    waiting: "Waiting",
+    asked: "Has a question",
+    answered: "Answered",
+    stopped: "Stopped",
+    failed: "Failed",
+  };
 </script>
 
 {#if state === "working" || state === "failed"}

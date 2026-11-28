@@ -136,7 +136,8 @@ export class Mind {
     const found: string[] = [];
     for (const rel of await this.files()) {
       const kind = kindOf(rel);
-      if (kind === "stray") found.push(`${FOLDER}/${rel} is not part of the layout: move it to ${FOLDER}/attachments/ or out of ${FOLDER}.`);
+      if (kind === "stray")
+        found.push(`${FOLDER}/${rel} is not part of the layout: move it to ${FOLDER}/attachments/ or out of ${FOLDER}.`);
       else if (kind === "notes" || kind === "tasks" || kind === "page" || kind === "skill") {
         const reason = check(rel, (await this.text(rel)) ?? "");
         if (reason) found.push(`${FOLDER}/${rel}: ${reason}`);
@@ -161,7 +162,10 @@ export class Mind {
   }
 
   private async versions(): Promise<string[]> {
-    return (await readdir(this.history).catch(() => [])).filter((name) => name.endsWith(".json")).sort().reverse();
+    return (await readdir(this.history).catch(() => []))
+      .filter((name) => name.endsWith(".json"))
+      .sort()
+      .reverse();
   }
 
   /** The latest changes, newest first. */
@@ -181,7 +185,10 @@ export class Mind {
   /** Puts a file back as it was before that change. The undo is itself kept, so it can be undone. */
   async undo(id: string): Promise<string> {
     if (!/^[\w-]+$/.test(id)) throw new Error("No such change.");
-    const version = await readFile(join(this.history, `${id}.json`), "utf8").then((text) => JSON.parse(text) as Version, () => undefined);
+    const version = await readFile(join(this.history, `${id}.json`), "utf8").then(
+      (text) => JSON.parse(text) as Version,
+      () => undefined,
+    );
     if (!version) throw new Error("No such change.");
     await withFileMutationQueue(version.file, async () => {
       await this.keep(version.file, await readText(version.file), version.label);
@@ -205,7 +212,8 @@ export class Mind {
   /** The folder ignores itself in git: it is the agent's, not the project's. */
   async ignore(): Promise<void> {
     const file = join(this.dir, ".gitignore");
-    if (this.exists() && !existsSync(file)) await writeFile(file, "# The agent's own folder for this place (PiSpark mind). Remove this file to track it.\n*\n", "utf8");
+    if (this.exists() && !existsSync(file))
+      await writeFile(file, "# The agent's own folder for this place (PiSpark mind). Remove this file to track it.\n*\n", "utf8");
   }
 
   // ---- When each question was put to the person, and when it may be again -------------------
@@ -272,11 +280,18 @@ export class Mind {
     const files = await this.files();
     const attachments = files.filter((rel) => kindOf(rel) === "attachment");
     if (attachments.length) {
-      const texts = (await Promise.all(files.filter((rel) => rel.endsWith(".md") && kindOf(rel) !== "attachment").map((rel) => this.text(rel)))).join("\n");
+      const texts = (
+        await Promise.all(files.filter((rel) => rel.endsWith(".md") && kindOf(rel) !== "attachment").map((rel) => this.text(rel)))
+      ).join("\n");
       for (const rel of attachments) {
         const name = rel.slice("attachments/".length);
         if (texts.includes(name) || texts.includes(encodeURI(name))) continue;
-        const age = now - (await stat(join(this.dir, rel)).then((s) => s.mtimeMs, () => now));
+        const age =
+          now -
+          (await stat(join(this.dir, rel)).then(
+            (s) => s.mtimeMs,
+            () => now,
+          ));
         if (age > UNLINKED_DAYS * 86_400_000) await rm(join(this.dir, rel), { force: true });
       }
     }

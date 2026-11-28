@@ -78,20 +78,8 @@
 <div bind:this={layer} class="layer">
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="sheet-scrim" onclick={onclose}></div>
-  <div
-    {...rest}
-    class="anchored {className}"
-    data-align={align}
-    style:translate={pull ? `0 ${pull}px` : undefined}
-  >
-    <div
-      class="sheet-head"
-      aria-hidden="true"
-      onpointerdown={grab}
-      onpointermove={drag}
-      onpointerup={release}
-      onpointercancel={release}
-    >
+  <div {...rest} class="anchored {className}" data-align={align} style:translate={pull ? `0 ${pull}px` : undefined}>
+    <div class="sheet-head" aria-hidden="true" onpointerdown={grab} onpointermove={drag} onpointerup={release} onpointercancel={release}>
       <span class="sheet-grab"></span>
       {#if title}<span class="sheet-title">{title}</span>{/if}
     </div>

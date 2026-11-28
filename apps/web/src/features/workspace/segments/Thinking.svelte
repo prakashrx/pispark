@@ -6,4 +6,6 @@
   let { segment }: { segment: Extract<Segment, { kind: "thinking" }> } = $props();
 </script>
 
-<ThoughtCard label={segment.streaming ? "Thinking…" : segment.label}><SessionMarkdown text={segment.text} streaming={segment.streaming} /></ThoughtCard>
+<ThoughtCard label={segment.streaming ? "Thinking…" : segment.label}
+  ><SessionMarkdown text={segment.text} streaming={segment.streaming} /></ThoughtCard
+>

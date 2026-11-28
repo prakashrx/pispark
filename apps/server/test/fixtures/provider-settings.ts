@@ -1,16 +1,9 @@
 /** Deterministic native providers and explicitly injected private stores; no production flag or provider network. */
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type {
-  Provider,
-  ProviderAuthInteraction,
-  AuthPrompt,
-} from "@earendil-works/pi-ai";
+import type { Provider, ProviderAuthInteraction, AuthPrompt } from "@earendil-works/pi-ai";
 import { LocalProviderControl } from "./local-provider.js";
-import {
-  providerStores,
-  ModelDefaults,
-} from "../../src/core/runtime/provider-storage.js";
+import { providerStores, ModelDefaults } from "../../src/core/runtime/provider-storage.js";
 import { nativeModelRuntime } from "../../src/core/runtime/native-model-runtime.js";
 import { ProviderSettings } from "../../src/core/runtime/provider-settings.js";
 export class AuthProviderControl extends LocalProviderControl {
@@ -26,9 +19,7 @@ export class AuthProviderControl extends LocalProviderControl {
   customLogin?: (interaction: ProviderAuthInteraction) => Promise<void>;
   native = (): Provider => {
     const p = this.provider();
-    const models = p
-      .getModels()
-      .flatMap((m) => [m, { ...m, id: "second", name: "Second local model" }]);
+    const models = p.getModels().flatMap((m) => [m, { ...m, id: "second", name: "Second local model" }]);
     const ask = async (i: ProviderAuthInteraction, prompt: AuthPrompt) => {
       this.prompts.push(prompt.type);
       const response = await i.prompt(prompt);
@@ -55,14 +46,10 @@ export class AuthProviderControl extends LocalProviderControl {
               await this.checkGate;
             }
             if (this.syncFails) throw Error("PRIVATE_SYNC_ERROR");
-            return credential?.key
-              ? { type: "api_key", source: "PRIVATE_SOURCE" }
-              : undefined;
+            return credential?.key ? { type: "api_key", source: "PRIVATE_SOURCE" } : undefined;
           },
           resolve: async ({ credential }) => {
-            return credential?.key
-              ? { auth: { apiKey: credential.key } }
-              : undefined;
+            return credential?.key ? { auth: { apiKey: credential.key } } : undefined;
           },
         },
         oauth: {
@@ -134,11 +121,7 @@ export class AuthProviderControl extends LocalProviderControl {
     };
   };
 }
-export async function localProviderSettings(
-  root: string,
-  control = new AuthProviderControl(),
-  modelsPath: string | null = null,
-) {
+export async function localProviderSettings(root: string, control = new AuthProviderControl(), modelsPath: string | null = null) {
   await mkdir(root, { recursive: true });
   const stores = await providerStores(root);
   const defaults = new ModelDefaults(root);

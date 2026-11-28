@@ -1,13 +1,6 @@
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { dirname, join } from "node:path";
-import type {
-  AssistantMessage,
-  Model,
-  Api,
-  Provider,
-  StreamOptions,
-  TranscriptContext,
-} from "@earendil-works/pi-ai";
+import type { AssistantMessage, Model, Api, Provider, StreamOptions, TranscriptContext } from "@earendil-works/pi-ai";
 
 export interface LocalRequest {
   context: TranscriptContext;
@@ -40,11 +33,7 @@ export class LocalProviderControl {
       maxTokens: 1024,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     };
-    const stream = (
-      selected: Model<Api>,
-      context: TranscriptContext,
-      options?: StreamOptions,
-    ) => {
+    const stream = (selected: Model<Api>, context: TranscriptContext, options?: StreamOptions) => {
       const events = createAssistantMessageEventStream();
       const message: AssistantMessage = {
         role: "assistant",
@@ -75,8 +64,7 @@ export class LocalProviderControl {
         release,
         pushText: (delta) => {
           const part = message.content[0];
-          if (part?.type !== "text")
-            throw new Error("Text stream already finished");
+          if (part?.type !== "text") throw new Error("Text stream already finished");
           part.text += delta;
           events.push({
             type: "text_delta",
@@ -133,10 +121,7 @@ export class LocalProviderControl {
           message.stopReason = "error";
           message.errorMessage = `Fixture error ${options?.apiKey ?? ""}`;
           events.push({ type: "error", reason: "error", error: message });
-        } else if (
-          text === "read-skill-support" &&
-          context.messages.filter((m) => m.role === "toolResult").length < 2
-        ) {
+        } else if (text === "read-skill-support" && context.messages.filter((m) => m.role === "toolResult").length < 2) {
           const system = context.messages
             .filter((m) => m.role === "system")
             .map(
@@ -164,9 +149,7 @@ export class LocalProviderControl {
               id: support ? "skill-support" : "skill-instructions",
               name: "read",
               arguments: {
-                path: support
-                  ? join(dirname(location), "references", "check.md")
-                  : location,
+                path: support ? join(dirname(location), "references", "check.md") : location,
               },
             },
           ];
@@ -186,9 +169,7 @@ export class LocalProviderControl {
         } else if (text.startsWith("tool:") && last?.role !== "toolResult") {
           // "tool:<name>:<json arguments>" calls any tool once.
           const [, name = "", args = "{}"] = /^tool:([^:]+):(.*)$/s.exec(text) ?? [];
-          message.content = [
-            { type: "toolCall", id: "local-tool", name, arguments: JSON.parse(args) },
-          ];
+          message.content = [{ type: "toolCall", id: "local-tool", name, arguments: JSON.parse(args) }];
           message.stopReason = "toolUse";
           events.push({ type: "done", reason: "toolUse", message });
         } else if (text.startsWith("tools:") && last?.role !== "toolResult") {
@@ -221,8 +202,7 @@ export class LocalProviderControl {
           message.stopReason = "toolUse";
           events.push({ type: "done", reason: "toolUse", message });
         } else {
-          const result =
-            last?.role === "toolResult" ? JSON.stringify(last.content) : text;
+          const result = last?.role === "toolResult" ? JSON.stringify(last.content) : text;
           message.content = [{ type: "text", text: `local:${result}` }];
           events.push({ type: "done", reason: "stop", message });
         }
@@ -254,10 +234,7 @@ function stepsDone(context: TranscriptContext): number {
   return context.messages.slice(from + 1).filter((item) => item.role === "toolResult").length;
 }
 
-export async function eventually(
-  predicate: () => boolean,
-  milliseconds = 5000,
-): Promise<void> {
+export async function eventually(predicate: () => boolean, milliseconds = 5000): Promise<void> {
   const end = Date.now() + milliseconds;
   while (!predicate()) {
     if (Date.now() > end) throw new Error("Condition did not become true");

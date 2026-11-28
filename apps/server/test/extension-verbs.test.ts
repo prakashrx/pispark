@@ -55,15 +55,32 @@ test("an extension hears whatever reaches its session first, and may take it or 
     await f.agent("listener", { name: "Listener" }, { "extensions/listen.mjs": LISTENER });
     const parent = await f.runtime.create({ folder: f.folder, agent: "listener" });
     const brief = steps(["note", { text: "half way" }], ["raise", { text: "A or B?" }]);
-    await f.runtime.start(parent.id, steps(["start_session", { brief, title: "Asker" }], ["start_process", { command: `node -e "console.log('built')"`, title: "build" }])).completion;
+    await f.runtime.start(
+      parent.id,
+      steps(["start_session", { brief, title: "Asker" }], ["start_process", { command: `node -e "console.log('built')"`, title: "build" }]),
+    ).completion;
     const [child] = f.children(parent.id);
     assert.ok(child);
-    const heard = () => (existsSync(join(f.folder, "heard.jsonl")) ? readFileSync(join(f.folder, "heard.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line)) : []);
+    const heard = () =>
+      existsSync(join(f.folder, "heard.jsonl"))
+        ? readFileSync(join(f.folder, "heard.jsonl"), "utf8")
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line))
+        : [];
     await eventually(() => heard().length === 3, 15_000);
     const of = (word: string, kind: string) => heard().find((each) => each.word === word && each.from.kind === kind);
     assert.deepEqual(of("note", "session"), { word: "note", from: { id: "session-1", kind: "session", title: "Asker" }, text: "half way" });
-    assert.deepEqual(of("raise", "session"), { word: "raise", from: { id: "session-1", kind: "session", title: "Asker" }, how: "raised", text: "A or B?" });
-    assert.deepEqual({ ...of("answer", "process"), text: of("answer", "process").text.trim() }, { word: "answer", from: { id: "process-2", kind: "process", title: "build" }, how: "exited 0", text: "built" });
+    assert.deepEqual(of("raise", "session"), {
+      word: "raise",
+      from: { id: "session-1", kind: "session", title: "Asker" },
+      how: "raised",
+      text: "A or B?",
+    });
+    assert.deepEqual(
+      { ...of("answer", "process"), text: of("answer", "process").text.trim() },
+      { word: "answer", from: { id: "process-2", kind: "process", title: "build" }, how: "exited 0", text: "built" },
+    );
 
     await f.idle(parent.id);
     const items = f.runtime.items(parent.id, {}).items;
@@ -143,7 +160,12 @@ test("an extension runs a two-reviewer pipeline in code: the same verbs, data bo
     assert.equal(done.noted, "Noted for the person.");
     // PiSpark decided no order and ran no model: the parent's agent took no turn, and neither did a reviewer's.
     assert.equal(f.provider.requests.length, 0);
-    assert.equal(f.runtime.items(parent.id, {}).items.filter((item) => item.customType === WOKEN_ENTRY || item.role === "user" || item.role === "assistant").length, 0);
+    assert.equal(
+      f.runtime
+        .items(parent.id, {})
+        .items.filter((item) => item.customType === WOKEN_ENTRY || item.role === "user" || item.role === "assistant").length,
+      0,
+    );
     // None of the three was kept: each was put away as it was done, and is not among what the person archived.
     await eventually(() => f.children(parent.id).length === 0);
     assert.deepEqual(f.runtime.archived(), []);

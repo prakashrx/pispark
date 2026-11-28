@@ -1,24 +1,18 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { CredentialSynchronizationError } from "@earendil-works/pi-coding-agent";
 import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
-import type {
-  AuthView,
-  AuthPromptView,
-  AuthEventView,
-} from "../../contract/provider-protocol.js";
+import type { AuthView, AuthPromptView, AuthEventView } from "../../contract/provider-protocol.js";
 import type { ProviderSettings } from "./provider-settings.js";
 import { ProviderError } from "./provider-errors.js";
 
 const abort = () => new DOMException("Sign-in cancelled", "AbortError");
 function bounded(value: string, max = 2048) {
-  if (typeof value !== "string" || value.length > max)
-    throw new ProviderError("auth-limit");
+  if (typeof value !== "string" || value.length > max) throw new ProviderError("auth-limit");
   return value;
 }
 export function safeAuthUrl(value: string): string {
   const url = new URL(bounded(value, 4096));
-  if (url.protocol !== "https:" || url.username || url.password)
-    throw new ProviderError("provider-failed");
+  if (url.protocol !== "https:" || url.username || url.password) throw new ProviderError("provider-failed");
   return url.href;
 }
 function projectEvent(event: AuthEvent): AuthEventView {
@@ -27,18 +21,14 @@ function projectEvent(event: AuthEvent): AuthEventView {
       return {
         type: event.type,
         url: safeAuthUrl(event.url),
-        instructions: event.instructions
-          ? bounded(event.instructions)
-          : undefined,
+        instructions: event.instructions ? bounded(event.instructions) : undefined,
       };
     case "device_code":
       return {
         type: event.type,
         userCode: bounded(event.userCode, 256),
         verificationUri: safeAuthUrl(event.verificationUri),
-        expiresInSeconds: Number.isFinite(event.expiresInSeconds)
-          ? Math.min(event.expiresInSeconds!, 600)
-          : undefined,
+        expiresInSeconds: Number.isFinite(event.expiresInSeconds) ? Math.min(event.expiresInSeconds!, 600) : undefined,
       };
     case "info":
       return {
@@ -89,8 +79,7 @@ export class ProviderAuth {
     const now = Date.now();
     for (const [id, t] of this.transactions) {
       if (t.settled !== undefined) {
-        if (now - t.settled >= this.limits.retention)
-          this.transactions.delete(id);
+        if (now - t.settled >= this.limits.retention) this.transactions.delete(id);
       } else if (now >= t.lease || now >= t.deadline) this.abort(t);
     }
   }
@@ -105,24 +94,15 @@ export class ProviderAuth {
     this.sweep();
     const t = this.transactions.get(id);
     const bytes = Buffer.from(typeof token === "string" ? token : "");
-    if (
-      !t ||
-      bytes.length !== t.owner.length ||
-      !timingSafeEqual(bytes, t.owner)
-    )
-      throw new ProviderError("auth-invalid");
+    if (!t || bytes.length !== t.owner.length || !timingSafeEqual(bytes, t.owner)) throw new ProviderError("auth-invalid");
     return t;
   }
   start(provider: string, method: "api_key" | "oauth") {
     this.sweep();
-    if (this.closed || this.transactions.size >= this.limits.capacity)
-      throw new ProviderError("auth-limit");
+    if (this.closed || this.transactions.size >= this.limits.capacity) throw new ProviderError("auth-limit");
     this.settings.require(provider);
     const auth = this.settings.runtime.getProvider(provider)!.auth;
-    if (
-      (method !== "api_key" && method !== "oauth") ||
-      !(method === "api_key" ? auth.apiKey?.login : auth.oauth?.login)
-    )
+    if ((method !== "api_key" && method !== "oauth") || !(method === "api_key" ? auth.apiKey?.login : auth.oauth?.login))
       throw new ProviderError("auth-invalid");
     const release = this.settings.claim(provider);
     const id = randomUUID();
@@ -159,11 +139,7 @@ export class ProviderAuth {
         t.view.state = "saved";
       } catch (error) {
         t.view.state =
-          error instanceof CredentialSynchronizationError
-            ? "saved-sync-failed"
-            : t.controller.signal.aborted
-              ? "cancelled"
-              : "failed";
+          error instanceof CredentialSynchronizationError ? "saved-sync-failed" : t.controller.signal.aborted ? "cancelled" : "failed";
       } finally {
         t.pending?.reject();
         t.view.prompt = undefined;

@@ -1,15 +1,4 @@
-import {
-  type FSWatcher,
-  cpSync,
-  watch,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  statSync,
-  unlinkSync,
-} from "node:fs";
+import { type FSWatcher, cpSync, watch, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeAtomic } from "../files.js";
@@ -132,10 +121,7 @@ export class AgentStore {
       on: DEFAULT_TOOLS.map((tool) => `tool:${tool}`),
       resources: {},
     };
-    writeAtomic(
-      join(dir, "agent.json"),
-      JSON.stringify(definition, null, 2) + "\n",
-    );
+    writeAtomic(join(dir, "agent.json"), JSON.stringify(definition, null, 2) + "\n");
   }
 
   /** Whether the app ships this agent. Its ID is reserved: a data folder of the same name is ignored. */
@@ -151,8 +137,7 @@ export class AgentStore {
       if (!validAgentId(target.agent)) fail("invalid-input");
       return this.bundled(target.agent) ? join(this.bundledDir, "agents", target.agent) : join(this.agentsDir, target.agent);
     }
-    if (typeof target.session !== "string" || !UUID.test(target.session))
-      fail("invalid-input");
+    if (typeof target.session !== "string" || !UUID.test(target.session)) fail("invalid-input");
     return join(this.sessionsDir, target.session, "agent");
   }
   /** Where an item's files live: a layer's folder, the Shared library, or the app's `plugins/`. */
@@ -198,7 +183,9 @@ export class AgentStore {
     const summaries: AgentSummary[] = [];
     const bundledDir = join(this.bundledDir, "agents");
     const bundled = isFolder(bundledDir) ? readdirSync(bundledDir).filter((id) => this.bundled(id)) : [];
-    const own = readdirSync(this.agentsDir).filter((id) => validAgentId(id) && !bundled.includes(id) && existsSync(join(this.agentsDir, id, "agent.json")));
+    const own = readdirSync(this.agentsDir).filter(
+      (id) => validAgentId(id) && !bundled.includes(id) && existsSync(join(this.agentsDir, id, "agent.json")),
+    );
     for (const id of [...own, ...bundled]) {
       const shipped = bundled.includes(id) ? { bundled: true as const } : {};
       try {
@@ -206,9 +193,7 @@ export class AgentStore {
         summaries.push({
           id,
           name: definition.name ?? id,
-          ...(definition.description
-            ? { description: definition.description }
-            : {}),
+          ...(definition.description ? { description: definition.description } : {}),
           base: definition.base ?? [],
           builtIn: id === DEFAULT_AGENT,
           ...shipped,
@@ -226,31 +211,18 @@ export class AgentStore {
         });
       }
     }
-    return summaries.sort((a, b) =>
-      a.builtIn !== b.builtIn
-        ? a.builtIn
-          ? -1
-          : 1
-        : a.name.localeCompare(b.name),
-    );
+    return summaries.sort((a, b) => (a.builtIn !== b.builtIn ? (a.builtIn ? -1 : 1) : a.name.localeCompare(b.name)));
   }
 
-  create(input: {
-    name: string;
-    description?: string;
-    base?: string[];
-  }): { id: string; revision: string } {
+  create(input: { name: string; description?: string; base?: string[] }): { id: string; revision: string } {
     const definition = validateDefinition({
       name: input.name,
       resources: {},
       ...(input.description ? { description: input.description } : {}),
       ...(input.base?.length ? { base: input.base } : {}),
     });
-    const id = slug(definition.name!, (candidate) =>
-      existsSync(join(this.agentsDir, candidate)) || this.bundled(candidate),
-    );
-    for (const parent of definition.base ?? [])
-      if (!this.exists({ agent: parent })) fail("missing-parent", 400, parent);
+    const id = slug(definition.name!, (candidate) => existsSync(join(this.agentsDir, candidate)) || this.bundled(candidate));
+    for (const parent of definition.base ?? []) if (!this.exists({ agent: parent })) fail("missing-parent", 400, parent);
     const dir = join(this.agentsDir, id);
     mkdirSync(dir, { mode: 0o700 });
     const content = JSON.stringify(definition, null, 2) + "\n";
@@ -264,29 +236,17 @@ export class AgentStore {
    * Replace agent.json if it still has `expectedRevision`. For a session with no layer yet,
    * `expectedRevision` is "" and the layer is created.
    */
-  save(
-    target: AgentTarget,
-    expectedRevision: string,
-    input: unknown,
-    check?: (definition: AgentDefinition) => void,
-  ): { revision: string } {
+  save(target: AgentTarget, expectedRevision: string, input: unknown, check?: (definition: AgentDefinition) => void): { revision: string } {
     this.writable(target);
     const definition = validateDefinition(input, rules(target));
-    if ("agent" in target && definition.base?.includes(target.agent))
-      fail("cycle", 400, target.agent);
+    if ("agent" in target && definition.base?.includes(target.agent)) fail("cycle", 400, target.agent);
     // Default is always the first layer; it has no parents.
-    if (
-      "agent" in target &&
-      target.agent === DEFAULT_AGENT &&
-      definition.base?.length
-    )
-      fail("invalid-definition", 400, "base");
+    if ("agent" in target && target.agent === DEFAULT_AGENT && definition.base?.length) fail("invalid-definition", 400, "base");
     const current = this.exists(target) ? this.read(target) : undefined;
     if ((current?.revision ?? "") !== expectedRevision) fail("revision-conflict", 409);
     definition.resources ??= current ? current.definition.resources : {};
     // Checked when it is set. One that has since gone is found when a session starts there.
-    if (definition.folder && definition.folder !== current?.definition.folder && !isFolder(definition.folder))
-      fail("folder");
+    if (definition.folder && definition.folder !== current?.definition.folder && !isFolder(definition.folder)) fail("folder");
     check?.(definition);
     const dir = this.dir(target);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -304,7 +264,11 @@ export class AgentStore {
   setSwitch(agent: string, name: string, on: boolean): void {
     const { definition, revision } = this.read({ agent });
     const without = (list?: string[]) => (list ?? []).filter((value) => value !== name);
-    const next: AgentDefinition = { ...definition, on: [...without(definition.on), ...(on ? [name] : [])], off: [...without(definition.off), ...(on ? [] : [name])] };
+    const next: AgentDefinition = {
+      ...definition,
+      on: [...without(definition.on), ...(on ? [name] : [])],
+      off: [...without(definition.off), ...(on ? [] : [name])],
+    };
     if (!next.on!.length) delete next.on;
     if (!next.off!.length) delete next.off;
     this.save({ agent }, revision, next);
@@ -334,12 +298,7 @@ export class AgentStore {
    * file is selected there. In the Shared library it reaches every agent that selects it; nothing
    * is selected. The app's own resources can't be written.
    */
-  writeFile(
-    target: ItemTarget,
-    path: string,
-    expectedRevision: string | null,
-    text: string,
-  ): ItemFile {
+  writeFile(target: ItemTarget, path: string, expectedRevision: string | null, text: string): ItemFile {
     const item = itemPath(path);
     if ("library" in target && target.library !== "shared") fail("built-in");
     if (!("library" in target)) this.writable(target);
@@ -380,14 +339,12 @@ export class AgentStore {
     this.writable(target);
     const full = join(this.dir(target), path);
     if (!existsSync(full)) fail("not-found", 404);
-    if (digest(readText(full)) !== expectedRevision)
-      fail("revision-conflict", 409);
+    if (digest(readText(full)) !== expectedRevision) fail("revision-conflict", 409);
     const { definition, revision } = this.read(target);
     if (definition.resources?.[item.type]?.includes(`local:${item.name}`))
       this.select(target, item.type, `local:${item.name}`, false, revision);
     // A skill is its whole folder (scripts, references).
-    if (item.type === "skills")
-      rmSync(dirname(full), { recursive: true, force: true });
+    if (item.type === "skills") rmSync(dirname(full), { recursive: true, force: true });
     else unlinkSync(full);
     this.changed(target);
   }
@@ -414,7 +371,8 @@ export class AgentStore {
   /** What a layer selects: only what its definition declares. */
   items(target: AgentTarget, definition: AgentDefinition): LayerItem[] {
     return ITEM_TYPES.flatMap((type) =>
-      (definition.resources?.[type] ?? []).map((reference) => this.find(target, definition, type, reference)));
+      (definition.resources?.[type] ?? []).map((reference) => this.find(target, definition, type, reference)),
+    );
   }
 
   available(target: AgentTarget, type: ItemType): AvailableResource[] {
@@ -424,8 +382,7 @@ export class AgentStore {
       const entries = root ? inventory(root, type) : [];
       const byName = new Map(entries.map((item) => [item.name, item]));
       if (source === "local" && type === "mcp")
-        for (const name of Object.keys(definition.mcpServers ?? {}))
-          byName.set(name, this.inlineMcp(definition, name)!);
+        for (const name of Object.keys(definition.mcpServers ?? {})) byName.set(name, this.inlineMcp(definition, name)!);
       const used = source === "shared" ? this.usage() : undefined;
       return [...byName.values()].map(({ name, description }) => ({
         name,
@@ -439,7 +396,10 @@ export class AgentStore {
   /** A resolved skill's other files, relative to its folder, wherever it lives. */
   skillFiles(item: { name: string; reference?: ResourceReference; origin: { id: string } }, viewing: AgentTarget): string[] {
     const source = parseResource(item.reference ?? `local:${item.name}`)?.source ?? "local";
-    const root = source === "local" ? this.dir(item.origin.id === "session" ? viewing : { agent: item.origin.id }) : this.fileRoot({ library: source });
+    const root =
+      source === "local"
+        ? this.dir(item.origin.id === "session" ? viewing : { agent: item.origin.id })
+        : this.fileRoot({ library: source });
     const found = resource(root, "skills", item.name);
     return found?.location ? skillFiles(found.location) : [];
   }
@@ -513,7 +473,10 @@ export class AgentStore {
     try {
       return this.save(target, revision, {
         ...definition,
-        resources: { ...definition.resources, [type]: selected.map((reference) => (reference === `local:${name}` ? `shared:${name}` : reference)) },
+        resources: {
+          ...definition.resources,
+          [type]: selected.map((reference) => (reference === `local:${name}` ? `shared:${name}` : reference)),
+        },
       });
     } catch (error) {
       renameSync(to, from);

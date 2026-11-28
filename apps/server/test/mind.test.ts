@@ -14,7 +14,8 @@ import { testHome } from "./fixtures/home.js";
 import { eventually, type LocalRequest } from "./fixtures/local-provider.js";
 import { sessionText } from "./fixtures/session.js";
 
-const NOTES = "## What this is\nA notes app for one person.\n\n## How it's set up\nnginx in front of the app on port 8080.\n\n## Things to know\nBackups run nightly (you said).\n";
+const NOTES =
+  "## What this is\nA notes app for one person.\n\n## How it's set up\nnginx in front of the app on port 8080.\n\n## Things to know\nBackups run nightly (you said).\n";
 const TASKS = [
   "## Waiting on you",
   "- **Rotate the notes password?** I recommend rotating it tonight. Until you answer, nothing changes.",
@@ -34,7 +35,8 @@ const EMPTY_TASKS = "## Waiting on you\n\n## Doing\n\n## To do\n\n## Done lately
 type SystemMessage = { role: string; sections?: Record<string, string> };
 /** The mind section the model has now: Pi patches changed sections in later system messages. */
 const briefOf = (request: LocalRequest) =>
-  (request.context.messages as SystemMessage[]).filter((m) => m.role === "system" && m.sections?.mind !== undefined).at(-1)?.sections?.mind ?? "";
+  (request.context.messages as SystemMessage[]).filter((m) => m.role === "system" && m.sections?.mind !== undefined).at(-1)?.sections
+    ?.mind ?? "";
 const systemOf = (request: LocalRequest) => JSON.stringify(request.context.messages.filter((m) => m.role === "system"));
 const lastOf = (request: LocalRequest) => JSON.stringify(request.context.messages.at(-1));
 const call = (name: string, args: object) => `tool:${name}:${JSON.stringify(args)}`;
@@ -53,7 +55,13 @@ async function fixture() {
     await writeFile(file(rel), content);
   };
   return {
-    ...h, runtime, place, start, file, read, put,
+    ...h,
+    runtime,
+    place,
+    start,
+    file,
+    read,
+    put,
     create: () => runtime.create({ folder: place, agent: "mindful" }),
     cleanup: async () => {
       await runtime.shutdown();
@@ -64,7 +72,18 @@ async function fixture() {
 
 test("mind layout: every path has one kind, and each document has one shape", () => {
   assert.deepEqual(
-    ["notes.md", "tasks.md", "notes/release-steps.md", "attachments/report.pdf", "skills/fix-backup/SKILL.md", "skills/fix-backup/scripts/check.sh", ".history/x.json", "todo.md", "notes/Release.md", "work/item.md"].map(kindOf),
+    [
+      "notes.md",
+      "tasks.md",
+      "notes/release-steps.md",
+      "attachments/report.pdf",
+      "skills/fix-backup/SKILL.md",
+      "skills/fix-backup/scripts/check.sh",
+      ".history/x.json",
+      "todo.md",
+      "notes/Release.md",
+      "work/item.md",
+    ].map(kindOf),
     ["notes", "tasks", "page", "attachment", "skill", "skill-file", "internal", "stray", "stray", "stray"],
   );
   assert.equal(refusePath("notes.md"), undefined);
@@ -90,7 +109,10 @@ test("mind layout: every path has one kind, and each document has one shape", ()
   const skill = "---\nname: fix-backup\ndescription: Check and repair the nightly backup on this server.\n---\nSteps\n";
   assert.equal(check("skills/fix-backup/SKILL.md", skill), undefined);
   assert.match(check("skills/repair/SKILL.md", skill)!, /must be its folder name/);
-  assert.match(check("skills/fix-backup/SKILL.md", skill.replace(/description: .*/, "description: Backups"))!, /what it does and when to use it/);
+  assert.match(
+    check("skills/fix-backup/SKILL.md", skill.replace(/description: .*/, "description: Backups"))!,
+    /what it does and when to use it/,
+  );
 });
 
 test("mind: a path is inside a folder unless it climbs out, even when a name starts with two dots", async (t) => {
@@ -114,7 +136,10 @@ test("mind tasks: questions are found, an answer is written under its question, 
   assert.equal(check("tasks.md", answered), undefined);
   assert.equal(withAnswer(TASKS, "nope", "x", "2026-11-26"), undefined);
 
-  const many = EMPTY_TASKS + Array.from({ length: 35 }, (_, i) => `- 2026-10-${String(i + 1).padStart(2, "0")}: Did thing ${i + 1}.`).join("\n") + "\n";
+  const many =
+    EMPTY_TASKS +
+    Array.from({ length: 35 }, (_, i) => `- 2026-10-${String(i + 1).padStart(2, "0")}: Did thing ${i + 1}.`).join("\n") +
+    "\n";
   const trimmed = trimDone(many, 30);
   assert.equal(trimmed.match(/^- 2026/gm)!.length, 30);
   assert.ok(!trimmed.includes("Did thing 5.") && trimmed.includes("Did thing 6.") && trimmed.includes("Did thing 35."));
@@ -122,7 +147,15 @@ test("mind tasks: questions are found, an answer is written under its question, 
 });
 
 test("mind: an edit is previewed only when its replacements apply exactly", () => {
-  assert.equal(edited("a b c", { edits: [{ oldText: "b", newText: "B" }, { oldText: "a", newText: "A" }] }), "A B c");
+  assert.equal(
+    edited("a b c", {
+      edits: [
+        { oldText: "b", newText: "B" },
+        { oldText: "a", newText: "A" },
+      ],
+    }),
+    "A B c",
+  );
   assert.equal(edited("a b c", { oldText: "b", newText: "" }), "a  c");
   assert.equal(edited("a a", { edits: [{ oldText: "a", newText: "b" }] }), undefined, "not unique");
   assert.equal(edited("a", { edits: [{ oldText: "z", newText: "b" }] }), undefined, "not found");
@@ -168,22 +201,48 @@ test("mind: writes are checked against the layout and refused with the reason; g
     // An edit that would break the document is refused before it happens.
     await f.start(session.id, call("edit", { path: ".mind/tasks.md", edits: [{ oldText: "## Doing", newText: "## In progress" }] }));
     assert.match(await f.read("tasks.md"), /## Doing/);
-    await f.start(session.id, call("edit", { path: join(f.place, ".mind", "notes.md"), edits: [{ oldText: "port 8080", newText: "port 9090" }] }));
+    await f.start(
+      session.id,
+      call("edit", { path: join(f.place, ".mind", "notes.md"), edits: [{ oldText: "port 8080", newText: "port 9090" }] }),
+    );
     assert.match(await f.read("notes.md"), /port 9090/);
-    await f.start(session.id, call("write", { path: ".mind/notes/nginx.md", content: "# nginx\nHow nginx is set up here and why.\n\nDetail.\n" }));
+    await f.start(
+      session.id,
+      call("write", { path: ".mind/notes/nginx.md", content: "# nginx\nHow nginx is set up here and why.\n\nDetail.\n" }),
+    );
     await f.start(session.id, call("write", { path: ".mind/attachments/report.txt", content: "a report" }));
 
     // The view lists the changes, newest first; undoing one puts that file back.
     const view = () => f.runtime.session(session.id).extensions.views.find((v) => v.point === "session.view" && v.key === "mind")!;
-    type Snapshot = { changes: { id: string; label: string; created: boolean }[]; pages: { name: string; summary: string }[]; notes: string };
+    type Snapshot = {
+      changes: { id: string; label: string; created: boolean }[];
+      pages: { name: string; summary: string }[];
+      notes: string;
+    };
     const snapshot = () => (view().props as { snapshot: Snapshot }).snapshot;
-    const expected = [[".mind/attachments/report.txt", true], [".mind/notes/nginx.md", true], [".mind/notes.md", false], [".mind/tasks.md", true], [".mind/notes.md", true]];
-    assert.deepEqual((await new Mind(f.place).changes()).map((c) => [c.label, c.created]), expected, "every change is kept");
+    const expected = [
+      [".mind/attachments/report.txt", true],
+      [".mind/notes/nginx.md", true],
+      [".mind/notes.md", false],
+      [".mind/tasks.md", true],
+      [".mind/notes.md", true],
+    ];
+    assert.deepEqual(
+      (await new Mind(f.place).changes()).map((c) => [c.label, c.created]),
+      expected,
+      "every change is kept",
+    );
     // The view shows them once its component has compiled, which can take a while on a cold machine.
     await eventually(() => !!view() && snapshot().changes.length === 5, 20_000);
-    assert.deepEqual(snapshot().changes.map((c) => [c.label, c.created]), expected);
+    assert.deepEqual(
+      snapshot().changes.map((c) => [c.label, c.created]),
+      expected,
+    );
     assert.deepEqual(snapshot().pages, [{ name: "nginx", title: "nginx", summary: "How nginx is set up here and why." }]);
-    assert.equal(await f.runtime.call(session.id, "session.view", "mind", "page", { name: "nginx" }), "# nginx\nHow nginx is set up here and why.\n\nDetail.\n");
+    assert.equal(
+      await f.runtime.call(session.id, "session.view", "mind", "page", { name: "nginx" }),
+      "# nginx\nHow nginx is set up here and why.\n\nDetail.\n",
+    );
     assert.equal(await f.runtime.call(session.id, "session.view", "mind", "undo", { id: snapshot().changes[2]!.id }), ".mind/notes.md");
     assert.equal(await f.read("notes.md"), NOTES);
     assert.match(snapshot().notes, /port 8080/);
@@ -212,8 +271,17 @@ test("mind: a write through another name for the same folder is checked and kept
     assert.match(sessionText(f.runtime, session.id), /Not saved\. notes\.md has exactly these sections/);
     assert.ok(!existsSync(f.file("notes.md")));
     await f.start(session.id, call("write", { path: join(alias, ".mind", "notes.md"), content: NOTES }));
-    await f.start(session.id, call("edit", { path: join(alias, ".mind", "notes.md"), edits: [{ oldText: "port 8080", newText: "port 9090" }] }));
-    assert.deepEqual((await new Mind(f.place).changes()).map((c) => [c.label, c.created]), [[".mind/notes.md", false], [".mind/notes.md", true]]);
+    await f.start(
+      session.id,
+      call("edit", { path: join(alias, ".mind", "notes.md"), edits: [{ oldText: "port 8080", newText: "port 9090" }] }),
+    );
+    assert.deepEqual(
+      (await new Mind(f.place).changes()).map((c) => [c.label, c.created]),
+      [
+        [".mind/notes.md", false],
+        [".mind/notes.md", true],
+      ],
+    );
   } finally {
     await f.cleanup();
   }
@@ -240,7 +308,11 @@ test("mind: the person's instructions go to the files PiSpark already loads, and
   const f = await fixture();
   try {
     await writeFile(join(f.place, "AGENTS.md"), "PROJECT-RULES\n");
-    const dir = await f.agent("builder", { name: "Builder", folder: f.place, resources: { extensions: ["bundled:mind"], instructions: ["local:role"] } }, { "instructions/role.md": "ROLE-TEXT\n" });
+    const dir = await f.agent(
+      "builder",
+      { name: "Builder", folder: f.place, resources: { extensions: ["bundled:mind"], instructions: ["local:role"] } },
+      { "instructions/role.md": "ROLE-TEXT\n" },
+    );
     const session = await f.runtime.create({ agent: "builder" });
     await f.start(session.id, "hello");
     const brief = briefOf(f.provider.requests.at(-1)!);
@@ -248,16 +320,33 @@ test("mind: the person's instructions go to the files PiSpark already loads, and
     assert.ok(brief.includes(`your own instructions, \`${join(dir, "instructions", "role.md")}\``), brief.slice(0, 1200));
 
     // Each of those files keeps its earlier version, like the agent's own documents.
-    await f.start(session.id, call("edit", { path: "AGENTS.md", edits: [{ oldText: "PROJECT-RULES", newText: "PROJECT-RULES\n- Run the browser suite before merging." }] }));
-    await f.start(session.id, call("edit", { path: join(dir, "instructions", "role.md"), edits: [{ oldText: "ROLE-TEXT", newText: "ROLE-TEXT\nKeep replies short." }] }));
+    await f.start(
+      session.id,
+      call("edit", {
+        path: "AGENTS.md",
+        edits: [{ oldText: "PROJECT-RULES", newText: "PROJECT-RULES\n- Run the browser suite before merging." }],
+      }),
+    );
+    await f.start(
+      session.id,
+      call("edit", {
+        path: join(dir, "instructions", "role.md"),
+        edits: [{ oldText: "ROLE-TEXT", newText: "ROLE-TEXT\nKeep replies short." }],
+      }),
+    );
     const changes = await new Mind(f.place).changes();
-    assert.deepEqual(changes.map((c) => c.label), ["Agent instructions: role.md", "AGENTS.md"]);
+    assert.deepEqual(
+      changes.map((c) => c.label),
+      ["Agent instructions: role.md", "AGENTS.md"],
+    );
 
     // An agent with no instructions of its own starts one; it loads from the next session on.
     const plain = await f.create();
     const standing = join(f.home, "agents", "mindful", "instructions", "standing.md");
     await f.start(plain.id, call("write", { path: standing, content: "STANDING-RULE: say where you saved things.\n" }));
-    assert.deepEqual(JSON.parse(await readFile(join(f.home, "agents", "mindful", "agent.json"), "utf8")).resources.instructions, ["local:standing"]);
+    assert.deepEqual(JSON.parse(await readFile(join(f.home, "agents", "mindful", "agent.json"), "utf8")).resources.instructions, [
+      "local:standing",
+    ]);
     const later = await f.create();
     await f.start(later.id, "hello");
     assert.match(systemOf(f.provider.requests.at(-1)!), /STANDING-RULE: say where you saved things\./);
@@ -342,7 +431,10 @@ test("mind: a question from a run the person started isn't pushed at them; a run
     await settled(session.id);
     assert.equal(dialogs(session.id).length, 0);
     const [question] = questions(TASKS);
-    assert.ok(Date.parse(JSON.parse(await f.read(".state.json")).later[question!.id]) > Date.now() + 19 * 3_600_000, "put off for most of a day");
+    assert.ok(
+      Date.parse(JSON.parse(await f.read(".state.json")).later[question!.id]) > Date.now() + 19 * 3_600_000,
+      "put off for most of a day",
+    );
 
     // A run nobody watched, before that time: still nothing.
     await wake(f, session.id, "morning check");
@@ -360,10 +452,15 @@ test("mind: a question from a run the person started isn't pushed at them; a run
     assert.equal(f.runtime.list().find((s) => s.id === session.id)!.waiting, true);
 
     f.runtime.answer(session.id, dialog.id, "Do it");
-    await eventually(() => /nothing changes\.\n  - Answer \(\d{4}-\d{2}-\d{2}\): Yes, do as you recommend\./.test(readFileSync(f.file("tasks.md"), "utf8")));
+    await eventually(() =>
+      /nothing changes\.\n  - Answer \(\d{4}-\d{2}-\d{2}\): Yes, do as you recommend\./.test(readFileSync(f.file("tasks.md"), "utf8")),
+    );
     await eventually(() => f.provider.requests.some((r) => lastOf(r).includes("My answer to") && lastOf(r).includes(QUESTION)));
     const message = lastOf(f.provider.requests.find((r) => lastOf(r).includes("My answer to"))!);
-    assert.match(message, /If that settles it, act on it and update the entry\. If I'm putting it off or want to talk it over first, don't act yet: keep it waiting\./);
+    assert.match(
+      message,
+      /If that settles it, act on it and update the entry\. If I'm putting it off or want to talk it over first, don't act yet: keep it waiting\./,
+    );
     await settled(session.id);
     assert.equal(dialogs(session.id).length, 0, "an answered question isn't asked again");
   } finally {
@@ -440,9 +537,13 @@ test("mind: the view answers a question or puts it off, and a question can't be 
     await f.runtime.call(session.id, "session.view", "mind", "answer", { id, text: "Not tonight, do it on Sunday." });
     assert.equal(snapshot().waiting[0]!.answer, "Not tonight, do it on Sunday.");
     await eventually(() => f.provider.requests.some((r) => /My answer to .*Not tonight, do it on Sunday\./.test(lastOf(r))));
-    const refused = (detail: RegExp) => (error: { code?: string; detail?: string }) => error.code === "extension" && detail.test(error.detail ?? "");
+    const refused = (detail: RegExp) => (error: { code?: string; detail?: string }) =>
+      error.code === "extension" && detail.test(error.detail ?? "");
     await assert.rejects(f.runtime.call(session.id, "session.view", "mind", "answer", { id, text: "Again" }), refused(/already answered/));
-    await assert.rejects(f.runtime.call(session.id, "session.view", "mind", "answer", { id: "nope", text: "x" }), refused(/no longer waiting/));
+    await assert.rejects(
+      f.runtime.call(session.id, "session.view", "mind", "answer", { id: "nope", text: "x" }),
+      refused(/no longer waiting/),
+    );
   } finally {
     await f.cleanup();
   }
@@ -467,7 +568,10 @@ test("mind: a session another session started reports instead of keeping the tas
     await new Promise((resolve) => setTimeout(resolve, 200));
     assert.equal(f.runtime.session(child.id).extensions.dialogs.length, 0, "a worker asks nobody");
     // The parent still keeps them.
-    assert.match(briefOf(f.provider.requests.find((r) => lastOf(r).includes("pispark_start_session"))!), /2\. Anything not finished: `\.mind\/tasks\.md`\. Move its entry/);
+    assert.match(
+      briefOf(f.provider.requests.find((r) => lastOf(r).includes("pispark_start_session"))!),
+      /2\. Anything not finished: `\.mind\/tasks\.md`\. Move its entry/,
+    );
   } finally {
     await f.cleanup();
   }
@@ -500,7 +604,13 @@ test("mind: skills kept in the place load in its sessions", async () => {
   const f = await fixture();
   try {
     const session = await f.create();
-    await f.start(session.id, call("write", { path: ".mind/skills/fix-backup/SKILL.md", content: "---\nname: fix-backup\ndescription: PLACE-SKILL check and repair the nightly backup on this server.\n---\nSteps\n" }));
+    await f.start(
+      session.id,
+      call("write", {
+        path: ".mind/skills/fix-backup/SKILL.md",
+        content: "---\nname: fix-backup\ndescription: PLACE-SKILL check and repair the nightly backup on this server.\n---\nSteps\n",
+      }),
+    );
     await f.start(session.id, call("write", { path: ".mind/skills/fix-backup/scripts/check.sh", content: "echo ok\n" }));
     assert.ok(existsSync(f.file("skills/fix-backup/scripts/check.sh")));
     const next = await f.create();
@@ -518,7 +628,10 @@ test("mind store: Done lately is trimmed, unlinked attachments go after a week, 
     await m.sweep();
     assert.ok(!m.exists(), "nothing is made by looking");
     await mkdir(join(m.dir, "attachments"), { recursive: true });
-    await writeFile(join(m.dir, "tasks.md"), EMPTY_TASKS + Array.from({ length: 33 }, (_, i) => `- 2026-10-${String(i + 1).padStart(2, "0")}: Thing ${i + 1}.`).join("\n") + "\n");
+    await writeFile(
+      join(m.dir, "tasks.md"),
+      EMPTY_TASKS + Array.from({ length: 33 }, (_, i) => `- 2026-10-${String(i + 1).padStart(2, "0")}: Thing ${i + 1}.`).join("\n") + "\n",
+    );
     await writeFile(join(m.dir, "notes.md"), NOTES + "See [the report](attachments/linked%20report.txt).\n");
     for (const name of ["old.txt", "linked report.txt", "new.txt"]) await writeFile(join(m.dir, "attachments", name), name);
     const longAgo = new Date(Date.now() - 10 * 86_400_000);

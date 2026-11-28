@@ -79,7 +79,9 @@ test("processes over HTTP: every running one, a session's, its output after a po
   const f = await httpFixture(t);
   f.provider.automatic = true;
   const id = await f.create("a");
-  const started = await f.settle(await f.post({ type: "start", sessionId: id, text: say("start_process", { command: SERVER, title: "dev server" }) }));
+  const started = await f.settle(
+    await f.post({ type: "start", sessionId: id, text: say("start_process", { command: SERVER, title: "dev server" }) }),
+  );
   assert.equal(started.outcome, "completed");
 
   const running = await (await fetch(`${f.base}/api/processes`)).json();
@@ -87,10 +89,19 @@ test("processes over HTTP: every running one, a session's, its output after a po
   assert.equal(process.title, "dev server");
   assert.equal(process.sessionId, id);
   const listed = await (await fetch(`${f.base}/api/sessions/${id}/processes`)).json();
-  assert.deepEqual(listed.processes.map((p: { id: string }) => p.id), [process.id]);
-  await until(async () => !!(await (await fetch(`${f.base}/api/sessions/${id}/processes/${process.id}/output?since=0`)).json()).text?.includes("tick"));
+  assert.deepEqual(
+    listed.processes.map((p: { id: string }) => p.id),
+    [process.id],
+  );
+  await until(
+    async () =>
+      !!(await (await fetch(`${f.base}/api/sessions/${id}/processes/${process.id}/output?since=0`)).json()).text?.includes("tick"),
+  );
 
-  assert.equal((await fetch(`${f.base}/api/sessions/${id}/processes/${process.id}/stop`, { method: "POST", headers: { Origin: f.base } })).status, 202);
+  assert.equal(
+    (await fetch(`${f.base}/api/sessions/${id}/processes/${process.id}/stop`, { method: "POST", headers: { Origin: f.base } })).status,
+    202,
+  );
   await until(async () => (await (await fetch(`${f.base}/api/sessions/${id}/processes`)).json()).processes[0].state === "stopped", 10_000);
   // Another session's process, or a session that is not one, is not found.
   assert.equal((await fetch(`${f.base}/api/sessions/${randomUUID()}/processes/${process.id}/output`)).status, 404);
@@ -100,7 +111,11 @@ test("processes over HTTP: every running one, a session's, its output after a po
 test("routines over HTTP: listed off, switched on, refused a switch that is not yes or no, and run now", async (t) => {
   const f = await httpFixture(t);
   f.provider.automatic = true;
-  await writeAgent(f.home, "scout", { name: "Home Scout", home: "listings", routines: [{ id: "morning", name: "Morning check", cron: "0 7 * * *", prompt: "check the new listings" }] });
+  await writeAgent(f.home, "scout", {
+    name: "Home Scout",
+    home: "listings",
+    routines: [{ id: "morning", name: "Morning check", cron: "0 7 * * *", prompt: "check the new listings" }],
+  });
   await until(async () => (await (await fetch(`${f.base}/api/routines`)).json()).routines.length === 1);
   const [routine] = (await (await fetch(`${f.base}/api/routines`)).json()).routines;
   assert.equal(routine.on, false);

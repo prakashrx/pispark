@@ -184,7 +184,13 @@ export class AgentPage {
     const text = this.texts[keyOf(item)];
     if (!text) return;
     const shared = item.reference?.startsWith("shared:");
-    const ok = await this.client.writeFile(item.path, text.draft, text.revision, this.client.fileTarget(item), shared && this.reach(item) ? `Saved for ${this.reach(item)} agents` : "Saved");
+    const ok = await this.client.writeFile(
+      item.path,
+      text.draft,
+      text.revision,
+      this.client.fileTarget(item),
+      shared && this.reach(item) ? `Saved for ${this.reach(item)} agents` : "Saved",
+    );
     if (ok) await this.load(item, true);
   }
   /** Save the change as this agent's own copy (the whole item); the shared one stays as it was. */
@@ -197,7 +203,8 @@ export class AgentPage {
     if (!own?.path) return;
     await this.load(own);
     const copied = this.texts[keyOf(own)];
-    if (copied && (await this.client.writeFile(own.path, draft, copied.revision, this.client.target, `Saved ${this.here}'s own copy`))) await this.load(own, true);
+    if (copied && (await this.client.writeFile(own.path, draft, copied.revision, this.client.target, `Saved ${this.here}'s own copy`)))
+      await this.load(own, true);
   }
   /** Save something new: to the Shared library (any agent can add it), or for this agent only. */
   async saveNew(item: Fresh, where: "shared" | "agent") {
@@ -247,9 +254,16 @@ export class AgentPage {
     const one = KINDS[item.type as Kind]?.one ?? "item";
     const list = [...extra];
     if (this.owns(item)) list.push({ id: "promote", label: "Move to Shared library", onselect: () => void this.promote(item) });
-    else if (item.type !== "extensions") list.push({ id: "own", label: `Make it ${this.here}'s own`, onselect: () => void this.makeOwn(item) });
+    else if (item.type !== "extensions")
+      list.push({ id: "own", label: `Make it ${this.here}'s own`, onselect: () => void this.makeOwn(item) });
     const how = this.removable(item);
-    if (how) list.push({ id: "remove", label: how === "delete" ? `Delete ${one}` : `Remove from ${this.here}`, destructive: true, onselect: () => void this.remove(item) });
+    if (how)
+      list.push({
+        id: "remove",
+        label: how === "delete" ? `Delete ${one}` : `Remove from ${this.here}`,
+        destructive: true,
+        onselect: () => void this.remove(item),
+      });
     return list;
   }
 
@@ -275,4 +289,9 @@ export class AgentPage {
 }
 
 /** Rough size of what's read every session. */
-export const words = (text: string) => text.replace(/^---\r?\n[\s\S]*?\r?\n---/, "").replace(/[#*`>|-]/g, " ").split(/\s+/).filter(Boolean).length;
+export const words = (text: string) =>
+  text
+    .replace(/^---\r?\n[\s\S]*?\r?\n---/, "")
+    .replace(/[#*`>|-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean).length;

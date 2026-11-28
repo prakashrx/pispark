@@ -19,7 +19,22 @@ const entryId = Text(64);
 /** Every command a client may send: its type, and exactly the keys that type takes. */
 const CommandShape = Type.Union([
   exact({ commandId: Uuid, type: Type.Literal("create"), folder: Type.Optional(Text(4096)), model, agent: Type.Optional(Type.String()) }),
-  exact({ ...session, type: Type.Enum(["open", "cancel", "stop", "archive", "restore", "delete", "compact", "seen", "allow-hold", "deny-hold", "release-hold"]) }),
+  exact({
+    ...session,
+    type: Type.Enum([
+      "open",
+      "cancel",
+      "stop",
+      "archive",
+      "restore",
+      "delete",
+      "compact",
+      "seen",
+      "allow-hold",
+      "deny-hold",
+      "release-hold",
+    ]),
+  }),
   exact({ ...session, type: Type.Literal("fork"), entryId: Type.Optional(entryId) }),
   exact({ ...session, type: Type.Literal("branch"), entryId }),
   exact({ ...session, type: Type.Literal("edit"), entryId, text: Text(), attachments }),
@@ -94,9 +109,16 @@ export class Commands {
     }
     const pool = [...this.receipts.values()].filter((e) => Boolean(e.lifecycle) === Boolean(lifecycle));
     // A start stays pending while its prompt waits for a turn and runs; there is at most one per session.
-    if (pool.length >= (lifecycle ? 32 : 256) || (command.type !== "start" && pool.filter((e) => e.receipt.state === "accepted" && !e.start).length >= 16))
+    if (
+      pool.length >= (lifecycle ? 32 : 256) ||
+      (command.type !== "start" && pool.filter((e) => e.receipt.state === "accepted" && !e.start).length >= 16)
+    )
       throw new RuntimeError("limit");
-    const receipt: Receipt = { commandId: command.commandId, state: "accepted", ...("sessionId" in command ? { sessionId: command.sessionId } : {}) };
+    const receipt: Receipt = {
+      commandId: command.commandId,
+      state: "accepted",
+      ...("sessionId" in command ? { sessionId: command.sessionId } : {}),
+    };
     const entry: Entry = { receipt, input, expires: Infinity, lifecycle, ...(command.type === "start" ? { start: true } : {}) };
     this.receipts.set(command.commandId, entry);
     void correlated({ operationId: requestId() }, () => this.run(command, receipt))
@@ -104,7 +126,12 @@ export class Commands {
         receipt.outcome = "failed";
         receipt.error = failure(error);
         // A refusal is the receipt's to tell; a command that broke is the log's too.
-        if (!(error instanceof RuntimeError)) this.logger.event("command.failure", { sessionId: receipt.sessionId, outcome: "failed", code: "execution", cause: error }, "error");
+        if (!(error instanceof RuntimeError))
+          this.logger.event(
+            "command.failure",
+            { sessionId: receipt.sessionId, outcome: "failed", code: "execution", cause: error },
+            "error",
+          );
       })
       .finally(() => {
         receipt.state = "settled";
@@ -204,7 +231,10 @@ export class Commands {
  * A start or an edit: admission is decided before it runs, so a refusal settles the receipt at once (a
  * client clears its draft only when it was accepted); an accepted run settles when it ends.
  */
-async function settleRun(receipt: Receipt, admit: () => { completion: Promise<Partial<Receipt>> } | Promise<{ completion: Promise<Partial<Receipt>> }>) {
+async function settleRun(
+  receipt: Receipt,
+  admit: () => { completion: Promise<Partial<Receipt>> } | Promise<{ completion: Promise<Partial<Receipt>> }>,
+) {
   let run;
   try {
     run = await admit();

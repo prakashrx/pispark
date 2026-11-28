@@ -360,11 +360,7 @@
     bottom: 0.125rem;
     height: 2px;
     border-radius: 1px;
-    background: linear-gradient(
-      to right,
-      var(--interactive) calc(var(--progress) * 1%),
-      var(--border) calc(var(--progress) * 1%)
-    );
+    background: linear-gradient(to right, var(--interactive) calc(var(--progress) * 1%), var(--border) calc(var(--progress) * 1%));
   }
   .rich-input :global(.rich-token-remove) {
     display: none;
@@ -381,7 +377,9 @@
     display: inline;
   }
   @media (pointer: coarse) {
-    .rich-input :global(.rich-token) { min-height: 2.125rem; }
+    .rich-input :global(.rich-token) {
+      min-height: 2.125rem;
+    }
     .rich-input :global(.rich-token .rich-token-remove) {
       display: inline-grid;
       place-items: center;

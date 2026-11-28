@@ -6,7 +6,13 @@
   let { segment }: { segment: Extract<Segment, { kind: "schedule" }> } = $props();
   const schedule = $derived(segment.schedule);
   const next = $derived.by(() => {
-    const at = schedule.next ? new Date(schedule.next) : schedule.cron ? nextRunOf(schedule.cron) : schedule.at ? new Date(schedule.at) : undefined;
+    const at = schedule.next
+      ? new Date(schedule.next)
+      : schedule.cron
+        ? nextRunOf(schedule.cron)
+        : schedule.at
+          ? new Date(schedule.at)
+          : undefined;
     return at && !Number.isNaN(at.getTime()) && at.getTime() > Date.now() ? `Next ${shortDate(at)}` : undefined;
   });
   const nextRunOf = (text: string) => {
@@ -19,7 +25,9 @@
 <div class="schedule" data-purpose="schedule-card">
   <span class="mark" aria-hidden="true"><Icon name="clock" class="h-4 w-4" /></span>
   <div class="body">
-    <p class="when">{describeSchedule(schedule)}{#if !schedule.on}<span class="off"> · off</span>{/if}</p>
+    <p class="when">
+      {describeSchedule(schedule)}{#if !schedule.on}<span class="off"> · off</span>{/if}
+    </p>
     <p class="sub">{[next, where].filter(Boolean).join(" · ")}</p>
     {#if schedule.prompt}<p class="prompt">“{schedule.prompt}”</p>{/if}
   </div>

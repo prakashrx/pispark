@@ -21,7 +21,10 @@ export class Runs {
     const { storage, create } = this.sessions;
     const parent = storage.read(owner);
     if (parent.parent || parent.archived) throw new RuntimeError("busy");
-    const doc = await create({ agent: parent.agent, ...(parent.model ? { model: parent.model } : {}) }, { parent: owner, title: run.title, schedule: run.schedule });
+    const doc = await create(
+      { agent: parent.agent, ...(parent.model ? { model: parent.model } : {}) },
+      { parent: owner, title: run.title, schedule: run.schedule },
+    );
     await this.prune(run.schedule.id, doc.id);
     return doc.id;
   }

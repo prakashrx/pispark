@@ -13,8 +13,16 @@ const system32 = (file: string) => join(process.env.SystemRoot ?? "C:\\Windows",
 const RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 const names = (install: Install) => identity(install.choices().name);
 const startMenu = (install: Install) =>
-  join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "Microsoft", "Windows", "Start Menu", "Programs", `${names(install).label}.lnk`);
-const systemdUnit = (install: Install) => join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "systemd", "user", names(install).unit);
+  join(
+    process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"),
+    "Microsoft",
+    "Windows",
+    "Start Menu",
+    "Programs",
+    `${names(install).label}.lnk`,
+  );
+const systemdUnit = (install: Install) =>
+  join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "systemd", "user", names(install).unit);
 const binDir = () => join(homedir(), ".local", "bin");
 
 /** The command that runs the current version's launcher (`current` never changes, so neither does this). */
@@ -67,7 +75,10 @@ export function disableAutostart(install: Install) {
 }
 
 export function autostartEnabled(install: Install): boolean {
-  if (windows) return spawnSync(system32("reg.exe"), ["query", RUN_KEY, "/v", names(install).run], { windowsHide: true, stdio: "ignore" }).status === 0;
+  if (windows)
+    return (
+      spawnSync(system32("reg.exe"), ["query", RUN_KEY, "/v", names(install).run], { windowsHide: true, stdio: "ignore" }).status === 0
+    );
   return spawnSync("systemctl", ["--user", "is-enabled", names(install).unit], { stdio: "ignore" }).status === 0;
 }
 
@@ -149,7 +160,12 @@ export function addStartMenu(install: Install) {
     `$s.Description = ${q(names(install).label)}`,
     `$s.Save()`,
   ].join("; ");
-  run(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", script]);
+  run(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), [
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    script,
+  ]);
 }
 
 export function removeStartMenu(install: Install) {
@@ -168,7 +184,9 @@ export function openWindow(address: string) {
     return true;
   }
   if (process.env.DISPLAY || process.env.WAYLAND_DISPLAY) {
-    spawn("xdg-open", [address], { detached: true, stdio: "ignore" }).on("error", () => {}).unref();
+    spawn("xdg-open", [address], { detached: true, stdio: "ignore" })
+      .on("error", () => {})
+      .unref();
     return true;
   }
   return false;
@@ -177,7 +195,10 @@ export function openWindow(address: string) {
 /** Opens a folder in the file manager. */
 export function openFolder(folder: string) {
   if (windows) spawn(join(process.env.SystemRoot ?? "C:\\Windows", "explorer.exe"), [folder], { detached: true, stdio: "ignore" }).unref();
-  else if (process.env.DISPLAY || process.env.WAYLAND_DISPLAY) spawn("xdg-open", [folder], { detached: true, stdio: "ignore" }).on("error", () => {}).unref();
+  else if (process.env.DISPLAY || process.env.WAYLAND_DISPLAY)
+    spawn("xdg-open", [folder], { detached: true, stdio: "ignore" })
+      .on("error", () => {})
+      .unref();
 }
 
 function run(file: string, args: string[]) {

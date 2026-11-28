@@ -103,9 +103,16 @@ test("everything one conversation started is one list of rows of one shape, and 
 test("Background is the same rows for all of PiSpark: what runs and what is scheduled, each naming whom it belongs to, and no session rows", () => {
   const failedRun = { due: "2026-11-27T09:00:00.000Z", at: "2026-11-27T09:00:05.000Z", outcome: "failed" as const };
   const from: Sources = {
-    sessions: [session("Release notes", { held: { extension: "telegram", reason: "listening" } }), child("reviewer", { state: "working" }, { parent: "Release notes", status: "running" }), session("Quiet")],
+    sessions: [
+      session("Release notes", { held: { extension: "telegram", reason: "listening" } }),
+      child("reviewer", { state: "working" }, { parent: "Release notes", status: "running" }),
+      session("Quiet"),
+    ],
     processes: [process("p1", "Release notes", "dev server"), process("p2", "reviewer", "tests")],
-    schedules: [schedule("s1", "Release notes", { runs: [failedRun] }), schedule("s2", "gone", { session: { title: "Old digest", agent: { id: "default", name: "Default", layered: false } } })],
+    schedules: [
+      schedule("s1", "Release notes", { runs: [failedRun] }),
+      schedule("s2", "gone", { session: { title: "Old digest", agent: { id: "default", name: "Default", layered: false } } }),
+    ],
     routines: [routine("morning", false)],
     paused: false,
   };

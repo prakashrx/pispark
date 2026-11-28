@@ -52,7 +52,11 @@ export class HostClient {
 
   async act(action: HostAction): Promise<void> {
     try {
-      await this.transport.json("/api/host", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) });
+      await this.transport.json("/api/host", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(action),
+      });
     } catch (error) {
       throw new CommandFailed((error as Error).message);
     }

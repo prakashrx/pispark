@@ -12,8 +12,7 @@ export interface Block {
   open?: boolean;
 }
 
-export const escapeHtml = (text: string): string =>
-  text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+export const escapeHtml = (text: string): string => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 
 /** `$…$` and `\(…\)` inline, `$$…$$` and `\[…\]` on their own lines; "$5 and $10" stays text. */
 const math: TokenizerAndRendererExtension[] = [

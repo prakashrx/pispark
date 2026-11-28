@@ -42,11 +42,8 @@ type Raw = Record<string, unknown>;
 const tokensBefore = (value: unknown): { tokensBefore?: number } =>
   typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? { tokensBefore: value } : {};
 const opaque = (value: unknown): string | undefined =>
-  typeof value === "string" && value
-    ? createHash("sha256").update(value).digest("base64url")
-    : undefined;
-const label = (value: unknown): string =>
-  typeof value === "string" ? value.slice(0, 64).replace(/[\p{Cs}\p{Cc}]/gu, " ") : "";
+  typeof value === "string" && value ? createHash("sha256").update(value).digest("base64url") : undefined;
+const label = (value: unknown): string => (typeof value === "string" ? value.slice(0, 64).replace(/[\p{Cs}\p{Cc}]/gu, " ") : "");
 /** Never end a clipped string in half of a surrogate pair. */
 function clip(text: string, limit: number): string {
   const end = /[\uD800-\uDBFF]/.test(text.charAt(limit - 1)) ? limit - 1 : limit;
@@ -86,7 +83,10 @@ function bound(value: unknown, flag: Bound, depth = 0, limit = STRING_LIMIT): Js
     return Object.fromEntries(
       entries
         .slice(0, MAX_ENTRIES)
-        .map(([key, item]) => [key, bound(item, flag, depth + 1, depth === 0 && (key === "patch" || key === "diff") ? DIFF_LIMIT : STRING_LIMIT)]),
+        .map(([key, item]) => [
+          key,
+          bound(item, flag, depth + 1, depth === 0 && (key === "patch" || key === "diff") ? DIFF_LIMIT : STRING_LIMIT),
+        ]),
     );
   }
   return null;
@@ -96,7 +96,10 @@ function bound(value: unknown, flag: Bound, depth = 0, limit = STRING_LIMIT): Js
 function visible(content: unknown): Raw[] {
   const list: unknown[] = typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [];
   return list
-    .filter((part): part is Raw => typeof part === "object" && part !== null && ["text", "thinking", "toolCall", "image"].includes((part as Raw).type as string))
+    .filter(
+      (part): part is Raw =>
+        typeof part === "object" && part !== null && ["text", "thinking", "toolCall", "image"].includes((part as Raw).type as string),
+    )
     .slice(0, MAX_PARTS);
 }
 
@@ -109,7 +112,13 @@ function parts(content: unknown): ItemPart[] {
       const flag = { clipped: false, left: argsLeft };
       const args = bound(part.arguments ?? {}, flag);
       argsLeft = flag.left;
-      return { type: "toolCall", id: opaque(part.id) ?? "", name: label(part.name), args, ...(flag.clipped ? { clipped: true as const } : {}) };
+      return {
+        type: "toolCall",
+        id: opaque(part.id) ?? "",
+        name: label(part.name),
+        args,
+        ...(flag.clipped ? { clipped: true as const } : {}),
+      };
     }
     if (part.type === "image") {
       const mime = typeof part.mimeType === "string" && IMAGE_TYPES.has(part.mimeType) ? part.mimeType : "application/octet-stream";
@@ -296,7 +305,14 @@ export class ItemProjector {
       });
     if (role === "custom") {
       if (message.display === false) return undefined;
-      return fit({ ...base, role, parts: parts(message.content), customType: label(message.customType), ...details(message.details), ...extra });
+      return fit({
+        ...base,
+        role,
+        parts: parts(message.content),
+        customType: label(message.customType),
+        ...details(message.details),
+        ...extra,
+      });
     }
     if (role === "compactionSummary" || role === "branchSummary")
       return { ...base, role: "summary", parts: parts(String(message.summary ?? "")), ...tokensBefore(message.tokensBefore) };

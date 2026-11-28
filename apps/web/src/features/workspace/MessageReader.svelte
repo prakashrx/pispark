@@ -30,11 +30,7 @@
 {#if page}
   <section aria-label="Full message text" class="space-y-2">
     <pre bind:this={text} tabindex="-1" class="full-text">{page.text}</pre>
-    {#if page.next !== undefined}<Button
-        class="conversation-action"
-        disabled={busy}
-        onclick={() => read(page!.next)}
-        >Next page</Button
+    {#if page.next !== undefined}<Button class="conversation-action" disabled={busy} onclick={() => read(page!.next)}>Next page</Button
       >{/if}
     <Button
       class="conversation-action"

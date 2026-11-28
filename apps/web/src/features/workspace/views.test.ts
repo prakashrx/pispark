@@ -20,7 +20,13 @@ const keep = (dispose: () => void) => {
 };
 
 let n = 0;
-const item = (role: Item["role"], parts: Item["parts"], extra: Partial<Item> = {}): Item => ({ id: `e${++n}`, key: `k${n}`, role, parts, ...extra });
+const item = (role: Item["role"], parts: Item["parts"], extra: Partial<Item> = {}): Item => ({
+  id: `e${++n}`,
+  key: `k${n}`,
+  role,
+  parts,
+  ...extra,
+});
 const turnWithHello = (details: unknown = { values: [1, 2, 3] }) =>
   buildTurns(
     [
@@ -36,7 +42,10 @@ test("the defaults are registered, and unknown things have a fallback", () => {
     expect(resolveSegmentView(kind), kind).toBeTruthy();
   expect(resolveToolView("edit").describe({ id: "x", name: "edit", args: { path: "a/b.ts" }, status: "done" }).object).toBe("b.ts");
   // A tool nobody described is described by its name.
-  expect(resolveToolView("unheard-of").describe({ id: "x", name: "unheard-of", args: {}, status: "done" })).toEqual({ doing: "Using unheard-of", done: "Used unheard-of" });
+  expect(resolveToolView("unheard-of").describe({ id: "x", name: "unheard-of", args: {}, status: "done" })).toEqual({
+    doing: "Using unheard-of",
+    done: "Used unheard-of",
+  });
 });
 
 test("the newest registration wins, and disposing it brings the previous one back", () => {

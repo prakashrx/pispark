@@ -57,7 +57,9 @@ function instructionsOf(agent: string): string[] {
       ? (Array.isArray(definition.resources.instructions) ? definition.resources.instructions : [])
           .filter((each): each is string => typeof each === "string" && each.startsWith("local:"))
           .map((each) => each.slice("local:".length))
-      : readdirSync(folder).filter((name) => name.endsWith(".md")).map((name) => name.slice(0, -3));
+      : readdirSync(folder)
+          .filter((name) => name.endsWith(".md"))
+          .map((name) => name.slice(0, -3));
     const files = names.map((name) => join(folder, `${name}.md`)).filter((file) => existsSync(file));
     return files.length ? files : [join(folder, `${STARTED}.md`)];
   } catch {
@@ -82,8 +84,12 @@ export function findHomes(pi: ExtensionAPI, ctx: ExtensionContext, contextFiles:
 export function homeOf(homes: Homes | undefined, place: string, file: string): { label: string; agent: boolean } | undefined {
   if (!homes) return undefined;
   if (homes.project && samePath(homes.project, file)) return { label: relative(place, file) || basename(file), agent: false };
-  for (const [files, label] of [[homes.own, "Agent instructions"], [homes.everyone, "Default's instructions"]] as const)
-    if (files[0] && file.toLowerCase().endsWith(".md") && inside(dirname(files[0]), file)) return { label: `${label}: ${basename(file)}`, agent: true };
+  for (const [files, label] of [
+    [homes.own, "Agent instructions"],
+    [homes.everyone, "Default's instructions"],
+  ] as const)
+    if (files[0] && file.toLowerCase().endsWith(".md") && inside(dirname(files[0]), file))
+      return { label: `${label}: ${basename(file)}`, agent: true };
   return undefined;
 }
 

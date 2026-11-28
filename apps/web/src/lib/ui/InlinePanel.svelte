@@ -36,22 +36,14 @@
     const previous = document.activeElement as HTMLElement | null;
     const target = initialFocus
       ? panel.querySelector<HTMLElement>(initialFocus)
-      : panel.querySelector<HTMLElement>(
-          "input:not(:disabled):not([type=file]), textarea:not(:disabled), select:not(:disabled)",
-        );
-    (
-      target ??
-      panel.querySelector<HTMLElement>("button:not(:disabled)") ??
-      panel
-    ).focus({ preventScroll: true });
+      : panel.querySelector<HTMLElement>("input:not(:disabled):not([type=file]), textarea:not(:disabled), select:not(:disabled)");
+    (target ?? panel.querySelector<HTMLElement>("button:not(:disabled)") ?? panel).focus({ preventScroll: true });
     panel.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
     return () => {
       // Return focus only when it would otherwise be lost with the panel.
       if (
         previous?.isConnected &&
-        (!document.activeElement ||
-          document.activeElement === document.body ||
-          panel.contains(document.activeElement))
+        (!document.activeElement || document.activeElement === document.body || panel.contains(document.activeElement))
       )
         previous.focus();
     };
@@ -82,8 +74,7 @@
   onkeydown={(event) => {
     if (event.key !== "Escape" || event.defaultPrevented) return;
     // Let open popups (selectors, menus) close themselves first.
-    if ((event.target as HTMLElement).closest('[aria-expanded="true"], [role="listbox"], [role="menu"]'))
-      return;
+    if ((event.target as HTMLElement).closest('[aria-expanded="true"], [role="listbox"], [role="menu"]')) return;
     event.preventDefault();
     event.stopPropagation();
     if (!busy) onclose();
@@ -98,13 +89,7 @@
             {help}
           </p>{/if}
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={`Close ${title}`}
-        disabled={busy}
-        onclick={onclose}>×</Button
-      >
+      <Button variant="ghost" size="icon" aria-label={`Close ${title}`} disabled={busy} onclick={onclose}>×</Button>
     </header>{/if}
   <div class="inline-panel-body">{@render children()}</div>
   {#if footer}<footer class="inline-panel-footer">{@render footer()}</footer>{/if}

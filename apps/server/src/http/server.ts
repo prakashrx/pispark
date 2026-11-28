@@ -26,28 +26,18 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
-async function serveStatic(
-  path: string,
-  webRoot: string,
-  response: ServerResponse,
-  head: boolean,
-) {
+async function serveStatic(path: string, webRoot: string, response: ServerResponse, head: boolean) {
   // Only the built entry, icon, and assets are served directly.
-  if (path !== "/" && !ROOT_FILES.has(path) && !path.startsWith("/assets/"))
-    return false;
+  if (path !== "/" && !ROOT_FILES.has(path) && !path.startsWith("/assets/")) return false;
   const file = resolve(webRoot, path === "/" ? "index.html" : `.${path}`);
   if (!isInside(webRoot, file)) return false;
   const contentType = contentTypes[extname(file)];
   if (!contentType) return false;
 
   try {
-    const [root, canonicalFile] = await Promise.all([
-      realpath(webRoot),
-      realpath(file),
-    ]);
+    const [root, canonicalFile] = await Promise.all([realpath(webRoot), realpath(file)]);
     // Containment must hold after resolving symlinks as well as before.
-    if (!isInside(root, canonicalFile) || !(await stat(canonicalFile)).isFile())
-      return false;
+    if (!isInside(root, canonicalFile) || !(await stat(canonicalFile)).isFile()) return false;
     const body = await readFile(canonicalFile);
     response.writeHead(200, {
       "Content-Type": contentType,
@@ -56,12 +46,7 @@ async function serveStatic(
     response.end(head ? undefined : body);
     return true;
   } catch (error) {
-    if (
-      ["ENOENT", "ENOTDIR"].includes(
-        (error as NodeJS.ErrnoException).code ?? "",
-      )
-    )
-      return false;
+    if (["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) return false;
     throw error;
   }
 }
@@ -88,11 +73,7 @@ export function createAppServer({
         json(response, 400, { error: "invalid-input" });
         return;
       }
-      if (
-        !path.startsWith("/") ||
-        /[\\\0]/.test(path) ||
-        path.split("/").some((part) => part.startsWith("."))
-      ) {
+      if (!path.startsWith("/") || /[\\\0]/.test(path) || path.split("/").some((part) => part.startsWith("."))) {
         json(response, 400, { error: "invalid-input" });
         return;
       }
@@ -114,11 +95,7 @@ export function createAppServer({
         json(response, 405, { error: "invalid-input" });
         return;
       }
-      if (
-        root &&
-        (await serveStatic(path, root, response, request.method === "HEAD"))
-      )
-        return;
+      if (root && (await serveStatic(path, root, response, request.method === "HEAD"))) return;
       // SPA fallback for non-asset, non-API GET requests.
       if (
         root &&

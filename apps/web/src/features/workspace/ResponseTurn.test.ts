@@ -6,13 +6,22 @@ import ResponseTurn from "./ResponseTurn.svelte";
 
 const patch = ["--- demo.ts", "+++ demo.ts", "@@ -1,2 +1,2 @@", " keep", "-old line", "+new line", ""].join("\n");
 let n = 0;
-const item = (role: Item["role"], parts: Item["parts"], extra: Partial<Item> = {}): Item => ({ id: `e${++n}`, key: `k${n}`, role, parts, ...extra });
+const item = (role: Item["role"], parts: Item["parts"], extra: Partial<Item> = {}): Item => ({
+  id: `e${++n}`,
+  key: `k${n}`,
+  role,
+  parts,
+  ...extra,
+});
 const turn = (items: Item[]) => buildTurns(items, { running: false })[0]!;
 
 test("an edit's changes are read in the message: numbered lines, signs, counts, and a card that folds", async () => {
   const items = [
     item("user", [{ type: "text", text: "tidy" }]),
-    item("assistant", [{ type: "toolCall", id: "c1", name: "edit", args: { path: "demo.ts" } }, { type: "text", text: "Done." }]),
+    item("assistant", [
+      { type: "toolCall", id: "c1", name: "edit", args: { path: "demo.ts" } },
+      { type: "text", text: "Done." },
+    ]),
     item("toolResult", [{ type: "text", text: "ok" }], { callId: "c1", toolName: "edit", details: { patch, diff: "" } }),
   ];
   render(ResponseTurn, { turn: turn(items), sessionId: "s1" });
@@ -39,7 +48,14 @@ test("pictures are drawn as images from the saved result or from the SVG a tool 
       { type: "toolCall", id: "r", name: "read", args: { path: "dot.png" } },
       { type: "toolCall", id: "w", name: "write", args: { path: "icon.svg", content: svg } },
     ]),
-    item("toolResult", [{ type: "text", text: "Read image" }, { type: "image", mimeType: "image/png", bytes: 213 }], { id: "res1", callId: "r", toolName: "read" }),
+    item(
+      "toolResult",
+      [
+        { type: "text", text: "Read image" },
+        { type: "image", mimeType: "image/png", bytes: 213 },
+      ],
+      { id: "res1", callId: "r", toolName: "read" },
+    ),
     item("toolResult", [{ type: "text", text: "Wrote" }], { callId: "w", toolName: "write" }),
   ];
   const { container } = render(ResponseTurn, { turn: turn(items), sessionId: "s1" });
@@ -52,7 +68,9 @@ test("pictures are drawn as images from the saved result or from the SVG a tool 
 });
 
 test("a very large change shows its start with a way to see all of it, and a cut one says so", async () => {
-  const many = ["--- big.ts", "+++ big.ts", "@@ -1,0 +1,900 @@", ...Array.from({ length: 900 }, (_, i) => `+line ${i}`), ""].join(String.fromCharCode(10));
+  const many = ["--- big.ts", "+++ big.ts", "@@ -1,0 +1,900 @@", ...Array.from({ length: 900 }, (_, i) => `+line ${i}`), ""].join(
+    String.fromCharCode(10),
+  );
   const items = [
     item("user", [{ type: "text", text: "go" }]),
     item("assistant", [{ type: "toolCall", id: "big", name: "edit", args: { path: "big.ts" } }]),
@@ -68,7 +86,15 @@ test("a very large change shows its start with a way to see all of it, and a cut
 test("an SVG whose markup was cut is not drawn half; the reason is given", () => {
   const items = [
     item("user", [{ type: "text", text: "draw" }]),
-    item("assistant", [{ type: "toolCall", id: "w", name: "write", args: { path: "big.svg", content: "<svg xmlns='http://www.w3.org/2000/svg'><path d='M0 0" }, clipped: true }]),
+    item("assistant", [
+      {
+        type: "toolCall",
+        id: "w",
+        name: "write",
+        args: { path: "big.svg", content: "<svg xmlns='http://www.w3.org/2000/svg'><path d='M0 0" },
+        clipped: true,
+      },
+    ]),
     item("toolResult", [{ type: "text", text: "Wrote" }], { callId: "w", toolName: "write" }),
   ];
   const { container } = render(ResponseTurn, { turn: turn(items), sessionId: "s1" });
@@ -90,7 +116,15 @@ test("while a call runs, the end of its output shows under the activity line", (
 });
 
 test("the element drawn while streaming is the one that stays after the commit", async () => {
-  const live = (text: string, extra: Partial<Item> = {}) => ({ key: "t1", role: "assistant" as const, parts: [{ type: "thinking" as const, text: "plan" }, { type: "text" as const, text }], ...extra });
+  const live = (text: string, extra: Partial<Item> = {}) => ({
+    key: "t1",
+    role: "assistant" as const,
+    parts: [
+      { type: "thinking" as const, text: "plan" },
+      { type: "text" as const, text },
+    ],
+    ...extra,
+  });
   const user = item("user", [{ type: "text", text: "hi" }]);
   const streaming = buildTurns([user, live("Hel")], { running: true })[0]!;
   const { container, rerender } = render(ResponseTurn, { turn: streaming, sessionId: "s1" });
@@ -110,8 +144,16 @@ test("the element drawn while streaming is the one that stays after the commit",
 
 test("an activity that gains a call keeps its element", async () => {
   const user = item("user", [{ type: "text", text: "go" }]);
-  const first = { key: "a1", role: "assistant" as const, parts: [{ type: "toolCall" as const, id: "c1", name: "read", args: { path: "a" } }] };
-  const second = { key: "a2", role: "assistant" as const, parts: [{ type: "toolCall" as const, id: "c2", name: "read", args: { path: "b" } }] };
+  const first = {
+    key: "a1",
+    role: "assistant" as const,
+    parts: [{ type: "toolCall" as const, id: "c1", name: "read", args: { path: "a" } }],
+  };
+  const second = {
+    key: "a2",
+    role: "assistant" as const,
+    parts: [{ type: "toolCall" as const, id: "c2", name: "read", args: { path: "b" } }],
+  };
   const { container, rerender } = render(ResponseTurn, { turn: buildTurns([user, first], { running: true })[0]!, sessionId: "s1" });
   const activity = container.querySelector("[data-purpose=activity]")!;
   await rerender({ turn: buildTurns([user, first, second], { running: true })[0]!, sessionId: "s1" });
@@ -122,14 +164,21 @@ test("an activity that gains a call keeps its element", async () => {
 test("naming the session is housekeeping: a done title call shows no activity line, a failed one still does", () => {
   const named = turn([
     item("user", [{ type: "text", text: "plan a trip" }]),
-    item("assistant", [{ type: "toolCall", id: "t1", name: "pispark_set_title", args: { title: "Trip" } }, { type: "text", text: "Here's a plan." }]),
+    item("assistant", [
+      { type: "toolCall", id: "t1", name: "pispark_set_title", args: { title: "Trip" } },
+      { type: "text", text: "Here's a plan." },
+    ]),
     item("toolResult", [{ type: "text", text: "Session title updated." }], { callId: "t1", toolName: "pispark_set_title" }),
   ]);
   expect(named.segments.map((segment) => segment.kind)).toEqual(["text"]);
   const failed = turn([
     item("user", [{ type: "text", text: "plan a trip" }]),
     item("assistant", [{ type: "toolCall", id: "t2", name: "pispark_set_title", args: { title: "" } }]),
-    item("toolResult", [{ type: "text", text: "The title must contain printable text" }], { callId: "t2", toolName: "pispark_set_title", isError: true }),
+    item("toolResult", [{ type: "text", text: "The title must contain printable text" }], {
+      callId: "t2",
+      toolName: "pispark_set_title",
+      isError: true,
+    }),
   ]);
   expect(failed.segments.map((segment) => segment.kind)).toContain("activity");
 });

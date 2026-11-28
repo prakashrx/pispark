@@ -5,8 +5,7 @@
   /** `prose`: words, not a terminal layout (notices), so the page's own font. */
   let { lines, class: className = "", prose = false }: { lines: StyledLine[]; class?: string; prose?: boolean } = $props();
 
-  const role = (value: string | undefined, slot: "fg" | "bg") =>
-    value && !value.startsWith("#") ? `${slot}-${value}` : "";
+  const role = (value: string | undefined, slot: "fg" | "bg") => (value && !value.startsWith("#") ? `${slot}-${value}` : "");
   const classes = (span: StyledSpan) =>
     [
       role(span.fg, "fg"),
@@ -20,19 +19,17 @@
       .filter(Boolean)
       .join(" ");
   const style = (span: StyledSpan) =>
-    [
-      span.fg?.startsWith("#") && `color: ${span.fg}`,
-      span.bg?.startsWith("#") && `background: ${span.bg}`,
-    ]
-      .filter(Boolean)
-      .join("; ") || undefined;
+    [span.fg?.startsWith("#") && `color: ${span.fg}`, span.bg?.startsWith("#") && `background: ${span.bg}`].filter(Boolean).join("; ") ||
+    undefined;
 </script>
 
 <div class="styled-text {className}" class:prose>
   {#each lines as line}
     <div class="line">
       {#each line as span}
-        {#if span.link}<a href={span.link} target="_blank" rel="noopener noreferrer" class={classes(span)} style={style(span)}>{span.text}</a>
+        {#if span.link}<a href={span.link} target="_blank" rel="noopener noreferrer" class={classes(span)} style={style(span)}
+            >{span.text}</a
+          >
         {:else}<span class={classes(span)} style={style(span)}>{span.text}</span>{/if}
       {:else}&#8203;{/each}
     </div>
@@ -56,27 +53,65 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  .fg-accent { color: var(--interactive-text); }
-  .fg-success { color: var(--success-foreground); }
-  .fg-warning { color: var(--warning-foreground); }
-  .fg-danger { color: var(--danger-foreground); }
-  .fg-muted { color: var(--muted-foreground); }
-  .fg-subtle { color: var(--subtle-foreground); }
-  .fg-border { color: var(--input); }
-  .fg-selected { color: var(--foreground); }
-  .bg-selected { background: var(--control-selected); }
-  .bg-accent { background: var(--interactive-muted); }
-  .bg-success { background: var(--success-muted); }
-  .bg-warning { background: var(--warning-muted); }
-  .bg-danger { background: var(--danger-muted); }
+  .fg-accent {
+    color: var(--interactive-text);
+  }
+  .fg-success {
+    color: var(--success-foreground);
+  }
+  .fg-warning {
+    color: var(--warning-foreground);
+  }
+  .fg-danger {
+    color: var(--danger-foreground);
+  }
+  .fg-muted {
+    color: var(--muted-foreground);
+  }
+  .fg-subtle {
+    color: var(--subtle-foreground);
+  }
+  .fg-border {
+    color: var(--input);
+  }
+  .fg-selected {
+    color: var(--foreground);
+  }
+  .bg-selected {
+    background: var(--control-selected);
+  }
+  .bg-accent {
+    background: var(--interactive-muted);
+  }
+  .bg-success {
+    background: var(--success-muted);
+  }
+  .bg-warning {
+    background: var(--warning-muted);
+  }
+  .bg-danger {
+    background: var(--danger-muted);
+  }
   .bg-muted,
   .bg-subtle,
-  .bg-border { background: var(--muted); }
-  .bold { font-weight: 600; }
-  .dim { opacity: 0.72; }
-  .italic { font-style: italic; }
-  .underline { text-decoration: underline; }
-  .strike { text-decoration: line-through; }
+  .bg-border {
+    background: var(--muted);
+  }
+  .bold {
+    font-weight: 600;
+  }
+  .dim {
+    opacity: 0.72;
+  }
+  .italic {
+    font-style: italic;
+  }
+  .underline {
+    text-decoration: underline;
+  }
+  .strike {
+    text-decoration: line-through;
+  }
   a {
     color: var(--interactive-text);
     text-decoration: underline;

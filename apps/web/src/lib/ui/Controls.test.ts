@@ -42,11 +42,7 @@ test("fields own default appearance, linked help/error, bindings, read-only and 
   expect(descriptions).toContain("Required name");
   await fireEvent.input(input, { target: { value: "Draft" } });
   expect(screen.getByLabelText("Draft name").textContent).toBe("Draft");
-  expect(
-    screen
-      .getByRole("textbox", { name: "Description" })
-      .hasAttribute("readonly"),
-  ).toBe(true);
+  expect(screen.getByRole("textbox", { name: "Description" }).hasAttribute("readonly")).toBe(true);
   await fireEvent.click(screen.getByRole("checkbox", { name: "Include" }));
   expect(screen.getByLabelText("Included").textContent).toBe("true");
   await fireEvent.click(screen.getByRole("switch", { name: "Enabled" }));
@@ -84,10 +80,7 @@ test("buttons use finite variants/sizes, busy safety and accessible unavailable 
   expect(onclick).not.toHaveBeenCalled();
   const change = vi.fn();
   render(Input, { label: "Native event", oninput: change, disabled: true });
-  expect(
-    (screen.getByRole("textbox", { name: "Native event" }) as HTMLInputElement)
-      .disabled,
-  ).toBe(true);
+  expect((screen.getByRole("textbox", { name: "Native event" }) as HTMLInputElement).disabled).toBe(true);
 });
 
 test("tabs rove past disabled choices, link panels and retain input drafts", async () => {
@@ -100,9 +93,7 @@ test("tabs rove past disabled choices, link panels and retain input drafts", asy
   const last = screen.getByRole("tab", { name: "Last" });
   expect(document.activeElement).toBe(last);
   expect(last.getAttribute("aria-selected")).toBe("true");
-  expect(screen.getByRole("tabpanel").id).toBe(
-    last.getAttribute("aria-controls"),
-  );
+  expect(screen.getByRole("tabpanel").id).toBe(last.getAttribute("aria-controls"));
   await fireEvent.keyDown(last, { key: "Home" });
   expect(
     (
@@ -145,15 +136,11 @@ test("dialog owns initial focus, visible title/help, Tab containment, Escape and
   trigger.focus();
   await fireEvent.click(trigger);
   const dialog = await screen.findByRole("dialog", { name: "Test dialog" });
-  expect(document.activeElement).toBe(
-    screen.getByRole("textbox", { name: "Dialog name" }),
-  );
+  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Dialog name" }));
   const last = screen.getByRole("button", { name: "Done" });
   last.focus();
   await fireEvent.keyDown(last, { key: "Tab" });
-  expect(document.activeElement).toBe(
-    screen.getByRole("button", { name: "Close dialog" }),
-  );
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close dialog" }));
   await fireEvent(dialog, new Event("cancel", { cancelable: true }));
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(document.activeElement).toBe(trigger);
@@ -165,10 +152,7 @@ test("busy dialog ignores cancel and groups/disclosures keep native semantics", 
   const dialog = await screen.findByRole("dialog");
   await fireEvent(dialog, new Event("cancel", { cancelable: true }));
   expect(screen.getByRole("dialog")).toBe(dialog);
-  expect(
-    (screen.getByRole("button", { name: "Close dialog" }) as HTMLButtonElement)
-      .disabled,
-  ).toBe(true);
+  expect((screen.getByRole("button", { name: "Close dialog" }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole("group", { name: "Resources" })).toBeTruthy();
   expect(screen.getByText("Details").tagName).toBe("SUMMARY");
 });
@@ -208,8 +192,7 @@ test("MultiSelect is one field: preserves unknown values, filters suggestions, r
     value: ["unknown"],
     options: [{ value: "known", label: "Readable name" }],
     allowCustom: true,
-    validateCustom: (value: string) =>
-      /^[a-z-]+$/.test(value) ? undefined : "Use a reference name",
+    validateCustom: (value: string) => (/^[a-z-]+$/.test(value) ? undefined : "Use a reference name"),
   });
   expect(screen.getByText("(Unavailable)")).toBeTruthy();
   // A single combobox: no separate picker button or "custom" textbox.
@@ -219,9 +202,7 @@ test("MultiSelect is one field: preserves unknown values, filters suggestions, r
   await fireEvent.input(field, { target: { value: "Readable" } });
   expect(screen.getByRole("option", { name: "Readable name" })).toBeTruthy();
   await fireEvent.keyDown(field, { key: "Enter" });
-  expect(
-    screen.getByRole("button", { name: "Remove Readable name" }),
-  ).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Remove Readable name" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Remove unknown" })).toBeTruthy();
   await fireEvent.input(field, { target: { value: "Bad ref" } });
   await fireEvent.keyDown(field, { key: "Enter" });
@@ -233,24 +214,19 @@ test("MultiSelect is one field: preserves unknown values, filters suggestions, r
   const chip = screen.getByRole("button", { name: "Remove repair" });
   await fireEvent.keyDown(chip, { key: "Delete" });
   expect(screen.queryByRole("button", { name: "Remove repair" })).toBeNull();
-  expect(document.activeElement).toBe(
-    screen.getByRole("button", { name: "Remove Readable name" }),
-  );
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Remove Readable name" }));
   await fireEvent.keyDown(field, { key: "Backspace" });
   expect(screen.queryByRole("button", { name: "Remove Readable name" })).toBeNull();
   expect(screen.getByRole("button", { name: "Remove unknown" })).toBeTruthy();
 });
 
 test("dialog wraps native summary and opened read-only content while excluding ineligible targets", async () => {
-  vi.spyOn(HTMLElement.prototype, "getClientRects").mockImplementation(
-    function (this: HTMLElement) {
-      const closedContent =
-        this.tagName === "TEXTAREA" && !this.closest("details")?.open;
-      return {
-        length: closedContent || this.style.display === "none" ? 0 : 1,
-      } as DOMRectList;
-    },
-  );
+  vi.spyOn(HTMLElement.prototype, "getClientRects").mockImplementation(function (this: HTMLElement) {
+    const closedContent = this.tagName === "TEXTAREA" && !this.closest("details")?.open;
+    return {
+      length: closedContent || this.style.display === "none" ? 0 : 1,
+    } as DOMRectList;
+  });
   render(ControlsFixture, { focusCases: true });
   const trigger = screen.getByRole("button", { name: "Open dialog" });
   trigger.focus();
@@ -269,9 +245,6 @@ test("dialog wraps native summary and opened read-only content while excluding i
   expect(document.activeElement).toBe(readonly);
   await fireEvent.keyDown(readonly, { key: "Tab" });
   expect(document.activeElement).toBe(close);
-  await fireEvent(
-    screen.getByRole("dialog"),
-    new Event("cancel", { cancelable: true }),
-  );
+  await fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
   expect(document.activeElement).toBe(trigger);
 });

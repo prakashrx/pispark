@@ -57,7 +57,10 @@
     font-size: 0.8125rem;
     font-weight: 500;
     line-height: 1.25rem;
-    transition: background 0.1s, color 0.1s, border-color 0.1s;
+    transition:
+      background 0.1s,
+      color 0.1s,
+      border-color 0.1s;
   }
   :global(.ui-button:where(:hover:not(:disabled):not([aria-disabled="true"]))) {
     background: var(--muted);

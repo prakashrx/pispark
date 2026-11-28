@@ -18,7 +18,13 @@
 </script>
 
 {#if shown}
-  <button type="button" class="strip" data-purpose="activity-strip" aria-label={`Started here: ${summary(open)}`} onclick={() => details.show(owner.id)}>
+  <button
+    type="button"
+    class="strip"
+    data-purpose="activity-strip"
+    aria-label={`Started here: ${summary(open)}`}
+    onclick={() => details.show(owner.id)}
+  >
     {#if busy}<span class="spin" aria-hidden="true"></span>{:else}<Icon name="clock" class="h-3.5 w-3.5" />{/if}
     <span class="words">{summary(open)}</span>
     <Icon name="chevronRight" class="h-3.5 w-3.5" />

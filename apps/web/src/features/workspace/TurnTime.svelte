@@ -17,7 +17,13 @@
   const retrying = $derived(turn.running ? session?.doc?.retrying : undefined);
   const why = $derived(
     retrying
-      ? { "usage-limit": "Usage limit", unavailable: "Provider busy", "context-full": "Too long", "signed-out": "Sign-in refused", failed: "Reply failed" }[retrying.failure]
+      ? {
+          "usage-limit": "Usage limit",
+          unavailable: "Provider busy",
+          "context-full": "Too long",
+          "signed-out": "Sign-in refused",
+          failed: "Reply failed",
+        }[retrying.failure]
       : "",
   );
   const wait = $derived(retrying ? Math.max(0, Math.ceil((Date.parse(retrying.at) - clock.now) / 1000)) : 0);
@@ -25,10 +31,22 @@
 
 {#if retrying}
   <p class="turn-time" role="status">
-    <StatusMark kind="busy" label={`${why}, retrying`} words detail={`· ${retrying.attempt} of ${retrying.of}${wait ? ` in ${wait}s` : ""}`} />
+    <StatusMark
+      kind="busy"
+      label={`${why}, retrying`}
+      words
+      detail={`· ${retrying.attempt} of ${retrying.of}${wait ? ` in ${wait}s` : ""}`}
+    />
   </p>
 {:else if turn.running && turn.startedAt}
-  <p class="turn-time"><StatusMark kind="busy" label={session?.doc?.compacting ? "Compacting context" : "Working"} words detail={`· ${elapsed(clock.now - turn.startedAt)}`} /></p>
+  <p class="turn-time">
+    <StatusMark
+      kind="busy"
+      label={session?.doc?.compacting ? "Compacting context" : "Working"}
+      words
+      detail={`· ${elapsed(clock.now - turn.startedAt)}`}
+    />
+  </p>
 {:else if !turn.running && took !== undefined && took >= 1000}
   <p class="turn-time">Worked {elapsed(took)}</p>
 {/if}

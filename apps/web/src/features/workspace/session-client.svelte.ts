@@ -212,9 +212,7 @@ export class SessionClient {
       const session = this.opened.get(row.id);
       if (session) session.row = row;
     }
-    this.listNotice = result.truncated
-      ? "Showing your latest 256 sessions. Older sessions are still saved."
-      : "";
+    this.listNotice = result.truncated ? "Showing your latest 256 sessions. Older sessions are still saved." : "";
     if (result.unreadable) {
       this.listNotice = [this.listNotice, `${result.unreadable} session records could not be read.`].filter(Boolean).join(" ");
     }
@@ -279,7 +277,20 @@ export class SessionClient {
       waiting: session.waiting,
       queued: session.queued,
     };
-    if (row && JSON.stringify(next) !== JSON.stringify({ title: row.title, hasHistory: row.hasHistory, status: row.status, interrupted: row.interrupted, agent: row.agent, agentChanged: row.agentChanged, waiting: row.waiting, queued: row.queued }))
+    if (
+      row &&
+      JSON.stringify(next) !==
+        JSON.stringify({
+          title: row.title,
+          hasHistory: row.hasHistory,
+          status: row.status,
+          interrupted: row.interrupted,
+          agent: row.agent,
+          agentChanged: row.agentChanged,
+          waiting: row.waiting,
+          queued: row.queued,
+        })
+    )
       this.sessions = this.sessions.map((s) => (s.id === id ? { ...s, ...next } : s));
   }
   /** Saves a settings change; rejects when the server refused it. */
@@ -329,12 +340,7 @@ export class SessionClient {
   /** Files added to the new session's draft. They wait in the browser: the session starts on Send. */
   readonly askAttachments = new Attachments();
   /** Starts a new session with a first message, in `folder` or, without one, in its project agent's. */
-  async ask(
-    text: string,
-    folder: string | undefined,
-    model?: ModelChoice,
-    agent?: string,
-  ): Promise<boolean> {
+  async ask(text: string, folder: string | undefined, model?: ModelChoice, agent?: string): Promise<boolean> {
     if (this.busy || !text.trim()) return false;
     const placed = this.askAttachments.placed(text);
     if (placed.length && this.askAttachments.blocked === "failed") {

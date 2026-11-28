@@ -1,20 +1,9 @@
 import { isAbsolute } from "node:path";
-import {
-  CredentialSynchronizationError,
-  type ModelRuntime,
-} from "@earendil-works/pi-coding-agent";
-import type {
-  ModelChoice,
-  ProviderCatalog,
-  ProviderInfo,
-} from "../../contract/provider-protocol.js";
+import { CredentialSynchronizationError, type ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { ModelChoice, ProviderCatalog, ProviderInfo } from "../../contract/provider-protocol.js";
 import type { RuntimeConfiguration } from "./configuration.js";
 import type { Provider } from "@earendil-works/pi-ai";
-import {
-  nativeModelRuntime,
-  requireHealthyModels,
-  requireSupportedTransport,
-} from "./native-model-runtime.js";
+import { nativeModelRuntime, requireHealthyModels, requireSupportedTransport } from "./native-model-runtime.js";
 import { ModelDefaults, providerStores } from "./provider-storage.js";
 import { ProviderError } from "./provider-errors.js";
 import { RuntimeError } from "./errors.js";
@@ -58,15 +47,13 @@ export class ProviderSettings {
         ...stores,
         modelsPath: configuration.providerSettings?.modelsPath ?? null,
       });
-      for (const factory of configuration.providerSettings?.providers ?? [])
-        runtime.registerNativeProvider(factory());
+      for (const factory of configuration.providerSettings?.providers ?? []) runtime.registerNativeProvider(factory());
       const result = await runtime.refresh({
         allowNetwork: false,
         signal: AbortSignal.timeout(10_000),
       });
       requireHealthyModels(runtime);
-      if (result.aborted || result.errors.size)
-        throw new ProviderError("provider-configuration");
+      if (result.aborted || result.errors.size) throw new ProviderError("provider-configuration");
       return new ProviderSettings(
         runtime,
         stores.authPath,
@@ -81,21 +68,17 @@ export class ProviderSettings {
       );
     } catch (error) {
       release();
-      throw error instanceof ProviderError || error instanceof RuntimeError
-        ? error
-        : new ProviderError("provider-failed");
+      throw error instanceof ProviderError || error instanceof RuntimeError ? error : new ProviderError("provider-failed");
     }
   }
   require(id: string) {
     if (this.closed) throw new ProviderError("provider-busy");
     this.healthy();
-    if (!this.runtime.getProvider(id))
-      throw new ProviderError("provider-unavailable");
+    if (!this.runtime.getProvider(id)) throw new ProviderError("provider-unavailable");
     if (!this.allowed(id)) throw new ProviderError("network-blocked");
   }
   claim(id: string): () => void {
-    if (this.closed || this.busy.has(id) || this.busy.size >= 8)
-      throw new ProviderError("provider-busy");
+    if (this.closed || this.busy.has(id) || this.busy.size >= 8) throw new ProviderError("provider-busy");
     this.busy.add(id);
     let finish!: () => void;
     const done = new Promise<void>((resolve) => {
@@ -109,16 +92,12 @@ export class ProviderSettings {
     };
   }
   private healthy() {
-    if (this.closed || this.refreshing)
-      throw new ProviderError("provider-busy");
+    if (this.closed || this.refreshing) throw new ProviderError("provider-busy");
     if (this.refreshFailed) throw new ProviderError("provider-configuration");
     requireHealthyModels(this.runtime);
   }
   private signal(milliseconds: number) {
-    return AbortSignal.any([
-      this.controller.signal,
-      AbortSignal.timeout(milliseconds),
-    ]);
+    return AbortSignal.any([this.controller.signal, AbortSignal.timeout(milliseconds)]);
   }
   /**
    * Providers and models as the browser may see them. With `check`, each saved sign-in is tried with
@@ -126,16 +105,8 @@ export class ProviderSettings {
    */
   async catalog(options: { check?: boolean } = {}): Promise<ProviderCatalog> {
     this.healthy();
-    const stored = new Set(
-      (await this.runtime.listCredentials({ signal: this.signal(5000) })).map(
-        (c) => c.providerId,
-      ),
-    );
-    const available = new Set(
-      this.runtime
-        .getAvailableSnapshot()
-        .map((m) => JSON.stringify([m.provider, m.id])),
-    );
+    const stored = new Set((await this.runtime.listCredentials({ signal: this.signal(5000) })).map((c) => c.providerId));
+    const available = new Set(this.runtime.getAvailableSnapshot().map((m) => JSON.stringify([m.provider, m.id])));
     const providers: ProviderInfo[] = this.runtime
       .getProviders()
       .slice(0, 128)
@@ -166,11 +137,7 @@ export class ProviderSettings {
           ],
           configured: stored.has(p.id) || status.configured,
           stored: stored.has(p.id),
-          source: stored.has(p.id)
-            ? "stored"
-            : status.configured
-              ? "host"
-              : "none",
+          source: stored.has(p.id) ? "stored" : status.configured ? "host" : "none",
           models: this.runtime
             .getModels(p.id)
             .slice(0, 4096)
@@ -179,12 +146,8 @@ export class ProviderSettings {
               name: text(m.name),
               input: m.input.filter((i) => i === "text" || i === "image"),
               reasoning: m.reasoning === true,
-              contextWindow: Number.isFinite(m.contextWindow)
-                ? m.contextWindow
-                : 0,
-              available:
-                this.allowed(p.id) &&
-                available.has(JSON.stringify([p.id, m.id])),
+              contextWindow: Number.isFinite(m.contextWindow) ? m.contextWindow : 0,
+              available: this.allowed(p.id) && available.has(JSON.stringify([p.id, m.id])),
             })),
         };
       });
@@ -236,8 +199,7 @@ export class ProviderSettings {
     };
   }
   async setDefault(choice: ModelChoice | null) {
-    if (this.writingDefault || this.closed)
-      throw new ProviderError("provider-busy");
+    if (this.writingDefault || this.closed) throw new ProviderError("provider-busy");
     const finishDefault = this.claim("<default>");
     this.writingDefault = true;
     let release: (() => void) | undefined;
@@ -255,8 +217,7 @@ export class ProviderSettings {
   }
   async refresh(id: string) {
     // Refresh is also the recovery path after a failed configuration/catalog load.
-    if (!this.runtime.getProvider(id))
-      throw new ProviderError("provider-unavailable");
+    if (!this.runtime.getProvider(id)) throw new ProviderError("provider-unavailable");
     if (!this.allowed(id)) throw new ProviderError("network-blocked");
     if (this.refreshing) throw new ProviderError("provider-busy");
     const release = this.claim(id);
@@ -273,8 +234,7 @@ export class ProviderSettings {
         providers: [id],
       });
       requireHealthyModels(this.runtime);
-      if (result.aborted || result.errors.size)
-        throw new ProviderError("provider-configuration");
+      if (result.aborted || result.errors.size) throw new ProviderError("provider-configuration");
       this.refreshFailed = false;
     } catch {
       throw new ProviderError("provider-configuration");
@@ -284,15 +244,13 @@ export class ProviderSettings {
     }
   }
   async logout(id: string) {
-    if (!this.runtime.getProvider(id))
-      throw new ProviderError("provider-unavailable");
+    if (!this.runtime.getProvider(id)) throw new ProviderError("provider-unavailable");
     // Native removal changes only the stored credential, not ambient host configuration.
     const release = this.claim(id);
     try {
       await this.runtime.logout(id);
     } catch (error) {
-      if (error instanceof CredentialSynchronizationError)
-        throw new ProviderError("removed-sync-failed");
+      if (error instanceof CredentialSynchronizationError) throw new ProviderError("removed-sync-failed");
       throw error;
     } finally {
       release();

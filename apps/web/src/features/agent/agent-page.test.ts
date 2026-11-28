@@ -21,7 +21,10 @@ function pageWith(items: ResolvedItem[], summary: Partial<AgentSummary> = {}, in
     tools: [],
     settings: {},
   } as unknown as AgentView;
-  const client = { view, items: [{ id: "shop", name: "Shop", base: [], builtIn: false, valid: true, ...summary }] } as unknown as AgentClient;
+  const client = {
+    view,
+    items: [{ id: "shop", name: "Shop", base: [], builtIn: false, valid: true, ...summary }],
+  } as unknown as AgentClient;
   return new AgentPage(client, { agent: "shop" });
 }
 
@@ -34,7 +37,13 @@ describe("agent page rules", () => {
 
   it("says where each item comes from, and what can be changed here", () => {
     const page = pageWith([own, shared, lone, bundled, inherited]);
-    expect([own, shared, lone, bundled, inherited].map((i) => page.source(i))).toEqual(["Only this agent", "Shared · 3 agents", "Shared", "Bundled", "From Default"]);
+    expect([own, shared, lone, bundled, inherited].map((i) => page.source(i))).toEqual([
+      "Only this agent",
+      "Shared · 3 agents",
+      "Shared",
+      "Bundled",
+      "From Default",
+    ]);
     expect([own, shared, lone, bundled, inherited].map((i) => page.editable(i))).toEqual([true, true, true, false, false]);
     expect([own, shared, bundled, inherited].map((i) => page.owns(i))).toEqual([true, false, false, false]);
     expect([own, shared, lone].map((i) => page.reach(i))).toEqual([undefined, 3, undefined]);
@@ -43,7 +52,13 @@ describe("agent page rules", () => {
 
   it("a bundled agent can be read, not changed", () => {
     const page = pageWith([own], { bundled: true });
-    expect([page.readOnly, page.editable(own), page.owns(own), page.removable(own), page.source(own)]).toEqual([true, false, false, undefined, "Bundled"]);
+    expect([page.readOnly, page.editable(own), page.owns(own), page.removable(own), page.source(own)]).toEqual([
+      true,
+      false,
+      false,
+      undefined,
+      "Bundled",
+    ]);
   });
 
   it("instructions list what's read first, then what's off; something new joins the read ones", () => {
@@ -83,7 +98,13 @@ describe("agent page rules", () => {
 describe("agent page menus", () => {
   const own = item({ type: "skills", name: "deploy", reference: "local:deploy", path: "skills/deploy/SKILL.md" });
   const shared = item({ type: "skills", name: "review", reference: "shared:review", path: "skills/review/SKILL.md", usedBy: 3 });
-  const inherited = item({ type: "instructions", name: "style", reference: "local:style", path: "instructions/style.md", origin: { id: "writer", name: "Writer" } });
+  const inherited = item({
+    type: "instructions",
+    name: "style",
+    reference: "local:style",
+    path: "instructions/style.md",
+    origin: { id: "writer", name: "Writer" },
+  });
 
   it("one ⋯ menu for every tab: the tab's own entries, then own, shared or remove", () => {
     const page = pageWith([own, shared, inherited]);
@@ -109,7 +130,9 @@ describe("front matter fields", () => {
     expect(withField(skill, "description", "Review a change: bugs first.")).toBe(
       '---\r\nname: review\r\ndescription: "Review a change: bugs first."\r\nlicense: MIT\r\n---\r\n# Review\r\n',
     );
-    expect(withField("---\nname: x\n---\nBody\n", "description", "Plain words")).toBe("---\nname: x\ndescription: Plain words\n---\nBody\n");
+    expect(withField("---\nname: x\n---\nBody\n", "description", "Plain words")).toBe(
+      "---\nname: x\ndescription: Plain words\n---\nBody\n",
+    );
     expect(withField("Body only\n", "description", "New")).toBe("---\ndescription: New\n---\n\nBody only\n");
   });
 

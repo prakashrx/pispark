@@ -22,8 +22,7 @@
   // A project agent works in its own folder; Ask's choice waits for the next other agent.
   const bound = $derived(sessions.agents.items.find((p) => p.id === sessions.agents.selected)?.folder);
   const agentOptions = $derived([
-    ...(sessions.agents.selected &&
-    !sessions.agents.items.some((p) => p.id === sessions.agents.selected)
+    ...(sessions.agents.selected && !sessions.agents.items.some((p) => p.id === sessions.agents.selected)
       ? [
           {
             value: sessions.agents.selected,
@@ -32,9 +31,7 @@
           },
         ]
       : []),
-    ...sessions.agents.items
-      .filter((p) => p.valid)
-      .map((p) => ({ value: p.id, label: p.name })),
+    ...sessions.agents.items.filter((p) => p.valid).map((p) => ({ value: p.id, label: p.name })),
   ]);
   const models = $derived(sessions.providers.modelOptions);
   const defaultChoice = $derived(sessions.providers.catalog.defaultModel);
@@ -48,9 +45,7 @@
   const modelOptions = $derived([
     {
       value: "",
-      label: defaultChoice
-        ? `Default: ${selected && !sessions.askModel ? selected.label : defaultChoice.id}`
-        : "Choose a model",
+      label: defaultChoice ? `Default: ${selected && !sessions.askModel ? selected.label : defaultChoice.id}` : "Choose a model",
     },
     ...(sessions.askModel && !models.some((m) => m.value === sessions.askModel)
       ? [{ value: sessions.askModel, label: "Unavailable model", disabled: true }]
@@ -65,27 +60,23 @@
       ? "Context is being compacted."
       : sessions.busy
         ? "Please wait…"
-      : attachments?.blocked && (mode === "reply" || attachments.blocked !== "uploading")
-        ? BLOCKED[attachments.blocked]
-      : mode === "ask"
-        ? !bound && !sessions.askFolder
-          ? "Choose a working folder."
-          : sessions.agents.selected &&
-              !sessions.agents.items.some(
-                (p) => p.id === sessions.agents.selected && p.valid,
-              ) &&
-              sessions.agents.items.length
-            ? "This agent isn’t available. Choose another."
-            : !sessions.askModel &&
-                !defaultChoice &&
-                !sessions.providers.loading
-              ? "Choose a model in Providers & models."
-              : undefined
-        : !["idle", "error"].includes(session?.doc?.status ?? "")
-          ? "Open a session that is ready for a message."
-          : session.connection !== "Live"
-            ? "Waiting for the session to reconnect."
-            : undefined,
+        : attachments?.blocked && (mode === "reply" || attachments.blocked !== "uploading")
+          ? BLOCKED[attachments.blocked]
+          : mode === "ask"
+            ? !bound && !sessions.askFolder
+              ? "Choose a working folder."
+              : sessions.agents.selected &&
+                  !sessions.agents.items.some((p) => p.id === sessions.agents.selected && p.valid) &&
+                  sessions.agents.items.length
+                ? "This agent isn’t available. Choose another."
+                : !sessions.askModel && !defaultChoice && !sessions.providers.loading
+                  ? "Choose a model in Providers & models."
+                  : undefined
+            : !["idle", "error"].includes(session?.doc?.status ?? "")
+              ? "Open a session that is ready for a message."
+              : session.connection !== "Live"
+                ? "Waiting for the session to reconnect."
+                : undefined,
   );
   // The turn the session is in, when one is: the button stops or cancels it instead of sending.
   const doc = $derived(mode === "reply" ? session?.doc : undefined);
@@ -101,7 +92,10 @@
   const suggestions = $derived(
     typed === undefined || dismissed === text
       ? []
-      : [...(session?.doc?.prompts ?? []).map((p) => ({ ...p, kind: "prompt" as const })), ...(session?.doc?.commands ?? []).map((c) => ({ ...c, kind: "command" as const }))]
+      : [
+          ...(session?.doc?.prompts ?? []).map((p) => ({ ...p, kind: "prompt" as const })),
+          ...(session?.doc?.commands ?? []).map((c) => ({ ...c, kind: "command" as const })),
+        ]
           .filter(({ name }) => name.toLowerCase().includes(typed))
           .sort((a, b) => Number(!a.name.toLowerCase().startsWith(typed)) - Number(!b.name.toLowerCase().startsWith(typed)))
           .slice(0, 8),
@@ -166,7 +160,8 @@
     aria-label={mode === "ask" ? "New session" : "Reply to session"}
     onpointerdown={(event) => {
       // Keep the dock still until the native click sends, stops, or opens the picker.
-      if (event.pointerType === "touch" && event.target instanceof Element && event.target.closest(".send-btn, .attach-btn")) event.preventDefault();
+      if (event.pointerType === "touch" && event.target instanceof Element && event.target.closest(".send-btn, .attach-btn"))
+        event.preventDefault();
     }}
     onsubmit={(event) => {
       event.preventDefault();
@@ -174,7 +169,9 @@
     }}
   >
     {#if editing}<div class="editing" role="status">
-        <Icon name="pencil" class="h-3.5 w-3.5" /><span class="editing-text">Editing your message. It goes again from just before it; what followed stays as another version.</span>
+        <Icon name="pencil" class="h-3.5 w-3.5" /><span class="editing-text"
+          >Editing your message. It goes again from just before it; what followed stays as another version.</span
+        >
         <button type="button" class="editing-cancel" onclick={() => session?.cancelEdit()}>Cancel</button>
       </div>{/if}
     {#if attachments}<RichInput
@@ -236,8 +233,8 @@
           class="send-btn stop"
           onclick={() => session?.stop()}><Icon name="stop" class="w-[18px] h-[18px]" /></Button
         >{:else}<Button aria-label={mode === "reply" ? "Send message" : "Start session"} type="submit" {unavailable} class="send-btn"
-        ><Icon name="arrowUp" class="w-[18px] h-[18px]" /></Button
-      >{/if}
+          ><Icon name="arrowUp" class="w-[18px] h-[18px]" /></Button
+        >{/if}
     </div>
   </form>
   {#if mode === "ask"}
@@ -245,11 +242,15 @@
     <div class="composer-choices" role="group" aria-label="Session choices">
       {#if bound}<FolderChoice value={bound} locked="Set by the agent" />{:else}<FolderChoice bind:value={sessions.askFolder} />{/if}
       <Selector label="Agent" options={agentOptions} bind:value={sessions.agents.selected}>
-        {#snippet children(value)}<Icon name="person" class="w-3.5 h-3.5" /><span class="max-w-28 truncate">{value || "Default"}</span
-          ><Icon name="chevronDown" class="w-3 h-3 opacity-60" />{/snippet}
+        {#snippet children(value)}<Icon name="person" class="w-3.5 h-3.5" /><span class="max-w-28 truncate">{value || "Default"}</span><Icon
+            name="chevronDown"
+            class="w-3 h-3 opacity-60"
+          />{/snippet}
         {#snippet footer()}
-          <a class="text-sm font-medium text-[var(--interactive-text)] hover:underline" href="#/agents" onclick={() => sessions.agents.collection()}
-            >Manage agents</a
+          <a
+            class="text-sm font-medium text-[var(--interactive-text)] hover:underline"
+            href="#/agents"
+            onclick={() => sessions.agents.collection()}>Manage agents</a
           >
           {#if sessions.agents.error}<p role="alert" class="text-xs text-[var(--danger-foreground)] mt-2">{sessions.agents.error}</p>{/if}
         {/snippet}

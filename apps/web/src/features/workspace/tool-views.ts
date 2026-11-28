@@ -10,12 +10,15 @@ import { registerGenericToolView, registerToolView, resolveToolView, type CallWo
  * component at `item.tool:<name>` instead (see extension-views.ts).
  */
 
-const text = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim() ? value.trim() : undefined;
+const text = (value: unknown): string | undefined => (typeof value === "string" && value.trim() ? value.trim() : undefined);
 const field = (value: Json | undefined, name: string): Json | undefined =>
   value && typeof value === "object" && !Array.isArray(value) ? value[name] : undefined;
 const arg = (call: ToolCall, name: string) => text(field(call.args, name));
-const base = (path: string) => path.split(/[\\/]+/).filter(Boolean).at(-1) ?? path;
+const base = (path: string) =>
+  path
+    .split(/[\\/]+/)
+    .filter(Boolean)
+    .at(-1) ?? path;
 const short = (value: string, limit = 60) => {
   const line = value.split("\n")[0]!;
   return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
@@ -38,7 +41,15 @@ export function genericArtifacts(call: ToolCall): Segment[] {
     out.push({ kind: "diff", key: `diff.${call.id}`, patch, path, clipped: result.clipped === true });
   result.parts.forEach((part, index) => {
     if (part.type === "image")
-      out.push({ kind: "image", key: `image.${call.id}.${index}`, itemId: result.id, part: index, mimeType: part.mimeType, bytes: part.bytes, alt: `Image from ${call.name}` });
+      out.push({
+        kind: "image",
+        key: `image.${call.id}.${index}`,
+        itemId: result.id,
+        part: index,
+        mimeType: part.mimeType,
+        bytes: part.bytes,
+        alt: `Image from ${call.name}`,
+      });
   });
   return out;
 }
@@ -54,10 +65,22 @@ const on = (call: ToolCall) => {
   const path = arg(call, "path");
   return path ? base(path) : undefined;
 };
-const words = (doing: string, done: string, object: (call: ToolCall) => string | undefined): ToolView["describe"] => (call) => ({ doing, done, object: object(call) });
+const words =
+  (doing: string, done: string, object: (call: ToolCall) => string | undefined): ToolView["describe"] =>
+  (call) => ({ doing, done, object: object(call) });
 
-registerToolView("read", { describe: words("Reading", "Read", on), group: "read", summarize: (calls) => `read ${noun(files(calls), "file")}`, artifacts: genericArtifacts });
-registerToolView("edit", { describe: words("Editing", "Edited", on), group: "edit", summarize: (calls) => `edited ${named(calls)}`, artifacts: genericArtifacts });
+registerToolView("read", {
+  describe: words("Reading", "Read", on),
+  group: "read",
+  summarize: (calls) => `read ${noun(files(calls), "file")}`,
+  artifacts: genericArtifacts,
+});
+registerToolView("edit", {
+  describe: words("Editing", "Edited", on),
+  group: "edit",
+  summarize: (calls) => `edited ${named(calls)}`,
+  artifacts: genericArtifacts,
+});
 registerToolView("write", {
   describe: words("Writing", "Wrote", on),
   group: "write",
@@ -92,7 +115,12 @@ const search = (doing: string, done: string, key: string): ToolView => ({
 });
 registerToolView("grep", search("Searching for", "Searched for", "pattern"));
 registerToolView("find", search("Finding", "Found", "pattern"));
-registerToolView("ls", { describe: words("Listing", "Listed", on), group: "search", summarize: (calls) => `searched ${noun(calls.length, "time")}`, artifacts: genericArtifacts });
+registerToolView("ls", {
+  describe: words("Listing", "Listed", on),
+  group: "search",
+  summarize: (calls) => `searched ${noun(calls.length, "time")}`,
+  artifacts: genericArtifacts,
+});
 
 // PiSpark's own tools, the ten verbs a session says about what it started: words for each, and what
 // a start made, as a row. A start names what it made in the call's details.
@@ -103,15 +131,23 @@ const sessionRow = (call: ToolCall): Segment[] => {
 };
 const processRow = (call: ToolCall): Segment[] => {
   const id = made(call);
-  return id ? [{ kind: "process", key: `process.${call.id}`, processId: id, title: arg(call, "title") ?? arg(call, "command") ?? "A process" }] : [];
+  return id
+    ? [{ kind: "process", key: `process.${call.id}`, processId: id, title: arg(call, "title") ?? arg(call, "command") ?? "A process" }]
+    : [];
 };
 const savedSchedule = (call: ToolCall) => {
   const schedule = field(call.result?.details, "schedule");
-  return schedule && typeof schedule === "object" && !Array.isArray(schedule) && typeof schedule.id === "string" ? (schedule as unknown as Schedule) : undefined;
+  return schedule && typeof schedule === "object" && !Array.isArray(schedule) && typeof schedule.id === "string"
+    ? (schedule as unknown as Schedule)
+    : undefined;
 };
 /** One verb's view: its words, one line for several calls, and what it puts in the message. */
-const verb = (name: string, describe: ToolView["describe"], summarize: (calls: ToolCall[]) => string, artifacts: ToolView["artifacts"] = () => []) =>
-  registerToolView(`pispark_${name}`, { describe, group: name, summarize, artifacts });
+const verb = (
+  name: string,
+  describe: ToolView["describe"],
+  summarize: (calls: ToolCall[]) => string,
+  artifacts: ToolView["artifacts"] = () => [],
+) => registerToolView(`pispark_${name}`, { describe, group: name, summarize, artifacts });
 const said = (call: ToolCall) => {
   const value = arg(call, "text");
   return value && short(value);
@@ -137,7 +173,10 @@ verb(
   "schedule",
   (call) => {
     const saved = savedSchedule(call);
-    return { doing: "Adding a schedule", done: saved ? `Scheduled ${describeSchedule(saved).replace(/^./, (c) => c.toLowerCase())}` : "Added no schedule" };
+    return {
+      doing: "Adding a schedule",
+      done: saved ? `Scheduled ${describeSchedule(saved).replace(/^./, (c) => c.toLowerCase())}` : "Added no schedule",
+    };
   },
   (calls) => {
     const added = calls.filter((call) => savedSchedule(call)).length;
@@ -157,23 +196,35 @@ verb(
   },
   (calls) => `waited ${noun(calls.length, "time")}`,
 );
-verb("look", words("Looking at", "Looked at", (call) => arg(call, "id") ?? "what it started"), (calls) => `looked ${noun(calls.length, "time")}`);
+verb(
+  "look",
+  words("Looking at", "Looked at", (call) => arg(call, "id") ?? "what it started"),
+  (calls) => `looked ${noun(calls.length, "time")}`,
+);
 verb("stop", words("Stopping", "Stopped", argOf("id")), (calls) => `stopped ${noun(calls.length, "thing")}`);
 // What goes up is read in the conversation itself: a line (or, when it needs you, a card) with its words.
-const sentUp = (what: "note" | "raise") => (call: ToolCall): Segment[] => {
-  const words = arg(call, "text");
-  return call.status === "done" && words ? [{ kind: "up", key: `up.${call.id}`, what, text: words }] : [];
-};
+const sentUp =
+  (what: "note" | "raise") =>
+  (call: ToolCall): Segment[] => {
+    const words = arg(call, "text");
+    return call.status === "done" && words ? [{ kind: "up", key: `up.${call.id}`, what, text: words }] : [];
+  };
 verb("raise", words("Raising", "Raised", said), () => "raised a question", sentUp("raise"));
 verb("note", words("Noting", "Noted", said), (calls) => `left ${noun(calls.length, "note")}`, sentUp("note"));
 verb(
   "self",
-  (call) => (arg(call, "action") === "reload" ? { doing: "Asking to reload", done: "Asked to reload" } : { doing: "Inspecting this session", done: "Inspected this session" }),
+  (call) =>
+    arg(call, "action") === "reload"
+      ? { doing: "Asking to reload", done: "Asked to reload" }
+      : { doing: "Inspecting this session", done: "Inspected this session" },
   () => "looked at itself",
 );
 
 // Calls from before the ten verbs, in older conversations: what a start made still shows as a row.
-const older = (row: (call: ToolCall) => Segment[]): ToolView => ({ ...generic, artifacts: (call) => (arg(call, "action") === "start" ? row(call) : []) });
+const older = (row: (call: ToolCall) => Segment[]): ToolView => ({
+  ...generic,
+  artifacts: (call) => (arg(call, "action") === "start" ? row(call) : []),
+});
 registerToolView("pispark_session", older(sessionRow));
 registerToolView("pispark_process", older(processRow));
 

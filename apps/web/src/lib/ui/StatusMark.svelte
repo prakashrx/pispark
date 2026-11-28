@@ -9,12 +9,7 @@
    * something that needs you, "!" for an error, a spinner while busy, a clock while waiting, a dot
    * for something new. Words show beside it or stay for screen readers.
    */
-  let {
-    kind,
-    label,
-    words = false,
-    detail,
-  }: { kind: StatusKind; label: string; words?: boolean; detail?: string } = $props();
+  let { kind, label, words = false, detail }: { kind: StatusKind; label: string; words?: boolean; detail?: string } = $props();
 </script>
 
 <span class="status-mark" data-kind={kind} title={label}>
@@ -24,7 +19,9 @@
       ><circle cx="10" cy="10" r="7.25" /><path d="M10 6v4l2.5 1.5" /></svg
     >
   {:else}<span class="glyph round" aria-hidden="true">{kind === "attention" ? "?" : "!"}</span>{/if}
-  {#if words}<span class="word">{label}{#if detail}<span class="detail">{` ${detail}`}</span>{/if}</span>
+  {#if words}<span class="word"
+      >{label}{#if detail}<span class="detail">{` ${detail}`}</span>{/if}</span
+    >
   {:else}<span class="sr-only">{label}{detail ? ` ${detail}` : ""}</span>{/if}
 </span>
 

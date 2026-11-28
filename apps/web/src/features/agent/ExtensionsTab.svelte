@@ -35,7 +35,13 @@
     else if (was) document.querySelector<HTMLElement>(`.rows [data-key="${CSS.escape(was)}"]`)?.focus();
   }
   const from = (ext: ResolvedItem) =>
-    ext.origin.id !== page.agent ? `From ${ext.origin.name}` : ext.reference?.startsWith("bundled:") ? "Comes with PiSpark" : ext.reference?.startsWith("shared:") ? "Shared library" : `This agent's folder · extensions/${ext.name}`;
+    ext.origin.id !== page.agent
+      ? `From ${ext.origin.name}`
+      : ext.reference?.startsWith("bundled:")
+        ? "Comes with PiSpark"
+        : ext.reference?.startsWith("shared:")
+          ? "Shared library"
+          : `This agent's folder · extensions/${ext.name}`;
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
   const summary = (list: ResolvedTool[]) => {
     if (!list.length) return "Adds no tools";
@@ -49,7 +55,9 @@
     {#each list as tool (tool.name)}
       <li data-off={!tool.on || undefined}>
         <div class="text">
-          <span class="tname">{tool.label ?? tool.name}{#if tool.label}<code>{tool.name}</code>{/if}</span>
+          <span class="tname"
+            >{tool.label ?? tool.name}{#if tool.label}<code>{tool.name}</code>{/if}</span
+          >
           {#if tool.description}<span class="desc">{tool.description}</span>{/if}
           {#if tool.setBy && tool.setBy.id !== page.agent}<span class="desc">Set by {tool.setBy.name}</span>{/if}
         </div>
@@ -67,22 +75,43 @@
 {#if builtIn}
   <article class="ext-page">
     <BackButton label="Extensions" onclick={() => void show(undefined)} />
-    <DetailHead {page} heading="Built in" about="What every PiSpark session can do: files, commands, sessions and schedules. Turn single tools off for {page.here}." />
+    <DetailHead
+      {page}
+      heading="Built in"
+      about="What every PiSpark session can do: files, commands, sessions and schedules. Turn single tools off for {page.here}."
+    />
     <Pane title="Tools it gives the agent" count={summary(core)}>{@render toolList(core)}</Pane>
   </article>
 {:else if item}
   {@const mine = toolsOf(item.name)}
   <article class="ext-page">
-    <DetailHead {page} {item} back={{ label: "Extensions", onclick: () => void show(undefined) }} about={item.unavailable ? "Unavailable: its files are missing." : item.description} entries={page.entries(item)} />
-    <p class="source"><Icon name={item.reference?.startsWith("shared:") || item.reference?.startsWith("bundled:") ? "code" : "folder"} class="h-4 w-4" />{from(item)}</p>
+    <DetailHead
+      {page}
+      {item}
+      back={{ label: "Extensions", onclick: () => void show(undefined) }}
+      about={item.unavailable ? "Unavailable: its files are missing." : item.description}
+      entries={page.entries(item)}
+    />
+    <p class="source">
+      <Icon
+        name={item.reference?.startsWith("shared:") || item.reference?.startsWith("bundled:") ? "code" : "folder"}
+        class="h-4 w-4"
+      />{from(item)}
+    </p>
     {#if mine.length}
       <Pane title="Tools it gives the agent" count={summary(mine)}>{@render toolList(mine)}</Pane>
     {:else}
-      <p class="note">{page.view?.toolsIncomplete ? "Its tools couldn't be listed: the extension didn't load. A session of the agent shows why." : "It gives the agent no tools. It may add commands or views, which show while a session runs."}</p>
+      <p class="note">
+        {page.view?.toolsIncomplete
+          ? "Its tools couldn't be listed: the extension didn't load. A session of the agent shows why."
+          : "It gives the agent no tools. It may add commands or views, which show while a session runs."}
+      </p>
     {/if}
   </article>
 {:else}
-  <TabIntro {page} kind="extensions">Code that adds tools, commands and views. Turn single tools off without removing the extension.</TabIntro>
+  <TabIntro {page} kind="extensions"
+    >Code that adds tools, commands and views. Turn single tools off without removing the extension.</TabIntro
+  >
   <ul class="rows">
     <li class="ext" data-builtin>
       <span class="tile" aria-hidden="true"><Icon name="code" class="h-4 w-4" /></span>

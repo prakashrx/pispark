@@ -88,7 +88,8 @@ const MAX_TOGETHER = MAX_TEXT / 2;
 /** One message for what arrives together: each part's text in order, and what the conversation needs to show each. */
 export function together(parts: { wake: Wake; text: string }[]): [string, WokenDetails] {
   // A reworded part has no line of its own before the report, so its card starts at the beginning.
-  const card = ({ wake, text }: (typeof parts)[number]) => (wake.card ? { card: text === wake.text ? wake.card : { ...wake.card, start: 0 } } : {});
+  const card = ({ wake, text }: (typeof parts)[number]) =>
+    wake.card ? { card: text === wake.text ? wake.card : { ...wake.card, start: 0 } } : {};
   const first = parts[0]!;
   const details: WokenDetails = { source: first.wake.source, due: first.wake.due, ...card(first) };
   if (parts.length === 1) return [first.text, details];
@@ -105,7 +106,12 @@ const shortString = (value: unknown, max: number): value is string => typeof val
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
 function validSource(value: unknown): value is WakeSource {
-  return object(value) && ["schedule", "session", "process", "reload"].includes(value.kind as string) && shortString(value.id, 200) && shortString(value.label, 200);
+  return (
+    object(value) &&
+    ["schedule", "session", "process", "reload"].includes(value.kind as string) &&
+    shortString(value.id, 200) &&
+    shortString(value.label, 200)
+  );
 }
 function validReport(value: unknown): boolean {
   return (
@@ -228,14 +234,16 @@ export class Wakes {
     if (this.closed) return;
     if (wake.collect) return this.wait(sessionId, wake);
     const paused = this.host.paused();
-    if (paused && wake.policy === "latest") return this.note(sessionId, wake.source.id, { due: wake.due, outcome: "missed", reason: "paused" });
+    if (paused && wake.policy === "latest")
+      return this.note(sessionId, wake.source.id, { due: wake.due, outcome: "missed", reason: "paused" });
     // Wakes reach a session in order: behind any already waiting for it.
     const first = !paused && !this.owed(sessionId);
     if (!first || !(await this.attempt(sessionId, [wake], false))) this.wait(sessionId, wake);
   }
   /** Run now, with the person watching: refused while the session is busy or archived. */
   async runNow(sessionId: string, wake: Wake): Promise<void> {
-    if (this.archived(sessionId) || this.running.has(key(sessionId, wake.source.id)) || !this.host.free(sessionId)) throw new RuntimeError("busy");
+    if (this.archived(sessionId) || this.running.has(key(sessionId, wake.source.id)) || !this.host.free(sessionId))
+      throw new RuntimeError("busy");
     await this.fire(sessionId, [wake], { manual: true });
   }
   /** Looks at every waiting wake; overlapping calls share one pass. */
@@ -274,7 +282,8 @@ export class Wakes {
   }
   /** Sends the wakes if nothing stops it; `false` means they have to wait. */
   private async attempt(sessionId: string, wakes: Wake[], waited: boolean): Promise<boolean> {
-    if (this.archived(sessionId) || wakes.some((wake) => this.running.has(key(sessionId, wake.source.id))) || !this.host.free(sessionId)) return false;
+    if (this.archived(sessionId) || wakes.some((wake) => this.running.has(key(sessionId, wake.source.id))) || !this.host.free(sessionId))
+      return false;
     return this.fire(sessionId, wakes, waited ? { reason: "busy" } : wakes[0]!.late ? { reason: "off" } : {});
   }
   /**
@@ -284,7 +293,8 @@ export class Wakes {
    */
   private async fire(sessionId: string, wakes: Wake[], how: { reason?: "busy" | "off"; manual?: true }): Promise<boolean> {
     const at = this.iso();
-    const record = (wake: Wake, result: Pick<WakeRecord, "outcome" | "error">) => this.note(sessionId, wake.source.id, { due: wake.due, at, ...result, ...how });
+    const record = (wake: Wake, result: Pick<WakeRecord, "outcome" | "error">) =>
+      this.note(sessionId, wake.source.id, { due: wake.due, at, ...result, ...how });
     const keys = (of: Wake[]) => new Set(of.map((wake) => key(sessionId, wake.source.id)));
     const flying = keys(wakes);
     for (const each of flying) this.running.add(each);
@@ -327,7 +337,12 @@ export class Wakes {
     void completion
       .then(
         (result) => ({
-          outcome: result.outcome === "completed" ? ("ran" as const) : result.outcome === "cancelled" ? ("cancelled" as const) : ("failed" as const),
+          outcome:
+            result.outcome === "completed"
+              ? ("ran" as const)
+              : result.outcome === "cancelled"
+                ? ("cancelled" as const)
+                : ("failed" as const),
           ...(result.error ? { error: result.error } : {}),
         }),
         (error: unknown) => ({ outcome: "failed" as const, error: runtimeError(error, "execution").code }),
@@ -348,7 +363,8 @@ export class Wakes {
     const state = this.state(sessionId);
     const mine = state.waiting.filter((w) => w.source.id === wake.source.id);
     if (wake.policy === "latest" && mine.length) return;
-    if (mine.length >= MAX_WAITING_PER_SOURCE) return this.note(sessionId, wake.source.id, { due: wake.due, outcome: "missed", reason: "full" });
+    if (mine.length >= MAX_WAITING_PER_SOURCE)
+      return this.note(sessionId, wake.source.id, { due: wake.due, outcome: "missed", reason: "full" });
     state.waiting.push(wake);
     this.save(sessionId);
     this.options.queued?.(sessionId, wake);

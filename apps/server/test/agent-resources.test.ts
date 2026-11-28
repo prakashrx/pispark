@@ -38,8 +38,14 @@ test("the inventory spans three sources; only explicit declarations and their co
   const local = await put("agents/research/skills/private-note/SKILL.md", skill("private-note"));
   await put("app/plugins/mcp/catalog.json", '{"url":"https://example.com/mcp"}');
 
-  assert.deepEqual(store.available(research, "extensions").map(({ reference }) => reference), ["bundled:research", "shared:research"]);
-  assert.deepEqual(store.available(research, "skills").map(({ reference }) => reference), ["shared:guide", "local:private-note"]);
+  assert.deepEqual(
+    store.available(research, "extensions").map(({ reference }) => reference),
+    ["bundled:research", "shared:research"],
+  );
+  assert.deepEqual(
+    store.available(research, "skills").map(({ reference }) => reference),
+    ["shared:guide", "local:private-note"],
+  );
   assert.deepEqual(resolveSetup(store, research).extensionPaths, []);
   assert.deepEqual(resolveSetup(store, research).skillDirs, []);
   assert.deepEqual(resolveSetup(store, research).mcpServers, {});
@@ -68,7 +74,7 @@ test("the inventory spans three sources; only explicit declarations and their co
   await rm(bundled);
   const missing = resolveSetup(store, research);
   assert.deepEqual(missing.extensionPaths, []);
-  assert.ok(missing.items.find(item => item.name === "research")?.unavailable);
+  assert.ok(missing.items.find((item) => item.name === "research")?.unavailable);
   assert.ok(!missing.skillDirs.includes(dirname(companion)));
   store.select(research, "extensions", "shared:research", true, store.read(research).revision);
   assert.deepEqual(resolveSetup(store, research).extensionPaths, [shared]);

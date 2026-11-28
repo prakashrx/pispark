@@ -16,11 +16,7 @@
     id?: string;
     children: Snippet<[string, string | undefined]>;
   } = $props();
-  const describedby = $derived(
-    [help ? `${id}-help` : undefined, error ? `${id}-error` : undefined]
-      .filter(Boolean)
-      .join(" ") || undefined,
-  );
+  const describedby = $derived([help ? `${id}-help` : undefined, error ? `${id}-error` : undefined].filter(Boolean).join(" ") || undefined);
 </script>
 
 <div class="space-y-1.5 min-w-0">

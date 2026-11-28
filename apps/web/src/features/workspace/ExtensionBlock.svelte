@@ -3,10 +3,7 @@
   import StyledText from "./StyledText.svelte";
 
   /** An extension's custom message or entry in the conversation, or a notice it raised. */
-  let {
-    lines,
-    kind,
-  }: { lines: StyledLine[]; kind?: "info" | "warning" | "error" } = $props();
+  let { lines, kind }: { lines: StyledLine[]; kind?: "info" | "warning" | "error" } = $props();
   const label = $derived(kind === "error" ? "Error" : kind === "warning" ? "Warning" : undefined);
 </script>
 

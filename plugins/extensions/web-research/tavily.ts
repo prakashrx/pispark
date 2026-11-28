@@ -13,11 +13,16 @@ export function webUrl(value: unknown): string | undefined {
     const url = new URL(value);
     const host = url.hostname.toLowerCase().replace(/\.$/, "");
     if (
-      !["http:", "https:"].includes(url.protocol) || url.username || url.password ||
-      url.port || !host.includes(".") || isIP(host) ||
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.port ||
+      !host.includes(".") ||
+      isIP(host) ||
       /(?:^|\.)(?:local|localhost|internal|home\.arpa|ts\.net)$/.test(host) ||
       url.href.length > MAX_SOURCE_URL
-    ) return undefined;
+    )
+      return undefined;
     return url.href;
   } catch {
     return undefined;
@@ -32,29 +37,40 @@ type Result = {
 };
 
 export class Tavily {
-  constructor(private readonly apiKey: string, private readonly fetcher: typeof fetch = fetch) {}
+  constructor(
+    private readonly apiKey: string,
+    private readonly fetcher: typeof fetch = fetch,
+  ) {}
 
   search(query: string, signal?: AbortSignal): Promise<Result[]> {
-    return this.post("search", {
-      query,
-      max_results: SEARCH_RESULTS,
-      search_depth: "basic",
-      include_answer: false,
-      include_raw_content: false,
-      include_images: false,
-    }, signal);
+    return this.post(
+      "search",
+      {
+        query,
+        max_results: SEARCH_RESULTS,
+        search_depth: "basic",
+        include_answer: false,
+        include_raw_content: false,
+        include_images: false,
+      },
+      signal,
+    );
   }
 
   read(url: string, focus: string, signal?: AbortSignal): Promise<Result[]> {
-    return this.post("extract", {
-      urls: [url],
-      query: focus,
-      chunks_per_source: 3,
-      extract_depth: "basic",
-      format: "text",
-      include_images: false,
-      timeout: 12,
-    }, signal);
+    return this.post(
+      "extract",
+      {
+        urls: [url],
+        query: focus,
+        chunks_per_source: 3,
+        extract_depth: "basic",
+        format: "text",
+        include_images: false,
+        timeout: 12,
+      },
+      signal,
+    );
   }
 
   private async post(path: "search" | "extract", body: object, signal?: AbortSignal): Promise<Result[]> {
@@ -62,7 +78,7 @@ export class Tavily {
     try {
       const response = await this.fetcher(API + "/" + path, {
         method: "POST",
-        headers: { "Authorization": "Bearer " + this.apiKey, "Content-Type": "application/json" },
+        headers: { Authorization: "Bearer " + this.apiKey, "Content-Type": "application/json" },
         body: JSON.stringify(body),
         redirect: "error",
         signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
@@ -85,8 +101,7 @@ export class Tavily {
           const { value, done } = await reader.read();
           if (done) break;
           size += value.byteLength;
-          if (size > MAX_RESPONSE_BYTES)
-            throw new WebServiceError("The web research response exceeded its size limit.");
+          if (size > MAX_RESPONSE_BYTES) throw new WebServiceError("The web research response exceeded its size limit.");
           chunks.push(Buffer.from(value));
         }
       } finally {

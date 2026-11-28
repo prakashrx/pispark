@@ -34,5 +34,9 @@ export function nextRead(written: number, shown: ShownOutput | undefined): { sin
 /** The view after a read: appended, or (`fresh`) started again; never more than `keep` characters. */
 export function shownAfter(shown: ShownOutput | undefined, read: ShownOutput, fresh: boolean, keep = 200_000): ShownOutput {
   const text = (fresh ? "" : (shown?.text ?? "")) + read.text;
-  return { text: text.length > keep ? text.slice(-keep) : text, next: read.next, cut: fresh || read.cut || text.length > keep || shown?.cut };
+  return {
+    text: text.length > keep ? text.slice(-keep) : text,
+    next: read.next,
+    cut: fresh || read.cut || text.length > keep || shown?.cut,
+  };
 }

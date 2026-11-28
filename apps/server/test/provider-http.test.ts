@@ -15,11 +15,7 @@ async function host(t: { after: (fn: () => unknown) => void }) {
   const root = await mkdtemp(join(tmpdir(), "pispark-provider-http-"));
   const f = await localProviderSettings(root);
   const configuration = { home: join(root, "pispark") };
-  const handlers = new SessionHttp(
-    new SessionRuntime(configuration, f.settings),
-    undefined,
-    new ProviderHttp(f.settings),
-  );
+  const handlers = new SessionHttp(new SessionRuntime(configuration, f.settings), undefined, new ProviderHttp(f.settings));
   const server = createAppServer({ sessions: handlers });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -32,11 +28,7 @@ async function host(t: { after: (fn: () => unknown) => void }) {
     await new Promise<void>((r) => server.close(() => r()));
     await rm(root, { recursive: true, force: true });
   });
-  const post = (
-    path: string,
-    value: unknown,
-    headers: Record<string, string> = {},
-  ) =>
+  const post = (path: string, value: unknown, headers: Record<string, string> = {}) =>
     fetch(origin + path, {
       method: "POST",
       headers: {
@@ -51,43 +43,20 @@ async function host(t: { after: (fn: () => unknown) => void }) {
 
 test("ProviderHttp: Host/Origin/Fetch Metadata negative cases cover auth observation and mutations", async (t) => {
   const h = await host(t);
-  for (const path of [
-    "/api/providers/default",
-    "/api/providers/auth/start",
-    "/api/providers/auth/observe",
-    "/api/providers/logout",
-  ]) {
-    assert.equal(
-      (await h.post(path, {}, { Origin: "https://evil.invalid" })).status,
-      403,
-    );
-    assert.equal(
-      (await h.post(path, {}, { "Sec-Fetch-Site": "cross-site" })).status,
-      403,
-    );
-    assert.equal(
-      (await h.post(path, {}, { Origin: "", "Sec-Fetch-Site": "same-origin" }))
-        .status,
-      403,
-    );
+  for (const path of ["/api/providers/default", "/api/providers/auth/start", "/api/providers/auth/observe", "/api/providers/logout"]) {
+    assert.equal((await h.post(path, {}, { Origin: "https://evil.invalid" })).status, 403);
+    assert.equal((await h.post(path, {}, { "Sec-Fetch-Site": "cross-site" })).status, 403);
+    assert.equal((await h.post(path, {}, { Origin: "", "Sec-Fetch-Site": "same-origin" })).status, 403);
   }
   const status = await new Promise<number>((resolve) => {
-    const req = httpRequest(
-      h.origin + "/api/providers",
-      { headers: { Host: "evil.invalid" } },
-      (response) => {
-        response.resume();
-        resolve(response.statusCode!);
-      },
-    );
+    const req = httpRequest(h.origin + "/api/providers", { headers: { Host: "evil.invalid" } }, (response) => {
+      response.resume();
+      resolve(response.statusCode!);
+    });
     req.end();
   });
   assert.equal(status, 403);
-  assert.equal(
-    (await fetch(h.origin + "/api/providers", { headers: { Origin: "null" } }))
-      .status,
-    403,
-  );
+  assert.equal((await fetch(h.origin + "/api/providers", { headers: { Origin: "null" } })).status, 403);
 });
 
 test("ProviderHttp: two clients cannot observe/respond/cancel each other's transaction; no session receipt or secret replay", async (t) => {
@@ -100,16 +69,7 @@ test("ProviderHttp: two clients cannot observe/respond/cancel each other's trans
   const c = await response.json();
   const path = "/api/providers/auth/observe";
   assert.equal((await h.post(path, { id: c.id })).status, 400);
-  assert.equal(
-    (
-      await h.post(
-        path,
-        { id: c.id },
-        { Authorization: `Bearer ${"a".repeat(43)}` },
-      )
-    ).status,
-    400,
-  );
+  assert.equal((await h.post(path, { id: c.id }, { Authorization: `Bearer ${"a".repeat(43)}` })).status, 400);
   const headers = { Authorization: `Bearer ${c.token}` };
   let view;
   for (let i = 0; i < 50; i++) {
@@ -118,10 +78,7 @@ test("ProviderHttp: two clients cannot observe/respond/cancel each other's trans
     await new Promise((r) => setTimeout(r, 10));
   }
   assert.equal(view.prompt.type, "secret");
-  assert.equal(
-    (await h.post("/api/providers/auth/cancel", { id: c.id })).status,
-    400,
-  );
+  assert.equal((await h.post("/api/providers/auth/cancel", { id: c.id })).status, 400);
   assert.equal(
     (
       await h.post("/api/providers/auth/respond", {
@@ -137,29 +94,17 @@ test("ProviderHttp: two clients cannot observe/respond/cancel each other's trans
     prompt: view.prompt.id,
     value: "TEST-ONLY-NOT-REAL",
   };
-  assert.equal(
-    (await h.post("/api/providers/auth/respond", input, headers)).status,
-    200,
-  );
-  assert.equal(
-    (await h.post("/api/providers/auth/respond", input, headers)).status,
-    400,
-  );
+  assert.equal((await h.post("/api/providers/auth/respond", input, headers)).status, 200);
+  assert.equal((await h.post("/api/providers/auth/respond", input, headers)).status, 400);
   for (let i = 0; i < 50; i++) {
     view = await (await h.post(path, { id: c.id }, headers)).json();
     if (view.state !== "pending") break;
     await new Promise((r) => setTimeout(r, 10));
   }
   assert.equal(view.state, "saved");
-  assert.doesNotMatch(
-    JSON.stringify(view),
-    /TEST-ONLY|"token"|"key"|"credential"/,
-  );
+  assert.doesNotMatch(JSON.stringify(view), /TEST-ONLY|"token"|"key"|"credential"/);
   assert.equal((await fetch(h.origin + `/api/receipts/${c.id}`)).status, 404);
-  assert.deepEqual(
-    (await (await fetch(h.origin + "/api/sessions")).json()).sessions,
-    [],
-  );
+  assert.deepEqual((await (await fetch(h.origin + "/api/sessions")).json()).sessions, []);
 });
 
 test("ProviderHttp: strict payloads, no query capabilities, unsupported methods, bounded response/request", async (t) => {
@@ -176,15 +121,8 @@ test("ProviderHttp: strict payloads, no query capabilities, unsupported methods,
       token: "client-chosen",
     },
   ])
-    assert.equal(
-      (await h.post("/api/providers/auth/start", value)).status,
-      400,
-    );
-  assert.equal(
-    (await h.post("/api/providers/auth/observe?token=unsafe", { id: "x" }))
-      .status,
-    400,
-  );
+    assert.equal((await h.post("/api/providers/auth/start", value)).status, 400);
+  assert.equal((await h.post("/api/providers/auth/observe?token=unsafe", { id: "x" })).status, 400);
   assert.equal(
     (
       await h.post("/api/providers/default", {
@@ -193,25 +131,9 @@ test("ProviderHttp: strict payloads, no query capabilities, unsupported methods,
     ).status,
     400,
   );
-  assert.equal(
-    (await h.post("/api/providers/auth/respond", { value: "x".repeat(17000) }))
-      .status,
-    413,
-  );
-  assert.equal(
-    (
-      await h.post(
-        "/api/providers/auth/start",
-        {},
-        { "Content-Type": "text/plain" },
-      )
-    ).status,
-    400,
-  );
-  assert.equal(
-    (await fetch(h.origin + "/api/providers/auth/observe")).status,
-    404,
-  );
+  assert.equal((await h.post("/api/providers/auth/respond", { value: "x".repeat(17000) })).status, 413);
+  assert.equal((await h.post("/api/providers/auth/start", {}, { "Content-Type": "text/plain" })).status, 400);
+  assert.equal((await fetch(h.origin + "/api/providers/auth/observe")).status, 404);
 });
 
 for (const type of ["text", "secret", "manual_code"] as const)
@@ -230,44 +152,14 @@ for (const type of ["text", "secret", "manual_code"] as const)
     const headers = { Authorization: `Bearer ${c.token}` };
     let view;
     for (let i = 0; i < 100; i++) {
-      view = await (
-        await h.post("/api/providers/auth/observe", { id: c.id }, headers)
-      ).json();
+      view = await (await h.post("/api/providers/auth/observe", { id: c.id }, headers)).json();
       if (view.prompt) break;
       await new Promise((r) => setTimeout(r, 10));
     }
-    assert.equal(
-      (
-        await h.post(
-          "/api/providers/auth/respond",
-          { id: "", prompt: view.prompt.id, value: "" },
-          headers,
-        )
-      ).status,
-      400,
-    );
-    assert.equal(
-      (
-        await h.post(
-          "/api/providers/auth/respond",
-          { id: c.id, prompt: "", value: "" },
-          headers,
-        )
-      ).status,
-      400,
-    );
-    assert.equal(
-      (
-        await h.post(
-          "/api/providers/auth/respond",
-          { id: c.id, prompt: view.prompt.id, value: "" },
-          headers,
-        )
-      ).status,
-      200,
-    );
-    for (let i = 0; received === undefined && i < 100; i++)
-      await new Promise((r) => setTimeout(r, 5));
+    assert.equal((await h.post("/api/providers/auth/respond", { id: "", prompt: view.prompt.id, value: "" }, headers)).status, 400);
+    assert.equal((await h.post("/api/providers/auth/respond", { id: c.id, prompt: "", value: "" }, headers)).status, 400);
+    assert.equal((await h.post("/api/providers/auth/respond", { id: c.id, prompt: view.prompt.id, value: "" }, headers)).status, 200);
+    for (let i = 0; received === undefined && i < 100; i++) await new Promise((r) => setTimeout(r, 5));
     assert.equal(received, "");
   });
 
@@ -309,8 +201,7 @@ for (const failure of ["throws", "hangs"] as const)
     const observed = closing.catch(() => {});
     const result = await run.completion;
     assert.equal(result.outcome, "cancelled");
-    if (failure === "throws")
-      await assert.rejects(closing, /PRIVATE_CLEANUP_ERROR/);
+    if (failure === "throws") await assert.rejects(closing, /PRIVATE_CLEANUP_ERROR/);
     else {
       let done = false;
       void closing.then(() => {
@@ -322,8 +213,5 @@ for (const failure of ["throws", "hangs"] as const)
       await closing;
     }
     await observed;
-    assert.equal(
-      runtime.list().find((s) => s.id === session.id)?.status,
-      "unloaded",
-    );
+    assert.equal(runtime.list().find((s) => s.id === session.id)?.status, "unloaded");
   });

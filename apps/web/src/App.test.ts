@@ -60,7 +60,9 @@ test("renders truthful unconfigured state and never submits a draft without conf
   // With no session open there is nothing to reply to: one message box on screen.
   expect(screen.queryByRole("textbox", { name: /Reply to session/ })).toBeNull();
   // Nothing is sent (a page saying it is in view, or asking about notifications, sends no draft).
-  expect(vi.mocked(fetch).mock.calls.every((call) => call[1]?.method !== "POST" || String(call[0]).startsWith("/api/notifications/"))).toBe(true);
+  expect(vi.mocked(fetch).mock.calls.every((call) => call[1]?.method !== "POST" || String(call[0]).startsWith("/api/notifications/"))).toBe(
+    true,
+  );
 });
 
 test("hides and shows the sidebar; the shortcut ignores editable inputs", async () => {

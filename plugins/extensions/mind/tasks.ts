@@ -18,7 +18,11 @@ export interface Entry {
   detail: string[];
 }
 
-const plain = (text: string) => text.replace(/[\u2018\u2019]/g, "'").replace(/\s+/g, " ").trim();
+const plain = (text: string) =>
+  text
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 const split = (content: string) => content.replace(/\r\n?/g, "\n").split("\n");
 
 export function entries(content: string): Entry[] {
@@ -55,7 +59,11 @@ export interface Question {
 }
 
 const ANSWER = /^\s+- Answer \(\d{4}-\d{2}-\d{2}\): (.*)$/;
-const idOf = (text: string) => createHash("sha1").update(plain(text.replace(/[*_`]/g, "")).toLowerCase()).digest("hex").slice(0, 8);
+const idOf = (text: string) =>
+  createHash("sha1")
+    .update(plain(text.replace(/[*_`]/g, "")).toLowerCase())
+    .digest("hex")
+    .slice(0, 8);
 
 /** The entries under "Waiting on you". */
 export function questions(content: string): Question[] {
@@ -66,7 +74,10 @@ export function questions(content: string): Question[] {
       return {
         id: idOf(entry.text),
         text: entry.text,
-        detail: entry.detail.filter((line) => !ANSWER.test(line)).map((line) => line.trim()).join("\n"),
+        detail: entry.detail
+          .filter((line) => !ANSWER.test(line))
+          .map((line) => line.trim())
+          .join("\n"),
         ...(answer !== undefined ? { answer } : {}),
       };
     });
@@ -91,7 +102,9 @@ export function trimDone(content: string, keep: number): string {
       .slice(keep)
       .flatMap((entry) => Array.from({ length: entry.last - entry.first + 1 }, (_, i) => entry.first + i)),
   );
-  return split(content).filter((_, index) => !drop.has(index)).join("\n");
+  return split(content)
+    .filter((_, index) => !drop.has(index))
+    .join("\n");
 }
 
 /** One section's own Markdown, without its heading. */
@@ -100,7 +113,10 @@ export function section(content: string, heading: string): string {
   const start = all.findIndex((line) => /^## /.test(line) && plain(line.slice(3)).toLowerCase() === heading.toLowerCase());
   if (start < 0) return "";
   const end = all.findIndex((line, index) => index > start && /^## /.test(line));
-  return all.slice(start + 1, end < 0 ? undefined : end).join("\n").trim();
+  return all
+    .slice(start + 1, end < 0 ? undefined : end)
+    .join("\n")
+    .trim();
 }
 
 /** A question as one line of plain text, for a notification or a dialog title. */

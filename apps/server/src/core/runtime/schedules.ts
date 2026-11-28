@@ -154,7 +154,12 @@ export class Schedules {
   // ---- What clients read and change -----------------------------------------------------------
 
   list(): Schedule[] {
-    const archived = new Set(this.host.sessions().filter((s) => s.archived).map((s) => s.id));
+    const archived = new Set(
+      this.host
+        .sessions()
+        .filter((s) => s.archived)
+        .map((s) => s.id),
+    );
     return [...this.index].flatMap(([sessionId, schedules]) => schedules.map((s) => this.view(sessionId, s, archived.has(sessionId))));
   }
   private view(sessionId: string, s: Stored, archived: boolean): Schedule {
@@ -193,7 +198,8 @@ export class Schedules {
     if (!base && !whenGiven) throw new RuntimeError("invalid-input");
     const cron = input.cron !== undefined ? input.cron.trim().replace(/\s+/g, " ") : whenGiven ? undefined : base?.cron;
     const at = input.at !== undefined ? input.at : whenGiven ? undefined : base?.at;
-    if (cron !== undefined && (!parseCron(cron) || !nextRun(parseCron(cron)!, new Date(this.now())))) throw new RuntimeError("invalid-input");
+    if (cron !== undefined && (!parseCron(cron) || !nextRun(parseCron(cron)!, new Date(this.now()))))
+      throw new RuntimeError("invalid-input");
     if (input.at !== undefined) {
       if (!validTime(at) || time(at) <= this.now() || time(at) > this.now() + 366 * DAY) throw new RuntimeError("invalid-input");
     }
@@ -237,7 +243,8 @@ export class Schedules {
     const { sessionId, schedule } = this.find(id);
     const valid = this.validInput(input, schedule);
     const restart = input.cron !== undefined || input.at !== undefined || (valid.on && !schedule.on);
-    if (valid.run === "new" && (this.host.sessions().find((s) => s.id === sessionId)?.child || !this.host.spawn)) throw new RuntimeError("invalid-input");
+    if (valid.run === "new" && (this.host.sessions().find((s) => s.id === sessionId)?.child || !this.host.spawn))
+      throw new RuntimeError("invalid-input");
     const { cron: _cron, at: _at, run: _run, ...kept } = schedule;
     const changed: Stored = { ...kept, ...valid, ...(restart ? { lastDue: new Date(this.now()).toISOString() } : {}) };
     if (restart || !valid.on) this.wakes.cancel(sessionId, id);
@@ -275,7 +282,12 @@ export class Schedules {
       if (how.manual) throw error;
       return this.wakes.note(owner, s.id, { due, outcome: "failed", error: runtimeError(error, "execution").code });
     }
-    this.wakes.note(owner, s.id, { due, outcome: "started", session, ...(how.manual ? { manual: true as const } : how.late ? { reason: "off" as const } : {}) });
+    this.wakes.note(owner, s.id, {
+      due,
+      outcome: "started",
+      session,
+      ...(how.manual ? { manual: true as const } : how.late ? { reason: "off" as const } : {}),
+    });
     await this.wakes.deliver(session, { ...this.wake(s, due), policy: "queue" });
   }
   /** The schedules of one session, for its agent. */
@@ -301,7 +313,12 @@ export class Schedules {
         try {
           await this.consider(sessionId, s, now, sessions.get(sessionId)!);
         } catch (error) {
-          this.logger.event("schedule.failure", { sessionId, outcome: "failed", code: runtimeError(error, "execution").code, cause: error });
+          this.logger.event("schedule.failure", {
+            sessionId,
+            outcome: "failed",
+            code: runtimeError(error, "execution").code,
+            cause: error,
+          });
         }
       }
     }
@@ -317,14 +334,17 @@ export class Schedules {
     // Archived or switched off: time passes without catching up later.
     if (archived || !s.on) this.wakes.cancel(sessionId, s.id);
     else if (due && now - time(due) > CATCH_UP) this.wakes.note(sessionId, s.id, { due, outcome: "missed", reason: "off" });
-    else if (due && s.run === "new" && this.host.spawn) await this.spawnRun(sessionId, s, due, time(due) < this.startedAt ? { late: true } : {});
+    else if (due && s.run === "new" && this.host.spawn)
+      await this.spawnRun(sessionId, s, due, time(due) < this.startedAt ? { late: true } : {});
     else if (due) await this.wakes.deliver(sessionId, this.wake(s, due, time(due) < this.startedAt));
     this.tidy(sessionId, s);
   }
   private wake(s: Stored, due: string, late = false): Wake {
     const now = new Date(this.now());
     // A one-off already says its day; a repeating one says which of its days this was.
-    const label = [describeSchedule(s, now), s.cron !== undefined ? shortDate(new Date(due), now).split(",")[0] : ""].filter(Boolean).join(" · ");
+    const label = [describeSchedule(s, now), s.cron !== undefined ? shortDate(new Date(due), now).split(",")[0] : ""]
+      .filter(Boolean)
+      .join(" · ");
     return {
       source: { kind: "schedule", id: s.id, label },
       text: s.prompt,

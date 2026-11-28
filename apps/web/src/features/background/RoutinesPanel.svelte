@@ -29,7 +29,9 @@
 </script>
 
 <div class="space-y-3">
-  {#if client.schedules.paused}<p role="status" class="text-sm text-muted-foreground">Unattended runs are paused in Settings → Background.</p>{/if}
+  {#if client.schedules.paused}<p role="status" class="text-sm text-muted-foreground">
+      Unattended runs are paused in Settings → Background.
+    </p>{/if}
   {#if routines.length}
     <ul class="space-y-3" aria-label="Routines">
       {#each routines as routine (routine.id)}
@@ -39,7 +41,8 @@
               <Toggle
                 label={`Run ${routine.name}`}
                 checked={routine.on}
-                onchange={(event) => void act(routine, () => client.routines.set(routine, (event.currentTarget as HTMLInputElement).checked))}
+                onchange={(event) =>
+                  void act(routine, () => client.routines.set(routine, (event.currentTarget as HTMLInputElement).checked))}
               />
             </div>
             <div class="min-w-0" style="flex: 1 1 12rem">
@@ -48,7 +51,9 @@
               <p class="mt-2 whitespace-pre-wrap break-words text-sm">{routine.prompt}</p>
               {#if routine.runs.length}<p class="mt-2 text-[0.8125rem] text-muted-foreground">
                   Recent runs:
-                  {#each routine.runs.slice(0, 3) as run, index (run.session)}{index ? " · " : ""}{#if client.sessions.some((s) => s.id === run.session)}<button
+                  {#each routine.runs.slice(0, 3) as run, index (run.session)}{index
+                      ? " · "
+                      : ""}{#if client.sessions.some((s) => s.id === run.session)}<button
                         type="button"
                         class="link"
                         onclick={() => client.open(run.session)}>{shortDate(new Date(run.due)).split(",")[0]}</button
@@ -56,7 +61,9 @@
                 </p>{/if}
             </div>
             <div class="ml-auto flex shrink-0 gap-1">
-              <Button size="compact" loading={busy === routine.id} onclick={() => void act(routine, () => client.routines.run(routine))}>Run now</Button>
+              <Button size="compact" loading={busy === routine.id} onclick={() => void act(routine, () => client.routines.run(routine))}
+                >Run now</Button
+              >
             </div>
           </div>
         </li>

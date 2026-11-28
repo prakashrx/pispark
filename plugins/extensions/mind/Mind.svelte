@@ -66,7 +66,16 @@
   /** Arrow keys move between tabs, as in any tab list. */
   function onTabKey(event: KeyboardEvent) {
     const at = TABS.findIndex(([key]) => key === tab);
-    const to = event.key === "ArrowRight" ? at + 1 : event.key === "ArrowLeft" ? at - 1 : event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : -2;
+    const to =
+      event.key === "ArrowRight"
+        ? at + 1
+        : event.key === "ArrowLeft"
+          ? at - 1
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? TABS.length - 1
+              : -2;
     if (to === -2) return;
     event.preventDefault();
     tab = TABS[(to + TABS.length) % TABS.length]![0];
@@ -81,7 +90,8 @@
     const mark = said.indexOf("?");
     return mark > 0 && mark < 200 ? said.slice(0, mark + 1) : said;
   }
-  const when = (iso: string) => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  const when = (iso: string) =>
+    new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
   const open = $derived(snapshot?.waiting.filter((q) => q.answer === undefined) ?? []);
   const answered = $derived(snapshot?.waiting.filter((q) => q.answer !== undefined) ?? []);
 </script>
@@ -102,7 +112,9 @@
           onclick={() => (tab = key)}
           onkeydown={onTabKey}
         >
-          {label}{#if key === "now" && open.length}<span class="count" aria-hidden="true">{open.length}</span><span class="hidden">({open.length} waiting on you)</span>{/if}
+          {label}{#if key === "now" && open.length}<span class="count" aria-hidden="true">{open.length}</span><span class="hidden"
+              >({open.length} waiting on you)</span
+            >{/if}
         </button>
       {/each}
     </div>
@@ -115,7 +127,9 @@
         {#if snapshot.problems.length}
           <section aria-labelledby="mind-problems">
             <h2 id="mind-problems" tabindex="-1">Out of shape</h2>
-            <ul class="plain">{#each snapshot.problems as problem}<li>{problem}</li>{/each}</ul>
+            <ul class="plain">
+              {#each snapshot.problems as problem}<li>{problem}</li>{/each}
+            </ul>
             <p class="quiet">The agent is told to fix these at its next run.</p>
           </section>
         {/if}
@@ -129,7 +143,12 @@
                   <div class="doc"><host.Markdown text={q.text} /></div>
                   {#if q.detail}<div class="doc quiet"><host.Markdown text={q.detail} /></div>{/if}
                   <div class="actions">
-                    <button type="button" class="primary" disabled={busy === q.id} onclick={(e) => answer(q, "Yes, do as you recommend.", e)}>Do it</button>
+                    <button
+                      type="button"
+                      class="primary"
+                      disabled={busy === q.id}
+                      onclick={(e) => answer(q, "Yes, do as you recommend.", e)}>Do it</button
+                    >
                     <button type="button" disabled={busy === q.id} onclick={(e) => answer(q, "No, don't.", e)}>No</button>
                     <button type="button" disabled={busy === q.id} onclick={(e) => later(q, e)}>Later</button>
                     <button type="button" disabled={busy === q.id} onclick={() => discuss(q)}>Discuss</button>
@@ -147,7 +166,9 @@
 
         <section aria-labelledby="mind-doing">
           <h2 id="mind-doing" tabindex="-1">Doing</h2>
-          {#if snapshot.doing}<div class="doc"><host.Markdown text={snapshot.doing} /></div>{:else}<p class="quiet">Nothing in progress.</p>{/if}
+          {#if snapshot.doing}<div class="doc"><host.Markdown text={snapshot.doing} /></div>{:else}<p class="quiet">
+              Nothing in progress.
+            </p>{/if}
         </section>
 
         {#if snapshot.todo}
@@ -161,18 +182,26 @@
       <div class="panel" role="tabpanel" id="mind-panel-notes" aria-labelledby="mind-tab-notes">
         <section aria-labelledby="mind-notes">
           <h2 id="mind-notes" tabindex="-1">Notes</h2>
-          {#if snapshot.notes}<div class="doc"><host.Markdown text={snapshot.notes} /></div>{:else}<p class="quiet">Not written yet. The agent writes what it learns about this place here.</p>{/if}
+          {#if snapshot.notes}<div class="doc"><host.Markdown text={snapshot.notes} /></div>{:else}<p class="quiet">
+              Not written yet. The agent writes what it learns about this place here.
+            </p>{/if}
           {#each snapshot.pages as page (page.name)}
             <details ontoggle={(e) => openPage(page.name, e)}>
               <summary>{page.title || page.name} <span class="quiet">{page.summary}</span></summary>
-              {#if pages[page.name] !== undefined}<div class="doc"><host.Markdown text={pages[page.name]!} /></div>{:else}<p class="quiet">Loading…</p>{/if}
+              {#if pages[page.name] !== undefined}<div class="doc"><host.Markdown text={pages[page.name]!} /></div>{:else}<p class="quiet">
+                  Loading…
+                </p>{/if}
             </details>
           {/each}
         </section>
         {#if snapshot.skills.length}
           <section aria-labelledby="mind-skills">
             <h2 id="mind-skills" tabindex="-1">Skills</h2>
-            <ul class="plain">{#each snapshot.skills as skill (skill.name)}<li><strong>{skill.name}</strong> <span class="quiet">{skill.description}</span></li>{/each}</ul>
+            <ul class="plain">
+              {#each snapshot.skills as skill (skill.name)}<li>
+                  <strong>{skill.name}</strong> <span class="quiet">{skill.description}</span>
+                </li>{/each}
+            </ul>
           </section>
         {/if}
       </div>
@@ -190,22 +219,47 @@
               {#each allChanges ? snapshot.changes : snapshot.changes.slice(0, 6) as change (change.id)}
                 <li class="row">
                   <span>{change.label} <span class="quiet">{change.created ? "created" : "changed"} {when(change.at)}</span></span>
-                  <button type="button" class="subtle" disabled={busy === change.id} aria-label={`Undo the change to ${change.label} of ${when(change.at)}`} onclick={() => act(change.id, "undo", { id: change.id }, (label) => (notice = `${label} was put back as it was before that change.`))}>Undo</button>
+                  <button
+                    type="button"
+                    class="subtle"
+                    disabled={busy === change.id}
+                    aria-label={`Undo the change to ${change.label} of ${when(change.at)}`}
+                    onclick={() =>
+                      act(
+                        change.id,
+                        "undo",
+                        { id: change.id },
+                        (label) => (notice = `${label} was put back as it was before that change.`),
+                      )}>Undo</button
+                  >
                 </li>
               {/each}
             </ul>
             {#if !allChanges && snapshot.changes.length > 6}
-              <div><button type="button" class="subtle" onclick={() => (allChanges = true)}>Show {snapshot.changes.length - 6} more</button></div>
+              <div>
+                <button type="button" class="subtle" onclick={() => (allChanges = true)}>Show {snapshot.changes.length - 6} more</button>
+              </div>
             {/if}
           </section>
         {/if}
 
         <section aria-labelledby="mind-tidy">
           <h2 id="mind-tidy" tabindex="-1">Tidy</h2>
-          <p class="quiet">About {snapshot.weight.toLocaleString()} tokens are read at the start of every run. Tidying checks the notes against how things are, clears what's stale and tells you only what needs you.</p>
+          <p class="quiet">
+            About {snapshot.weight.toLocaleString()} tokens are read at the start of every run. Tidying checks the notes against how things are,
+            clears what's stale and tells you only what needs you.
+          </p>
           <div class="actions">
-            <button type="button" disabled={busy === "tidy"} onclick={() => act("tidy", "tidy", undefined, () => (notice = "Tidying started in the conversation."))}>Tidy now</button>
-            <button type="button" disabled={busy === "weekly"} onclick={() => act("weekly", "weekly", undefined, (text) => (notice = String(text)))}>Tidy every week…</button>
+            <button
+              type="button"
+              disabled={busy === "tidy"}
+              onclick={() => act("tidy", "tidy", undefined, () => (notice = "Tidying started in the conversation."))}>Tidy now</button
+            >
+            <button
+              type="button"
+              disabled={busy === "weekly"}
+              onclick={() => act("weekly", "weekly", undefined, (text) => (notice = String(text)))}>Tidy every week…</button
+            >
           </div>
         </section>
       </div>

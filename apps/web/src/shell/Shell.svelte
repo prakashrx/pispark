@@ -96,9 +96,7 @@
     return followPresence();
   });
 
-  const title = $derived(
-    route.name === "session" && sessions.current?.info ? sessionName(sessions.current.info) : routeTitle(route),
-  );
+  const title = $derived(route.name === "session" && sessions.current?.info ? sessionName(sessions.current.info) : routeTitle(route));
 
   function shortcut(event: KeyboardEvent) {
     if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== "b") return;
@@ -147,9 +145,7 @@
       {#if Agents.screen}<Agents.screen id={route.id} />{:else}{@render loading(Agents)}{/if}
     {:else if route.name === "background"}
       <BackgroundScreen />
-    {:else}
-      {#if Settings.screen}<Settings.screen section={route.section} />{:else}{@render loading(Settings)}{/if}
-    {/if}
+    {:else if Settings.screen}<Settings.screen section={route.section} />{:else}{@render loading(Settings)}{/if}
   </div>
 
   {#if layout.size === "medium"}

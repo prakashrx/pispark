@@ -2,15 +2,7 @@ import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import { THINKING_LEVELS, type ThinkingLevel } from "../../contract/agent-protocol.js";
 import { UUID } from "../../contract/ids.js";
 import type { Ask } from "../../contract/protocol.js";
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-} from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { RuntimeError } from "./errors.js";
 import { writeAtomic } from "../files.js";
@@ -71,8 +63,7 @@ export interface SessionMetadata {
 }
 
 export function validateId(id: string): void {
-  if (typeof id !== "string" || !UUID.test(id))
-    throw new RuntimeError("invalid-input");
+  if (typeof id !== "string" || !UUID.test(id)) throw new RuntimeError("invalid-input");
 }
 /** An entry of a session's history, named as Pi named it. */
 export function validateEntryId(entryId: string): void {
@@ -118,9 +109,7 @@ export class SessionStorage {
   }
   read(id: string): SessionMetadata {
     try {
-      const value = JSON.parse(
-        readFileSync(join(this.directory(id), "session.json"), "utf8"),
-      ) as Omit<SessionMetadata, "id">;
+      const value = JSON.parse(readFileSync(join(this.directory(id), "session.json"), "utf8")) as Omit<SessionMetadata, "id">;
       if (
         value.version !== 2 ||
         typeof value.cwd !== "string" ||
@@ -152,16 +141,23 @@ export class SessionStorage {
             typeof value.schedule.due !== "string" ||
             Number.isNaN(new Date(value.schedule.due).getTime()))) ||
         (value.held !== undefined &&
-          (!value.held || typeof value.held.extension !== "string" || typeof value.held.reason !== "string" || value.held.reason.length > 200))
+          (!value.held ||
+            typeof value.held.extension !== "string" ||
+            typeof value.held.reason !== "string" ||
+            value.held.reason.length > 200))
       )
         throw new Error();
       // What older versions kept: Agent Builder's hidden sessions (`edits`, `context`), and how a child reported (`report`).
-      const { edits: _edits, context: _context, report: _report, ...kept } = value as SessionMetadata & { edits?: unknown; context?: unknown; report?: unknown };
+      const {
+        edits: _edits,
+        context: _context,
+        report: _report,
+        ...kept
+      } = value as SessionMetadata & { edits?: unknown; context?: unknown; report?: unknown };
       return { ...kept, id };
     } catch (error) {
       if (error instanceof RuntimeError) throw error;
-      if ((error as NodeJS.ErrnoException).code === "ENOENT")
-        throw new RuntimeError("not-found");
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new RuntimeError("not-found");
       throw new RuntimeError("storage");
     }
   }
@@ -185,8 +181,7 @@ export class SessionStorage {
           try {
             entries.set(id, this.read(id));
           } catch (error) {
-            if (!(error instanceof RuntimeError && error.code === "not-found"))
-              unreadable++;
+            if (!(error instanceof RuntimeError && error.code === "not-found")) unreadable++;
           }
         }
         this.catalog = entries;
@@ -224,8 +219,7 @@ export class SessionStorage {
   /** Remove a session folder that never got a session.json (a failed first start). */
   discardUnpublished(id: string): void {
     const dir = this.directory(id);
-    if (!existsSync(join(dir, "session.json")))
-      rmSync(dir, { recursive: true, force: true });
+    if (!existsSync(join(dir, "session.json"))) rmSync(dir, { recursive: true, force: true });
   }
   /** Materialize Pi's buffered entries when a host status must outlive an empty conversation. */
   persistStatusHistory(manager: SessionManager): void {
@@ -279,19 +273,13 @@ export class SessionStorage {
     if (!path) return undefined;
     try {
       const stats = statSync(path);
-      if (lstatSync(path).isSymbolicLink() || stats.size > 64 * 1024 * 1024)
-        throw new Error();
+      if (lstatSync(path).isSymbolicLink() || stats.size > 64 * 1024 * 1024) throw new Error();
       const seen = `${stats.size}:${stats.mtimeMs}`;
       if (this.validated.get(path) === seen) return path;
       const lines = readFileSync(path, "utf8").trim().split("\n");
       const entries = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
       const header = entries[0];
-      if (
-        header?.type !== "session" ||
-        header.id !== metadata.id ||
-        header.version !== 3
-      )
-        throw new Error();
+      if (header?.type !== "session" || header.id !== metadata.id || header.version !== 3) throw new Error();
       this.validated.set(path, seen);
       return path;
     } catch {

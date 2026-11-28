@@ -131,7 +131,9 @@ function followed(id: string, home?: string) {
         progress: {},
       };
       await waitFor(() => expect(feed).toBeDefined());
-      feed.enqueue(new TextEncoder().encode(`event: snapshot\ndata: ${JSON.stringify({ type: "snapshot", sessionId: id, head: null, doc })}\n\n`));
+      feed.enqueue(
+        new TextEncoder().encode(`event: snapshot\ndata: ${JSON.stringify({ type: "snapshot", sessionId: id, head: null, doc })}\n\n`),
+      );
       // Applied once the session shows this snapshot's marker.
       await waitFor(() => expect(session.doc?.title).toBe(title));
     },

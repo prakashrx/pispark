@@ -91,8 +91,11 @@
       <p class="flex items-center gap-2"><Icon name="alert" class="w-4 h-4 shrink-0" /><strong>{title}</strong></p>
       {#if steps}<ol class="steps">
           <li>
-            Install Tailscale on this computer and on your phone: <a class="link" href="https://tailscale.com/download" target="_blank" rel="noreferrer"
-              >tailscale.com/download</a
+            Install Tailscale on this computer and on your phone: <a
+              class="link"
+              href="https://tailscale.com/download"
+              target="_blank"
+              rel="noreferrer">tailscale.com/download</a
             >
           </li>
           <li>Sign both in to the same account.</li>
@@ -114,8 +117,8 @@
   {#if remote.elsewhere}
     <CardRow>
       <p class="flex items-start gap-2 text-sm" role="status">
-        <Icon name="laptop" class="mt-0.5 w-4 h-4 shrink-0" />Remote access and paired devices are managed in PiSpark on the computer it runs on, not from
-        a paired device.
+        <Icon name="laptop" class="mt-0.5 w-4 h-4 shrink-0" />Remote access and paired devices are managed in PiSpark on the computer it
+        runs on, not from a paired device.
       </p>
     </CardRow>
   {:else if !status || !tailscale}
@@ -134,23 +137,33 @@
   {:else}
     <CardRow label="Address">
       <span class="mono flex-1">{status.address}</span>
-      <button type="button" class="icon" aria-label="Copy address" title="Copy" onclick={() => void copy(status.address!)}><Icon name="copy" class="w-4 h-4" /></button>
+      <button type="button" class="icon" aria-label="Copy address" title="Copy" onclick={() => void copy(status.address!)}
+        ><Icon name="copy" class="w-4 h-4" /></button
+      >
       <span class="sr-only" role="status">{copied}</span>
     </CardRow>
     <CardRow label="Tailscale">
-      <span class="text-muted-foreground">Signed in{tailscale.account ? ` as ${tailscale.account}` : ""} · this computer is “{tailscale.machine}”</span>
+      <span class="text-muted-foreground"
+        >Signed in{tailscale.account ? ` as ${tailscale.account}` : ""} · this computer is “{tailscale.machine}”</span
+      >
     </CardRow>
     {#if status.enableUrl && !status.on}
       <CardRow>
         <div class="notice" role="alert">
-          <p class="flex items-center gap-2"><Icon name="alert" class="w-4 h-4 shrink-0" /><strong>Your tailnet doesn’t allow Serve yet</strong></p>
+          <p class="flex items-center gap-2">
+            <Icon name="alert" class="w-4 h-4 shrink-0" /><strong>Your tailnet doesn’t allow Serve yet</strong>
+          </p>
           <p class="mt-1">
-            Tailscale needs Serve (and HTTPS certificates) switched on once for your tailnet. It opens in your Tailscale admin; come back here when it’s
-            done.
+            Tailscale needs Serve (and HTTPS certificates) switched on once for your tailnet. It opens in your Tailscale admin; come back
+            here when it’s done.
           </p>
           <div class="flex flex-wrap gap-2 mt-3">
-            <a class="ui-button" data-variant="primary" data-size="compact" href={status.enableUrl} target="_blank" rel="noreferrer">Open Tailscale admin</a>
-            <Button size="compact" variant="ghost" loading={acting === "on"} disabled={!!acting} onclick={() => void act({ action: "on" })}>Try again</Button>
+            <a class="ui-button" data-variant="primary" data-size="compact" href={status.enableUrl} target="_blank" rel="noreferrer"
+              >Open Tailscale admin</a
+            >
+            <Button size="compact" variant="ghost" loading={acting === "on"} disabled={!!acting} onclick={() => void act({ action: "on" })}
+              >Try again</Button
+            >
           </div>
         </div>
       </CardRow>
@@ -177,7 +190,9 @@
           <p class="code mt-2" aria-label={`Code ${status.pairing.code.split("").join(" ")}`}>{spaced(status.pairing.code)}</p>
           <p class="text-xs text-muted-foreground mt-1">Waiting for the device · works once · expires in {clock(left)}</p>
           <div class="mt-2">
-            <Button size="compact" disabled={!!acting} onclick={() => void actAndFocus({ action: "cancel-pairing" }, "pair-device")}>Cancel</Button>
+            <Button size="compact" disabled={!!acting} onclick={() => void actAndFocus({ action: "cancel-pairing" }, "pair-device")}
+              >Cancel</Button
+            >
           </div>
         </div>
       </div>
@@ -197,14 +212,19 @@
           aria-label={`Remove ${device.name}`}
           title="Remove"
           disabled={!!acting}
-          onclick={() => void actAndFocus({ action: "remove", device: device.id }, "devices-card")}><Icon name="close" class="w-4 h-4" /></button
+          onclick={() => void actAndFocus({ action: "remove", device: device.id }, "devices-card")}
+          ><Icon name="close" class="w-4 h-4" /></button
         >
       </div>
     {/each}
     {#if status.on && !status.pairing}
       <CardRow>
-        <Button id="pair-device" size="compact" loading={acting === "pair"} disabled={!!acting} onclick={() => void actAndFocus({ action: "pair" }, "pairing")}
-          >Pair a device</Button
+        <Button
+          id="pair-device"
+          size="compact"
+          loading={acting === "pair"}
+          disabled={!!acting}
+          onclick={() => void actAndFocus({ action: "pair" }, "pairing")}>Pair a device</Button
         >
       </CardRow>
     {/if}

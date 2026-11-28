@@ -26,7 +26,16 @@ test("host actions: only the known shapes pass", () => {
   assert.deepEqual(validHostAction({ action: "apply", when: "idle" }), { action: "apply", when: "idle" });
   assert.deepEqual(validHostAction({ action: "configure", channel: "latest" }), { action: "configure", channel: "latest" });
   assert.deepEqual(validHostAction({ action: "configure", autoUpdate: true }), { action: "configure", autoUpdate: true });
-  for (const bad of [null, [], { action: "apply" }, { action: "apply", when: "later" }, { action: "check", extra: 1 }, { action: "configure", channel: "beta" }, { action: "configure", autoUpdate: "yes" }, { action: "delete" }])
+  for (const bad of [
+    null,
+    [],
+    { action: "apply" },
+    { action: "apply", when: "later" },
+    { action: "check", extra: 1 },
+    { action: "configure", channel: "beta" },
+    { action: "configure", autoUpdate: "yes" },
+    { action: "delete" },
+  ])
     assert.equal(validHostAction(bad), undefined, JSON.stringify(bad));
 });
 
@@ -63,8 +72,17 @@ test("/api/host: version and what runs; changes refused when no launcher runs th
   const root = await mkdtemp(join(tmpdir(), "pispark-host-http-"));
   const f = await localProviderSettings(root);
   const runtime = new SessionRuntime({ home: join(root, "pispark") }, f.settings);
-  const link = new HostLink(() => runtime.runningWork(), () => {});
-  const handlers = new SessionHttp(runtime, undefined, undefined, undefined, new HostHttp(link, join(root, "pispark"), () => runtime.runningWork()));
+  const link = new HostLink(
+    () => runtime.runningWork(),
+    () => {},
+  );
+  const handlers = new SessionHttp(
+    runtime,
+    undefined,
+    undefined,
+    undefined,
+    new HostHttp(link, join(root, "pispark"), () => runtime.runningWork()),
+  );
   const server = createAppServer({ sessions: handlers });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -82,11 +100,20 @@ test("/api/host: version and what runs; changes refused when no launcher runs th
   assert.equal(status.version, "development");
   assert.equal(status.address, origin);
   assert.deepEqual(status.running, { replies: [], processes: [] });
-  const post = (body: unknown) => fetch(`${origin}/api/host`, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin }, body: JSON.stringify(body) });
+  const post = (body: unknown) =>
+    fetch(`${origin}/api/host`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin },
+      body: JSON.stringify(body),
+    });
   assert.equal((await post({ action: "check" })).status, 409);
   assert.equal((await post({ action: "nope" })).status, 400);
   // Another site may not drive it.
-  const cross = await fetch(`${origin}/api/host`, { method: "POST", headers: { "Content-Type": "application/json", Origin: "https://example.com" }, body: "{}" });
+  const cross = await fetch(`${origin}/api/host`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "https://example.com" },
+    body: "{}",
+  });
   assert.equal(cross.status, 403);
   // What is new in the version that runs: started from its source, the checkout's own version.
   const notes = await (await fetch(`${origin}/api/host/notes`)).json();

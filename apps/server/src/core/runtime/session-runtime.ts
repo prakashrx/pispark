@@ -28,7 +28,16 @@ import type { ProviderSettings } from "./provider-settings.js";
 import { validChoice } from "./provider-storage.js";
 import { RunSlots } from "./run-slots.js";
 import { SessionStorage, validateEntryId, validateId, type SessionMetadata } from "./storage.js";
-import { attachmentPath, filesFolder, forkAttachmentTags, placeAttachments, saveAttachment, sentAttachmentNames, uploadedNames, validAttachmentName } from "./attachments.js";
+import {
+  attachmentPath,
+  filesFolder,
+  forkAttachmentTags,
+  placeAttachments,
+  saveAttachment,
+  sentAttachmentNames,
+  uploadedNames,
+  validAttachmentName,
+} from "./attachments.js";
 import { Schedules } from "./schedules.js";
 import { ToolDiscovery } from "./tool-discovery.js";
 import { Wakes } from "./wakes.js";
@@ -47,7 +56,6 @@ import { scheduleKind, Started } from "./started.js";
 import { Holds } from "./holds.js";
 import { Runs } from "./runs.js";
 import { SessionProcesses } from "./session-processes.js";
-
 
 /**
  * The sessions this host holds, independent of clients: which are loaded, how many may run at once,
@@ -123,10 +131,15 @@ export class SessionRuntime {
     this.slots = new RunSlots(configuration.maxRunning ?? stored.maxRunning);
     this.unattendedPaused = stored.unattendedPaused;
     this.timeout = configuration.operationTimeoutMs ?? 10_000;
-    if (![this.maxLive, this.timeout].every((value) => Number.isSafeInteger(value) && value > 0))
-      throw new RuntimeError("configuration");
+    if (![this.maxLive, this.timeout].every((value) => Number.isSafeInteger(value) && value > 0)) throw new RuntimeError("configuration");
     this.storage = new SessionStorage(paths.sessions);
-    this.agents = new AgentStore(paths.agents, paths.sessions, (sessionId) => this.storage.read(sessionId).agent, logger, configuration.bundledResources);
+    this.agents = new AgentStore(
+      paths.agents,
+      paths.sessions,
+      (sessionId) => this.storage.read(sessionId).agent,
+      logger,
+      configuration.bundledResources,
+    );
     this.unwatchAgents = this.agents.onChange(() => {
       this.known = undefined;
       this.layered.clear();
@@ -189,7 +202,10 @@ export class SessionRuntime {
       arrived: (session) => this.arrivals.tell(session.id, "message"),
       hold: (session, request) => this.holds.request(session, request),
       toolsSeen: (fingerprint, paths, tools) => this.tools.remember(fingerprint, paths, tools),
-      started: { say: (sessionId, verb, signal) => this.started.say(sessionId, verb, signal), handle: (sessionId, kind, id) => this.handles.of(sessionId, kind, id) },
+      started: {
+        say: (sessionId, verb, signal) => this.started.say(sessionId, verb, signal),
+        handle: (sessionId, kind, id) => this.handles.of(sessionId, kind, id),
+      },
       // A waiting wake goes as soon as its session is free; the minute check catches anything missed.
       extensionPending: (id) => this.setup.extension(id) ?? this.extensionCandidates.get(id)?.revision,
       extensionCandidate: (id) => this.extensionCandidates.get(id)?.active,
@@ -222,7 +238,12 @@ export class SessionRuntime {
         free: (id) => {
           const session = this.live.get(id);
           // A wait under way takes what arrives, also when no turn runs (an extension waiting in code).
-          return !this.setup.has(id) && !this.extensionCandidates.has(id) && !this.started.waiting(id) && (!session || (session.ready && session.settled));
+          return (
+            !this.setup.has(id) &&
+            !this.extensionCandidates.has(id) &&
+            !this.started.waiting(id) &&
+            (!session || (session.ready && session.settled))
+          );
         },
         settle: async (id, wake) => {
           this.admit();
@@ -263,7 +284,10 @@ export class SessionRuntime {
         },
       },
     );
-    this.schedules = new Schedules({ ...sessions, spawn: (owner, run) => this.runs.schedule(owner, run) }, this.wakes, { now: configuration.now, logger });
+    this.schedules = new Schedules({ ...sessions, spawn: (owner, run) => this.runs.schedule(owner, run) }, this.wakes, {
+      now: configuration.now,
+      logger,
+    });
     this.routines = new Routines(
       {
         agents: () => this.runs.routineAgents(),
@@ -274,7 +298,11 @@ export class SessionRuntime {
       { now: configuration.now, logger },
     );
     this.processes = new Processes(
-      { ids: () => this.storage.ids(), directory: (id) => this.storage.directory(id), tell: (sessionId, end) => this.sessionProcesses.ended(sessionId, end) },
+      {
+        ids: () => this.storage.ids(),
+        directory: (id) => this.storage.directory(id),
+        tell: (sessionId, end) => this.sessionProcesses.ended(sessionId, end),
+      },
       { logger },
     );
     this.sessionProcesses = new SessionProcesses(access, this.processes, this.handles);
@@ -379,9 +407,13 @@ export class SessionRuntime {
       ...(metadata.seenAt && lastActivity > metadata.seenAt ? { unread: true } : {}),
       ...(session?.workingSince ? { workingSince: new Date(session.workingSince).toISOString() } : {}),
       ...(session?.waitingForSlot || (!session && metadata.queued !== undefined) ? { queued: true } : {}),
-      ...(metadata.forkOf ? { parent: metadata.forkOf, forkOf: metadata.forkOf }
-        : metadata.parent ? { parent: metadata.parent, ask: this.children.stand(metadata) }
-        : metadata.raise ? { raised: metadata.raise } : {}),
+      ...(metadata.forkOf
+        ? { parent: metadata.forkOf, forkOf: metadata.forkOf }
+        : metadata.parent
+          ? { parent: metadata.parent, ask: this.children.stand(metadata) }
+          : metadata.raise
+            ? { raised: metadata.raise }
+            : {}),
       ...(metadata.schedule ? { schedule: { ...metadata.schedule } } : {}),
       ...(metadata.held ? { held: { ...metadata.held } } : {}),
       ...(processes ? { processes } : {}),
@@ -438,12 +470,15 @@ export class SessionRuntime {
     if (!this.accepting) return;
     const now = Date.now();
     for (const [id, session] of this.live)
-      if (session.unloadable && !this.holds.holding(session.metadata) && now - session.lastUsed >= this.idleUnload) void this.stop(id).catch(() => {});
+      if (session.unloadable && !this.holds.holding(session.metadata) && now - session.lastUsed >= this.idleUnload)
+        void this.stop(id).catch(() => {});
   }
   /** Above the backstop, idle sessions unload first, least recently used first. Nobody is refused. */
   private async makeRoom(): Promise<void> {
     while (this.live.size >= this.maxLive) {
-      const idle = [...this.live.values()].filter((session) => session.unloadable && !this.holds.holding(session.metadata)).sort((a, b) => a.lastUsed - b.lastUsed);
+      const idle = [...this.live.values()]
+        .filter((session) => session.unloadable && !this.holds.holding(session.metadata))
+        .sort((a, b) => a.lastUsed - b.lastUsed);
       if (!idle.length) return;
       await this.stop(idle[0]!.id).catch(() => {});
     }
@@ -589,18 +624,27 @@ export class SessionRuntime {
     if (model || thinking) {
       const metadata = this.storage.read(id);
       if (metadata.archived) throw new RuntimeError("not-found");
-      this.storage.write({ ...metadata, ...(model ? { model: { provider: model.provider, id: model.id } } : {}), ...(thinking ? { thinking } : {}) });
+      this.storage.write({
+        ...metadata,
+        ...(model ? { model: { provider: model.provider, id: model.id } } : {}),
+        ...(thinking ? { thinking } : {}),
+      });
     }
     return this.openCurrent(id, extensionRevision, true);
   }
   /** Changes to what each session runs, waiting until it is free. */
   private readonly setup = new SetupChanges();
   /** An extension revision a reload is loading, by session: what the session opens with meanwhile. */
-  private readonly extensionCandidates = new Map<string, { revision: string; active: import("./extension-revisions.js").ExtensionChange[] }>();
+  private readonly extensionCandidates = new Map<
+    string,
+    { revision: string; active: import("./extension-revisions.js").ExtensionChange[] }
+  >();
   /** A session became free: what waited for it is applied, then waiting wakes may go. */
   private freedSession(session: Session): void {
     if (!this.accepting) return;
-    void this.applySetup(session).catch(() => undefined).finally(() => void this.wakes.drain());
+    void this.applySetup(session)
+      .catch(() => undefined)
+      .finally(() => void this.wakes.drain());
   }
   /**
    * Applies what waited for the session (`SetupChanges`) now that it is free: another model or
@@ -622,7 +666,10 @@ export class SessionRuntime {
     if (!reloads(waiting)) {
       if (!waiting.model && !waiting.thinking) return undefined;
       try {
-        await session.configure({ ...(waiting.model ? { model: waiting.model } : {}), ...(waiting.thinking ? { thinking: waiting.thinking } : {}) });
+        await session.configure({
+          ...(waiting.model ? { model: waiting.model } : {}),
+          ...(waiting.thinking ? { thinking: waiting.thinking } : {}),
+        });
         return undefined;
       } catch (error) {
         const code = runtimeError(error, "configuration").code;
@@ -649,7 +696,10 @@ export class SessionRuntime {
    * revision fails to load, the session opens again with the previous selection. Nothing when the
    * session got busy again while the revision was prepared: it waits again.
    */
-  private async reloadWith(session: Session, waiting: Waiting): Promise<{ text: string; failed: boolean; code?: RuntimeErrorCode } | undefined> {
+  private async reloadWith(
+    session: Session,
+    waiting: Waiting,
+  ): Promise<{ text: string; failed: boolean; code?: RuntimeErrorCode } | undefined> {
     const { id, extensionRevisions: revisions } = session;
     const before = revisions.read();
     let change = waiting.extension ? before.staged : undefined;
@@ -731,7 +781,13 @@ export class SessionRuntime {
   async archive(id: string): Promise<void> {
     validateId(id);
     // A parent takes its children along; nothing is put away while any of them works.
-    const ids = [...this.children.under(id).filter((child) => !child.archived).map((child) => child.id), id];
+    const ids = [
+      ...this.children
+        .under(id)
+        .filter((child) => !child.archived)
+        .map((child) => child.id),
+      id,
+    ];
     if (ids.some((each) => this.live.get(each) && !this.live.get(each)!.settled)) throw new RuntimeError("busy");
     for (const each of ids) {
       if (this.live.has(each)) await this.stop(each);
@@ -802,10 +858,19 @@ export class SessionRuntime {
       this.admit();
       const createdAt = new Date().toISOString();
       this.storage.write({
-        version: 2, id, cwd: source.cwd, agent: source.agent, model: source.model,
-        thinking: source.thinking, title: sessionTitle(`Fork of ${source.title ?? "conversation"}`),
-        createdAt, seenAt: createdAt, active: false, interrupted: false,
-        tracksUploads: true, forkOf: sourceId,
+        version: 2,
+        id,
+        cwd: source.cwd,
+        agent: source.agent,
+        model: source.model,
+        thinking: source.thinking,
+        title: sessionTitle(`Fork of ${source.title ?? "conversation"}`),
+        createdAt,
+        seenAt: createdAt,
+        active: false,
+        interrupted: false,
+        tracksUploads: true,
+        forkOf: sourceId,
       });
       return id;
     } catch (error) {
@@ -856,7 +921,8 @@ export class SessionRuntime {
     validateId(id);
     const metadata = this.storage.read(id);
     const children = this.children.under(id);
-    if (!metadata.archived || [id, ...children.map((child) => child.id)].some((each) => this.live.has(each))) throw new RuntimeError("busy");
+    if (!metadata.archived || [id, ...children.map((child) => child.id)].some((each) => this.live.has(each)))
+      throw new RuntimeError("busy");
     for (const each of [...children.map((child) => child.id), id]) {
       this.storage.remove(each);
       this.layered.delete(each);
@@ -882,7 +948,6 @@ export class SessionRuntime {
     }
     return this.tools.tools(setup);
   }
-
 
   // ---- Processes ------------------------------------------------------------------------------
 
@@ -916,7 +981,11 @@ export class SessionRuntime {
         : metadata.queued !== undefined;
       return busy ? [{ session: metadata.id, title: metadata.title ?? "New session" }] : [];
     });
-    const processes = this.runningProcesses().processes.map((p) => ({ session: p.sessionId, title: p.session.title ?? "New session", name: p.title || p.command }));
+    const processes = this.runningProcesses().processes.map((p) => ({
+      session: p.sessionId,
+      title: p.session.title ?? "New session",
+      name: p.title || p.command,
+    }));
     return { replies, processes };
   }
 
@@ -939,7 +1008,13 @@ export class SessionRuntime {
   /** Switches a routine on or off: an ordinary switch (`routine:<id>`) in the agent's own definition. */
   setRoutine(agent: string, id: string, on: unknown): Routine {
     if (!validAgentId(agent) || typeof id !== "string" || typeof on !== "boolean") throw new RuntimeError("invalid-input");
-    if (!this.runs.routineAgents().find((p) => p.id === agent)?.routines.some((r) => r.id === id)) throw new RuntimeError("not-found");
+    if (
+      !this.runs
+        .routineAgents()
+        .find((p) => p.id === agent)
+        ?.routines.some((r) => r.id === id)
+    )
+      throw new RuntimeError("not-found");
     this.agents.setSwitch(agent, switchName("routine", id), on);
     if (on) this.routines.switchedOn(agent, id);
     return this.routines.list().find((r) => r.agent.id === agent && r.id === id)!;
@@ -1138,7 +1213,14 @@ export class SessionRuntime {
         try {
           const stats = statSync(join(folder, name));
           if (!stats.isFile()) return [];
-          return [{ name, size: stats.size, modified: stats.mtime.toISOString(), by: sent?.has(name) ? "you" as const : metadata.tracksUploads ? "agent" as const : undefined }];
+          return [
+            {
+              name,
+              size: stats.size,
+              modified: stats.mtime.toISOString(),
+              by: sent?.has(name) ? ("you" as const) : metadata.tracksUploads ? ("agent" as const) : undefined,
+            },
+          ];
         } catch {
           return [];
         }

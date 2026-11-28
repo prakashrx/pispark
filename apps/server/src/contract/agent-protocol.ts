@@ -34,8 +34,7 @@ export const SWITCH_PREFIX: Record<SwitchType, string> = {
   routine: "routine",
   hold: "hold",
 };
-export const switchName = (type: SwitchType, name: string) =>
-  `${SWITCH_PREFIX[type]}:${name}`;
+export const switchName = (type: SwitchType, name: string) => `${SWITCH_PREFIX[type]}:${name}`;
 
 /**
  * What an agent (typically an app) offers to run on a schedule: each run is a new session of the

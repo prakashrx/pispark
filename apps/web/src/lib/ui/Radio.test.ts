@@ -17,10 +17,7 @@ test("radio owns native semantics, linked label/help, default focus appearance a
   expect(radio.checked).toBe(true);
   expect(radio.name).toBe("models");
   expect(radio.value).toBe("local");
-  expect(
-    document.getElementById(radio.getAttribute("aria-describedby")!)
-      ?.textContent,
-  ).toBe("Configured model");
+  expect(document.getElementById(radio.getAttribute("aria-describedby")!)?.textContent).toBe("Configured model");
   expect(radioSource).toContain("input:focus-visible");
   expect(radioSource).toContain("input:disabled");
 });

@@ -19,10 +19,7 @@ export class SessionChanges implements AsyncIterableIterator<SessionChange> {
     } else this.pending = event;
   }
   next(): Promise<IteratorResult<SessionChange>> {
-    if (this.waiting)
-      return Promise.reject(
-        new Error("Only one pending observation read is permitted"),
-      );
+    if (this.waiting) return Promise.reject(new Error("Only one pending observation read is permitted"));
     if (this.pending) {
       const value = this.pending;
       this.pending = undefined;

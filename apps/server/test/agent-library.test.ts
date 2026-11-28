@@ -52,7 +52,12 @@ test("shared and bundled items can be read where they live; a shared one says ho
   assert.match(store.readFile(shared, "skills/guide/SKILL.md").text, /# guide/);
   assert.equal(store.readFile(shared, "skills/guide/references/style.md").text, "Style.");
   assert.match(store.readFile({ library: "bundled" }, "skills/tour/SKILL.md").text, /# tour/);
-  for (const path of ["skills/guide/../../agents/a/agent.json", "skills/guide/.cache/x", "agents/a/agent.json", "skills/guide/references\\..\\x"])
+  for (const path of [
+    "skills/guide/../../agents/a/agent.json",
+    "skills/guide/.cache/x",
+    "agents/a/agent.json",
+    "skills/guide/references\\..\\x",
+  ])
     assert.throws(() => store.readFile(shared, path), { code: "invalid-path" }, path);
 
   // Writing the shared file reaches both agents; the app's own can't be written.
@@ -80,14 +85,19 @@ test("Move to Shared library moves an agent's own item and keeps it for agents b
   promote("instructions", "tone");
   promote("extensions", "alerts");
   assert.deepEqual(store.read({ agent: owner }).definition.resources, {
-    skills: ["shared:notes"], instructions: ["shared:tone"], extensions: ["shared:alerts"],
+    skills: ["shared:notes"],
+    instructions: ["shared:tone"],
+    extensions: ["shared:alerts"],
   });
   assert.equal(await readFile(join(root, "resources/skills/notes/references/more.md"), "utf8"), "More.");
   assert.ok(existsSync(join(root, "resources/instructions/tone.md")));
   assert.ok(existsSync(join(root, "resources/extensions/alerts/index.ts")));
   assert.ok(!existsSync(join(root, `agents/${owner}/skills/notes`)));
   assert.deepEqual(resolveSetup(store, { agent: child }).skillDirs, [join(root, "resources/skills/notes")]);
-  assert.deepEqual(resolveSetup(store, { agent: child }).instructions.map((i) => i.text), ["Be brief."]);
+  assert.deepEqual(
+    resolveSetup(store, { agent: child }).instructions.map((i) => i.text),
+    ["Be brief."],
+  );
 
   // A name already in the library, a stale revision, or something not its own is refused.
   store.writeFile({ agent: owner }, "skills/notes/SKILL.md", null, skill("notes"));
@@ -102,10 +112,19 @@ test("instructions follow the order the agent lists them in", async (t) => {
   const id = store.create({ name: "Writer" }).id;
   store.writeFile({ agent: id }, "instructions/first.md", null, "One.");
   store.writeFile({ agent: id }, "instructions/second.md", null, "Two.");
-  assert.deepEqual(resolveSetup(store, { agent: id }).instructions.map((i) => i.name), ["first", "second"]);
+  assert.deepEqual(
+    resolveSetup(store, { agent: id }).instructions.map((i) => i.name),
+    ["first", "second"],
+  );
   const { definition, revision } = store.read({ agent: id });
-  store.save({ agent: id }, revision, { ...definition, resources: { ...definition.resources, instructions: ["local:second", "local:first"] } });
-  assert.deepEqual(resolveSetup(store, { agent: id }).instructions.map((i) => i.name), ["second", "first"]);
+  store.save({ agent: id }, revision, {
+    ...definition,
+    resources: { ...definition.resources, instructions: ["local:second", "local:first"] },
+  });
+  assert.deepEqual(
+    resolveSetup(store, { agent: id }).instructions.map((i) => i.name),
+    ["second", "first"],
+  );
 });
 
 test("making a shared or bundled item this agent's own copies it whole, scripts and references too", async (t) => {

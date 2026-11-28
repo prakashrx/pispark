@@ -1,38 +1,24 @@
 import { access, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { isAbsolute } from "node:path";
-import {
-  ModelRuntime,
-  type CreateModelRuntimeOptions,
-} from "@earendil-works/pi-coding-agent";
+import { ModelRuntime, type CreateModelRuntimeOptions } from "@earendil-works/pi-coding-agent";
 import { bundledTransportPatched } from "./transport-gate.js";
 import { nativeCatalogStore } from "./pi-boundary.js";
 import { ProviderError } from "./provider-errors.js";
-import type {
-  Api,
-  Model,
-  Context,
-  ModelsApiStreamOptions,
-  ModelsSimpleStreamOptions,
-} from "@earendil-works/pi-ai";
+import type { Api, Model, Context, ModelsApiStreamOptions, ModelsSimpleStreamOptions } from "@earendil-works/pi-ai";
 
 /** Must run before native availability/auth resolution, which may use ambient host credentials. */
 export function requireSupportedTransport(version = process.versions.undici) {
-  if (!bundledTransportPatched(version))
-    throw new ProviderError("network-blocked");
+  if (!bundledTransportPatched(version)) throw new ProviderError("network-blocked");
 }
 
 /** Scope the native model catalog and its optional configuration to the installation. */
-export async function nativeModelRuntime(
-  options: CreateModelRuntimeOptions & { modelsPath: string | null },
-) {
+export async function nativeModelRuntime(options: CreateModelRuntimeOptions & { modelsPath: string | null }) {
   requireSupportedTransport();
   if (
     (!options.credentials && !options.authPath) ||
     (options.authPath && !isAbsolute(options.authPath)) ||
-    (options.modelsPath &&
-      (!isAbsolute(options.modelsPath) ||
-        (!options.modelsStore && !options.modelsStorePath))) ||
+    (options.modelsPath && (!isAbsolute(options.modelsPath) || (!options.modelsStore && !options.modelsStorePath))) ||
     (options.modelsStorePath && !isAbsolute(options.modelsStorePath))
   )
     throw new ProviderError("provider-storage");
@@ -47,9 +33,9 @@ export async function nativeModelRuntime(
   try {
     const runtime = await ModelRuntime.create({
       ...options,
-      modelsStore: options.modelsStore ?? (!options.modelsPath && options.modelsStorePath
-        ? await nativeCatalogStore(options.modelsStorePath)
-        : undefined),
+      modelsStore:
+        options.modelsStore ??
+        (!options.modelsPath && options.modelsStorePath ? await nativeCatalogStore(options.modelsStorePath) : undefined),
       refreshOnCreate: false,
       allowModelNetwork: false,
     });
@@ -64,26 +50,17 @@ export async function nativeModelRuntime(
  * Chain the SDK/extension transform first so cancellation during either async step cannot dispatch.
  * Registration/recomposition may replace providers; this guard belongs to the owned runtime instead.
  */
-export function guardModelDispatch(
-  runtime: ModelRuntime,
-  beforeDispatch: () => void,
-) {
+export function guardModelDispatch(runtime: ModelRuntime, beforeDispatch: () => void) {
   const stream = runtime.stream.bind(runtime);
   const streamSimple = runtime.streamSimple.bind(runtime);
   const transform =
-    (
-      previous?: ModelsSimpleStreamOptions["transformHeaders"],
-    ): NonNullable<ModelsSimpleStreamOptions["transformHeaders"]> =>
+    (previous?: ModelsSimpleStreamOptions["transformHeaders"]): NonNullable<ModelsSimpleStreamOptions["transformHeaders"]> =>
     async (headers) => {
       const transformed = previous ? await previous(headers) : headers;
       beforeDispatch();
       return transformed;
     };
-  runtime.stream = <TApi extends Api>(
-    model: Model<TApi>,
-    context: Context,
-    options?: ModelsApiStreamOptions<TApi>,
-  ) =>
+  runtime.stream = <TApi extends Api>(model: Model<TApi>, context: Context, options?: ModelsApiStreamOptions<TApi>) =>
     stream(
       model,
       context,

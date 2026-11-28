@@ -30,7 +30,12 @@ const ITEMS_FRAME = 1024 * 1024;
 
 const word = (pattern: string) => Type.String({ pattern });
 /** An extension component's call: which placement, which of its functions, and optional JSON data (the body limit bounds it). */
-const CallShape = exact({ point: word("^[\\w.:-]{1,80}$"), key: word("^[\\w.:-]{0,64}$"), name: word("^[\\w.:-]{1,80}$"), data: Type.Optional(Type.Unsafe<Json>(Type.Unknown())) });
+const CallShape = exact({
+  point: word("^[\\w.:-]{1,80}$"),
+  key: word("^[\\w.:-]{0,64}$"),
+  name: word("^[\\w.:-]{1,80}$"),
+  data: Type.Optional(Type.Unsafe<Json>(Type.Unknown())),
+});
 true satisfies Same<Static<typeof CallShape>, CallRequest>;
 const validCall = shaped(CallShape);
 
@@ -72,7 +77,16 @@ export class SessionHttp {
     remote?: RemoteAccess,
   ) {
     // Every server answers /api/host; one the launcher did not start is simply not managed.
-    this.host = host ?? new HostHttp(new HostLink(() => runtime.runningWork(), () => {}), runtime.dataFolder, () => runtime.runningWork());
+    this.host =
+      host ??
+      new HostHttp(
+        new HostLink(
+          () => runtime.runningWork(),
+          () => {},
+        ),
+        runtime.dataFolder,
+        () => runtime.runningWork(),
+      );
     this.agents = new AgentHttp(runtime.agents, (target) => runtime.discoverTools(target));
     this.remote = remote && new RemoteHttp(remote, (device) => this.endRemote(device));
     this.commands = new Commands(runtime, this.logger);
@@ -168,7 +182,8 @@ export class SessionHttp {
       return sendJson(response, 401, { error: "unpaired" });
     if (remotePath && this.remote && plain) return this.remote.handle(request, response, path, who);
     if (path === "/api/agents" || path.startsWith("/api/agents/")) return this.agents.handle(request, response);
-    if (path.startsWith("/api/notifications/") && plain && method === "POST") return this.notify(path, request, response, device ?? "local");
+    if (path.startsWith("/api/notifications/") && plain && method === "POST")
+      return this.notify(path, request, response, device ?? "local");
     if (path === "/api/live" && plain && method === "GET") return this.live.workspaceChanges(response, device);
     if (path === "/api/host" && plain) return this.host.handle(request, response);
     if (path === "/api/host/notes" && plain && method === "GET") return this.host.notes(response);
@@ -177,7 +192,8 @@ export class SessionHttp {
       return sendJson(response, 200, method === "GET" ? this.runtime.settings() : this.runtime.updateSettings(await body(request)));
     if (await this.background(request, response, path, url)) return;
 
-    if (method === "POST" && path === "/api/commands" && plain) return sendJson(response, 202, this.commands.submit(validCommand(await body(request))));
+    if (method === "POST" && path === "/api/commands" && plain)
+      return sendJson(response, 202, this.commands.submit(validCommand(await body(request))));
     if (method === "GET" && /^\/api\/receipts\/[\w-]+$/.test(path) && plain) {
       const receipt = this.commands.receipt(path.split("/").at(-1)!);
       return sendJson(response, receipt ? 200 : 404, receipt ?? { error: "unknown-receipt" });
@@ -187,7 +203,12 @@ export class SessionHttp {
     if (method === "GET" && path === "/api/sessions" && (plain || url.search === "?archived")) {
       // The sessions in use, or (`?archived`) the ones put away; the newest 256 either way.
       const sessions = (plain ? this.runtime.list() : this.runtime.archived()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-      return sendJson(response, 200, { sessions: sessions.slice(-256), truncated: sessions.length > 256, unreadable: this.runtime.unreadableSessions, archived: this.runtime.archivedCount() });
+      return sendJson(response, 200, {
+        sessions: sessions.slice(-256),
+        truncated: sessions.length > 256,
+        unreadable: this.runtime.unreadableSessions,
+        archived: this.runtime.archivedCount(),
+      });
     }
     const view = /^\/api\/views\/([a-f0-9]{32})\.js$/.exec(path);
     if (method === "GET" && view && plain) return this.files.component(view[1]!, response);

@@ -24,7 +24,11 @@
     // A call an extension blocked never ran: it is said as blocked, not counted with what ran.
     const ran = calls.filter((call) => call.status !== "blocked");
     const stopped =
-      blocked.length === 1 ? `Blocked ${describeCall(blocked[0]!).object || blocked[0]!.name}` : blocked.length ? `${blocked.length} blocked` : "";
+      blocked.length === 1
+        ? `Blocked ${describeCall(blocked[0]!).object || blocked[0]!.name}`
+        : blocked.length
+          ? `${blocked.length} blocked`
+          : "";
     const summary = ran.length ? summarizeCalls(ran) : "";
     return [summary, stopped, failed ? `${failed} failed` : "", unfinished ? "didn’t finish" : ""].filter(Boolean).join(" · ");
   });
@@ -64,7 +68,9 @@
           >
             <span class="call-dot" aria-hidden="true"></span>
             <span class="call-label">{rowLabel(call)}</span>
-            {#if call.status === "error"}<span class="call-state">failed</span>{:else if call.status === "blocked"}<span class="call-state">blocked</span>{:else if call.status === "unfinished"}<span class="call-state">didn’t finish</span>{/if}
+            {#if call.status === "error"}<span class="call-state">failed</span>{:else if call.status === "blocked"}<span class="call-state"
+                >blocked</span
+              >{:else if call.status === "unfinished"}<span class="call-state">didn’t finish</span>{/if}
           </button>
           {#if openCall === call.id}
             {@const Detail = resolveToolView(call.name).detail ?? ToolDetail}

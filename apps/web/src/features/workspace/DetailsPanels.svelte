@@ -122,7 +122,9 @@
       <dl class="facts">
         <div>
           <dt>Agent</dt>
-          <dd>{info.agent.name}{#if info.agent.layered}<span class="muted"> · edited for this session</span>{/if}</dd>
+          <dd>
+            {info.agent.name}{#if info.agent.layered}<span class="muted"> · edited for this session</span>{/if}
+          </dd>
         </div>
         <div>
           <dt>Model</dt>
@@ -143,7 +145,9 @@
                 label="Thinking"
                 options={levels}
                 disabled={!changeable}
-                bind:value={() => thinkingValue, (value) => void (value && value !== thinkingValue && configure({ thinking: value as ThinkingLevel }))}
+                bind:value={
+                  () => thinkingValue, (value) => void (value && value !== thinkingValue && configure({ thinking: value as ThinkingLevel }))
+                }
               />
             </dd>
           </div>{/if}
@@ -178,11 +182,15 @@
             <span style:width={`${Math.min(100, context.percent)}%`}></span>
           </div>{/if}
         <p class="note">
-          {context.percent === null ? "Measured again after the next reply. " : ""}Earlier messages are summarized when it fills up, before your next message where it can.
+          {context.percent === null ? "Measured again after the next reply. " : ""}Earlier messages are summarized when it fills up, before
+          your next message where it can.
         </p>
-        <Button size="compact" variant="ghost"
+        <Button
+          size="compact"
+          variant="ghost"
           unavailable={!between || requestingCompaction ? "The session is busy" : undefined}
-          onclick={compactContext}>{requestingCompaction || doc.compacting ? "Compacting…" : "Compact context"}</Button>
+          onclick={compactContext}>{requestingCompaction || doc.compacting ? "Compacting…" : "Compact context"}</Button
+        >
         {#if doc.compacting}<Button size="compact" variant="ghost" onclick={() => void session.stop()}>Cancel compaction</Button>{/if}
         {#if compactResult}<p role="status">{compactResult}</p>{/if}
       </Fold>{/if}
@@ -238,11 +246,14 @@
         </ul>
         {#if routineError}<p role="alert" class="note danger">{routineError}</p>{/if}
       </Fold>{/if}
-
   </div>
 {/if}
 
-{#if editing}<ScheduleDialog sessionId={session.id} schedule={editing === true ? undefined : editing} onclose={() => (editing = undefined)} />{/if}
+{#if editing}<ScheduleDialog
+    sessionId={session.id}
+    schedule={editing === true ? undefined : editing}
+    onclose={() => (editing = undefined)}
+  />{/if}
 
 {#snippet relatedRows(label: string, sessions: SessionInfo[])}
   <ul class="rows" aria-label={label}>
@@ -251,7 +262,13 @@
       <li class="row">
         <button type="button" class="grow link line" onclick={() => client.open(child.id)}>{sessionName(child)}</button>
         {#if state}<StatusMark
-            kind={state === "needs-you" ? "attention" : state === "failed" || state === "interrupted" ? "error" : state === "queued" ? "waiting" : "busy"}
+            kind={state === "needs-you"
+              ? "attention"
+              : state === "failed" || state === "interrupted"
+                ? "error"
+                : state === "queued"
+                  ? "waiting"
+                  : "busy"}
             label={sessionStatus(child)}
             words
           />{:else}<span class="sub">Finished</span>{/if}

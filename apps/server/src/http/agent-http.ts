@@ -59,11 +59,9 @@ export class AgentHttp {
       const path = url.pathname;
       try {
         let result: unknown;
-        if (request.method === "GET" && path === "/api/agents" && !url.search)
-          result = { agents: listAgents(this.store) };
+        if (request.method === "GET" && path === "/api/agents" && !url.search) result = { agents: listAgents(this.store) };
         else {
-          if (request.method !== "POST" || url.search)
-            throw new AgentError("not-found", 404);
+          if (request.method !== "POST" || url.search) throw new AgentError("not-found", 404);
           const value = await body(request, MAXIMUM);
           switch (path.slice("/api/agents/".length)) {
             case "read": {
@@ -99,7 +97,9 @@ export class AgentHttp {
               break;
             case "save": {
               const i = OPERATIONS.save(value);
-              result = this.store.save(i.target, i.expectedRevision, i.definition, (definition) => checkCycles(this.store, i.target, definition));
+              result = this.store.save(i.target, i.expectedRevision, i.definition, (definition) =>
+                checkCycles(this.store, i.target, definition),
+              );
               break;
             }
             case "delete":
@@ -131,12 +131,7 @@ export class AgentHttp {
       } catch (error) {
         const known = error instanceof AgentError || error instanceof RuntimeError;
         const code = known ? error.code : "storage";
-        const status =
-          error instanceof AgentError
-            ? error.status
-            : error instanceof RuntimeError
-              ? statusOf(error)
-              : 500;
+        const status = error instanceof AgentError ? error.status : error instanceof RuntimeError ? statusOf(error) : 500;
         logFailure(this.store.logger, request, error, { status, code, durationMs: Date.now() - started });
         sendJson(
           response,
@@ -144,9 +139,7 @@ export class AgentHttp {
           {
             error: code,
             requestId,
-            ...(error instanceof AgentError && error.detail
-              ? { detail: error.detail }
-              : {}),
+            ...(error instanceof AgentError && error.detail ? { detail: error.detail } : {}),
           },
           MAXIMUM,
         );

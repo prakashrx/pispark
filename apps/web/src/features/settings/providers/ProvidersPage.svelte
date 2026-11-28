@@ -43,7 +43,11 @@
 
   const available = (provider: ProviderInfo) => provider.models.filter((m) => m.available).length;
   const summary = (provider: ProviderInfo) =>
-    provider.stored ? `${available(provider)} models` : provider.configured ? `Set up on the host · ${available(provider)} models` : "Not set up";
+    provider.stored
+      ? `${available(provider)} models`
+      : provider.configured
+        ? `Set up on the host · ${available(provider)} models`
+        : "Not set up";
 
   async function setDefault(model: { provider: string; id: string } | null) {
     if (await client.change("/default", { model }))
@@ -75,10 +79,14 @@
 
 {#if client.catalog.networkBlocked || (client.error && !open && !adding) || notice}
   <div class="notes">
-    {#if client.catalog.networkBlocked}<p class="inline-note" data-tone="warning" role="status">{providerErrorMessages["network-blocked"]}</p>{/if}
+    {#if client.catalog.networkBlocked}<p class="inline-note" data-tone="warning" role="status">
+        {providerErrorMessages["network-blocked"]}
+      </p>{/if}
     {#if client.error && !open && !adding}<div class="error">
         <p class="inline-note flex-1" data-tone="danger" role="alert">{client.error}</p>
-        <Button variant="ghost" unavailable={client.loading ? "Loading catalog" : undefined} onclick={() => void client.refresh()}>Reload status</Button>
+        <Button variant="ghost" unavailable={client.loading ? "Loading catalog" : undefined} onclick={() => void client.refresh()}
+          >Reload status</Button
+        >
       </div>{/if}
     {#if notice}<p class="inline-note" data-tone="success" role="status">{notice}</p>{/if}
   </div>
@@ -99,14 +107,18 @@
     <p class="muted small">
       {#if defaultChoice && !defaultModel?.available}{defaultModel?.name ?? defaultChoice.id} is unavailable; the saved choice is kept.
       {/if}Existing sessions keep their model.
-      {#if defaultChoice}<button type="button" class="link" disabled={client.busy} onclick={() => void setDefault(null)}>Clear the default</button>{/if}
+      {#if defaultChoice}<button type="button" class="link" disabled={client.busy} onclick={() => void setDefault(null)}
+          >Clear the default</button
+        >{/if}
     </p>
   </CardRow>
 </Card>
 
 <Card title="Your providers" count={String(yours.length)}>
   {#snippet action()}
-    <button type="button" class="icon" aria-label="Add a provider" title="Add a provider" onclick={() => (adding = true)}><Icon name="plus" class="h-4 w-4" /></button>
+    <button type="button" class="icon" aria-label="Add a provider" title="Add a provider" onclick={() => (adding = true)}
+      ><Icon name="plus" class="h-4 w-4" /></button
+    >
   {/snippet}
   {#each yours as provider (provider.id)}
     <button type="button" class="provider" onclick={() => (open = provider.id)}>
@@ -120,7 +132,11 @@
   {:else}
     <CardRow>
       <p class="muted">
-        {client.loading ? "Loading…" : providers.length ? "None yet. Add one to sign in and use its models." : "No provider catalog loaded. Reload status to try again."}
+        {client.loading
+          ? "Loading…"
+          : providers.length
+            ? "None yet. Add one to sign in and use its models."
+            : "No provider catalog loaded. Reload status to try again."}
       </p>
     </CardRow>
   {/each}
@@ -142,7 +158,9 @@
     {:else}
       <div class="search">
         <div class="flex-1"><Input label="Search providers" bind:value={query} placeholder={`Search ${others.length} providers…`} /></div>
-        <Button variant="ghost" unavailable={client.loading ? "Loading catalog" : undefined} onclick={() => void client.refresh()}>Reload status</Button>
+        <Button variant="ghost" unavailable={client.loading ? "Loading catalog" : undefined} onclick={() => void client.refresh()}
+          >Reload status</Button
+        >
       </div>
       <ul class="choices" aria-label="Providers">
         {#each others as provider (provider.id)}<li>

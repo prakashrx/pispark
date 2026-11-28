@@ -20,7 +20,12 @@ export const footnotes: MarkedExtension = {
       tokenizer(src) {
         const match = /^\[\^([^\]\s]+)\]:[ \t]*([^\n]*(?:\n(?: {2,}|\t)[^\n]*)*)(?:\n|$)/.exec(src);
         if (!match) return;
-        return { type: "footnote", raw: match[0], id: match[1]!, tokens: this.lexer.inlineTokens(match[2]!.replace(/\n(?: {2,}|\t)/g, "\n")) };
+        return {
+          type: "footnote",
+          raw: match[0],
+          id: match[1]!,
+          tokens: this.lexer.inlineTokens(match[2]!.replace(/\n(?: {2,}|\t)/g, "\n")),
+        };
       },
       // A note is drawn in the list at the end, not where it is defined.
       renderer: () => "",

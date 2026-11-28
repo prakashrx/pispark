@@ -81,7 +81,9 @@
   // Details' own actions: editing the agent for this session is an action, not a panel.
   const detailsActions = $derived([
     ...(session.doc ? [{ id: "edit-agent", label: "Edit agent for this session", onselect: () => details.show(session.id, "agent") }] : []),
-    ...(session.info && canArchive(session.info) ? [{ id: "archive", label: "Archive", onselect: () => void client.archive(session.id) }] : []),
+    ...(session.info && canArchive(session.info)
+      ? [{ id: "archive", label: "Archive", onselect: () => void client.archive(session.id) }]
+      : []),
   ]);
 </script>
 
@@ -119,7 +121,6 @@
     {#snippet actions()}<SessionBar tabs={!compact} onrename={() => (renaming = true)} />{/snippet}
     {#snippet notices()}<SessionNotices />{/snippet}
     <SessionArea {session} />
-
   </Screen>
   {#if side}
     <SidePanel
@@ -139,7 +140,6 @@
     </SidePanel>
   {/if}
 {/if}
-
 
 <style>
   /* Inside a child, by its message box: who hears what the person changes here. */

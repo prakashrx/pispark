@@ -26,7 +26,10 @@ async function stream(t: TestContext, timing: StreamTiming, use: (stream: EventS
   const [response] = (await once(reader, "response")) as [import("node:http").IncomingMessage];
   response.setEncoding("utf8");
   response.on("data", (chunk: string) => received.push(chunk));
-  const ended = once(response, "end").then(() => true, () => true);
+  const ended = once(response, "end").then(
+    () => true,
+    () => true,
+  );
   return { received: () => received.join(""), headers: response.headers, ended, stream: () => opened, response };
 }
 

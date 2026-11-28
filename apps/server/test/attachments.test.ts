@@ -71,7 +71,8 @@ test("a title made from a message names its files, with a space between neighbou
 });
 
 test("attachment names: one plain file name, nothing that could reach elsewhere", () => {
-  for (const good of ["report.pdf", "Screenshot 2026-11-15 at 10.02.png", "日本語.txt", "a (2).log"]) assert.ok(validAttachmentName(good), good);
+  for (const good of ["report.pdf", "Screenshot 2026-11-15 at 10.02.png", "日本語.txt", "a (2).log"])
+    assert.ok(validAttachmentName(good), good);
   for (const bad of ["", ".env", "../x", "a/b", "a\\b", "c:x", "con.txt", "NUL", "x.", "x ", "a\u0000b", "x".repeat(201)])
     assert.ok(!validAttachmentName(bad), JSON.stringify(bad));
 });
@@ -87,7 +88,10 @@ test("uploads land in the session's files folder under a free name; refusals; se
 
   assert.equal((await f.upload("../escape.txt", "x")).status, 400);
   assert.equal((await f.upload(".env", "x")).status, 400);
-  assert.equal((await f.upload("big.bin", "x", { "Content-Length": String(101 * 1024 * 1024) }).catch(() => ({ status: 413 }))).status !== 201, true);
+  assert.equal(
+    (await f.upload("big.bin", "x", { "Content-Length": String(101 * 1024 * 1024) }).catch(() => ({ status: 413 }))).status !== 201,
+    true,
+  );
   const unknown = await fetch(`${f.base}/api/sessions/${randomUUID()}/attachments`, {
     method: "POST",
     headers: { Origin: f.base, "X-File-Name": "a.txt" },
@@ -164,7 +168,9 @@ test("a session's files list what the person attached and what the agent made th
   const folder = join(f.sessions, f.id, "files");
   writeFileSync(join(folder, "report.md"), "# Report");
   writeFileSync(join(folder, ".hidden"), "x");
-  const listed = (await (await fetch(`${f.base}/api/sessions/${f.id}/attachments`)).json()) as { files: { name: string; size: number; by?: string }[] };
+  const listed = (await (await fetch(`${f.base}/api/sessions/${f.id}/attachments`)).json()) as {
+    files: { name: string; size: number; by?: string }[];
+  };
   assert.deepEqual(
     listed.files.map(({ name, by, size }) => ({ name, by, size })).sort((a, b) => a.name.localeCompare(b.name)),
     [
@@ -189,8 +195,11 @@ test("an uploaded image enters Artifacts only when recorded in a user message", 
   assert.deepEqual(await files(), { files: [] });
   const sent = await f.post({ type: "start", sessionId: f.id, text: "send", attachments: ["draft.png"] });
   assert.equal((await f.settle(sent.receipt)).outcome, "completed");
-  const listed = await files() as { files: { name: string; by?: string }[] };
-  assert.deepEqual(listed.files.map(({ name, by }) => ({ name, by })), [{ name: "draft.png", by: "you" }]);
+  const listed = (await files()) as { files: { name: string; by?: string }[] };
+  assert.deepEqual(
+    listed.files.map(({ name, by }) => ({ name, by })),
+    [{ name: "draft.png", by: "you" }],
+  );
 });
 
 test("a fork's sent attachments link to its own files after the source is deleted", async (t) => {
@@ -213,7 +222,10 @@ test("a fork's sent attachments link to its own files after the source is delete
   assert.ok(reference.includes(fork));
   assert.ok(!reference.includes(f.id));
   const files = await fetch(`${f.base}/api/sessions/${fork}/attachments`).then((response) => response.json());
-  assert.deepEqual(files.files.map(({ name, by }: { name: string; by?: string }) => ({ name, by })), [{ name: "sent.txt", by: "you" }]);
+  assert.deepEqual(
+    files.files.map(({ name, by }: { name: string; by?: string }) => ({ name, by })),
+    [{ name: "sent.txt", by: "you" }],
+  );
   const file = await fetch(`${f.base}/api/sessions/${fork}/attachments/sent.txt`);
   assert.equal(await file.text(), "shared notes");
 });

@@ -42,7 +42,12 @@ test("live-stream: the server's pings are skipped, whole or split across chunks"
 });
 
 test("live-stream: bounded incomplete frames and invalid framing fail closed", async () => {
-  for (const chunks of [["x".repeat(1024 * 1024), "x"], ["data: {}\n\n"], ["event: other\ndata: {}\n\n"], ["event: ops\ndata: not-json\n\n"]]) {
+  for (const chunks of [
+    ["x".repeat(1024 * 1024), "x"],
+    ["data: {}\n\n"],
+    ["event: other\ndata: {}\n\n"],
+    ["event: ops\ndata: not-json\n\n"],
+  ]) {
     serve(chunks);
     await expect(read(liveEvents("s", never))).rejects.toThrow();
   }

@@ -243,7 +243,8 @@ export class Session {
         { timeout: 40_000 },
       )
       .catch((error: unknown): CallResponse => {
-        if (error instanceof RequestFailed) return { error: error.code ?? "The call failed", ...(error.detail ? { detail: error.detail } : {}) };
+        if (error instanceof RequestFailed)
+          return { error: error.code ?? "The call failed", ...(error.detail ? { detail: error.detail } : {}) };
         throw error;
       });
     if (answer.error) throw new Error(answer.detail ?? answer.error);

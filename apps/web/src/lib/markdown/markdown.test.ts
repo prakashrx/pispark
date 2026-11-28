@@ -58,7 +58,9 @@ test("active content stays inert while links open outside the app", () => {
 
 test("images show from the web and from the host's own files; anything else is just its alt text", () => {
   const images = (href: string) => (href.startsWith("files/") ? `/api/sessions/a/attachments/${href.slice(6)}` : undefined);
-  const root = shown(["![Chart](https://example.org/chart.png)", "![Shot](files/shot.png)", "![Other](ftp://x/y.png)"].join("\n\n"), { images });
+  const root = shown(["![Chart](https://example.org/chart.png)", "![Shot](files/shot.png)", "![Other](ftp://x/y.png)"].join("\n\n"), {
+    images,
+  });
   const sources = [...root.querySelectorAll("img")].map((img) => img.getAttribute("src"));
   expect(sources).toEqual(["https://example.org/chart.png", "/api/sessions/a/attachments/shot.png"]);
   expect(root.querySelector("img")?.closest("a")?.getAttribute("href")).toBe("https://example.org/chart.png");
@@ -66,7 +68,9 @@ test("images show from the web and from the host's own files; anything else is j
 });
 
 test("math, code languages and known diagrams are marked for their renderers; prices stay text", () => {
-  const root = shown(["Energy $E = mc^2$ and \\(a+b\\); it costs $5 and $10.", "$$\n\\int_0^1 x\\,dx\n$$", "```ts\nconst a = 1;\n```"].join("\n\n"));
+  const root = shown(
+    ["Energy $E = mc^2$ and \\(a+b\\); it costs $5 and $10.", "$$\n\\int_0^1 x\\,dx\n$$", "```ts\nconst a = 1;\n```"].join("\n\n"),
+  );
   expect([...root.querySelectorAll("[data-math]")].map((m) => m.getAttribute("data-math"))).toEqual(["inline", "inline", "block"]);
   expect(root.textContent).toContain("costs $5 and $10");
   expect(root.querySelector("pre")?.dataset.lang).toBe("ts");

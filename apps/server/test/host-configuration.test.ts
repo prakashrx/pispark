@@ -21,8 +21,7 @@ test("data root: created on first start, one server per folder, stale locks repl
   const root = await mkdtemp(join(tmpdir(), "pispark-home-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const paths = prepareHome(join(root, "data"));
-  for (const dir of [paths.sessions, paths.agents, paths.providers])
-    assert.ok(existsSync(dir));
+  for (const dir of [paths.sessions, paths.agents, paths.providers]) assert.ok(existsSync(dir));
   const release = lockHome(paths);
   assert.throws(() => lockHome(paths), /Another PiSpark server/);
   release();
@@ -62,7 +61,10 @@ test("startup: transport gate, first-start Default agent, public bind refusal", 
   if (bundledTransportPatched(process.versions.undici)) {
     assert.equal(probe.status, 0, probe.stderr);
     assert.deepEqual(JSON.parse(probe.stdout), {
-      home: root, points: [...WORKSPACE_POINTS], fromFile: "loaded", port: "0",
+      home: root,
+      points: [...WORKSPACE_POINTS],
+      fromFile: "loaded",
+      port: "0",
     });
   } else {
     assert.notEqual(probe.status, 0);

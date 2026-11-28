@@ -74,7 +74,9 @@
               >
             </span>
             <Button size="compact" aria-label={`Restore ${name}`} onclick={() => act(session.id, "restore")}>Restore</Button>
-            <Button size="compact" variant="ghost" class="danger" aria-label={`Delete ${name}`} onclick={() => (confirming = session.id)}>Delete</Button>
+            <Button size="compact" variant="ghost" class="danger" aria-label={`Delete ${name}`} onclick={() => (confirming = session.id)}
+              >Delete</Button
+            >
           </div>
         </li>
       {:else}

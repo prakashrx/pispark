@@ -10,8 +10,18 @@ const item = (id: string, text: string, role: Item["role"] = "assistant"): Item 
   parts: [{ type: "text", text }],
 });
 const page = (items: Item[], head: string | null, more = false): ItemsPage => ({ items, head, more });
-const snapshot = (head: string | null, tail: Item[] = []): LiveEvent => ({ type: "snapshot", sessionId: "s", head, doc: { session, tail, progress: {} } });
-const ops = (seq: number, ...list: Extract<LiveEvent, { type: "ops" }>["ops"]): LiveEvent => ({ type: "ops", sessionId: "s", seq, ops: list });
+const snapshot = (head: string | null, tail: Item[] = []): LiveEvent => ({
+  type: "snapshot",
+  sessionId: "s",
+  head,
+  doc: { session, tail, progress: {} },
+});
+const ops = (seq: number, ...list: Extract<LiveEvent, { type: "ops" }>["ops"]): LiveEvent => ({
+  type: "ops",
+  sessionId: "s",
+  seq,
+  ops: list,
+});
 
 function follow(pages: Record<string, ItemsPage>) {
   const get = vi.fn(async (path: string) => {
@@ -75,4 +85,3 @@ test("a commit announced without its items is read as history", async () => {
   expect(await live.apply("s", ops(1, { op: "commit", after: "a", head: "b" }))).toBe(true);
   expect(live.history.map((i) => i.id)).toEqual(["a", "b"]);
 });
-

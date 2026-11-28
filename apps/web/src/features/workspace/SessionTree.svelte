@@ -30,11 +30,20 @@
   }
   let toggled = $state<boolean>();
   const open = $derived(
-    started.length > 0 && (toggled ?? ((client.selected && isUnder(client.selected, session.id)) || started.some((each) => ["working", "needs-you", "queued"].includes(sessionState(each))))),
+    started.length > 0 &&
+      (toggled ??
+        ((client.selected && isUnder(client.selected, session.id)) ||
+          started.some((each) => ["working", "needs-you", "queued"].includes(sessionState(each))))),
   );
 </script>
 
-<SessionRow {session} {name} {muted} class={className} status={started.length && !open ? foremostState([session, ...started].map(sessionState)) : undefined}>
+<SessionRow
+  {session}
+  {name}
+  {muted}
+  class={className}
+  status={started.length && !open ? foremostState([session, ...started].map(sessionState)) : undefined}
+>
   {#snippet before()}
     {#if started.length}<button
         type="button"

@@ -45,7 +45,12 @@ export class SessionProcesses implements Kind {
     // Its first output is shown but stays unread: a wait or a look after the start begins at the beginning.
     const first = this.processes.tail(process).trim() || "(no output yet)";
     const handle = this.handles.of(owner, this.name, started.id);
-    return { ok: true, text: `Started ${handle}: ${this.describe(process)} in ${folder}.\n${first}`, details: { id: started.id }, data: { id: handle } };
+    return {
+      ok: true,
+      text: `Started ${handle}: ${this.describe(process)} in ${folder}.\n${first}`,
+      details: { id: started.id },
+      data: { id: handle },
+    };
   }
 
   of(owner: string): Listed[] {
@@ -70,26 +75,40 @@ export class SessionProcesses implements Kind {
     if (process.state !== "running") return { ok: true, text: "It is not running." };
     this.processes.stop(process.id, "agent");
     await this.processes.waitForExit(process, 5000, signal);
-    return { ok: true, text: process.state === "running" ? "Stopping; it has not ended yet (pispark_look shows when it has)." : "Stopped." };
+    return {
+      ok: true,
+      text: process.state === "running" ? "Stopping; it has not ended yet (pispark_look shows when it has)." : "Stopped.",
+    };
   }
 
   /** A process cannot think, so PiSpark speaks for it: the only thing to tell it is what to raise on. */
   async send(owner: string, id: string, { raise_on }: { raise_on?: string }): Promise<Answer> {
     if (raise_on === undefined) return { ok: false, text: "A process cannot be sent text; give raise_on to change what it raises on." };
     this.processes.raiseOn(this.processes.get(id, [owner]), raise_on || undefined);
-    return { ok: true, text: raise_on ? `It raises when a line of its output matches /${raise_on}/, at most once a minute.` : "It no longer raises on its output." };
+    return {
+      ok: true,
+      text: raise_on
+        ? `It raises when a line of its output matches /${raise_on}/, at most once a minute.`
+        : "It no longer raises on its output.",
+    };
   }
 
   async wait(owner: string, id: string, until: RegExp | undefined, signal: AbortSignal): Promise<Taken | undefined> {
     const process = this.processes.get(id, [owner]);
-    const result = until ? await this.processes.wait(process, until, process.cursors[owner] ?? 0, undefined, signal) : await this.processes.waitForExit(process, undefined, signal);
+    const result = until
+      ? await this.processes.wait(process, until, process.cursors[owner] ?? 0, undefined, signal)
+      : await this.processes.waitForExit(process, undefined, signal);
     if (result === "timeout") return undefined;
     // Its end is its answer, the same one its session would be sent: taken here, so it is not sent.
     if (result === "ended") {
       this.processes.takeEnd(process.id);
       const tail = this.processes.tail(process).trim();
       const how = `${process.ended ?? process.state}${process.exitCode !== undefined ? ` ${process.exitCode}` : ""}`;
-      return { words: `${this.describe(process)}\n${until ? "It ended before the output showed that.\n" : ""}Last output:\n${tail || "(none)"}`, how, text: tail };
+      return {
+        words: `${this.describe(process)}\n${until ? "It ended before the output showed that.\n" : ""}Last output:\n${tail || "(none)"}`,
+        how,
+        text: tail,
+      };
     }
     // What follows the line it waited for (a server's URL after "ready") usually comes at once:
     // a moment more of output, until it goes quiet for a quarter second, at most half a second.
@@ -119,7 +138,12 @@ export class SessionProcesses implements Kind {
     const short = title.length > 80 ? `${title.slice(0, 79)}…` : title;
     const handle = this.handles.of(sessionId, this.name, end.process.id);
     if (end.by === "person") {
-      void this.line(sessionId, `The person stopped the process "${short}" (${handle}).`, { process: end.process.id, title: short, how: "was stopped by you", ok: false }).catch(() => {});
+      void this.line(sessionId, `The person stopped the process "${short}" (${handle}).`, {
+        process: end.process.id,
+        title: short,
+        how: "was stopped by you",
+        ok: false,
+      }).catch(() => {});
       return;
     }
     // The lines the agent needs; the card says them already, so it shows the output after them.
@@ -176,7 +200,9 @@ export class SessionProcesses implements Kind {
 
   private describe(p: ProcessInfo): string {
     return `${p.title ? `${p.title} (${p.command})` : p.command} — ${
-      p.state === "running" ? `running since ${p.startedAt}` : `${p.ended ? p.ended.replace("-", " ") : p.state}${p.exitCode !== undefined ? ` (exit ${p.exitCode})` : ""}`
+      p.state === "running"
+        ? `running since ${p.startedAt}`
+        : `${p.ended ? p.ended.replace("-", " ") : p.state}${p.exitCode !== undefined ? ` (exit ${p.exitCode})` : ""}`
     }`;
   }
   /** What its session has not read yet. Reading an ended process's output takes its end, so it is not told again. */

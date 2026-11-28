@@ -133,7 +133,12 @@ export class Attachments {
         ...(item.thumbnail && !item.problem ? { thumbnail: item.thumbnail } : {}),
         ...(item.state === "uploading" ? { state: "working" as const, progress: item.progress } : {}),
         ...(item.state === "failed" ? { state: "failed" as const } : {}),
-        description: item.state === "failed" ? `${words}: ${PROBLEM[item.problem ?? "failed"]}` : item.state === "uploading" ? `${words}, uploading` : words,
+        description:
+          item.state === "failed"
+            ? `${words}: ${PROBLEM[item.problem ?? "failed"]}`
+            : item.state === "uploading"
+              ? `${words}, uploading`
+              : words,
       };
     }
     return out;

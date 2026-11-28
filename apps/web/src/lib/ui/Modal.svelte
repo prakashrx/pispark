@@ -43,29 +43,16 @@
   const id = $props.id();
   function keepFocus(event: KeyboardEvent) {
     if (event.key !== "Tab") return;
-    const controls = [
-      ...dialog.querySelectorAll<HTMLElement>(
-        "button, input, select, textarea, a[href], summary, [tabindex]",
-      ),
-    ].filter(
+    const controls = [...dialog.querySelectorAll<HTMLElement>("button, input, select, textarea, a[href], summary, [tabindex]")].filter(
       (element) =>
-        element.tabIndex >= 0 &&
-        !element.matches(":disabled") &&
-        !element.closest("[hidden]") &&
-        element.getClientRects().length > 0,
+        element.tabIndex >= 0 && !element.matches(":disabled") && !element.closest("[hidden]") && element.getClientRects().length > 0,
     );
     const first = controls[0];
     const last = controls.at(-1);
-    if (
-      event.shiftKey &&
-      (document.activeElement === first || document.activeElement === dialog)
-    ) {
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
       event.preventDefault();
       last?.focus();
-    } else if (
-      !event.shiftKey &&
-      (document.activeElement === last || document.activeElement === dialog)
-    ) {
+    } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog)) {
       event.preventDefault();
       first?.focus();
     }
@@ -75,14 +62,8 @@
     dialog.showModal();
     const target = initialFocus
       ? dialog.querySelector<HTMLElement>(initialFocus)
-      : dialog.querySelector<HTMLElement>(
-          "input:not(:disabled), textarea:not(:disabled), select:not(:disabled)",
-        );
-    (
-      target ??
-      dialog.querySelector<HTMLElement>("button:not(:disabled)") ??
-      dialog
-    ).focus();
+      : dialog.querySelector<HTMLElement>("input:not(:disabled), textarea:not(:disabled), select:not(:disabled)");
+    (target ?? dialog.querySelector<HTMLElement>("button:not(:disabled)") ?? dialog).focus();
     return () => {
       dialog.close();
       previous?.focus();
@@ -106,29 +87,23 @@
   }}
   class="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-auto rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-0 text-foreground shadow-elevation-lg backdrop:bg-black/40 backdrop:backdrop-blur-sm"
 >
-  {#if title}<header
-      class="flex items-center justify-between gap-4 border-b border-[var(--border)] px-5 py-3"
-    >
-      {#if primary && !asking}<span class="sheet-only"><Button variant="ghost" size="compact" disabled={busy} onclick={onclose}>{cancel}</Button></span>{/if}
+  {#if title}<header class="flex items-center justify-between gap-4 border-b border-[var(--border)] px-5 py-3">
+      {#if primary && !asking}<span class="sheet-only"
+          ><Button variant="ghost" size="compact" disabled={busy} onclick={onclose}>{cancel}</Button></span
+        >{/if}
       <div class="title">
         <h2 id={`${id}-title`} class="text-base font-semibold">{title}</h2>
         {#if help}<p id={`${id}-help`} class="mt-1 text-sm text-muted-foreground">
             {help}
           </p>{/if}
       </div>
-      {#if closable}<Button
-          variant="ghost"
-          size="icon"
-          aria-label="Close dialog"
-          disabled={busy}
-          onclick={onclose}><Icon name="close" class="h-4 w-4" /></Button
+      {#if closable}<Button variant="ghost" size="icon" aria-label="Close dialog" disabled={busy} onclick={onclose}
+          ><Icon name="close" class="h-4 w-4" /></Button
         >{/if}
       {#if primary && !asking}<span class="sheet-only">{@render primary()}</span>{/if}
     </header>{/if}
   <div class="body {title ? 'p-5 space-y-4' : ''}">{@render children()}</div>
-  {#if footer || primary}<footer
-      class="flex justify-end gap-2 border-t border-[var(--border)] p-4"
-    >
+  {#if footer || primary}<footer class="flex justify-end gap-2 border-t border-[var(--border)] p-4">
       {#if footer}{@render footer()}{/if}
       {#if primary && !asking}<span class="dialog-only flex gap-2"
           ><Button variant="ghost" disabled={busy} onclick={onclose}>{cancel}</Button>{@render primary()}</span

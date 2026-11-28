@@ -33,10 +33,7 @@ test("logger projects only allowlisted fields and preserves independent async co
     ),
   );
   await logger.close();
-  assert.deepEqual(
-    lines.map((l) => JSON.parse(l).requestId).sort(),
-    [first, second].sort(),
-  );
+  assert.deepEqual(lines.map((l) => JSON.parse(l).requestId).sort(), [first, second].sort());
   assert(!lines.join("").match(/SECRET|forged|PRIVATE|TOKEN|Infinity/));
   assert.equal(JSON.parse(lines[0]!).durationMs, 2);
 });
@@ -77,16 +74,14 @@ test("file rotation retains only active plus three bounded files", async (t) => 
   const directory = await mkdtemp(join(tmpdir(), "pispark-log-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const logger = new SafeLogger({ directory, maxFileBytes: 256 });
-  for (let i = 0; i < 20; i++)
-    logger.event("agent.save", { counts: { skills: i } });
+  for (let i = 0; i < 20; i++) logger.event("agent.save", { counts: { skills: i } });
   await logger.close();
   const files = await readdir(directory);
   assert.equal(files.length, 4);
   for (const file of files) {
     const text = await readFile(join(directory, file), "utf8");
     assert(Buffer.byteLength(text) <= 256);
-    for (const line of text.trim().split("\n"))
-      assert.equal(JSON.parse(line).event, "agent.save");
+    for (const line of text.trim().split("\n")) assert.equal(JSON.parse(line).event, "agent.save");
   }
 });
 
@@ -120,20 +115,16 @@ for (const closeFallback of [false, true]) {
     t.after(() => rm(home, { recursive: true, force: true }));
     const source = new URL("../src/core/logger.js", import.meta.url).href;
     const script = `import{SafeLogger}from${JSON.stringify(source)};const logger=new SafeLogger();setTimeout(()=>logger.event('host.start'),100);setTimeout(async()=>{await logger.close();process.exit(0)},250);`;
-    const child = spawn(
-      process.execPath,
-      ["--import", "tsx", "--input-type=module", "-e", script],
-      {
-        env: {
-          SystemRoot: process.env.SystemRoot,
-          HOME: home,
-          USERPROFILE: home,
-          TEMP: tmpdir(),
-          TMP: tmpdir(),
-        },
-        stdio: ["ignore", "pipe", "pipe"],
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
+      env: {
+        SystemRoot: process.env.SystemRoot,
+        HOME: home,
+        USERPROFILE: home,
+        TEMP: tmpdir(),
+        TMP: tmpdir(),
       },
-    );
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     t.after(() => {
       if (child.exitCode === null) child.kill();
     });
@@ -157,7 +148,12 @@ test("a failure's record says what failed and what kind of error it was, never w
   const logger = new SafeLogger({ sink });
   logger.event("http.failure", failure, "error");
   // What is not the shape of a path, a known method, an error status or an Error is left out.
-  logger.event("http.failure", { method: "BREW", route: "/api/sessions/SECRET", status: 200, cause: { name: "SECRET", code: "SECRET", stack: "SECRET" } });
+  logger.event("http.failure", {
+    method: "BREW",
+    route: "/api/sessions/SECRET",
+    status: 200,
+    cause: { name: "SECRET", code: "SECRET", stack: "SECRET" },
+  });
   logger.event("http.failure", { cause: Object.assign(new Error("x"), { name: "SECRET name", code: "secret code" }) });
   await logger.close();
   const [first, ...rest] = lines.map((line) => JSON.parse(line));

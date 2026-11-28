@@ -81,7 +81,10 @@ hostedTest("on a phone, the pencil is in the header and the long-press sheet off
 
   // On the list, a long press (a right-click here) opens the row's sheet: Rename edits the row in place.
   await page.getByRole("link", { name: "Back" }).click();
-  await page.getByRole("link", { name: /^On the go/ }).first().click({ button: "right" });
+  await page
+    .getByRole("link", { name: /^On the go/ })
+    .first()
+    .click({ button: "right" });
   await page.getByRole("dialog", { name: "On the go" }).getByRole("button", { name: "Rename" }).click();
   const row = page.getByRole("navigation", { name: "Sessions" }).getByRole("textbox", { name: "Name" });
   await expect(row).toBeFocused();

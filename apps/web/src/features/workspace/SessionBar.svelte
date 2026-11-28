@@ -36,7 +36,9 @@
     return () => clearTimeout(timer);
   });
   const current = $derived<SessionState>(
-    (session.opening && slowOpening) || client.connection === "Connecting" || client.connection === "Loading" ? "opening" : sessionState(info),
+    (session.opening && slowOpening) || client.connection === "Connecting" || client.connection === "Loading"
+      ? "opening"
+      : sessionState(info),
   );
   const kinds: Record<Exclude<SessionState, "">, StatusKind> = {
     "needs-you": "attention",
@@ -49,14 +51,20 @@
   };
   // A question waiting or a queued prompt is said as it is; otherwise an extension may word it.
   const label = $derived(
-    current === "opening" ? STATE_WORDS.opening
-    : current === "working" && doc?.compacting ? "Compacting context"
-    : current === "working" && working?.message ? working.message : sessionStatus(info),
+    current === "opening"
+      ? STATE_WORDS.opening
+      : current === "working" && doc?.compacting
+        ? "Compacting context"
+        : current === "working" && working?.message
+          ? working.message
+          : sessionStatus(info),
   );
 
   // How long the reply has run, from when Pi recorded the message it answers.
   // A message waiting for a summary first has no reply running yet.
-  const since = $derived(current === "working" && !(doc?.compacting && doc.queuedText) ? session.items.findLast((item) => item.role === "user")?.at : undefined);
+  const since = $derived(
+    current === "working" && !(doc?.compacting && doc.queuedText) ? session.items.findLast((item) => item.role === "user")?.at : undefined,
+  );
   const clock = useNow(() => since !== undefined);
   // A command runs as if it were typed in the reply box and sent, so it needs what a reply needs.
   const ready = $derived(doc?.status === "idle" && !doc.compacting && session.connection === "Live" && !client.busy);
@@ -91,10 +99,12 @@
     { id: "details", label: "Details", onselect: () => details.show(session.id) },
     ...(doc?.commands?.length ? [{ id: "commands", label: "Commands…", onselect: () => (picking = true) }] : []),
     ...(info?.hasHistory && !forking && !doc?.compacting && ["idle", "error", "read-only"].includes(info.status)
-      ? [{ id: "fork", label: "Fork session", onselect: () => void fork() }] : []),
+      ? [{ id: "fork", label: "Fork session", onselect: () => void fork() }]
+      : []),
     // Starts the session again from its transcript with its agent as it is now; while it works, once it's done.
     ...(doc && !doc.readOnly && !doc.pending?.reload && !["starting", "stopping"].includes(doc.status)
-      ? [{ id: "reload", label: "Reload session", onselect: () => void session.reload() }] : []),
+      ? [{ id: "reload", label: "Reload session", onselect: () => void session.reload() }]
+      : []),
     { id: "copy-link", label: "Copy link", onselect: () => void copyLink() },
     ...(info && canArchive(info) ? [{ id: "archive", label: "Archive", onselect: () => void client.archive(session.id) }] : []),
   ]);
@@ -103,7 +113,9 @@
 {#if layout.size === "expanded"}<ContributionPoint point="session.title" />{/if}
 {#if current && !(working?.hidden && current === "working")}<span class="state" role="status">
     <!-- An extension's frames stand for working only; needing you keeps its own mark. -->
-    {#if working?.frames && current === "working"}<WorkingFrames frames={working.frames} intervalMs={working.intervalMs} /><span class:sr-only={compact}>{label}</span>
+    {#if working?.frames && current === "working"}<WorkingFrames frames={working.frames} intervalMs={working.intervalMs} /><span
+        class:sr-only={compact}>{label}</span
+      >
     {:else}<StatusMark kind={kinds[current]} {label} words={!compact} detail={since ? elapsed(clock.now - since) : undefined} />{/if}
   </span>{/if}
 {#if tabs}<SessionTabs />{/if}
@@ -118,7 +130,12 @@
   onclick={() => (compact ? details.show(session.id) : details.toggle(session.id))}><Icon name="panel" class="h-[18px] w-[18px]" /></Button
 >
 <Menu label="Session actions" title={sessionName(info)} items={actions} />
-{#if picking && doc}<CommandPicker commands={doc.commands} {ready} onrun={(name) => void session.send(`/${name}`)} onclose={() => (picking = false)} />{/if}
+{#if picking && doc}<CommandPicker
+    commands={doc.commands}
+    {ready}
+    onrun={(name) => void session.send(`/${name}`)}
+    onclose={() => (picking = false)}
+  />{/if}
 
 <style>
   .state {

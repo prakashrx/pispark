@@ -97,7 +97,14 @@
   }}
 />
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<aside class="side-panel" class:over class:expanded aria-labelledby={id} onkeydown={keydown} style:width={over || expanded ? undefined : `${layout.panelWidth}px`}>
+<aside
+  class="side-panel"
+  class:over
+  class:expanded
+  aria-labelledby={id}
+  onkeydown={keydown}
+  style:width={over || expanded ? undefined : `${layout.panelWidth}px`}
+>
   {#if !over && !expanded}<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
     <div
       class="resize"
@@ -112,7 +119,9 @@
       onkeydown={resizeKey}
     ></div>{/if}
   <header class="bar">
-    {#if onback}<button type="button" class="tap" aria-label={backLabel} title={backLabel} onclick={onback}><Icon name="back" class="h-4 w-4" /></button>{/if}
+    {#if onback}<button type="button" class="tap" aria-label={backLabel} title={backLabel} onclick={onback}
+        ><Icon name="back" class="h-4 w-4" /></button
+      >{/if}
     <h2 {id} class="title" tabindex="-1" bind:this={heading}>{title}</h2>
     {#if actions}{@render actions()}{/if}
     {#if onexpand}<button
@@ -123,7 +132,9 @@
         aria-pressed={expanded}
         onclick={() => onexpand(!expanded)}><Icon name="expand" class="h-4 w-4" /></button
       >{/if}
-    <button type="button" class="tap" aria-label={closeLabel} title={closeLabel} onclick={onclose}><Icon name="close" class="h-4 w-4" /></button>
+    <button type="button" class="tap" aria-label={closeLabel} title={closeLabel} onclick={onclose}
+      ><Icon name="close" class="h-4 w-4" /></button
+    >
   </header>
   <div class="body">{@render children()}</div>
 </aside>

@@ -27,19 +27,14 @@
     const menu = target.closest('[role="menu"]');
     if (!menu) return;
     event.preventDefault();
-    const buttons = [
-      ...menu.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitem"]:not(:disabled)',
-      ),
-    ];
+    const buttons = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')];
     const current = buttons.indexOf(target as HTMLButtonElement);
     const index =
       event.key === "Home"
         ? 0
         : event.key === "End"
           ? buttons.length - 1
-          : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) %
-            buttons.length;
+          : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
     buttons[index]?.focus();
   }
 </script>
@@ -63,14 +58,6 @@
   {/snippet}
 </Popover>
 
-{#snippet dots()}<svg
-    class="w-[18px] h-[18px] text-muted-foreground"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    aria-hidden="true"
-    ><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle
-      cx="19"
-      cy="12"
-      r="1.6"
-    /></svg
+{#snippet dots()}<svg class="w-[18px] h-[18px] text-muted-foreground" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
+    ><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg
   >{/snippet}

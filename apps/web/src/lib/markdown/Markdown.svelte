@@ -9,7 +9,10 @@
   let view = $state.raw<MarkdownView>();
   $effect(() => {
     if (!root) return;
-    const shown = new MarkdownView(root, untrack(() => options));
+    const shown = new MarkdownView(
+      root,
+      untrack(() => options),
+    );
     view = shown;
     return () => shown.destroy();
   });

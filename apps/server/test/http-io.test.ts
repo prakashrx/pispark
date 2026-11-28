@@ -34,7 +34,8 @@ test("every path the API names is made of words the log keeps", () => {
     const source = readFileSync(`${http}${file}`, "utf8");
     const paths = [...source.matchAll(/["`](\/api(?:\/[a-z-]+)+)\/?["`]/g)].map((match) => match[1]!);
     // The agent API names its operations in a switch.
-    const operations = file === "agent-http.ts" ? [...source.matchAll(/case "([a-z]+(?:\/[a-z]+)*)":/g)].map((match) => `/api/agents/${match[1]}`) : [];
+    const operations =
+      file === "agent-http.ts" ? [...source.matchAll(/case "([a-z]+(?:\/[a-z]+)*)":/g)].map((match) => `/api/agents/${match[1]}`) : [];
     return [...paths, ...operations];
   });
   assert(named.length > 30, "the scan found the API's paths");

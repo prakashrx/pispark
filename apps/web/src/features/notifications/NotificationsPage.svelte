@@ -59,15 +59,22 @@
     {#each EVENTS as { event, label, hint } (event)}
       <CardRow>
         <div class="choice">
-          <span class="event"><span>{label}</span>{#if hint}<span class="muted small">{hint}</span>{/if}</span>
-          <Toggle label={label} checked={n.events.includes(event)} onchange={(e) => void n.setEvent(event, (e.currentTarget as HTMLInputElement).checked)} />
+          <span class="event"
+            ><span>{label}</span>{#if hint}<span class="muted small">{hint}</span>{/if}</span
+          >
+          <Toggle
+            {label}
+            checked={n.events.includes(event)}
+            onchange={(e) => void n.setEvent(event, (e.currentTarget as HTMLInputElement).checked)}
+          />
         </div>
       </CardRow>
     {/each}
     <CardRow>
       <p class="muted small">
-        Only when PiSpark isn’t open and in view; otherwise a nudge shows inside the app. Notifications go through your browser’s push service (Apple,
-        Google, Microsoft or Mozilla), which learns only that something happened: this device then reads the session’s name and what happened from PiSpark.
+        Only when PiSpark isn’t open and in view; otherwise a nudge shows inside the app. Notifications go through your browser’s push
+        service (Apple, Google, Microsoft or Mozilla), which learns only that something happened: this device then reads the session’s name
+        and what happened from PiSpark.
       </p>
     </CardRow>
   </Card>

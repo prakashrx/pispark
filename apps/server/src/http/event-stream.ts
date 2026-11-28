@@ -47,10 +47,13 @@ export function eventStream(response: ServerResponse, timing: StreamTiming = STR
     const drained = await Promise.race([once(response, "drain").then(() => true), ended.then(() => false), delay(timing.drainMs)]);
     if (!drained) response.destroy();
   };
-  const ping = setInterval(() => {
-    // A write still waiting for room is proof enough; never stack a ping behind it.
-    if (open && !response.writableNeedDrain && Date.now() - quietSince >= timing.pingMs) void write(": ping\n\n");
-  }, Math.max(10, timing.pingMs / 3));
+  const ping = setInterval(
+    () => {
+      // A write still waiting for room is proof enough; never stack a ping behind it.
+      if (open && !response.writableNeedDrain && Date.now() - quietSince >= timing.pingMs) void write(": ping\n\n");
+    },
+    Math.max(10, timing.pingMs / 3),
+  );
   const lifetime = setTimeout(() => close(), timing.lifetimeMs);
   const close = () => {
     open = false;
