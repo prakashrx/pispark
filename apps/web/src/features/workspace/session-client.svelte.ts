@@ -1,4 +1,4 @@
-import { workspaceEvents } from "./live-stream";
+import { retryDelay, workspaceEvents } from "./live-stream";
 import { getContext, setContext } from "svelte";
 import type { Catalog, HostSettings, SessionDoc, SessionInfo } from "../../../../server/src/contract/protocol";
 import type { ModelChoice } from "../../../../server/src/contract/provider-protocol";
@@ -159,13 +159,14 @@ export class SessionClient {
     const source = new AbortController();
     this.following = source;
     void (async () => {
+      let failures = 0;
       while (!source.signal.aborted && !this.disposed) {
         let received = false;
         try {
-          const response = await fetch("/api/live", { signal: AbortSignal.any([source.signal, AbortSignal.timeout(6 * 60_000)]) });
-          for await (const event of workspaceEvents(response)) {
+          for await (const event of workspaceEvents(source.signal)) {
             if (source.signal.aborted) return;
             received = true;
+            failures = 0;
             if (event.type === "ready") await this.poll();
             else await this.changed(event.areas);
           }
@@ -176,7 +177,7 @@ export class SessionClient {
         // The server ends the stream after a while on purpose: follow on at once.
         if (received) continue;
         await this.poll();
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, retryDelay(++failures)));
       }
     })();
   }
@@ -307,6 +308,8 @@ export class SessionClient {
     }
   }
   reconnect() {
+    // Back online, or the server is back: follow the workspace again now, not after a retry's wait.
+    if (this.following) this.follow();
     if (this.refreshTimer) void this.poll();
     if (this.current) void this.current.reconnect();
     else if (!this.refreshTimer) void this.mount();

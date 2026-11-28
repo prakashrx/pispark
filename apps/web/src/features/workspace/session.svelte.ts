@@ -15,7 +15,7 @@ import type {
 import type { CommandUncertaintyKind } from "./session-presentation";
 import { contributionsFor } from "./extension-views";
 import { LiveSession } from "./live-session.svelte";
-import { liveEvents } from "./live-stream";
+import { liveEvents, retryDelay } from "./live-stream";
 import { CommandFailed, CommandGone, CommandUncertainty, RequestFailed, type Transport } from "./transport";
 import { Attachments, BLOCKED } from "./attachments.svelte";
 
@@ -391,16 +391,14 @@ export class Session {
     this.source = source;
     const { id } = this;
     void (async () => {
+      let failures = 0;
       while (!source.signal.aborted && !this.transport.closed) {
         try {
           // History is read once; a reconnect only catches up on what the session gained since.
           if (!this.live.loaded) await this.live.load(id);
-          const response = await fetch(`/api/sessions/${id}/live`, {
-            signal: AbortSignal.any([source.signal, AbortSignal.timeout(70_000)]),
-          });
           let end: "closed" | "unloaded" | "resync" = "closed";
           let received = false;
-          for await (const event of liveEvents(response)) {
+          for await (const event of liveEvents(id, source.signal)) {
             if (source !== this.source || source.signal.aborted) return;
             if (event.sessionId !== id) throw new Error("Invalid event");
             if (event.type === "unloaded") {
@@ -412,6 +410,7 @@ export class Session {
               break;
             }
             received = true;
+            failures = 0;
             const session = this.live.doc!.session;
             this.applyExtensionDraft(session, event.type === "snapshot");
             this.applyAttention();
@@ -445,7 +444,7 @@ export class Session {
         if (source.signal.aborted || this.transport.closed) return;
         // Keep showing the last state; the reply box stays disabled until Live.
         this.connection = "Reconnecting";
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, retryDelay(++failures)));
       }
     })();
   }
