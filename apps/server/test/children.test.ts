@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { RuntimeError } from "../src/core/runtime/errors.js";
 import { toolOf, VERBS } from "../src/contract/verbs.js";
@@ -219,7 +219,8 @@ test("setup: the Default agent unless one is named, the parent's folder unless o
   try {
     await f.agent("dev", { name: "Dev" }, { "instructions/a.md": "DEV-INSTRUCTIONS" });
     const parent = await f.runtime.create({ folder: f.folder, agent: "dev" });
-    const other = join(f.root, "other");
+    // Beside the parent's folder, named as PiSpark names it (a temporary folder's path may have a short form).
+    const other = join(dirname(parent.folder), "other");
     mkdirSync(other);
     mkdirSync(join(f.folder, "packages"));
     const child = (title: string) => f.children(parent.id).find((each) => each.title === title)!;
