@@ -1,6 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { join } from "node:path";
-import type { Release } from "./install.ts";
+import { system32, type Release } from "./install.ts";
 
 export type TrayChoice = "open" | "update" | "restart" | "logs" | "quit";
 
@@ -12,7 +11,7 @@ export class Tray {
     private readonly onChoice: (choice: TrayChoice) => void,
   ) {}
   start() {
-    const powershell = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    const powershell = system32("WindowsPowerShell", "v1.0", "powershell.exe");
     const child = spawn(
       powershell,
       ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", this.release.tray, "-Icon", this.release.icon],

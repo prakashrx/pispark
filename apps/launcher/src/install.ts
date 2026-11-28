@@ -18,6 +18,8 @@ import { RELEASE_CHANNELS, compareVersions, type ReleaseChannel } from "../../se
 /** Bumped when the launcher changes; a release whose launcher differs switches launchers too. */
 export const LAUNCHER_VERSION = 2;
 export const windows = process.platform === "win32";
+/** A Windows program by its full path under System32 (`WindowsPowerShell\v1.0\powershell.exe` too), so one on PATH is never run instead. */
+export const system32 = (...path: string[]) => join(process.env.SystemRoot ?? "C:\\Windows", "System32", ...path);
 export const VERSION = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
 /** An install's name: lowercase letters, digits and dashes. */
 export const NAME = /^[a-z0-9][a-z0-9-]{0,19}$/;
@@ -140,6 +142,13 @@ export class Install {
     this.downloads = join(root, "downloads");
     this.stateFile = join(root, "state.json");
   }
+  /**
+   * The version that runs, through `current`: what the desktop entries (login, Start menu, the command)
+   * point at, so they keep working as `current` moves to each new version.
+   */
+  currentRelease(): Release {
+    return Release.at(this.current);
+  }
   /** The install a release folder belongs to: `<root>/versions/<version>`. */
   static of(release: Release): Install | undefined {
     const versions = dirname(release.dir);
@@ -258,7 +267,7 @@ export class Install {
   }
 }
 
-export function isLink(path: string) {
+function isLink(path: string) {
   try {
     return lstatSync(path).isSymbolicLink();
   } catch {

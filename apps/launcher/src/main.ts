@@ -18,7 +18,7 @@ import {
   systemd,
   writeStartScript,
 } from "./desktop.ts";
-import { Install, NAME, ensureWindowless, identity, ownRelease, windows, type Release } from "./install.ts";
+import { Install, NAME, ensureWindowless, identity, ownRelease, system32, windows, type Release } from "./install.ts";
 
 const HELP = `pispark: runs PiSpark in the background and keeps it up to date.
 
@@ -172,7 +172,7 @@ async function uninstall(args: string[]) {
   } else console.log("Your data (sessions, agents, settings) is kept.");
   if (windows) {
     // This program runs from the folder being removed: remove it once it has exited.
-    const cmd = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe");
+    const cmd = system32("cmd.exe");
     spawn(cmd, ["/d", "/c", `ping -n 3 127.0.0.1 >nul & rmdir /s /q "${install.root}"`], {
       detached: true,
       stdio: "ignore",

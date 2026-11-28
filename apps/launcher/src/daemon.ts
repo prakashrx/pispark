@@ -15,7 +15,7 @@ const IDLE_POLL_MS = 30_000;
 const HEALTH_MS = 30_000;
 
 /** Exit code that asks systemd to start PiSpark again (`Restart=on-failure`). */
-export const RESTART_EXIT = 75;
+const RESTART_EXIT = 75;
 
 /**
  * The running launcher (`pispark run`): runs the server from the current version, keeps it running,

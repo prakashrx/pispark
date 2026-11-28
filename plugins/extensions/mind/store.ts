@@ -13,11 +13,11 @@ import { questions, trimDone } from "./tasks.js";
  */
 
 /** "Done lately" keeps this many lines. */
-export const DONE_KEPT = 30;
+const DONE_KEPT = 30;
 /** An attachment nothing links to is removed after this long. */
-export const UNLINKED_DAYS = 7;
+const UNLINKED_DAYS = 7;
 /** Earlier versions kept, newest first, across all files. */
-export const HISTORY_KEPT = 200;
+const HISTORY_KEPT = 200;
 
 /** When each waiting question was first put to the person, and until when it is put off. */
 export interface QuestionState {

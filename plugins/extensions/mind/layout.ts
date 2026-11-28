@@ -17,11 +17,11 @@ export const TASKS = "tasks.md";
 export const NOTES_HEADINGS = ["What this is", "How it's set up", "Things to know"] as const;
 export const TASK_HEADINGS = ["Waiting on you", "Doing", "To do", "Done lately"] as const;
 /** The overview stays about a page; detail moves to a topic page. */
-export const NOTES_LIMIT = 6_000;
-export const PAGE_LIMIT = 24_000;
-export const SUMMARY_LIMIT = 200;
+const NOTES_LIMIT = 6_000;
+const PAGE_LIMIT = 24_000;
+const SUMMARY_LIMIT = 200;
 
-export const LAYOUT = [
+const LAYOUT = [
   `${FOLDER}/notes.md`,
   `${FOLDER}/notes/<topic>.md`,
   `${FOLDER}/tasks.md`,
@@ -156,10 +156,6 @@ function checkTasks(content: string): string | undefined {
   }
   return undefined;
 }
-
-/** The empty documents, for a place that has none yet. */
-export const EMPTY_NOTES = NOTES_HEADINGS.map((h) => `## ${h}\n`).join("\n");
-export const EMPTY_TASKS = TASK_HEADINGS.map((h) => `## ${h}\n`).join("\n");
 
 /** A notes page's title and summary, as listed every run. */
 export function pageHead(content: string): { title: string; summary: string } {

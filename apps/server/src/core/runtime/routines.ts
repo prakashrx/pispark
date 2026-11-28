@@ -17,7 +17,7 @@ export interface RoutineHost {
 }
 
 /** A routine's key, as its runs' sessions and wakes know it. */
-export const routineKey = (agent: string, id: string) => `${agent}/${id}`;
+const routineKey = (agent: string, id: string) => `${agent}/${id}`;
 
 /**
  * The clock of the routines agents offer (VISION: unattended work is off unless a person turns it

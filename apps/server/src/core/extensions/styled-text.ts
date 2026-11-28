@@ -98,7 +98,7 @@ class WebTheme extends Theme {
 export const webTheme: Theme = new WebTheme(colors(FOREGROUND), colors(BACKGROUND), "truecolor", { name: "pispark" });
 
 /** Width terminal components are rendered at; the browser wraps narrower views. */
-export const RENDER_WIDTH = 80;
+const RENDER_WIDTH = 80;
 
 /** The little of a TUI that render-only components use: their size and a redraw request. */
 export function webTui(requestRender: () => void): TUI {

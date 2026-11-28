@@ -22,6 +22,7 @@ port="${PISPARK_PORT:-}"
 autostart="yes"
 open="yes"
 root="${PISPARK_INSTALL_DIR:-}"
+# The same list as RELEASES_URL in apps/launcher/src/updates.ts and install.ps1: change all three together.
 releases="${PISPARK_RELEASES_URL:-https://api.github.com/repos/prakashrx/pispark/releases?per_page=100}"
 while [ $# -gt 0 ]; do
   case "$1" in

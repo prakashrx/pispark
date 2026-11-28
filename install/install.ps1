@@ -27,6 +27,7 @@ $ProgressPreference = "SilentlyContinue"
   $label = if ($name) { "PiSpark ($name)" } else { "PiSpark" }
   $command = if ($name) { "pispark-$name" } else { "pispark" }
   $root = if ($env:PISPARK_INSTALL_DIR) { $env:PISPARK_INSTALL_DIR } elseif ($name) { Join-Path $env:LOCALAPPDATA "Programs\PiSpark-$name" } else { Join-Path $env:LOCALAPPDATA "Programs\PiSpark" }
+  # The same list as RELEASES_URL in apps/launcher/src/updates.ts and install.sh: change all three together.
   $releases = if ($env:PISPARK_RELEASES_URL) { $env:PISPARK_RELEASES_URL } else { "https://api.github.com/repos/prakashrx/pispark/releases?per_page=100" }
   $tar = Join-Path $env:SystemRoot "System32\tar.exe"
   if (-not (Test-Path $tar)) { throw "This Windows has no tar.exe (Windows 10 1803 or later has it)." }

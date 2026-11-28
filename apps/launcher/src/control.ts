@@ -19,7 +19,7 @@ export interface ControlStatus {
   address: string;
 }
 
-export function controlPath(root: string) {
+function controlPath(root: string) {
   return windows
     ? `\\\\.\\pipe\\pispark-${createHash("sha256").update(root.toLowerCase()).digest("hex").slice(0, 16)}`
     : join(root, "launcher.sock");

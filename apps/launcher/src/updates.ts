@@ -3,9 +3,12 @@ import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { compareVersions, type ReleaseChannel } from "../../server/src/contract/host-protocol.ts";
-import { Release, ensureWindowless, windows, type Install, type ReleaseInfo } from "./install.ts";
+import { Release, ensureWindowless, system32, windows, type Install, type ReleaseInfo } from "./install.ts";
 
-/** Where releases are listed: this repository's GitHub Releases, unless setup recorded another list. */
+/**
+ * Where releases are listed: this repository's GitHub Releases, unless setup recorded another list.
+ * The installers name the same list: `install/install.sh` and `install/install.ps1`; change all three together.
+ */
 export const RELEASES_URL = "https://api.github.com/repos/prakashrx/pispark/releases?per_page=100";
 
 export interface Available {
@@ -23,7 +26,7 @@ interface GitHubRelease {
   assets: { name: string; browser_download_url: string }[];
 }
 
-export function archiveName(version: string, os: ReleaseInfo["os"], arch: ReleaseInfo["arch"]) {
+function archiveName(version: string, os: ReleaseInfo["os"], arch: ReleaseInfo["arch"]) {
   return `pispark-${version}-${os}-${arch}.tar.gz`;
 }
 
@@ -174,5 +177,5 @@ export function unpack(file: string, install: Install, version: string) {
 
 /** Windows' own tar (bsdtar, in every Windows since 2018); Git's tar reads `C:` as a remote host. */
 export function tar() {
-  return windows ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe") : "tar";
+  return windows ? system32("tar.exe") : "tar";
 }

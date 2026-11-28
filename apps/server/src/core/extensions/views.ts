@@ -9,7 +9,7 @@ import { isInside } from "../files.js";
 import { compileView } from "./view-compiler.js";
 
 /** The one event an extension uses to show a component: `pi.events.emit(VIEW_EVENT, {...})`. */
-export const VIEW_EVENT = "pispark:view";
+const VIEW_EVENT = "pispark:view";
 /**
  * The items of a session's history, the same for every client: `item.tool:<name>` (a tool's
  * output, like Pi's tool renderers) and `item.custom:<customType>` (custom messages and entries,
@@ -22,7 +22,7 @@ const ITEM_POINT = /^item\.(tool:[\w.-]{1,64}|custom:[\w.:-]{1,64})$/;
  * chooses which one shows, and an offer may ask to be shown. A client that draws it names it in
  * its points like any other.
  */
-export const VIEW_POINT = "session.view";
+const VIEW_POINT = "session.view";
 const TITLE = /^\P{Cc}{1,40}$/u;
 const MAX_VIEWS = 6;
 const NAME = /^[\w.:-]{1,64}$/;

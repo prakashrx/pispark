@@ -153,7 +153,7 @@ export function sentAttachmentNames(sessionFolder: string, entries: readonly Ses
     const text = typeof content === "string" ? content : content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
     for (const [, path] of text.matchAll(TAG)) {
       const name = path && isAbsolute(path) ? relative(folder, path) : "";
-      if (validAttachmentName(name) && name !== "..") names.add(name);
+      if (validAttachmentName(name)) names.add(name);
     }
   }
   return names;

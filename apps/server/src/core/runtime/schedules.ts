@@ -100,7 +100,7 @@ export function latestDue(cronText: string, after: string, now: number): string 
 export const CATCH_UP_MS = 86_400_000;
 
 /** The title of a run's own session: "6:30 am run · Fri 14 Nov". */
-export function runTitle(due: string, now: Date): string {
+function runTitle(due: string, now: Date): string {
   const [day, at] = shortDate(new Date(due), now).split(", ");
   return `${at} run · ${day}`;
 }

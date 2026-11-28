@@ -31,7 +31,7 @@ const named = (calls: ToolCall[]) => {
 };
 
 /** What any tool's finished call can put in the message: the changes it made, the pictures it returned. */
-export function genericArtifacts(call: ToolCall): Segment[] {
+function genericArtifacts(call: ToolCall): Segment[] {
   const result = call.result;
   if (!result) return [];
   const out: Segment[] = [];
