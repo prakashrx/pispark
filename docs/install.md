@@ -106,7 +106,7 @@ When a release changes the launcher itself (`LAUNCHER_VERSION` in `apps/launcher
 
 **The data folder's layout** is recorded in `home.json` (`HOME_FORMAT` in `apps/server/src/core/home.ts`). A PiSpark that finds a newer layout than it knows, for example after going back to an older version, refuses to start rather than misread it. Layout 2 (version 0.2) gave agents and sessions their own folders (`agents/<id>/agent.json`, `sessions/<id>/session.json`). A folder still in layout 1 (from 0.1) is no longer upgraded: PiSpark refuses to start on it.
 
-**What is checked:** the release list and downloads use HTTPS (HTTP is allowed only for localhost test feeds), and downloads must match the release's `SHA256SUMS`. That catches damaged downloads, but not a compromised GitHub account; releases are not signed yet.
+**What is checked:** the release list and downloads use HTTPS (HTTP is allowed only for localhost test feeds), and downloads must match the release's `SHA256SUMS`. That catches damaged downloads, but not a compromised GitHub account. From 0.7.0 each archive also carries a signed build provenance attestation: `gh attestation verify <archive> --repo prakashrx/pispark` checks it was built by this repository's release workflow. The launcher doesn't check it yet.
 
 ## Releases
 

@@ -13,8 +13,9 @@ on:
     types: [completed]
     branches: [main]
 
+# Each job asks for what it needs; only publishing writes.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release
@@ -30,7 +31,7 @@ jobs:
       channel: ${{ steps.v.outputs.channel }}
       sha: ${{ steps.v.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - id: v
@@ -69,17 +70,18 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.version.outputs.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22.23.4"
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
+      - run: npm audit signatures
       - run: npm run build
       - run: node scripts/release.mjs --os ${{ matrix.os }} --arch ${{ matrix.arch }} --version ${{ needs.version.outputs.version }} --channel ${{ needs.version.outputs.channel }} --out release
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-${{ matrix.os }}-${{ matrix.arch }}
           path: release/*.tar.gz
@@ -88,12 +90,18 @@ jobs:
   publish:
     needs: [version, build]
     runs-on: ubuntu-24.04
+    permissions:
+      # The release itself, and a signed statement that this workflow built its archives.
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.version.outputs.sha }}
           sparse-checkout: docs/releases
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: release-*
           merge-multiple: true
@@ -101,6 +109,11 @@ jobs:
       - name: Checksums
         working-directory: release
         run: sha256sum *.tar.gz > SHA256SUMS && cat SHA256SUMS
+      # Anyone can check an archive came from this workflow: gh attestation verify <archive> --repo <owner>/<repo>
+      - name: Provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: release/*.tar.gz
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

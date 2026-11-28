@@ -19,7 +19,8 @@ The root dev command starts both workspaces and stops the other when either exit
 | --- | --- | --- |
 | `npm ci` | `make install` | Reproducible installation |
 | `npm run dev` | `make dev` | Both development servers |
-| `npm run check` | `make check` | Server TypeScript, Svelte diagnostics, Vite config types |
+| `npm run check` | `make check` | Formatting (Prettier), server TypeScript, Svelte diagnostics, Vite config types; unused variables and parameters are errors |
+| `npm run format` | — | Format the code (`.prettierrc.json`) |
 | `npm test` | `make test` | Backend HTTP tests and jsdom UI/route/selector tests |
 | `npm run test:browser -w @pispark/web` | — | Desktop/mobile layout, keyboard and local interaction checks |
 | `npm run build` | `make build` | Compile backend and bundle frontend |
@@ -87,6 +88,21 @@ Remove-Item Env:PISPARK_TEST_PRODUCTION
 ```
 
 CI installs Chromium and runs the production browser suite after the core checks and HTTP smoke. For a manual UI pass, test the three sizes (phone, tablet, desktop), Tab/Shift+Tab focus, Enter/Space activation, Escape dismissal/focus return, the skip link, hiding the sidebar and the tablet drawer, independent New session/reply drafts, real agent collection/create/editor and file-save/compose/validate/save/conflict states, session streaming/cancel/reconnect, Details beside the conversation (column, overlay on a portrait tablet, its own screen on a phone; Back, Expand, Escape), archiving with its Undo toast (a long press on a phone row), the nudge when another session needs you, the "Can’t reach PiSpark" banner when the server stops, and actual native title changes. The status dot reports client connectivity, not model-provider health, and adds "Offline" or "Connecting…" text when not connected. Drafts intentionally disappear on reload.
+
+## Formatting
+
+The code is formatted by Prettier with the committed `.prettierrc.json` (140 columns); `npm run check` fails on code that isn't, and `npm run format` fixes it. Your editor's Prettier extension picks the config up. An optional hook checks what you commit the same way: turn it on once with `git config core.hooksPath .githooks`. The one commit that formatted everything is in `.git-blame-ignore-revs`; `git config blame.ignoreRevsFile .git-blame-ignore-revs` makes `git blame` skip it (GitHub does by itself).
+
+## Supply chain
+
+Dependencies are a way in, so they are kept few and installed carefully:
+
+- **Locked:** `package-lock.json` is committed, and CI installs exactly it (`npm ci`).
+- **No install scripts:** CI and release builds install with `--ignore-scripts`, the usual way a poisoned package runs code. Nothing PiSpark needs depends on them (esbuild finds its binary through its platform package).
+- **Signatures:** `npm audit signatures` checks every package against the registry's signatures before anything is built.
+- **Updates wait:** Dependabot proposes updates as one grouped pull request a week for npm and one for GitHub Actions, never for a version less than 7 days old (`.github/dependabot.yml`). Most poisoned releases are found and pulled within days. Nothing merges itself.
+- **Actions pinned:** every GitHub Action is used at a full commit SHA, with its version beside it, so a moved tag can't change what runs. Workflows read the repository only; the release's publish job alone can write.
+- **Releases attested:** each release archive gets a signed build provenance attestation (Sigstore). `gh attestation verify <archive> --repo prakashrx/pispark` checks it came from this repository's release workflow.
 
 ## Dependency findings
 

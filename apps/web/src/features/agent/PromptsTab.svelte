@@ -96,7 +96,7 @@
         <Pane title="Preview">
           <div class="typed" role="group" aria-label="As you'd type it">
             <span class="cmd">/{item.name || "name"}</span>
-            {#each argsOf(item) as a, i (a.n)}
+            {#each argsOf(item) as a (a.n)}
               <input
                 class="try-arg"
                 aria-label={a.name}

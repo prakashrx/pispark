@@ -16,7 +16,6 @@ import {
   removeCommand,
   removeStartMenu,
   systemd,
-  underSystemd,
   writeStartScript,
 } from "./desktop.ts";
 import { Install, NAME, ensureWindowless, identity, ownRelease, windows, type Release } from "./install.ts";

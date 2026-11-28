@@ -8,7 +8,7 @@ Small, readable changes with clear boundaries are welcome.
 2. **Set up:** Node 22 (22.23.4+), 24 or 26+ and npm 10+, then `npm ci` and `npm run dev` ([development](docs/development.md)). Nothing else is needed: no configuration file, no terminal Pi, no credentials. Use a separate data folder for development (`PISPARK_HOME`), and never run paid model calls as tests.
 3. **Keep the shape:** the server in `apps/server` (its three zones, see [architecture](docs/architecture.md)), the web in `apps/web`, the launcher in `apps/launcher`, explanations in `docs/`. Prefer a small concrete component to a speculative abstraction.
 4. **Test what changed.** Tests use real Pi sessions with a deterministic local provider. Don't present unbuilt features as working.
-5. **Before a PR:** `npm run check`, `npm test`, `npm run build` and `npm run smoke`. For UI changes, also the browser suite in [development](docs/development.md), at narrow and wide widths and with the keyboard. Update the docs when behavior, commands or boundaries change.
+5. **Before a PR:** `npm run check` (it checks formatting too: `npm run format` fixes it), `npm test`, `npm run build` and `npm run smoke`. For UI changes, also the browser suite in [development](docs/development.md), at narrow and wide widths and with the keyboard. Update the docs when behavior, commands or boundaries change.
 
 Commit the root lockfile when dependencies change. Never commit credentials, environment files, private work records, runtime data or private screenshots, and keep machine-specific paths out of public docs.
 
