@@ -52,12 +52,14 @@
         onclick={() => {
           close();
           item.onselect();
-        }}>{item.label}</button
+        }}
       >
+        {item.label}
+      </button>
     {/each}
   {/snippet}
 </Popover>
 
-{#snippet dots()}<svg class="w-[18px] h-[18px] text-muted-foreground" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
-    ><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg
-  >{/snippet}
+{#snippet dots()}<svg class="w-[18px] h-[18px] text-muted-foreground" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" />
+  </svg>{/snippet}

@@ -81,17 +81,15 @@ export class ToolDiscovery {
     const loaded = await loadExplicitExtensions([builtIn, ...setup.extensionPaths], setup.folder ?? this.cwd, createEventBus());
     try {
       const tools = loaded.extensions.flatMap((extension) =>
-        [...extension.tools.values()].map(
-          ({ definition }): DiscoveredTool => ({
-            name: definition.name,
-            ...(definition.label ? { label: definition.label } : {}),
-            ...(definition.description ? { description: definition.description } : {}),
-            source:
-              extension.path === builtIn || extension.path.startsWith("builtin:")
-                ? { kind: "core" }
-                : { kind: "extension", name: extensionName(extension.path) },
-          }),
-        ),
+        [...extension.tools.values()].map(({ definition }): DiscoveredTool => ({
+          name: definition.name,
+          ...(definition.label ? { label: definition.label } : {}),
+          ...(definition.description ? { description: definition.description } : {}),
+          source:
+            extension.path === builtIn || extension.path.startsWith("builtin:")
+              ? { kind: "core" }
+              : { kind: "extension", name: extensionName(extension.path) },
+        })),
       );
       return { tools, incomplete: loaded.errors.length > 0 };
     } finally {

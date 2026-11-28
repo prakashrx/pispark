@@ -114,8 +114,10 @@
 {#if current && !(working?.hidden && current === "working")}<span class="state" role="status">
     <!-- An extension's frames stand for working only; needing you keeps its own mark. -->
     {#if working?.frames && current === "working"}<WorkingFrames frames={working.frames} intervalMs={working.intervalMs} /><span
-        class:sr-only={compact}>{label}</span
+        class:sr-only={compact}
       >
+        {label}
+      </span>
     {:else}<StatusMark kind={kinds[current]} {label} words={!compact} detail={since ? elapsed(clock.now - since) : undefined} />{/if}
   </span>{/if}
 {#if tabs}<SessionTabs />{/if}
@@ -127,8 +129,10 @@
   aria-label="Details"
   title="Details"
   aria-pressed={compact ? undefined : details.view(session.id) !== undefined}
-  onclick={() => (compact ? details.show(session.id) : details.toggle(session.id))}><Icon name="panel" class="h-[18px] w-[18px]" /></Button
+  onclick={() => (compact ? details.show(session.id) : details.toggle(session.id))}
 >
+  <Icon name="panel" class="h-[18px] w-[18px]" />
+</Button>
 <Menu label="Session actions" title={sessionName(info)} items={actions} />
 {#if picking && doc}<CommandPicker
     commands={doc.commands}

@@ -113,8 +113,10 @@
           class="icon"
           aria-label="Add a schedule"
           title="Add a schedule"
-          onclick={() => (editing = true)}><Icon name="plus" class="h-4 w-4" /></button
-        >{/snippet}
+          onclick={() => (editing = true)}
+        >
+          <Icon name="plus" class="h-4 w-4" />
+        </button>{/snippet}
       <StartedHere owner={info} onschedule={(schedule) => (editing = schedule)} />
     </Fold>
 
@@ -189,8 +191,10 @@
           size="compact"
           variant="ghost"
           unavailable={!between || requestingCompaction ? "The session is busy" : undefined}
-          onclick={compactContext}>{requestingCompaction || doc.compacting ? "Compacting…" : "Compact context"}</Button
+          onclick={compactContext}
         >
+          {requestingCompaction || doc.compacting ? "Compacting…" : "Compact context"}
+        </Button>
         {#if doc.compacting}<Button size="compact" variant="ghost" onclick={() => void session.stop()}>Cancel compaction</Button>{/if}
         {#if compactResult}<p role="status">{compactResult}</p>{/if}
       </Fold>{/if}
@@ -230,13 +234,15 @@
             class="icon"
             aria-label="Show routines"
             title="Run now and recent runs"
-            onclick={() => details.show(session.id, "routines")}><Icon name="expand" class="h-4 w-4" /></button
-          >{/snippet}
+            onclick={() => details.show(session.id, "routines")}
+          >
+            <Icon name="expand" class="h-4 w-4" />
+          </button>{/snippet}
         <ul class="rows" aria-label="Routines">
           {#each routines as routine (routine.id)}<li class="row">
-              <span class="grow"
-                ><span class="line">{routine.name}</span><span class="sub">{describeSchedule({ cron: routine.cron })}</span></span
-              >
+              <span class="grow">
+                <span class="line">{routine.name}</span><span class="sub">{describeSchedule({ cron: routine.cron })}</span>
+              </span>
               <Toggle
                 label={`Run ${routine.name}`}
                 checked={routine.on}
@@ -277,8 +283,10 @@
             class="icon"
             aria-label={`Stop ${sessionName(child)}`}
             title="Stop"
-            onclick={() => void client.stop(child.id)}><Icon name="stop" class="h-4 w-4" /></button
-          >{/if}
+            onclick={() => void client.stop(child.id)}
+          >
+            <Icon name="stop" class="h-4 w-4" />
+          </button>{/if}
       </li>
     {/each}
   </ul>

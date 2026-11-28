@@ -62,8 +62,10 @@
         data-size="icon"
         aria-label={`Edit ${title.toLowerCase()}`}
         title="Edit"
-        onclick={() => void edit()}><Icon name="pencil" class="h-3.5 w-3.5" /></button
+        onclick={() => void edit()}
       >
+        <Icon name="pencil" class="h-3.5 w-3.5" />
+      </button>
     {/if}
   {/snippet}
   <div class="box">
@@ -82,8 +84,7 @@
             event.preventDefault();
             void done(true);
           }
-        }}
-      ></textarea>
+        }}></textarea>
     {:else}
       <p class="value" class:empty={!value}>{value || empty}</p>
     {/if}

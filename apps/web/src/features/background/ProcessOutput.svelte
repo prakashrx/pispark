@@ -70,9 +70,9 @@
         ? output.text || "(no output yet)"
         : "Reading…"}</pre>
     {#if process.state === "running"}<div>
-        <Button size="compact" onclick={() => void client.processes.stop(sessionId, process!.id)}
-          >Stop<span class="sr-only"> {name}</span></Button
-        >
+        <Button size="compact" onclick={() => void client.processes.stop(sessionId, process!.id)}>
+          Stop<span class="sr-only"> {name}</span>
+        </Button>
       </div>{/if}
   </div>
 {:else if loaded}<p class="text-sm text-muted-foreground">

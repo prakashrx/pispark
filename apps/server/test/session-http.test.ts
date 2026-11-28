@@ -195,7 +195,7 @@ test("history is read from Pi's session: byte-bounded pages, cursors both ways, 
   assert.deepEqual(Object.keys(result.details as object), ["rows"]);
   assert.equal((result.details as { rows: unknown[] }).rows.length, 256);
   let complete = "";
-  for (let offset: number | undefined = 0; offset !== undefined; ) {
+  for (let offset: number | undefined = 0; offset !== undefined;) {
     const chunk: PartPage = await (await fetch(`${f.base}/api/sessions/${id}/items/${result.id}/parts/0?offset=${offset}`)).json();
     assert(chunk.text.length <= 64 * 1024);
     complete += chunk.text;

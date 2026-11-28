@@ -59,9 +59,9 @@
     {#each EVENTS as { event, label, hint } (event)}
       <CardRow>
         <div class="choice">
-          <span class="event"
-            ><span>{label}</span>{#if hint}<span class="muted small">{hint}</span>{/if}</span
-          >
+          <span class="event">
+            <span>{label}</span>{#if hint}<span class="muted small">{hint}</span>{/if}
+          </span>
           <Toggle
             {label}
             checked={n.events.includes(event)}

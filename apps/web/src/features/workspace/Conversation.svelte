@@ -123,8 +123,10 @@
           onclick={() => {
             earlierFailed = false;
             void earlier();
-          }}>Load earlier messages</Button
-        >{/if}
+          }}
+        >
+          Load earlier messages
+        </Button>{/if}
       <div class="flex flex-col gap-6">
         {#each turns as turn (turn.key)}
           <ResponseTurn {turn} sessionId={session.id} />

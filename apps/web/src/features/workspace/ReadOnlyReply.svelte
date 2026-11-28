@@ -63,9 +63,9 @@
       {#if provider && !signedIn}<a class="way" href="#/settings/providers">Sign in</a>{/if}
       <Selector label="Choose a model" action options={models} searchable bind:value={choice} emptyText="No model is signed in yet">
         {#snippet children()}<Icon name="model" class="h-3.5 w-3.5" /><span>Choose a model</span>{/snippet}
-        {#snippet footer()}<a class="text-sm font-medium text-[var(--interactive-text)] hover:underline" href="#/settings/providers"
-            >Providers &amp; models</a
-          >{/snippet}
+        {#snippet footer()}<a class="text-sm font-medium text-[var(--interactive-text)] hover:underline" href="#/settings/providers">
+            Providers &amp; models
+          </a>{/snippet}
       </Selector>
     {:else if doc?.readOnly === "agent"}
       <a class="way" href="#/agents">Agents</a>

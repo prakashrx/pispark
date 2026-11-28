@@ -147,12 +147,12 @@
             placeholder="What it does, in a sentence"
           />
           <div class="name-actions">
-            <button type="button" class="ui-button" data-variant="ghost" data-size="compact" onclick={() => void doneName(false)}
-              >Cancel</button
-            >
-            <button type="submit" class="ui-button" data-variant="primary" data-size="compact" disabled={!nameText.trim() || client.busy}
-              >Save</button
-            >
+            <button type="button" class="ui-button" data-variant="ghost" data-size="compact" onclick={() => void doneName(false)}>
+              Cancel
+            </button>
+            <button type="submit" class="ui-button" data-variant="primary" data-size="compact" disabled={!nameText.trim() || client.busy}>
+              Save
+            </button>
           </div>
         </form>
       {:else}
@@ -165,8 +165,10 @@
               data-size="icon"
               aria-label="Edit name and description"
               title="Edit name and description"
-              onclick={() => void editName()}><Icon name="pencil" class="h-4 w-4" /></button
-            >{/if}
+              onclick={() => void editName()}
+            >
+              <Icon name="pencil" class="h-4 w-4" />
+            </button>{/if}
         </div>
         {#if definition?.description}<p class="desc">{definition.description}</p>{/if}
         {#if id === "default"}<p class="desc">

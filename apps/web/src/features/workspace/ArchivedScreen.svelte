@@ -69,14 +69,14 @@
           <div class="flex items-center gap-2">
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm font-medium">{name}</span>
-              <span class="block truncate text-xs text-muted-foreground"
-                >{goesByApp(session) ? "" : `${session.agent.name} · `}{sessionStarted(session)}</span
-              >
+              <span class="block truncate text-xs text-muted-foreground">
+                {goesByApp(session) ? "" : `${session.agent.name} · `}{sessionStarted(session)}
+              </span>
             </span>
             <Button size="compact" aria-label={`Restore ${name}`} onclick={() => act(session.id, "restore")}>Restore</Button>
-            <Button size="compact" variant="ghost" class="danger" aria-label={`Delete ${name}`} onclick={() => (confirming = session.id)}
-              >Delete</Button
-            >
+            <Button size="compact" variant="ghost" class="danger" aria-label={`Delete ${name}`} onclick={() => (confirming = session.id)}>
+              Delete
+            </Button>
           </div>
         </li>
       {:else}

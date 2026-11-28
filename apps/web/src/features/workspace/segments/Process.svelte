@@ -36,15 +36,19 @@
       class="icon"
       aria-label={`Show output of ${name}`}
       title="Show output"
-      onclick={() => details.show(session.id, "tasks", segment.processId)}><Icon name="expand" class="h-3.5 w-3.5" /></button
+      onclick={() => details.show(session.id, "tasks", segment.processId)}
     >
+      <Icon name="expand" class="h-3.5 w-3.5" />
+    </button>
     {#if shown?.state === "running"}<button
         type="button"
         class="icon"
         aria-label={`Stop ${name}`}
         title="Stop"
-        onclick={() => void client.processes.stop(session.id, segment.processId)}><Icon name="stop" class="h-3.5 w-3.5" /></button
-      >{/if}{/if}
+        onclick={() => void client.processes.stop(session.id, segment.processId)}
+      >
+        <Icon name="stop" class="h-3.5 w-3.5" />
+      </button>{/if}{/if}
 </div>
 
 <style>

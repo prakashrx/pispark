@@ -65,21 +65,21 @@
         </div>
       {:else if update.phase === "restarting" || host.restarting}
         <div class="notice" role="status">
-          <span class="spin" aria-hidden="true"></span><span
-            ><strong>Updating to v{host.restarting ?? (update.phase === "restarting" ? update.version : "")}…</strong> Back in a few seconds.</span
-          >
+          <span class="spin" aria-hidden="true"></span><span>
+            <strong>Updating to v{host.restarting ?? (update.phase === "restarting" ? update.version : "")}…</strong> Back in a few seconds.
+          </span>
         </div>
       {:else if update.phase === "available" || update.phase === "waiting"}
         <div class="notice" role="status">
           <Icon name="arrowUp" class="w-4 h-4 shrink-0" />
-          <span class="flex-1"
-            >{#if update.phase === "waiting"}<strong>v{update.version} installs when nothing is running.</strong>
-              It checks again every 30 seconds.{:else}<strong>v{update.version} is available.</strong> Your sessions stay through the restart.{/if}</span
-          >
+          <span class="flex-1">
+            {#if update.phase === "waiting"}<strong>v{update.version} installs when nothing is running.</strong>
+              It checks again every 30 seconds.{:else}<strong>v{update.version} is available.</strong> Your sessions stay through the restart.{/if}
+          </span>
           <span class="flex gap-2">
-            {#if update.phase === "available" && update.notes}<a class="link" href={update.notes} target="_blank" rel="noreferrer"
-                >What’s new</a
-              >{/if}
+            {#if update.phase === "available" && update.notes}<a class="link" href={update.notes} target="_blank" rel="noreferrer">
+                What’s new
+              </a>{/if}
             {#if update.phase === "waiting"}
               <Button size="compact" disabled={acting} onclick={() => void act({ action: "apply", when: "now" })}>Update now</Button>
               <Button size="compact" variant="ghost" disabled={acting} onclick={() => void act({ action: "cancel" })}>Cancel</Button>
@@ -98,15 +98,15 @@
                   <Icon name="thought" class="w-4 h-4 text-muted-foreground" />A reply in “{reply.title}”<span
                     class="text-muted-foreground"
                   >
-                    · would be interrupted</span
-                  >
+                    · would be interrupted
+                  </span>
                 </li>{/each}
               {#each running.processes as process (process.session + process.name)}<li>
                   <Icon name="terminal" class="w-4 h-4 text-muted-foreground" />{process.name} in “{process.title}”<span
                     class="text-muted-foreground"
                   >
-                    · would stop; the agent is told</span
-                  >
+                    · would stop; the agent is told
+                  </span>
                 </li>{/each}
             </ul>
             <div class="flex flex-wrap gap-2 mt-3">
@@ -114,11 +114,13 @@
                 size="compact"
                 variant="primary"
                 disabled={acting}
-                onclick={() => ((confirming = false), void act({ action: "apply", when: "idle" }))}>Update when idle</Button
+                onclick={() => ((confirming = false), void act({ action: "apply", when: "idle" }))}
               >
-              <Button size="compact" disabled={acting} onclick={() => ((confirming = false), void act({ action: "apply", when: "now" }))}
-                >Update now</Button
-              >
+                Update when idle
+              </Button>
+              <Button size="compact" disabled={acting} onclick={() => ((confirming = false), void act({ action: "apply", when: "now" }))}>
+                Update now
+              </Button>
               <Button size="compact" variant="ghost" onclick={() => (confirming = false)}>Cancel</Button>
             </div>
           </div>
@@ -127,25 +129,25 @@
         <div class="notice" role="status"><span class="spin" aria-hidden="true"></span><span>Checking for updates…</span></div>
       {:else if update.phase === "downloading"}
         <div class="notice" role="status">
-          <span class="spin" aria-hidden="true"></span><span
-            >Downloading v{update.version}… {formatBytes(update.received)}{update.total ? ` of ${formatBytes(update.total)}` : ""}</span
-          >
+          <span class="spin" aria-hidden="true"></span><span>
+            Downloading v{update.version}… {formatBytes(update.received)}{update.total ? ` of ${formatBytes(update.total)}` : ""}
+          </span>
         </div>
       {:else if update.phase === "failed"}
         <div class="notice" role="alert">
           <Icon name="alert" class="w-4 h-4 shrink-0" />
-          <span class="flex-1"
-            ><strong>The update to v{update.version} didn’t start.</strong> PiSpark went back to v{status.version}, and v{update.version} won’t
-            be offered again. <span class="text-muted-foreground">{update.reason}</span></span
-          >
+          <span class="flex-1">
+            <strong>The update to v{update.version} didn’t start.</strong> PiSpark went back to v{status.version}, and v{update.version} won’t
+            be offered again. <span class="text-muted-foreground">{update.reason}</span>
+          </span>
           <Button size="compact" variant="ghost" disabled={acting} onclick={() => void act({ action: "check" })}>Check again</Button>
         </div>
       {:else if update.phase === "error"}
         <div class="notice" role="alert">
           <Icon name="alert" class="w-4 h-4 shrink-0" />
-          <span class="flex-1"
-            ><strong>Couldn’t check for updates.</strong> <span class="text-muted-foreground">{update.message}</span></span
-          >
+          <span class="flex-1">
+            <strong>Couldn’t check for updates.</strong> <span class="text-muted-foreground">{update.message}</span>
+          </span>
           <Button size="compact" variant="ghost" disabled={acting} onclick={() => void act({ action: "check" })}>Try again</Button>
         </div>
       {:else}
@@ -180,29 +182,31 @@
 {/if}
 {#if status}
   <Card title="This PiSpark">
-    <CardRow label="Version"
-      ><span class="flex-1"
-        >{status.version}{#if launcher}<span class="text-muted-foreground"
-            >{" · "}{launcher.channel === "stable" ? "Stable" : "Latest"} channel</span
-          >{/if}</span
-      >{#if host.notes}<Button
+    <CardRow label="Version">
+      <span class="flex-1">
+        {status.version}{#if launcher}<span class="text-muted-foreground">
+            {" · "}{launcher.channel === "stable" ? "Stable" : "Latest"} channel
+          </span>{/if}
+      </span>{#if host.notes}<Button
           size="compact"
           variant="ghost"
           aria-expanded={showNotes}
           aria-controls="release-notes"
-          onclick={() => (showNotes = !showNotes)}>What’s new</Button
-        >{/if}</CardRow
-    >
+          onclick={() => (showNotes = !showNotes)}
+        >
+          What’s new
+        </Button>{/if}
+    </CardRow>
     {#if host.notes && showNotes}
       <div id="release-notes" class="notes" role="region" aria-label={`What’s new in ${host.notes.version}`}>
         <Markdown text={host.notes.notes} />
       </div>
     {/if}
-    {#if !status.managed}<CardRow
-        ><p class="text-xs text-muted-foreground">
+    {#if !status.managed}<CardRow>
+        <p class="text-xs text-muted-foreground">
           Started from a copy of its source (npm start or dev). Updates come from however it was started.
-        </p></CardRow
-      >{/if}
+        </p>
+      </CardRow>{/if}
     <CardRow label="Data"><span class="mono">{status.data}</span></CardRow>
     <CardRow label="Address"><span class="mono">{status.address}</span></CardRow>
     {#if launcher}

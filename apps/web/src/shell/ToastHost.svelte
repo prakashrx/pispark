@@ -27,8 +27,10 @@
             onclick={() => {
               toast.action!.run();
               attention.dismissToast();
-            }}>{toast.action.label}</button
-          >{/if}
+            }}
+          >
+            {toast.action.label}
+          </button>{/if}
       </div>
     {/key}
   {/if}

@@ -51,8 +51,10 @@
         aria-expanded={open}
         aria-controls={id}
         aria-label={`Sessions under ${name}`}
-        onclick={() => (toggled = !open)}><Icon name={open ? "chevronDown" : "chevronRight"} class="h-3.5 w-3.5" /></button
-      >{/if}
+        onclick={() => (toggled = !open)}
+      >
+        <Icon name={open ? "chevronDown" : "chevronRight"} class="h-3.5 w-3.5" />
+      </button>{/if}
   {/snippet}
 </SessionRow>
 {#if open}

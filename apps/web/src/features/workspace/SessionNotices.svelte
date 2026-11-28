@@ -67,8 +67,10 @@
     <span class="flex-1">This session was interrupted. Your saved messages are still here.</span>
     {#if !doc?.readOnly && (doc?.status === "idle" || doc?.status === "error")}<Button
         size="compact"
-        onclick={() => void session.send("Continue")}>Continue</Button
-      >{/if}
+        onclick={() => void session.send("Continue")}
+      >
+        Continue
+      </Button>{/if}
   </p>
 {/snippet}
 {#snippet waiting()}
@@ -79,9 +81,9 @@
 {/snippet}
 {#snippet agentChanged()}
   <p role="status" class="notice flex flex-wrap items-center gap-3">
-    {#if doc?.pending?.reload}<span class="flex-1"
-        >The agent changed. The session reloads with it when this reply finishes; your messages stay.</span
-      >
+    {#if doc?.pending?.reload}<span class="flex-1">
+        The agent changed. The session reloads with it when this reply finishes; your messages stay.
+      </span>
     {:else}<span class="flex-1">The agent changed. Reload to apply it; your messages stay.</span>
       <Button size="compact" onclick={() => session.reload()}>{working ? "Reload after this reply" : "Reload session"}</Button>{/if}
   </p>
@@ -89,15 +91,16 @@
 {#snippet reloading()}<p role="status" class="notice">The session reloads when this reply finishes; your messages stay.</p>{/snippet}
 {#snippet holdAsked()}
   <div role="status" class="notice flex flex-wrap items-center gap-3">
-    <span class="min-w-0 flex-[1_1_20rem]"
-      ><strong>{doc?.holdAsked?.extension}</strong> (an extension of {info?.agent.name}) wants to keep this session running when no one is
+    <span class="min-w-0 flex-[1_1_20rem]">
+      <strong>{doc?.holdAsked?.extension}</strong> (an extension of {info?.agent.name}) wants to keep this session running when no one is
       watching: <em>{doc?.holdAsked?.reason}</em>.
-      <span class="block text-xs text-muted-foreground"
-        >Allowed, it stays loaded and starts again after PiSpark restarts. Pause all stops it.</span
-      ></span
-    >
-    <Button size="compact" variant="primary" onclick={() => void client.hold(session.id, "allow-hold")}>Allow for {info?.agent.name}</Button
-    >
+      <span class="block text-xs text-muted-foreground">
+        Allowed, it stays loaded and starts again after PiSpark restarts. Pause all stops it.
+      </span>
+    </span>
+    <Button size="compact" variant="primary" onclick={() => void client.hold(session.id, "allow-hold")}>
+      Allow for {info?.agent.name}
+    </Button>
     <Button size="compact" onclick={() => void client.hold(session.id, "deny-hold")}>Not now</Button>
   </div>
 {/snippet}
@@ -109,8 +112,10 @@
         type="button"
         class="more"
         aria-expanded={all}
-        onclick={() => (all = !all)}>{all ? "Show less" : `${notices.length - 1} more`}</button
-      >{/if}
+        onclick={() => (all = !all)}
+      >
+        {all ? "Show less" : `${notices.length - 1} more`}
+      </button>{/if}
   </div>
 {/each}
 <ContributionPoint point="session.header" />

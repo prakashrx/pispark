@@ -146,8 +146,10 @@
                             ? " · "
                             : " "}{#if client.sessions.some((s) => s.id === run.session)}<a
                               class="link"
-                              href={href({ name: "session", id: run.session })}>{shortDate(new Date(run.due))}</a
-                            >{:else}{shortDate(new Date(run.due))}{run.archived ? " (archived)" : ""}{/if}{/each}
+                              href={href({ name: "session", id: run.session })}
+                            >
+                              {shortDate(new Date(run.due))}
+                            </a>{:else}{shortDate(new Date(run.due))}{run.archived ? " (archived)" : ""}{/if}{/each}
                       </p>{/if}
                     <Button size="compact" onclick={() => void runNow(routine)}>Run now</Button>
                   </div>

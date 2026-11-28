@@ -112,7 +112,7 @@ export class SessionProcesses implements Kind {
     }
     // What follows the line it waited for (a server's URL after "ready") usually comes at once:
     // a moment more of output, until it goes quiet for a quarter second, at most half a second.
-    for (const end = Date.now() + 500; Date.now() < end; ) {
+    for (const end = Date.now() + 500; Date.now() < end;) {
       const before = process.written;
       await new Promise((done) => setTimeout(done, 250));
       if (process.written === before) break;

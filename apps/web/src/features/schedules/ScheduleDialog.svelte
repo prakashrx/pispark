@@ -116,9 +116,9 @@
 >
   {#snippet primary()}<Button type="submit" form={`${id}-form`} variant="primary" loading={saving}>Save</Button>{/snippet}
   {#snippet footer()}
-    {#if schedule && !confirming}<Button variant="destructive" class="delete" data-delete onclick={() => void confirmDelete(true)}
-        >Delete<span class="sheet-word"> schedule</span></Button
-      ><span class="flex-1"></span>{/if}
+    {#if schedule && !confirming}<Button variant="destructive" class="delete" data-delete onclick={() => void confirmDelete(true)}>
+        Delete<span class="sheet-word"> schedule</span>
+      </Button><span class="flex-1"></span>{/if}
   {/snippet}
   <form
     bind:this={form}
@@ -129,9 +129,9 @@
     novalidate
   >
     <p class="lead">
-      <Icon name="clock" class="h-4 w-4 shrink-0" /><strong class="shrink-0">{reads || "Choose when"}</strong><span class="muted truncate"
-        >· in “{where}”</span
-      >
+      <Icon name="clock" class="h-4 w-4 shrink-0" /><strong class="shrink-0">{reads || "Choose when"}</strong><span class="muted truncate">
+        · in “{where}”
+      </span>
     </p>
     <div class="fields">
       <div class="field">
@@ -207,15 +207,17 @@
       <div class="fields">
         <div class="field">
           <span class="label">Last run</span>
-          <span class="flex-1 min-w-0 text-sm" class:failed={last && runFailed(last)}
-            >{#if last}{runFailed(last) ? "! " : ""}{shortDate(new Date(last.at))} · {runText(last)}{:else}Not run yet{/if}</span
-          >
+          <span class="flex-1 min-w-0 text-sm" class:failed={last && runFailed(last)}>
+            {#if last}{runFailed(last) ? "! " : ""}{shortDate(new Date(last.at))} · {runText(last)}{:else}Not run yet{/if}
+          </span>
           <Button
             size="compact"
             loading={running}
             unavailable={current.held ? "Restore the session first" : undefined}
-            onclick={() => void runNow()}>Run now</Button
+            onclick={() => void runNow()}
           >
+            Run now
+          </Button>
         </div>
       </div>
       {#if current.runs.length > 1 || current.by === "agent" || current.run === "new"}
@@ -232,8 +234,10 @@
                 {runText(each)}{#if each.session && client.sessions.some((s) => s.id === each.session)}{" "}<a
                     class="link"
                     href={href({ name: "session", id: each.session })}
-                    onclick={onclose}>Open<span class="sr-only"> the session of this run</span></a
-                  >{/if}
+                    onclick={onclose}
+                  >
+                    Open<span class="sr-only"> the session of this run</span>
+                  </a>{/if}
               </dd>
             {/each}
           </dl>
@@ -252,8 +256,10 @@
               event.preventDefault();
               void confirmDelete(false);
             }
-          }}>Cancel</Button
+          }}
         >
+          Cancel
+        </Button>
         <Button variant="destructive" onclick={() => void remove()}>Delete</Button>
       </div>
     {/if}

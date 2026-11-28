@@ -55,9 +55,9 @@
     {#each list as tool (tool.name)}
       <li data-off={!tool.on || undefined}>
         <div class="text">
-          <span class="tname"
-            >{tool.label ?? tool.name}{#if tool.label}<code>{tool.name}</code>{/if}</span
-          >
+          <span class="tname">
+            {tool.label ?? tool.name}{#if tool.label}<code>{tool.name}</code>{/if}
+          </span>
           {#if tool.description}<span class="desc">{tool.description}</span>{/if}
           {#if tool.setBy && tool.setBy.id !== page.agent}<span class="desc">Set by {tool.setBy.name}</span>{/if}
         </div>
@@ -109,9 +109,9 @@
     {/if}
   </article>
 {:else}
-  <TabIntro {page} kind="extensions"
-    >Code that adds tools, commands and views. Turn single tools off without removing the extension.</TabIntro
-  >
+  <TabIntro {page} kind="extensions">
+    Code that adds tools, commands and views. Turn single tools off without removing the extension.
+  </TabIntro>
   <ul class="rows">
     <li class="ext" data-builtin>
       <span class="tile" aria-hidden="true"><Icon name="code" class="h-4 w-4" /></span>

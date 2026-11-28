@@ -70,8 +70,10 @@
               data-key={keyOf(item)}
               aria-current={(selected && keyOf(selected) === keyOf(item)) || undefined}
               data-off={off?.(item) || undefined}
-              onclick={() => void pick(item)}>{@render row(item)}</button
+              onclick={() => void pick(item)}
             >
+              {@render row(item)}
+            </button>
           </li>
         {/each}
       </ul>

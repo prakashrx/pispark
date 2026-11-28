@@ -43,9 +43,9 @@
           <div class="row" data-kind={row.kind}>
             <span class="num" aria-hidden="true">{row.old ?? ""}</span>
             <span class="num" aria-hidden="true">{row.new ?? ""}</span>
-            <span class="sign" aria-label={row.kind === "add" ? "added" : row.kind === "del" ? "removed" : undefined}
-              >{row.kind === "add" ? "+" : row.kind === "del" ? "−" : " "}</span
-            >
+            <span class="sign" aria-label={row.kind === "add" ? "added" : row.kind === "del" ? "removed" : undefined}>
+              {row.kind === "add" ? "+" : row.kind === "del" ? "−" : " "}
+            </span>
             <span class="code">{row.text}</span>
           </div>
         {/each}

@@ -40,9 +40,9 @@
     files(item).length ? `SKILL.md and ${files(item).length} more file${files(item).length > 1 ? "s" : ""}` : "SKILL.md";
 </script>
 
-<TabIntro {page} kind="skills" oncreate={() => page.create("skills")}
-  >Know-how the agent loads only when a task matches <em>Use when</em>.</TabIntro
->
+<TabIntro {page} kind="skills" oncreate={() => page.create("skills")}>
+  Know-how the agent loads only when a task matches <em>Use when</em>.
+</TabIntro>
 
 <Split
   items={skills}
@@ -57,9 +57,9 @@
 >
   {#snippet row(item)}
     <span class="split-name">{item.name || "New skill"}</span>
-    <span class="split-desc"
-      >{isFresh(item) ? "Not saved yet" : item.unavailable ? "Unavailable: its files are missing." : (item.description ?? "")}</span
-    >
+    <span class="split-desc">
+      {isFresh(item) ? "Not saved yet" : item.unavailable ? "Unavailable: its files are missing." : (item.description ?? "")}
+    </span>
   {/snippet}
 
   {#snippet detail()}
@@ -74,8 +74,10 @@
                 class="ui-button"
                 data-variant="ghost"
                 data-size="compact"
-                onclick={() => (file = undefined)}>Back to SKILL.md</button
-              >{/if}
+                onclick={() => (file = undefined)}
+              >
+                Back to SKILL.md
+              </button>{/if}
           {/snippet}
           {#if file?.key === keyOf(item)}
             <MarkdownEditor value={file.text} label={file.path} editable={false} />
@@ -107,8 +109,10 @@
                   type="button"
                   class="file"
                   aria-current={!file || file.key !== keyOf(item) || undefined}
-                  onclick={() => (file = undefined)}><Icon name="file" class="h-3.5 w-3.5" />SKILL.md</button
+                  onclick={() => (file = undefined)}
                 >
+                  <Icon name="file" class="h-3.5 w-3.5" />SKILL.md
+                </button>
               </li>
               {#each files(item) as path (path)}
                 <li>
@@ -117,8 +121,9 @@
                     class="file"
                     aria-current={(file?.key === keyOf(item) && file.path === path) || undefined}
                     onclick={() => void showFile(item, path)}
-                    ><Icon name={path.endsWith(".md") ? "file" : "code"} class="h-3.5 w-3.5" />{path}</button
                   >
+                    <Icon name={path.endsWith(".md") ? "file" : "code"} class="h-3.5 w-3.5" />{path}
+                  </button>
                 </li>
               {/each}
             </ul>

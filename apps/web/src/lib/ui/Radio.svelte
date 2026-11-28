@@ -23,12 +23,14 @@
     aria-labelledby={attributes["aria-label"] ? undefined : `${id}-label`}
     aria-describedby={help ? `${id}-help` : attributes["aria-describedby"]}
   />
-  <span class="min-w-0"
-    ><span id={`${id}-label`} class="block font-medium break-words">{label}</span>{#if help}<span
+  <span class="min-w-0">
+    <span id={`${id}-label`} class="block font-medium break-words">{label}</span>{#if help}<span
         id={`${id}-help`}
-        class="block mt-1 text-neutral-500">{help}</span
-      >{/if}{#if children}{@render children()}{/if}</span
-  >
+        class="block mt-1 text-neutral-500"
+      >
+        {help}
+      </span>{/if}{#if children}{@render children()}{/if}
+  </span>
 </label>
 
 <style>

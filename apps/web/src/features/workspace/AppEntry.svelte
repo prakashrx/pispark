@@ -36,8 +36,10 @@
       aria-expanded={open}
       aria-controls={id}
       aria-label={`Sessions of ${app.name}`}
-      onclick={() => (toggled = !open)}><Icon name={open ? "chevronDown" : "chevronRight"} class="h-3.5 w-3.5" /></button
-    >{/if}
+      onclick={() => (toggled = !open)}
+    >
+      <Icon name={open ? "chevronDown" : "chevronRight"} class="h-3.5 w-3.5" />
+    </button>{/if}
 </div>
 {#if open}
   <div {id} class="space-y-px">

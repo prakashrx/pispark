@@ -1,5 +1,5 @@
-# Updates arrive as one grouped pull request a week per ecosystem, never sooner than a week after a
-# version is published: most poisoned releases are found and pulled within days. Nothing merges itself.
+# Updates arrive as grouped pull requests once a week, never sooner than a week after a version is
+# published: most poisoned releases are found and pulled within days. Nothing merges itself.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -9,8 +9,27 @@ updates:
     cooldown:
       default-days: 7
     groups:
+      # Pi is the engine and PiSpark pins it exactly (pi-boundary.ts): a new Pi is its own change, reviewed apart.
+      pi:
+        patterns: ["@earendil-works/*"]
       npm:
         patterns: ["*"]
+    ignore:
+      # Migrations, not updates: each is its own piece of work when chosen.
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: vite
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@sveltejs/vite-plugin-svelte"
+        update-types: ["version-update:semver-major"]
+      # Types for the oldest Node PiSpark supports (22).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # The same KaTeX as Mermaid's, so the app ships one copy (vite.config.ts); move together with Mermaid.
+      - dependency-name: katex
+        versions: [">=0.19.0"]
     open-pull-requests-limit: 5
   # Actions are pinned to a commit; this keeps the pins (and their version comments) current.
   - package-ecosystem: github-actions

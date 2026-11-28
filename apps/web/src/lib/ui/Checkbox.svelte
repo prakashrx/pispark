@@ -33,14 +33,16 @@
     aria-describedby={help || error ? `${id}-help` : attributes["aria-describedby"]}
     bind:checked
   />
-  <span
-    ><span id={`${id}-label`} class="block">{label}</span>{#if help || error}<span
+  <span>
+    <span id={`${id}-label`} class="block">{label}</span>{#if help || error}<span
         id={`${id}-help`}
         class="mt-1 block text-neutral-500"
         class:text-[var(--danger-foreground)]={!!error}
-        role={error ? "alert" : undefined}>{error || help}</span
-      >{/if}</span
-  >
+        role={error ? "alert" : undefined}
+      >
+        {error || help}
+      </span>{/if}
+  </span>
 </label>
 
 <style>

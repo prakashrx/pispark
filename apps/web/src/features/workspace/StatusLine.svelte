@@ -27,17 +27,17 @@
 </script>
 
 <div class="status-line">
-  {#if model}<button type="button" class="readout" title="Model · open Details" onclick={() => details.show(session.id)}
-      ><Icon name="model" class="h-3.5 w-3.5" /><span class="sr-only">Model:</span>
-      {model}{#if context?.percent != null}<span class="context"
-          ><span aria-hidden="true"> · </span><svg class="pie" viewBox="0 0 16 16" aria-hidden="true"
-            ><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5" /><path
+  {#if model}<button type="button" class="readout" title="Model · open Details" onclick={() => details.show(session.id)}>
+      <Icon name="model" class="h-3.5 w-3.5" /><span class="sr-only">Model:</span>
+      {model}{#if context?.percent != null}<span class="context">
+          <span aria-hidden="true"> · </span><svg class="pie" viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5" /><path
               d={pie(context.percent)}
               fill="currentColor"
-            /></svg
-          ><span class="sr-only">, context</span>{` ${Math.round(context.percent)}%`}</span
-        >{/if}</button
-    >{/if}
+            />
+          </svg><span class="sr-only">, context</span>{` ${Math.round(context.percent)}%`}
+        </span>{/if}
+    </button>{/if}
   {#if session.doc}<ContributionPoint point="session.status" />{/if}
 </div>
 

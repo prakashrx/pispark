@@ -121,19 +121,19 @@
       {#if agent}<span class="inline-flex" title={agent}><IdentityMark name={agent} /><span class="sr-only">{agent}:</span></span>{/if}
       <span class="min-w-0 flex-1 truncate" class:text-muted-foreground={muted} class:unread={session.unread}>{name}</span>
     </a>{/if}
-  {#if going.length}<span class="going" title={`Still going: ${summary(going)}`}
-      ><span aria-hidden="true">{going.length}</span><span class="sr-only">Still going: {summary(going)}</span></span
-    >{/if}
+  {#if going.length}<span class="going" title={`Still going: ${summary(going)}`}>
+      <span aria-hidden="true">{going.length}</span><span class="sr-only">Still going: {summary(going)}</span>
+    </span>{/if}
   <SessionMark state={shown} />
-  {#if session.unread && !shown}<span class="unread-dot" title="New since you looked"
-      ><span class="sr-only">New since you looked</span></span
-    >{/if}
+  {#if session.unread && !shown}<span class="unread-dot" title="New since you looked">
+      <span class="sr-only">New since you looked</span>
+    </span>{/if}
   {#if !renaming}<span class="row-actions">
-      <button type="button" class="row-action" data-rename aria-label={`Rename ${name}`} title="Rename" onclick={startRename}
-        ><Icon name="pencil" class="h-3.5 w-3.5" /></button
-      >{#if archivable}<button type="button" class="row-action" aria-label={`Archive ${name}`} title="Archive" onclick={archive}
-          ><Icon name="archive" class="h-4 w-4" /></button
-        >{/if}
+      <button type="button" class="row-action" data-rename aria-label={`Rename ${name}`} title="Rename" onclick={startRename}>
+        <Icon name="pencil" class="h-3.5 w-3.5" />
+      </button>{#if archivable}<button type="button" class="row-action" aria-label={`Archive ${name}`} title="Archive" onclick={archive}>
+          <Icon name="archive" class="h-4 w-4" />
+        </button>{/if}
     </span>{/if}
 </div>
 

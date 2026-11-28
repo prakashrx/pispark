@@ -42,11 +42,7 @@ export interface RemoteStatus {
 }
 
 export type RemoteAction =
-  | { action: "on" }
-  | { action: "off" }
-  | { action: "pair" }
-  | { action: "cancel-pairing" }
-  | { action: "remove"; device: string };
+  { action: "on" } | { action: "off" } | { action: "pair" } | { action: "cancel-pairing" } | { action: "remove"; device: string };
 
 /** What the browser asking is: this computer, or a device at the remote address (paired or not). */
 export type RemoteSelf = { remote: false } | { remote: true; device?: RemoteDevice };

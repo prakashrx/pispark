@@ -169,9 +169,9 @@
     }}
   >
     {#if editing}<div class="editing" role="status">
-        <Icon name="pencil" class="h-3.5 w-3.5" /><span class="editing-text"
-          >Editing your message. It goes again from just before it; what followed stays as another version.</span
-        >
+        <Icon name="pencil" class="h-3.5 w-3.5" /><span class="editing-text">
+          Editing your message. It goes again from just before it; what followed stays as another version.
+        </span>
         <button type="button" class="editing-cancel" onclick={() => session?.cancelEdit()}>Cancel</button>
       </div>{/if}
     {#if attachments}<RichInput
@@ -220,9 +220,9 @@
           if (picker) picker.value = "";
         }}
       />
-      <Button variant="ghost" aria-label="Attach files" title="Attach files" class="attach-btn" onclick={() => picker?.click()}
-        ><Icon name="plus" class="w-[18px] h-[18px]" /></Button
-      >
+      <Button variant="ghost" aria-label="Attach files" title="Attach files" class="attach-btn" onclick={() => picker?.click()}>
+        <Icon name="plus" class="w-[18px] h-[18px]" />
+      </Button>
       {#if mode === "reply"}<ContributionPoint point="session.input.actions" />{/if}
       <span class="flex-1"></span>
       <!-- One button: Send, Stop while a reply runs, Cancel while the message waits its turn. -->
@@ -231,10 +231,17 @@
           title={turn === "running" ? "Stop" : "Cancel"}
           unavailable={doc?.status === "cancelling" ? "Stopping…" : undefined}
           class="send-btn stop"
-          onclick={() => session?.stop()}><Icon name="stop" class="w-[18px] h-[18px]" /></Button
-        >{:else}<Button aria-label={mode === "reply" ? "Send message" : "Start session"} type="submit" {unavailable} class="send-btn"
-          ><Icon name="arrowUp" class="w-[18px] h-[18px]" /></Button
-        >{/if}
+          onclick={() => session?.stop()}
+        >
+          <Icon name="stop" class="w-[18px] h-[18px]" />
+        </Button>{:else}<Button
+          aria-label={mode === "reply" ? "Send message" : "Start session"}
+          type="submit"
+          {unavailable}
+          class="send-btn"
+        >
+          <Icon name="arrowUp" class="w-[18px] h-[18px]" />
+        </Button>{/if}
     </div>
   </form>
   {#if mode === "ask"}
@@ -250,15 +257,17 @@
           <a
             class="text-sm font-medium text-[var(--interactive-text)] hover:underline"
             href="#/agents"
-            onclick={() => sessions.agents.collection()}>Manage agents</a
+            onclick={() => sessions.agents.collection()}
           >
+            Manage agents
+          </a>
           {#if sessions.agents.error}<p role="alert" class="text-xs text-[var(--danger-foreground)] mt-2">{sessions.agents.error}</p>{/if}
         {/snippet}
       </Selector>
       <Selector label="Model" options={modelOptions} searchable bind:value={sessions.askModel}>
-        {#snippet children(value)}<Icon name="model" class="w-3.5 h-3.5" /><span class="max-w-44 truncate" title={value}
-            >{selected ? selected.label.split(" · ")[0] : value}</span
-          ><Icon name="chevronDown" class="w-3 h-3 opacity-60" />{/snippet}
+        {#snippet children(value)}<Icon name="model" class="w-3.5 h-3.5" /><span class="max-w-44 truncate" title={value}>
+            {selected ? selected.label.split(" · ")[0] : value}
+          </span><Icon name="chevronDown" class="w-3 h-3 opacity-60" />{/snippet}
       </Selector>
     </div>
   {/if}

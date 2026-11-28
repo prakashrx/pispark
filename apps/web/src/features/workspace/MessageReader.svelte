@@ -30,8 +30,9 @@
 {#if page}
   <section aria-label="Full message text" class="space-y-2">
     <pre bind:this={text} tabindex="-1" class="full-text">{page.text}</pre>
-    {#if page.next !== undefined}<Button class="conversation-action" disabled={busy} onclick={() => read(page!.next)}>Next page</Button
-      >{/if}
+    {#if page.next !== undefined}<Button class="conversation-action" disabled={busy} onclick={() => read(page!.next)}>
+        Next page
+      </Button>{/if}
     <Button
       class="conversation-action"
       disabled={busy}
@@ -40,8 +41,10 @@
         error = "";
         await tick();
         document.getElementById(triggerId)?.focus();
-      }}>Close full text</Button
+      }}
     >
+      Close full text
+    </Button>
   </section>
 {:else}
   <Button id={triggerId} class="conversation-action" disabled={busy} onclick={() => read()}>Read full message</Button>
