@@ -196,7 +196,7 @@ test("ProviderHttp: strict payloads, no query capabilities, unsupported methods,
   assert.equal(
     (await h.post("/api/providers/auth/respond", { value: "x".repeat(17000) }))
       .status,
-    400,
+    413,
   );
   assert.equal(
     (

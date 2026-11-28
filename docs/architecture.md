@@ -22,7 +22,7 @@ In development, Vite serves the web on port 5173 and passes `/api` to the server
 | --- | --- | --- |
 | `contract/` | The types and pure functions a client may use: the session, agent, provider and host protocols, the live document's operations, session title rules, the Svelte modules shared with extension components | nothing else |
 | `core/` | The hosting layer: `runtime/` (sessions, run slots, storage, providers, schedules, processes, child sessions, holds; one small file each), `agents/`, `extensions/`, the data folder, the launcher link and the logger. No HTTP, no browser, nothing about how a client draws a session | `contract` |
-| `http/` | The local server for the workspace: admission and the route table (`session-http.ts`), commands and their receipts (`commands.ts`), the live event streams (`live-streams.ts`), the bytes a session serves (`session-files.ts`), shared request and response helpers (`io.ts`), the agent, provider, host and remote APIs, static files, and the names of the places the workspace draws for extensions | `core`, `contract` |
+| `http/` | The local server for the workspace: admission and the route table (`session-http.ts`), commands and their receipts (`commands.ts`), the live event streams (`live-streams.ts`), the bytes a session serves (`session-files.ts`), shared request and response helpers (`io.ts`: bounded bodies, the status a failure answers with), the shape of every request body (`shape.ts`: one TypeBox schema per body, held to its `contract/` type at compile time), the agent, provider, host and remote APIs, static files, and the names of the places the workspace draws for extensions | `core`, `contract` |
 
 `index.ts` wires them. `apps/web` and `apps/launcher` import the server only through `contract/`.
 
@@ -40,7 +40,7 @@ Every session also loads PiSpark's built-in extension, an ordinary Pi extension 
 
 `src/core/extensions` holds PiSpark's side of Pi extensions: the UI context Pi's `rpc` mode expects (questions, notices, statuses, widgets, editor text), terminal text turned into styled spans, extensions' own renderers without a terminal, and compiling an extension's Svelte components for the browser ([extensions](extensions.md)).
 
-`src/core/logger.ts` writes only an allow-list of operational fields, never credentials or content.
+`src/core/logger.ts` writes only an allow-list of operational fields, never credentials or content. A failed request is logged with its method, the shape of its path (`/api/sessions/:id/items`: ids and names taken out), the status it was answered with, and the class name and system code of what was thrown (`TypeError`, `EPERM`); what the error said is logged only by a development run (`--dev` or `PISPARK_DEV_ORIGIN`).
 
 The server binds only to loopback and checks every request's Host and Origin ([security](../SECURITY.md)). On SIGINT/SIGTERM, or a stop from the launcher, it closes observers and drains the sessions, waiting up to five seconds before closing the remaining connections.
 

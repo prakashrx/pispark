@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { check, FOLDER, kindOf, NOTES, pageHead, skillHead, TASKS } from "./layout.js";
 import { questions, trimDone } from "./tasks.js";
@@ -54,10 +54,13 @@ export function canonical(path: string): string {
   return real;
 }
 
-/** Where a path is inside a folder, with forward slashes; nothing when it is outside (or is the folder). Case is ignored on Windows, as Node's `relative` does there. */
+/**
+ * Where a path is inside a folder, with forward slashes; nothing when it is outside (or is the folder). A name
+ * that only starts with two dots (`..notes`) is inside. Case is ignored on Windows, as Node's `relative` does there.
+ */
 export function within(dir: string, path: string): string | undefined {
   const rel = relative(canonical(dir), canonical(path));
-  return !rel || rel.startsWith("..") || /^[A-Za-z]:/.test(rel) ? undefined : rel.split(sep).join("/");
+  return !rel || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel) ? undefined : rel.split(sep).join("/");
 }
 
 /**

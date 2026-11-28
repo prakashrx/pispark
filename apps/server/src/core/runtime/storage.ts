@@ -1,5 +1,6 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { ThinkingLevel } from "../../contract/agent-protocol.js";
+import { THINKING_LEVELS, type ThinkingLevel } from "../../contract/agent-protocol.js";
+import { UUID } from "../../contract/ids.js";
 import type { Ask } from "../../contract/protocol.js";
 import {
   existsSync,
@@ -69,12 +70,13 @@ export interface SessionMetadata {
   held?: { extension: string; reason: string };
 }
 
-const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
-const UUID =
-  /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 export function validateId(id: string): void {
   if (typeof id !== "string" || !UUID.test(id))
     throw new RuntimeError("invalid-input");
+}
+/** An entry of a session's history, named as Pi named it. */
+export function validateEntryId(entryId: string): void {
+  if (typeof entryId !== "string" || !entryId || entryId.length > 64) throw new RuntimeError("invalid-input");
 }
 
 /** `<home>/sessions/<id>/`. The session ID is the folder name and is not repeated in session.json. */

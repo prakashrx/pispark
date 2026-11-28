@@ -361,7 +361,7 @@ test("schedules over HTTP: list, add, change, run now and remove", async () => {
     assert.equal((await post(`/api/schedules/${id}/run`)).status, 202);
     await eventually(() => f.one().runs.length === 1);
     assert.equal((await post(`/api/schedules/${id}/remove`)).status, 200);
-    assert.equal((await post(`/api/schedules/${id}/remove`)).status, 400);
+    assert.equal((await post(`/api/schedules/${id}/remove`)).status, 404);
     assert.equal(existsSync(join(f.home, "sessions", session.id, "schedules.json")), true);
   } finally {
     await http.shutdown();

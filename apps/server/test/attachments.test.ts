@@ -175,7 +175,7 @@ test("a session's files list what the person attached and what the agent made th
   // Each opens as inert data from the same place as an attachment.
   const report = await fetch(`${f.base}/api/sessions/${f.id}/attachments/report.md`);
   assert.equal(await report.text(), "# Report");
-  assert.equal((await fetch(`${f.base}/api/sessions/${randomUUID()}/attachments`)).status, 400);
+  assert.equal((await fetch(`${f.base}/api/sessions/${randomUUID()}/attachments`)).status, 404);
 });
 
 test("an uploaded image enters Artifacts only when recorded in a user message", async (t) => {

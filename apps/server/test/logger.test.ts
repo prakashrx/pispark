@@ -148,3 +148,31 @@ for (const closeFallback of [false, true]) {
     assert(!errors.includes("Unhandled") && !errors.includes("EPIPE"));
   });
 }
+
+test("a failure's record says what failed and what kind of error it was, never what the error said", async () => {
+  const lines: string[] = [];
+  const sink = async (line: string) => void lines.push(line);
+  const cause = Object.assign(new TypeError("SECRET in C:\Users\someone\notes.txt"), { code: "EPERM" });
+  const failure = { outcome: "failed", code: "execution", method: "POST", route: "/api/sessions/:id/calls", status: 500, cause } as const;
+  const logger = new SafeLogger({ sink });
+  logger.event("http.failure", failure, "error");
+  // What is not the shape of a path, a known method, an error status or an Error is left out.
+  logger.event("http.failure", { method: "BREW", route: "/api/sessions/SECRET", status: 200, cause: { name: "SECRET", code: "SECRET", stack: "SECRET" } });
+  logger.event("http.failure", { cause: Object.assign(new Error("x"), { name: "SECRET name", code: "secret code" }) });
+  await logger.close();
+  const [first, ...rest] = lines.map((line) => JSON.parse(line));
+  assert.deepEqual(
+    { method: first.method, route: first.route, status: first.status, error: first.error, errno: first.errno },
+    { method: "POST", route: "/api/sessions/:id/calls", status: 500, error: "TypeError", errno: "EPERM" },
+  );
+  assert.doesNotMatch(lines.join(""), /SECRET|secret|someone|BREW|detail/);
+  for (const record of rest) assert.deepEqual(Object.keys(record).sort(), ["event", "level", "timestamp"]);
+
+  // A development run also keeps what the error said, bounded.
+  const dev = new SafeLogger({ sink, details: true });
+  dev.event("http.failure", { ...failure, cause: new Error("x".repeat(5000)) }, "error");
+  await dev.close();
+  const detail = JSON.parse(lines.at(-1)!).detail as string;
+  assert.match(detail, /^Error: x+$/);
+  assert.equal(detail.length, 800);
+});

@@ -1,94 +1,52 @@
+import { Type, type Static } from "typebox";
+import { THINKING_LEVELS } from "../contract/agent-protocol.js";
 import type { Command, Receipt } from "../contract/protocol.js";
 import { sessionTitle } from "../contract/session-title.js";
 import { validAgentId } from "../core/agents/format.js";
-import { correlated, requestId } from "../core/logger.js";
+import { correlated, requestId, silentLogger, type SafeLogger } from "../core/logger.js";
 import { ATTACHMENTS_PER_MESSAGE, validAttachmentName } from "../core/runtime/attachments.js";
 import { RuntimeError } from "../core/runtime/errors.js";
 import { validChoice } from "../core/runtime/provider-storage.js";
 import type { SessionRuntime } from "../core/runtime/session-runtime.js";
-import { UUID, failure } from "./io.js";
+import { failure } from "./io.js";
+import { Text, Uuid, exact, shaped, type Same } from "./shape.js";
 
-/** The keys a command may carry besides `commandId` and `type`; undefined: no such command. */
-function keysOf(c: Record<string, unknown>): string[] | undefined {
-  const optional = (...names: string[]) => names.filter((name) => c[name] !== undefined);
-  switch (c.type) {
-    case "create":
-      return optional("folder", "model", "agent");
-    case "reload":
-      return ["sessionId", ...optional("model")];
-    case "open":
-    case "cancel":
-    case "stop":
-    case "archive":
-    case "restore":
-    case "delete":
-    case "compact":
-    case "allow-hold":
-    case "deny-hold":
-    case "release-hold":
-    case "seen":
-      return ["sessionId"];
-    case "fork":
-      return ["sessionId", ...optional("entryId")];
-    case "branch":
-      return ["sessionId", "entryId"];
-    case "edit":
-      return ["sessionId", "entryId", "text", ...optional("attachments")];
-    case "rename":
-      return ["sessionId", "title"];
-    case "configure":
-      return ["sessionId", ...optional("model", "thinking")];
-    case "start":
-    case "steer":
-    case "follow-up":
-      return ["sessionId", "text", ...optional("attachments")];
-    default:
-      return undefined;
-  }
-}
+const TEXT_BYTES = 64 * 1024;
+const session = { commandId: Uuid, sessionId: Uuid };
+const model = Type.Optional(exact({ provider: Type.String(), id: Type.String() }));
+const attachments = Type.Optional(Type.Array(Type.String(), { maxItems: ATTACHMENTS_PER_MESSAGE, uniqueItems: true }));
+const entryId = Text(64);
+/** Every command a client may send: its type, and exactly the keys that type takes. */
+const CommandShape = Type.Union([
+  exact({ commandId: Uuid, type: Type.Literal("create"), folder: Type.Optional(Text(4096)), model, agent: Type.Optional(Type.String()) }),
+  exact({ ...session, type: Type.Enum(["open", "cancel", "stop", "archive", "restore", "delete", "compact", "seen", "allow-hold", "deny-hold", "release-hold"]) }),
+  exact({ ...session, type: Type.Literal("fork"), entryId: Type.Optional(entryId) }),
+  exact({ ...session, type: Type.Literal("branch"), entryId }),
+  exact({ ...session, type: Type.Literal("edit"), entryId, text: Text(), attachments }),
+  exact({ ...session, type: Type.Literal("reload"), model }),
+  exact({ ...session, type: Type.Literal("rename"), title: Text(4096) }),
+  exact({ ...session, type: Type.Literal("configure"), model, thinking: Type.Optional(Type.Enum(THINKING_LEVELS)) }),
+  exact({ ...session, type: Type.Enum(["start", "steer", "follow-up"]), text: Text(), attachments }),
+  exact({ ...session, type: Type.Literal("answer"), dialogId: Uuid, value: Type.Union([Type.String(), Type.Boolean(), Type.Null()]) }),
+]);
+true satisfies Same<Static<typeof CommandShape>, Command>;
+const shapedCommand = shaped(CommandShape);
 
-/** A command as the client sent it: the exact keys its type allows, each of its kind and bounds. */
+/** A command as the client sent it: the shape its type takes, and each value one the runtime can use. */
 export function validCommand(value: unknown): Command {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new RuntimeError("invalid-input");
-  const c = value as Record<string, unknown>;
-  if (typeof c.type !== "string" || typeof c.commandId !== "string" || !UUID.test(c.commandId)) throw new RuntimeError("invalid-input");
-  if (c.type === "answer") return validAnswer(c);
-  const keys = keysOf(c);
-  if (!keys || Object.keys(c).length !== keys.length + 2 || Object.keys(c).some((key) => !["commandId", "type", ...keys].includes(key)))
-    throw new RuntimeError("invalid-input");
-  if (c.model !== undefined && !validChoice(c.model)) throw new RuntimeError("invalid-input");
-  if (c.agent !== undefined && !validAgentId(c.agent)) throw new RuntimeError("invalid-input");
+  const c = shapedCommand(value);
+  const text = "text" in c ? c.text : c.type === "answer" && typeof c.value === "string" ? c.value : "";
   if (
-    c.attachments !== undefined &&
-    (!Array.isArray(c.attachments) ||
-      c.attachments.length > ATTACHMENTS_PER_MESSAGE ||
-      !c.attachments.every(validAttachmentName) ||
-      new Set(c.attachments).size !== c.attachments.length)
+    ("model" in c && c.model && !validChoice(c.model)) ||
+    ("agent" in c && c.agent !== undefined && !validAgentId(c.agent)) ||
+    ("attachments" in c && c.attachments && !c.attachments.every(validAttachmentName)) ||
+    // Changing nothing is not a change.
+    (c.type === "configure" && !c.model && !c.thinking) ||
+    (c.type === "rename" && !sessionTitle(c.title)) ||
+    Buffer.byteLength(text) > TEXT_BYTES
   )
     throw new RuntimeError("invalid-input");
-  if (c.type === "configure" && keys.length === 1) throw new RuntimeError("invalid-input");
-  for (const key of keys.filter((key) => key !== "model" && key !== "agent" && key !== "attachments"))
-    if (typeof c[key] !== "string" || !(c[key] as string).trim()) throw new RuntimeError("invalid-input");
-  if ("sessionId" in c && !UUID.test(String(c.sessionId))) throw new RuntimeError("invalid-input");
-  if (c.type === "create" && typeof c.folder === "string" && c.folder.length > 4096) throw new RuntimeError("invalid-input");
-  if (c.type === "rename" && (String(c.title).length > 4096 || !sessionTitle(String(c.title)))) throw new RuntimeError("invalid-input");
-  if ("text" in c && Buffer.byteLength(String(c.text)) > 64 * 1024) throw new RuntimeError("invalid-input");
-  // SAFETY: discriminant, exact keys and every required field validated above.
-  return c as unknown as Command;
-}
-
-/** An answer to an extension question: a string, a yes/no, or null to dismiss. */
-function validAnswer(c: Record<string, unknown>): Command {
-  if (
-    Object.keys(c).length !== 5 ||
-    !["commandId", "type", "sessionId", "dialogId", "value"].every((key) => key in c) ||
-    !UUID.test(String(c.sessionId)) ||
-    !UUID.test(String(c.dialogId)) ||
-    !(c.value === null || typeof c.value === "boolean" || (typeof c.value === "string" && Buffer.byteLength(c.value) <= 64 * 1024))
-  )
-    throw new RuntimeError("invalid-input");
-  // SAFETY: exact keys and every field validated above.
-  return c as unknown as Command;
+  return c;
 }
 
 interface Entry {
@@ -108,7 +66,10 @@ interface Entry {
 export class Commands {
   private readonly receipts = new Map<string, Entry>();
 
-  constructor(private readonly runtime: SessionRuntime) {}
+  constructor(
+    private readonly runtime: SessionRuntime,
+    private readonly logger: SafeLogger = silentLogger,
+  ) {}
 
   /** A command's receipt while it is kept. */
   receipt(commandId: string): Receipt | undefined {
@@ -142,6 +103,8 @@ export class Commands {
       .catch((error) => {
         receipt.outcome = "failed";
         receipt.error = failure(error);
+        // A refusal is the receipt's to tell; a command that broke is the log's too.
+        if (!(error instanceof RuntimeError)) this.logger.event("command.failure", { sessionId: receipt.sessionId, outcome: "failed", code: "execution", cause: error }, "error");
       })
       .finally(() => {
         receipt.state = "settled";
@@ -246,6 +209,8 @@ async function settleRun(receipt: Receipt, admit: () => { completion: Promise<Pa
   try {
     run = await admit();
   } catch (error) {
+    // Only a refusal is settled here; anything else is the caller's to log.
+    if (!(error instanceof RuntimeError)) throw error;
     receipt.state = "settled";
     receipt.outcome = "failed";
     receipt.error = failure(error);

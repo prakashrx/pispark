@@ -1,8 +1,7 @@
 import { existsSync } from "node:fs";
-import { relative } from "node:path";
 import type { Homes } from "./homes.js";
 import { FOLDER, NOTES, NOTES_HEADINGS, TASK_HEADINGS, TASKS } from "./layout.js";
-import type { Mind } from "./store.js";
+import { within, type Mind } from "./store.js";
 import { entries, section } from "./tasks.js";
 
 /**
@@ -28,10 +27,7 @@ export interface BriefOptions {
 
 /** Where a lasting instruction from the person goes: the files PiSpark already loads. */
 function instructions(homes: Homes, place: string): string[] {
-  const shown = (file: string) => {
-    const rel = relative(place, file);
-    return `\`${rel && !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel) ? rel.replaceAll("\\", "/") : file}\``;
-  };
+  const shown = (file: string) => `\`${within(place, file) ?? file}\``;
   const files = (list: string[]) => list.map((file) => `${shown(file)}${existsSync(file) ? "" : " (not there yet: create it)"}`).join(" or ");
   const lines: string[] = [];
   if (homes.project) lines.push(`   - a rule for this project, for any agent: ${shown(homes.project)}`);

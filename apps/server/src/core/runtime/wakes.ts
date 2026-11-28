@@ -8,6 +8,7 @@ import {
   type WokenCard,
   type WokenDetails,
 } from "../../contract/wake-protocol.js";
+import { UUID } from "../../contract/ids.js";
 import { validResultData } from "./verbs.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { writeAtomic } from "../files.js";
@@ -77,7 +78,6 @@ interface State {
 
 const MAX_TEXT = 64 * 1024;
 const OUTCOMES = ["ran", "failed", "cancelled", "missed", "started", "handled"];
-const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const REASONS = ["busy", "off", "paused", "full"];
 
 /** A source in a session, for the runs in flight. */
@@ -258,7 +258,7 @@ export class Wakes {
         try {
           if (!(await this.attempt(sessionId, this.next(state.waiting.filter((wake) => !wake.collect)), true))) break;
         } catch (error) {
-          this.logger.event("wake.failure", { sessionId, outcome: "failed", code: runtimeError(error, "execution").code });
+          this.logger.event("wake.failure", { sessionId, outcome: "failed", code: runtimeError(error, "execution").code, cause: error });
           break;
         }
       }

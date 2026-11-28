@@ -1,12 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
+import type { SafeLogger } from "../core/logger.js";
 import { RuntimeError } from "../core/runtime/errors.js";
 import { ASSET_TYPES } from "../core/extensions/view-compiler.js";
 
 /** How every HTTP module reads a request and answers: bounded JSON, inert files. */
 
-export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_FRAME = 256 * 1024;
 
 export function sendJson(response: ServerResponse, status: number, body: unknown, maximum = MAX_FRAME) {
@@ -21,6 +21,59 @@ export function failure(error: unknown) {
   return error instanceof RuntimeError ? error.code : "execution";
 }
 
+/** A request body past its limit: the code is `limit` like any other, the status says the body was too large. */
+class BodyTooLarge extends RuntimeError {
+  constructor() {
+    super("limit");
+  }
+}
+
+const STATUS: Readonly<Record<string, number>> = {
+  "not-found": 404,
+  busy: 409,
+  owned: 409,
+  "read-only": 409,
+  limit: 429,
+  storage: 500,
+  execution: 500,
+  extension: 500,
+  timeout: 500,
+  "sdk-version": 500,
+  // The server is shutting down.
+  closed: 503,
+};
+/** The status a failure answers with: whose fault it was. Anything not listed is the request's own (400). */
+export function statusOf(error: unknown): number {
+  return error instanceof BodyTooLarge ? 413 : (STATUS[failure(error)] ?? 400);
+}
+
+/**
+ * Records a request that failed: what was asked, how it was answered, and what kind of error it was.
+ * A refused request (below 500) is not an error of the server's.
+ */
+export function logFailure(logger: SafeLogger, request: IncomingMessage, cause: unknown, fields: { status?: number; code?: string; durationMs?: number } = {}): void {
+  const { status = statusOf(cause), code = failure(cause), durationMs } = fields;
+  logger.event("http.failure", { outcome: "failed", code, status, durationMs, method: request.method, route: routeShape(request.url), cause }, status < 500 ? "info" : "error");
+}
+
+/** The fixed words of this API's paths. Anything else in a path is an id or a name, and is never logged. */
+const ROUTE_WORDS = new Set(
+  (
+    "api agents assets attachments auth calls cancel catalog commands copy create default delete file files health host items live logout me " +
+    "notes notifications observe output pair parts pending presence processes promote providers read receipts refresh remote remove resource " +
+    "resources respond routines run save schedules select sessions settings start state stop subscribe test unsubscribe views write"
+  ).split(" "),
+);
+/** A request's path with its ids and names taken out, for the log: `/api/sessions/:id/items`. */
+export function routeShape(url = "/"): string {
+  return url
+    .split("?")[0]!
+    .split("/")
+    .slice(1, 13)
+    .map((part) => `/${ROUTE_WORDS.has(part) ? part : ":id"}`)
+    .join("");
+}
+
 /** A JSON body, bounded in size and time. */
 export async function body(request: IncomingMessage, maximum = 72 * 1024): Promise<unknown> {
   if (!/^application\/json(?:;\s*charset=utf-8)?$/i.test(request.headers["content-type"] ?? "") || request.headers["content-encoding"])
@@ -31,7 +84,7 @@ export async function body(request: IncomingMessage, maximum = 72 * 1024): Promi
   try {
     for await (const chunk of request) {
       size += chunk.length;
-      if (size > maximum) throw new RuntimeError("limit");
+      if (size > maximum) throw new BodyTooLarge();
       chunks.push(chunk);
     }
     try {

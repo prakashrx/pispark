@@ -93,7 +93,7 @@ export class Routines {
         try {
           await this.run(agent.id, routine, due, false);
         } catch (error) {
-          this.logger.event("schedule.failure", { agentId: agent.id, outcome: "failed", code: runtimeError(error, "execution").code });
+          this.logger.event("schedule.failure", { agentId: agent.id, outcome: "failed", code: runtimeError(error, "execution").code, cause: error });
         }
       }
     // Switched off: switched on again later, it counts from then.

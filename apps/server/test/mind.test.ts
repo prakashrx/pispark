@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { SessionRuntime } from "../src/core/runtime/session-runtime.js";
 import { edited } from "../../../plugins/extensions/mind/index.js";
 import { check, kindOf, refusePath } from "../../../plugins/extensions/mind/layout.js";
-import { Mind } from "../../../plugins/extensions/mind/store.js";
+import { Mind, within } from "../../../plugins/extensions/mind/store.js";
 import { questions, trimDone, withAnswer } from "../../../plugins/extensions/mind/tasks.js";
 import { testHome } from "./fixtures/home.js";
 import { eventually, type LocalRequest } from "./fixtures/local-provider.js";
@@ -91,6 +91,16 @@ test("mind layout: every path has one kind, and each document has one shape", ()
   assert.equal(check("skills/fix-backup/SKILL.md", skill), undefined);
   assert.match(check("skills/repair/SKILL.md", skill)!, /must be its folder name/);
   assert.match(check("skills/fix-backup/SKILL.md", skill.replace(/description: .*/, "description: Backups"))!, /what it does and when to use it/);
+});
+
+test("mind: a path is inside a folder unless it climbs out, even when a name starts with two dots", async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), "pispark-mind-within-"));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  assert.equal(within(folder, join(folder, "notes", "..drafts.md")), "notes/..drafts.md");
+  assert.equal(within(folder, join(folder, "..notes.md")), "..notes.md");
+  assert.equal(within(folder, folder), undefined);
+  assert.equal(within(folder, join(folder, "..", "elsewhere.md")), undefined);
+  assert.equal(within(folder, `${folder}-other`), undefined);
 });
 
 test("mind tasks: questions are found, an answer is written under its question, and Done lately keeps the newest", () => {

@@ -4,8 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RuntimeConfiguration } from "../../src/core/runtime/configuration.js";
-import type { AgentDefinition, AgentResources, ItemType } from "../../src/contract/agent-protocol.js";
-import { ITEM_TYPES } from "../../src/core/agents/format.js";
+import { ITEM_TYPES, type AgentDefinition, type AgentResources, type ItemType } from "../../src/contract/agent-protocol.js";
 import { WORKSPACE_POINTS } from "../../src/http/workspace-points.js";
 import { LocalProviderControl } from "./local-provider.js";
 

@@ -2,12 +2,14 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { mkdir, open, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { UUID } from "../contract/ids.js";
 
 const events = [
   "host.start",
   "host.stop",
   "http.reject",
   "http.failure",
+  "command.failure",
   "agent.save",
   "session.create",
   "session.recover",
@@ -74,10 +76,15 @@ interface Fields extends Correlation {
     definitions?: number;
     dropped?: number;
   };
+  /** The request that failed: its method, the shape of its path (`routeShape`), and the status it was answered with. */
+  method?: string;
+  route?: string;
+  status?: number;
+  /** What was thrown. Only its class name and system code are logged; its message only by a logger made with `details`. */
+  cause?: unknown;
 }
+const METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 const ids = new AsyncLocalStorage<Correlation>();
-const uuid =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export function correlated<T>(context: Correlation, operation: () => T): T {
   return ids.run({ ...ids.getStore(), ...context }, operation);
 }
@@ -101,6 +108,8 @@ export class SafeLogger {
       clock?: () => number;
       fallback?: () => void;
       maxFileBytes?: number;
+      /** A development run: a failure's message and stack are logged too. Never set by an installed build. */
+      details?: boolean;
     } = {},
   ) {
     this.clock = options.clock ?? Date.now;
@@ -125,7 +134,7 @@ export class SafeLogger {
     };
     const context = { ...ids.getStore(), ...fields };
     for (const key of ["requestId", "operationId", "sessionId"] as const)
-      if (typeof context[key] === "string" && uuid.test(context[key]))
+      if (typeof context[key] === "string" && UUID.test(context[key]))
         record[key] = context[key];
     // Agent IDs are short slugs ("dev") chosen at creation.
     if (
@@ -143,6 +152,16 @@ export class SafeLogger {
       record.outcome = fields.outcome;
     if (codes.includes(fields.code as (typeof codes)[number]))
       record.code = fields.code;
+    if (METHODS.includes(fields.method ?? "")) record.method = fields.method;
+    if (typeof fields.route === "string" && /^(?:\/(?::id|[a-z][a-z-]{0,31})){1,12}$/.test(fields.route)) record.route = fields.route;
+    if (Number.isInteger(fields.status) && fields.status! >= 400 && fields.status! <= 599) record.status = fields.status;
+    if (fields.cause instanceof Error) {
+      // Names, never content: `TypeError`, `EPERM`. An error's message can carry what a person typed or a secret.
+      const { name, code, stack, message } = fields.cause as Error & { code?: unknown };
+      if (/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(name)) record.error = name;
+      if (typeof code === "string" && /^[A-Z][A-Z0-9_]{1,63}$/.test(code)) record.errno = code;
+      if (this.options.details) record.detail = String(stack ?? message).slice(0, 800);
+    }
     const counts: Record<string, number> = {};
     for (const key of [
       "instructions",

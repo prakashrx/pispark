@@ -28,10 +28,11 @@ const webRoot = fileURLToPath(new URL("../../web/dist/", import.meta.url));
 const paths = prepareHome(configuration.home);
 const releaseHome = lockHome(paths);
 process.on("exit", releaseHome);
-const logger = new SafeLogger({ directory: paths.logs });
 const developmentOrigin =
   process.env.PISPARK_DEV_ORIGIN ??
   (process.argv.includes("--dev") ? "http://127.0.0.1:5173" : undefined);
+// A development run also logs what a failure said; an installed build never does.
+const logger = new SafeLogger({ directory: paths.logs, details: developmentOrigin !== undefined });
 if (
   developmentOrigin &&
   !/^http:\/\/(127\.0\.0\.1|localhost):\d{1,5}$/.test(developmentOrigin)
@@ -46,7 +47,7 @@ const link = new HostLink(() => runtime.runningWork(), () => shutdown());
 const sessions = new SessionHttp(
   runtime,
   developmentOrigin,
-  new ProviderHttp(providers),
+  new ProviderHttp(providers, logger),
   logger,
   new HostHttp(link, paths.root, () => runtime.runningWork()),
   new RemoteAccess(paths.remote),

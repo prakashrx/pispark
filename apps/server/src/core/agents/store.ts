@@ -13,7 +13,7 @@ import {
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeAtomic } from "../files.js";
-import { SWITCH_PREFIX } from "../../contract/agent-protocol.js";
+import { ITEM_TYPES, SWITCH_PREFIX } from "../../contract/agent-protocol.js";
 import type {
   ItemFile,
   ItemType,
@@ -26,13 +26,13 @@ import type {
   AgentTarget,
   ItemTarget,
 } from "../../contract/agent-protocol.js";
+import { UUID } from "../../contract/ids.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import {
   DEFAULT_AGENT,
   DEFAULT_TOOLS,
   digest,
   fail,
-  ITEM_TYPES,
   parseResource,
   itemPath,
   readablePath,
@@ -45,8 +45,6 @@ import {
 import { inventory, readText, resource, skillFiles, type LayerItem } from "./resources.js";
 export type { LayerItem } from "./resources.js";
 
-const UUID =
-  /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const MAX_FILE = 256 * 1024;
 
 /** What a layer's agent.json may hold: Default and a session's own layer name no folder and no home view. */

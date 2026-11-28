@@ -301,7 +301,7 @@ export class Schedules {
         try {
           await this.consider(sessionId, s, now, sessions.get(sessionId)!);
         } catch (error) {
-          this.logger.event("schedule.failure", { sessionId, outcome: "failed", code: runtimeError(error, "execution").code });
+          this.logger.event("schedule.failure", { sessionId, outcome: "failed", code: runtimeError(error, "execution").code, cause: error });
         }
       }
     }

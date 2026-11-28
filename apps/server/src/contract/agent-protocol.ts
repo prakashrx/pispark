@@ -1,7 +1,9 @@
 /** Agent contract shared by the server and web client. See docs/agents.md. */
 /** The agent every PiSpark has, used when none is chosen. */
 export const DEFAULT_AGENT = "default";
-export type ItemType = "instructions" | "skills" | "prompts" | "extensions" | "mcp";
+/** The kinds of thing an agent is composed of. */
+export const ITEM_TYPES = ["instructions", "skills", "prompts", "extensions", "mcp"] as const;
+export type ItemType = (typeof ITEM_TYPES)[number];
 export type ResourceSource = "bundled" | "shared" | "local";
 export type ResourceReference = `${ResourceSource}:${string}`;
 export type AgentResources = Partial<Record<ItemType, ResourceReference[]>>;
@@ -12,14 +14,9 @@ export interface AvailableResource {
   /** For a shared resource: how many agents select it. */
   usedBy?: number;
 }
-export type ThinkingLevel =
-  | "off"
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh"
-  | "max";
+/** How hard a model may think, least to most. */
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 /**
  * Switch prefixes in agent.json: `skill:review`, `instruction:tone`, `tool:bash`… Two say what

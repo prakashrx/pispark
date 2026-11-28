@@ -196,6 +196,9 @@ test("agent HTTP: library files and Move to Shared library", async (t) => {
   await f.ok("file/write", { target: shared, path: notes.path, expectedRevision: file.revision, text: file.text + "More.\n" });
   assert.equal((await f.post("file/write", { target: { library: "bundled" }, path: "skills/x/SKILL.md", expectedRevision: null, text: "x" })).status, 400);
   assert.equal((await f.post("file/read", { target: { library: "other" }, path: notes.path })).status, 400);
+  // A path or a text that is not text is refused as bad input, not handed to the store.
+  assert.equal((await f.post("file/read", { target: shared, path: { a: 1 } })).status, 400);
+  assert.equal((await f.post("file/write", { target: shared, path: notes.path, expectedRevision: file.revision, text: 7 })).status, 400);
   assert.equal((await f.post("file/delete", { target: shared, path: notes.path, expectedRevision: file.revision })).status, 400);
   assert.equal((await f.post("resource/promote", { target, type: "skills", name: "notes", expectedRevision: after.revision, extra: 1 })).status, 400);
 });

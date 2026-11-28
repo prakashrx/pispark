@@ -1,5 +1,5 @@
 import { DependencyPreparationError } from "./extension-dependencies.js";
-import type { ThinkingLevel } from "../../contract/agent-protocol.js";
+import { THINKING_LEVELS, type ThinkingLevel } from "../../contract/agent-protocol.js";
 import { sessionTitle } from "../../contract/session-title.js";
 import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
@@ -27,7 +27,7 @@ import type { SessionChange } from "./observation.js";
 import type { ProviderSettings } from "./provider-settings.js";
 import { validChoice } from "./provider-storage.js";
 import { RunSlots } from "./run-slots.js";
-import { SessionStorage, validateId, type SessionMetadata } from "./storage.js";
+import { SessionStorage, validateEntryId, validateId, type SessionMetadata } from "./storage.js";
 import { attachmentPath, filesFolder, forkAttachmentTags, placeAttachments, saveAttachment, sentAttachmentNames, uploadedNames, validAttachmentName } from "./attachments.js";
 import { Schedules } from "./schedules.js";
 import { ToolDiscovery } from "./tool-discovery.js";
@@ -54,7 +54,6 @@ import { SessionProcesses } from "./session-processes.js";
  * and when idle ones unload. Each loaded session is a `Session`, which owns its Pi session and lifecycle.
  * No HTTP, browser lifetime, terminal configuration or replay of interrupted tools.
  */
-const THINKING: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 export class SessionRuntime {
   readonly agents: AgentStore;
@@ -743,7 +742,7 @@ export class SessionRuntime {
   async configure(id: string, change: { model?: ModelChoice; thinking?: ThinkingLevel }): Promise<SessionDoc> {
     validateId(id);
     if (change.model !== undefined && !validChoice(change.model)) throw new RuntimeError("invalid-input");
-    if (change.thinking !== undefined && !THINKING.includes(change.thinking)) throw new RuntimeError("invalid-input");
+    if (change.thinking !== undefined && !THINKING_LEVELS.includes(change.thinking)) throw new RuntimeError("invalid-input");
     if (!change.model && !change.thinking) throw new RuntimeError("invalid-input");
     await this.ensure(id);
     const session = this.live.get(id);
@@ -760,7 +759,7 @@ export class SessionRuntime {
    */
   async fork(sourceId: string, entryId?: string, fromCommand = false): Promise<string> {
     validateId(sourceId);
-    if (entryId !== undefined && (typeof entryId !== "string" || !entryId || entryId.length > 64)) throw new RuntimeError("invalid-input");
+    if (entryId !== undefined) validateEntryId(entryId);
     this.admit();
     const source = this.storage.read(sourceId);
     const session = this.live.get(sourceId);
@@ -1051,7 +1050,7 @@ export class SessionRuntime {
    */
   async edit(id: string, entryId: string, text: string, attachments: readonly string[] = []): Promise<RunHandle> {
     validateText(text);
-    if (typeof entryId !== "string" || !entryId || entryId.length > 64) throw new RuntimeError("invalid-input");
+    validateEntryId(entryId);
     if (!this.accepting) throw new RuntimeError("closed");
     await this.ensure(id);
     const session = this.get(id);
@@ -1066,7 +1065,7 @@ export class SessionRuntime {
    * of what followed that version.
    */
   async branch(id: string, entryId: string): Promise<SessionDoc> {
-    if (typeof entryId !== "string" || !entryId || entryId.length > 64) throw new RuntimeError("invalid-input");
+    validateEntryId(entryId);
     await this.ensure(id);
     const session = this.get(id);
     const leaf = session.latestUnder(entryId);

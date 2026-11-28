@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { isAbsolute } from "node:path";
-import { DEFAULT_AGENT, SWITCH_PREFIX } from "../../contract/agent-protocol.js";
+import { DEFAULT_AGENT, ITEM_TYPES, SWITCH_PREFIX, THINKING_LEVELS } from "../../contract/agent-protocol.js";
 import type {
   ItemType,
   ResourceSource,
@@ -36,22 +36,6 @@ export const BUILTIN_TOOLS = [
   "powershell",
 ] as const;
 export const DEFAULT_TOOLS = BUILTIN_TOOLS.filter((t) => t !== "powershell");
-export const ITEM_TYPES: ItemType[] = [
-  "instructions",
-  "skills",
-  "prompts",
-  "extensions",
-  "mcp",
-];
-const THINKING: ThinkingLevel[] = [
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-];
 
 export const digest = (value: string | Buffer) =>
   createHash("sha256").update(value).digest("hex");
@@ -205,7 +189,7 @@ export function validateDefinition(
         (typeof settings.model !== "string" ||
           !/^[^/\s]{1,128}\/[^\s]{1,256}$/.test(settings.model))) ||
       (settings.thinking !== undefined &&
-        !THINKING.includes(settings.thinking as ThinkingLevel))
+        !THINKING_LEVELS.includes(settings.thinking as ThinkingLevel))
     )
       fail("invalid-definition", 400, "settings");
   }

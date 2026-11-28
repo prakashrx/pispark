@@ -90,6 +90,22 @@ Every connection ends after 60 s so abandoned ones are freed; clients reconnect 
 
 Limits: 72 KiB request body (64 KiB prompt), 5 s body read, 32 in-flight HTTP operations, 16 SSE connections total, 256 KiB for ordinary responses, 1 MiB for a live frame or an items page, 2 s blocked-write deadline, 60 s SSE lifetime with reconnect; normal executable admits 64 sockets, a 10 s header deadline and 5 minutes per request (an attachment upload). A stalled writer holds at most one serialized frame and one latest runtime invalidation, not an event backlog, and is closed if it does not drain. The pull-based browser decoder bounds incomplete frames/chunks and applies operations in order, keeps at most 32 unsent reply drafts of 65536 characters, and retries only observation after 2 s. Raw native conversation memory/disk and trusted SDK/tool allocations are not bounded by transport limits. Session listing caches host metadata across polls. Local writes update the cache immediately, external changes are reconciled every 30 seconds, and unreadable entries are counted separately from healthy sessions.
 
+An error answers `{error: code}`, and its status says whose it was:
+
+| Status | Codes |
+| --- | --- |
+| 400 | `invalid-input` and every code not listed here: the request itself is wrong |
+| 401 | `unpaired`: a device at the remote address that has not paired |
+| 403 | `forbidden`: not this computer, or not this origin |
+| 404 | `not-found`; `unknown-receipt` |
+| 409 | `busy`, `owned`, `read-only`: right, but not now |
+| 413 | `limit`, for a body or an upload past its size |
+| 429 | `limit`, for too much at once (commands waiting, streams open) |
+| 500 | `storage`, `execution`, `extension`, `timeout`, `sdk-version`: the server's own failure |
+| 503 | `closed` while the server shuts down; `limit` past 32 requests in flight |
+
+A command is different: it is accepted with 202, and a failure while it runs is its receipt's `error`. Ids are version 4 UUIDs in lowercase, as `crypto.randomUUID()` makes them. A body carries exactly the keys its request takes; one more is `invalid-input`.
+
 ## Tests
 
 `session-http.test.ts` runs the real SDK over HTTP: concurrency, cancel and queues, live snapshots and reconnect, cursor paging, clipped parts, the Host/Origin checks, receipts and their expiry, large histories, 10000 token events as deltas and deliberately blocked writes. Browser tests start a test-only server (`apps/server/test/fixtures/`, never imported by production code) with a temporary data folder and a deterministic signed-in provider. No test calls a real provider, so provider-specific sign-in and streaming are not covered by tests.

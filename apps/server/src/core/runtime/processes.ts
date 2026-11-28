@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, closeSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getShellConfig } from "@earendil-works/pi-coding-agent";
+import { UUID } from "../../contract/ids.js";
 import type { ProcessInfo, ProcessOutput } from "../../contract/process-protocol.js";
 import { silentLogger, type SafeLogger } from "../logger.js";
 import { writeAtomic } from "../files.js";
@@ -16,7 +17,6 @@ const KEEP = 1024 * 1024;
 const RAISE_EVERY_MS = 60_000;
 /** Ended processes kept per session, with their output; older ones go as new ones start. */
 const KEPT_ENDED = 20;
-const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
 /** How a process ended, for its session: the process, how it reads, and its last output. */
 export interface ProcessEnd {

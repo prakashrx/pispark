@@ -102,7 +102,7 @@ export class Holds {
           if (session?.settled && session.observers.size === 0) await stop(metadata.id);
         } else if (!session) await ensure(metadata.id);
       } catch (error) {
-        logger.event("wake.failure", { sessionId: metadata.id, outcome: "failed", code: runtimeError(error, "execution").code });
+        logger.event("wake.failure", { sessionId: metadata.id, outcome: "failed", code: runtimeError(error, "execution").code, cause: error });
       }
     }
   }

@@ -5,7 +5,9 @@ import { request, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
+import { SafeLogger } from "../src/core/logger.js";
 import { createAppServer } from "../src/http/server.js";
+import type { SessionHttp } from "../src/http/session-http.js";
 
 async function listen(t: TestContext, server: Server): Promise<string> {
   server.listen(0, "127.0.0.1");
@@ -160,4 +162,17 @@ test("health works without a frontend build", async (t) => {
   const base = await listen(t, createAppServer());
   assert.equal((await fetch(base)).status, 404);
   assert.equal((await fetch(`${base}/api/health`)).status, 200);
+});
+
+test("a request that breaks is answered 500 and logged by its shape, not by what broke", async (t) => {
+  const lines: string[] = [];
+  const logger = new SafeLogger({ sink: async (line) => void lines.push(line) });
+  const sessions = { handle: async () => { throw new RangeError("SECRET"); } } as unknown as SessionHttp;
+  const base = await listen(t, createAppServer({ sessions, logger }));
+  const response = await fetch(`${base}/api/sessions/3f2b8c1e-9a4d-4e6f-8b1a-2c3d4e5f6a7b/items?limit=2`);
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: "execution" });
+  await logger.close();
+  const { timestamp, ...record } = JSON.parse(lines[0]!);
+  assert.deepEqual(record, { level: "error", event: "http.failure", outcome: "failed", code: "execution", method: "GET", route: "/api/sessions/:id/items", status: 500, error: "RangeError" });
 });

@@ -115,7 +115,8 @@ test("SessionHttp: strict Host/Origin/JSON/identity, explicit failures, receipts
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    assert.equal(response.status, 400);
+    // A body past its limit says so; everything else is plain bad input.
+    assert.equal(response.status, JSON.stringify(payload).length > 72 * 1024 ? 413 : 400);
   }
   for (const contentType of ["text/plain", "application/x-www-form-urlencoded"])
     assert.equal(
@@ -219,8 +220,9 @@ test("history is read from Pi's session: byte-bounded pages, cursors both ways, 
   assert.equal(complete.length, part.size);
   assert.equal(complete, "y".repeat(200_000));
   // Bad input is refused, not guessed at.
-  for (const query of ["?before=a&after=b", "?limit=abc", "?other=1", "?before=missing"])
+  for (const query of ["?before=a&after=b", "?limit=abc", "?other=1"])
     assert.equal((await fetch(`${f.base}/api/sessions/${id}/items${query}`)).status, 400, query);
+  assert.equal((await fetch(`${f.base}/api/sessions/${id}/items?before=missing`)).status, 404);
   assert.equal((await fetch(`${f.base}/api/sessions/${id}/items/${result.id}/parts/0?x=1`)).status, 400);
 });
 
@@ -368,7 +370,7 @@ test("SessionHttp: observer admission releases on disconnect, receipt expiry is 
   );
   assert.equal(
     (await fetch(`${f.base}/api/sessions/${id}/live`)).status,
-    400,
+    429,
   );
   await streams[0]!.close();
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -461,7 +463,7 @@ for (const boundary of ["retained", "pending"] as const) {
         text: "overflow",
       }),
     });
-    assert.equal(overflow.status, 400);
+    assert.equal(overflow.status, 429);
     const cancel = await f.post({ type: "cancel", sessionId: ids[0] });
     const stop = await f.post({ type: "stop", sessionId: ids.at(-1) });
     release?.();
@@ -503,7 +505,7 @@ test("SessionHttp: repeated pending lifecycle controls share a retained canonica
       sessionId: id,
     }),
   });
-  assert.equal(response.status, 400);
+  assert.equal(response.status, 429);
   assert.equal(((await response.json()) as { error: string }).error, "limit");
   // Lifecycle flooding cannot consume ordinary admission or evict accepted receipts.
   await f.create("b");

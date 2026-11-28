@@ -436,6 +436,6 @@ export class Children implements Kind {
   }
 
   private failed(sessionId: string, error: unknown): void {
-    this.sessions.logger.event("wake.failure", { sessionId, outcome: "failed", code: runtimeError(error, "execution").code });
+    this.sessions.logger.event("wake.failure", { sessionId, outcome: "failed", code: runtimeError(error, "execution").code, cause: error });
   }
 }

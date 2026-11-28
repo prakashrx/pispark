@@ -5,6 +5,7 @@ import { extname, resolve } from "node:path";
 import type { SessionHttp } from "./session-http.js";
 import { silentLogger, type SafeLogger } from "../core/logger.js";
 import { isInside } from "../core/files.js";
+import { logFailure } from "./io.js";
 
 const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -84,7 +85,7 @@ export function createAppServer({
         // Read the raw path, not a URL-normalized path which could hide traversal segments.
         path = decodeURIComponent((request.url ?? "/").split("?")[0] ?? "/");
       } catch {
-        json(response, 400, { error: "Invalid path" });
+        json(response, 400, { error: "invalid-input" });
         return;
       }
       if (
@@ -92,25 +93,25 @@ export function createAppServer({
         /[\\\0]/.test(path) ||
         path.split("/").some((part) => part.startsWith("."))
       ) {
-        json(response, 400, { error: "Invalid path" });
+        json(response, 400, { error: "invalid-input" });
         return;
       }
       if (path === "/api" || path.startsWith("/api/")) {
         if (sessions && path !== "/api/health") {
           await sessions.handle(request, response);
         } else if (path !== "/api/health") {
-          json(response, 404, { error: "API route not found" });
+          json(response, 404, { error: "not-found" });
         } else if (request.method === "GET") {
           json(response, 200, { status: "ok", service: "pispark" });
         } else {
           response.setHeader("Allow", "GET");
-          json(response, 405, { error: "Method not allowed" });
+          json(response, 405, { error: "invalid-input" });
         }
         return;
       }
       if (request.method !== "GET" && request.method !== "HEAD") {
         response.setHeader("Allow", "GET, HEAD");
-        json(response, 405, { error: "Method not allowed" });
+        json(response, 405, { error: "invalid-input" });
         return;
       }
       if (
@@ -127,16 +128,12 @@ export function createAppServer({
         (await serveStatic("/", root, response, false))
       )
         return;
-      json(response, 404, { error: "Not found" });
-    } catch {
-      // Request errors can contain provider/tool secrets; never log raw exceptions.
-      logger.event(
-        "http.failure",
-        { code: "execution", outcome: "failed" },
-        "error",
-      );
+      json(response, 404, { error: "not-found" });
+    } catch (error) {
+      // Request errors can contain provider/tool secrets: the logger keeps only what kind of error it was.
+      logFailure(logger, request, error, { status: 500, code: "execution" });
       if (response.headersSent) response.end();
-      else json(response, 500, { error: "Internal server error" });
+      else json(response, 500, { error: "execution" });
     }
   });
 }
